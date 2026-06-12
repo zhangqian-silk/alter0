@@ -20,7 +20,6 @@ export type PromptItem = {
 
 export type IconName =
   | "chat"
-  | "agent"
   | "terminal"
   | "memory"
   | "skills"

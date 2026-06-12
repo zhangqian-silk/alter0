@@ -92,8 +92,8 @@ func (e *reactTestError) Error() string {
 	return e.text
 }
 
-func TestReActAgentInjectsLatestUserMessageBetweenIterations(t *testing.T) {
-	agent := NewReActAgent(ReActAgentConfig{
+func TestReActRunnerInjectsLatestUserMessageBetweenIterations(t *testing.T) {
+	runner := NewReActRunner(ReActRunnerConfig{
 		Client:            &reactScriptClient{},
 		Model:             "test-model",
 		Tools:             []Tool{{Name: "lookup", Description: "lookup data"}},
@@ -102,7 +102,7 @@ func TestReActAgentInjectsLatestUserMessageBetweenIterations(t *testing.T) {
 		UserMessagePuller: (&reactLatestMessageSource{message: "最新补充"}).ConsumeLatest,
 	})
 
-	state, err := agent.RunWithState(context.Background(), "初始请求", nil)
+	state, err := runner.RunWithState(context.Background(), "初始请求", nil)
 	if err != nil {
 		t.Fatalf("RunWithState() error = %v", err)
 	}
@@ -132,8 +132,8 @@ func (c *reactIterationLimitClient) Close() error {
 	return nil
 }
 
-func TestReActAgentReturnsIterationLimitFallbackAfterToolObservation(t *testing.T) {
-	agent := NewReActAgent(ReActAgentConfig{
+func TestReActRunnerReturnsIterationLimitFallbackAfterToolObservation(t *testing.T) {
+	runner := NewReActRunner(ReActRunnerConfig{
 		Client:        &reactIterationLimitClient{},
 		Model:         "test-model",
 		Tools:         []Tool{{Name: "codex_exec", Description: "run codex"}},
@@ -141,7 +141,7 @@ func TestReActAgentReturnsIterationLimitFallbackAfterToolObservation(t *testing.
 		MaxIterations: 1,
 	})
 
-	state, err := agent.RunWithState(context.Background(), "初始请求", nil)
+	state, err := runner.RunWithState(context.Background(), "初始请求", nil)
 	if err != nil {
 		t.Fatalf("RunWithState() error = %v", err)
 	}
@@ -216,8 +216,8 @@ func (e *reactCompleteToolExecutor) Execute(_ context.Context, toolCall ToolCall
 	}, nil
 }
 
-func TestReActAgentRequiresCompleteToolWhenAvailable(t *testing.T) {
-	agent := NewReActAgent(ReActAgentConfig{
+func TestReActRunnerRequiresCompleteToolWhenAvailable(t *testing.T) {
+	runner := NewReActRunner(ReActRunnerConfig{
 		Client: &reactCompleteEnforcementClient{},
 		Model:  "test-model",
 		Tools: []Tool{
@@ -227,7 +227,7 @@ func TestReActAgentRequiresCompleteToolWhenAvailable(t *testing.T) {
 		MaxIterations: 3,
 	})
 
-	state, err := agent.RunWithState(context.Background(), "初始请求", nil)
+	state, err := runner.RunWithState(context.Background(), "初始请求", nil)
 	if err != nil {
 		t.Fatalf("RunWithState() error = %v", err)
 	}

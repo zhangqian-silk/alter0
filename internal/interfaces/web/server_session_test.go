@@ -168,7 +168,7 @@ func TestSessionListHandlerReturnsPagedData(t *testing.T) {
 
 	req := httptest.NewRequest(
 		http.MethodGet,
-		"/api/sessions?page=2&page_size=10&trigger_type=cron&channel_type=scheduler&channel_id=scheduler-default&message_id=msg-1&agent_id=researcher&job_id=job-daily",
+		"/api/sessions?page=2&page_size=10&trigger_type=cron&channel_type=scheduler&channel_id=scheduler-default&message_id=msg-1&job_id=job-daily",
 		nil,
 	)
 	rec := httptest.NewRecorder()
@@ -191,9 +191,6 @@ func TestSessionListHandlerReturnsPagedData(t *testing.T) {
 	}
 	if history.lastSessionQuery.MessageID != "msg-1" {
 		t.Fatalf("expected message_id msg-1, got %s", history.lastSessionQuery.MessageID)
-	}
-	if history.lastSessionQuery.AgentID != "researcher" {
-		t.Fatalf("expected agent_id researcher, got %s", history.lastSessionQuery.AgentID)
 	}
 	if history.lastSessionQuery.JobID != "job-daily" {
 		t.Fatalf("expected job_id job-daily, got %s", history.lastSessionQuery.JobID)
@@ -572,7 +569,6 @@ func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T)
 			Metadata: map[string]string{
 				"alter0.llm.provider_id":    "openai",
 				"alter0.llm.model":          "gpt-5.4",
-				"alter0.agent.tools":        `["memory"]`,
 				"alter0.skills.include":     `["frontend-design"]`,
 				"alter0.mcp.request.enable": `["filesystem"]`,
 			},
@@ -593,8 +589,8 @@ func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T)
 			},
 		},
 		sessiondomain.MessageRecord{
-			MessageID: "agent-user",
-			SessionID: "agent-session",
+			MessageID: "runtime-user",
+			SessionID: "runtime-session",
 			Role:      sessiondomain.MessageRoleUser,
 			Content:   "Ship the bug fix",
 			Timestamp: base.Add(2 * time.Minute),
@@ -602,17 +598,15 @@ func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T)
 				TriggerType: shareddomain.TriggerTypeUser,
 				ChannelType: shareddomain.ChannelTypeWeb,
 				ChannelID:   "web-default",
-				AgentID:     "coding",
-				AgentName:   "Coding Agent",
 			},
 			Metadata: map[string]string{
 				"alter0.execution.engine": "codex",
-				"alter0.skills.include":   `["deploy-test-service"]`,
+				"alter0.skills.include":   `["preview-publish"]`,
 			},
 		},
 		sessiondomain.MessageRecord{
-			MessageID: "agent-assistant",
-			SessionID: "agent-session",
+			MessageID: "runtime-assistant",
+			SessionID: "runtime-session",
 			Role:      sessiondomain.MessageRoleAssistant,
 			Content:   "Patch applied.",
 			Timestamp: base.Add(3 * time.Minute),
@@ -620,8 +614,6 @@ func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T)
 				TriggerType: shareddomain.TriggerTypeUser,
 				ChannelType: shareddomain.ChannelTypeWeb,
 				ChannelID:   "web-default",
-				AgentID:     "coding",
-				AgentName:   "Coding Agent",
 			},
 			RouteResult: sessiondomain.RouteResult{
 				Route: shareddomain.RouteCommand,
@@ -661,7 +653,7 @@ func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T)
 		t.Fatalf("decode payload: %v", err)
 	}
 	if len(payload.Items) != 2 {
-		t.Fatalf("expected chat runtime sessions to include migrated legacy agent sessions, got %d", len(payload.Items))
+		t.Fatalf("expected chat runtime sessions to include migrated legacy runtime sessions, got %d", len(payload.Items))
 	}
 	byID := map[string]struct {
 		ID              string   `json:"id"`
@@ -687,8 +679,8 @@ func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T)
 	if chatItem.ModelProviderID != "openai" || chatItem.ModelID != "gpt-5.4" {
 		t.Fatalf("expected provider/model from metadata, got %+v", chatItem)
 	}
-	if len(chatItem.ToolIDs) != 1 || chatItem.ToolIDs[0] != "memory" {
-		t.Fatalf("expected tool ids from metadata, got %+v", chatItem.ToolIDs)
+	if len(chatItem.ToolIDs) != 0 {
+		t.Fatalf("expected no tool ids, got %+v", chatItem.ToolIDs)
 	}
 	if len(chatItem.SkillIDs) != 1 || chatItem.SkillIDs[0] != "frontend-design" {
 		t.Fatalf("expected skill ids from metadata, got %+v", chatItem.SkillIDs)
@@ -696,12 +688,12 @@ func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T)
 	if len(chatItem.MCPIDs) != 1 || chatItem.MCPIDs[0] != "filesystem" {
 		t.Fatalf("expected mcp ids from metadata, got %+v", chatItem.MCPIDs)
 	}
-	agentItem := byID["agent-session"]
-	if agentItem.ID != "agent-session" || agentItem.TargetType != "agent" || agentItem.TargetID != "coding" {
-		t.Fatalf("unexpected migrated legacy agent item %+v", agentItem)
+	runtimeItem := byID["runtime-session"]
+	if runtimeItem.ID != "runtime-session" || runtimeItem.TargetType != "model" {
+		t.Fatalf("unexpected chat item %+v", runtimeItem)
 	}
-	if agentItem.ModelProviderID != "alter0-codex" || agentItem.ModelID != "codex" {
-		t.Fatalf("expected codex runtime model selection, got %+v", agentItem)
+	if runtimeItem.ModelProviderID != "alter0-codex" || runtimeItem.ModelID != "codex" {
+		t.Fatalf("expected codex runtime model selection, got %+v", runtimeItem)
 	}
 }
 
@@ -816,84 +808,6 @@ func TestConversationRuntimeSessionItemHandlerReturnsMessagesAndAttachments(t *t
 	}
 	if len(payload.Session.Messages[1].ProcessSteps) != 1 || payload.Session.Messages[1].ProcessSteps[0].Title != "codex_exec" {
 		t.Fatalf("expected process steps, got %+v", payload.Session.Messages[1].ProcessSteps)
-	}
-}
-
-func TestConversationRuntimeSessionRegistryMigratesLegacyAgentRuntimeEntriesToChat(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "conversation-runtime.json")
-	if err := os.WriteFile(path, []byte(`{
-  "items": [
-    {
-      "session_id": "agent-pending-registry",
-      "route": "agent-runtime",
-      "status": "busy",
-      "title": "Generate the travel guide page",
-      "title_auto": false,
-      "title_score": 1,
-      "created_at": "2026-05-06T08:00:00Z",
-      "updated_at": "2026-05-06T08:00:01Z",
-      "target_type": "agent",
-      "target_id": "travel",
-      "target_name": "Travel Agent",
-      "model_provider_id": "alter0-codex",
-      "model_id": "codex",
-      "skill_ids": ["deploy-test-service"]
-    }
-  ]
-}`), 0o644); err != nil {
-		t.Fatalf("write legacy registry: %v", err)
-	}
-	registry, err := newFileConversationRuntimeSessionRegistry(path)
-	if err != nil {
-		t.Fatalf("create registry: %v", err)
-	}
-
-	server := &Server{
-		sessions:                    sessionapp.NewService(),
-		conversationRuntimeSessions: registry,
-		logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/conversation-runtime/sessions?route=chat", nil)
-	server.conversationRuntimeSessionCollectionHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
-	}
-
-	var payload struct {
-		Items []struct {
-			ID         string   `json:"id"`
-			Status     string   `json:"status"`
-			Title      string   `json:"title"`
-			TargetType string   `json:"target_type"`
-			TargetID   string   `json:"target_id"`
-			TargetName string   `json:"target_name"`
-			SkillIDs   []string `json:"skill_ids"`
-		} `json:"items"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode payload: %v", err)
-	}
-	if len(payload.Items) != 1 {
-		t.Fatalf("expected 1 registry-backed runtime session, got %d", len(payload.Items))
-	}
-	if payload.Items[0].ID != "agent-pending-registry" || payload.Items[0].Status != conversationRuntimeSessionStatusBusy {
-		t.Fatalf("unexpected registry-backed item %+v", payload.Items[0])
-	}
-	if payload.Items[0].TargetType != "agent" || payload.Items[0].TargetID != "travel" || payload.Items[0].TargetName != "Travel Agent" {
-		t.Fatalf("expected agent target metadata, got %+v", payload.Items[0])
-	}
-	if len(payload.Items[0].SkillIDs) != 1 || payload.Items[0].SkillIDs[0] != "deploy-test-service" {
-		t.Fatalf("expected skill ids from registry metadata, got %+v", payload.Items[0].SkillIDs)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read migrated registry: %v", err)
-	}
-	if strings.Contains(string(raw), `"route": "agent-runtime"`) {
-		t.Fatalf("expected legacy agent-runtime route to be rewritten to chat, got %s", string(raw))
 	}
 }
 

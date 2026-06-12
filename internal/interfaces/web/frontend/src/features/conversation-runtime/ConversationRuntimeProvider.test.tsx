@@ -217,7 +217,7 @@ describe("ConversationRuntimeProvider", () => {
     window.history.replaceState({}, "", "/chat");
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
-      JSON.stringify({ chat: "alter0-chat", "agent-runtime": "" }),
+      JSON.stringify({ chat: "alter0-chat" }),
     );
     setupDefaultAPI();
     apiClientMock.post.mockImplementation(async (path: string) => {
@@ -259,7 +259,7 @@ describe("ConversationRuntimeProvider", () => {
     });
   });
 
-  it("creates blank Chat sessions and normalizes legacy agent-runtime route props to Chat", async () => {
+  it("creates blank Chat sessions on the Chat route", async () => {
     window.sessionStorage.clear();
     apiClientMock.get.mockImplementation(async () => ({ items: [] }));
 
@@ -273,14 +273,13 @@ describe("ConversationRuntimeProvider", () => {
     chatView.unmount();
 
     render(
-      <ConversationRuntimeProvider route="agent-runtime" language="en">
+      <ConversationRuntimeProvider route="chat" language="en">
         <ActiveSessionTitleHarness />
       </ConversationRuntimeProvider>,
     );
 
     await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("New"));
     expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat");
-    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=agent-runtime");
   });
 
   it("updates Chat session pin state through the session history pin endpoint", async () => {
@@ -354,11 +353,11 @@ describe("ConversationRuntimeProvider", () => {
                 enabled: true,
               },
               {
-                id: "agent-private",
-                name: "Agent Private",
+                id: "private",
+                name: "Private",
                 description: "Private skill",
                 enabled: true,
-                metadata: { "alter0.skill.visibility": "agent-private" },
+                metadata: { "alter0.skill.visibility": "private" },
               },
               {
                 id: "disabled-skill",
@@ -383,10 +382,10 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("skill-count")).toHaveTextContent(/^2$/);
   });
 
-  it("loads migrated legacy agent sessions from the Chat route and hydrates them as Chat sessions", async () => {
+  it("loads Chat sessions from the Chat route and hydrates them as Chat sessions", async () => {
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
-      JSON.stringify({ chat: hashSessionIDShort("agent-session-2"), "agent-runtime": "agent-session-2" }),
+      JSON.stringify({ chat: hashSessionIDShort("skill-session-2") }),
     );
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -394,26 +393,26 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "agent-session-2",
+                id: "skill-session-2",
                 title: "Travel Plan",
                 created_at: "2026-04-23T09:00:00Z",
-                target_type: "agent",
+                target_type: "skill",
                 target_id: "travel",
-                target_name: "Travel Planner",
+                target_name: "Travel Skill",
                 skill_ids: ["travel-map"],
                 messages: [],
               },
             ],
           };
-        case "/api/conversation-runtime/sessions/agent-session-2?route=chat":
+        case "/api/conversation-runtime/sessions/skill-session-2?route=chat":
           return {
             session: {
-              id: "agent-session-2",
+              id: "skill-session-2",
               title: "Travel Plan",
               created_at: "2026-04-23T09:00:00Z",
-              target_type: "agent",
+              target_type: "skill",
               target_id: "travel",
-              target_name: "Travel Planner",
+              target_name: "Travel Skill",
               skill_ids: ["travel-map"],
               messages: [
                 { id: "m-1", role: "user", content: "Plan Wuhan", created_at: "2026-04-23T09:00:00Z" },
@@ -436,7 +435,7 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent("Travel Plan"));
-    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=agent-runtime");
+    expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat");
   });
 
   it("opens the latest Chat session when the route has no explicit session query", async () => {
@@ -501,16 +500,16 @@ describe("ConversationRuntimeProvider", () => {
     expect(window.location.search).toBe("");
   });
 
-  it("merges legacy local agent-runtime snapshots into the Chat session bucket", async () => {
+  it("merges legacy local chat snapshots into the Chat session bucket", async () => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
       ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
-        "agent-runtime": {
-          id: "legacy-agent-local-1",
-          title: "Legacy local agent",
+        "chat": {
+          id: "legacy-skill-local-1",
+          title: "Legacy local chat",
           createdAt: Date.parse("2026-04-23T09:00:00Z"),
-          target: { type: "agent", id: "travel", name: "Travel Planner" },
+          target: { type: "skill", id: "travel", name: "Travel Skill" },
           messages: [],
         },
       }),
@@ -518,12 +517,12 @@ describe("ConversationRuntimeProvider", () => {
     window.sessionStorage.setItem(
       RECENT_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
-        "agent-runtime": [
+        "chat": [
           {
-            id: "legacy-agent-recent-1",
-            title: "Recent local agent",
+            id: "legacy-skill-recent-1",
+            title: "Recent local chat",
             createdAt: Date.parse("2026-04-22T09:00:00Z"),
-            target: { type: "agent", id: "writing", name: "Writing Agent" },
+            target: { type: "skill", id: "writing", name: "Writing Skill" },
             messages: [],
           },
         ],
@@ -542,8 +541,8 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent("Legacy local agent"));
-    expect(screen.getByTestId("sessions")).toHaveTextContent("Recent local agent");
+    await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent("Legacy local chat"));
+    expect(screen.getByTestId("sessions")).toHaveTextContent("Recent local chat");
   });
 
   it("uploads draft images into the active Chat session workspace", async () => {

@@ -34,7 +34,7 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T) {
 }
 
 type RuntimeComposerProps = {
-  runtimeKind: "chat" | "agent" | "terminal";
+  runtimeKind: "chat" | "terminal";
   shellRef?: Ref<HTMLElement>;
   shellClassName?: string;
   shellProps?: Omit<ComponentPropsWithoutRef<"footer">, "children" | "className"> & {

@@ -1,25 +1,25 @@
 # Code Review Plugin
 
-Automated code review for pull requests using multiple specialized agents with confidence-based scoring to filter false positives.
+Automated code review for pull requests using multiple independent review passes with confidence-based scoring to filter false positives.
 
 ## Overview
 
-The Code Review Plugin automates pull request review by launching multiple agents in parallel to independently audit changes from different perspectives. It uses confidence scoring to filter out false positives, ensuring only high-quality, actionable feedback is posted.
+The Code Review Plugin automates pull request review by running multiple review passes in parallel to independently audit changes from different perspectives. It uses confidence scoring to filter out false positives, ensuring only high-quality, actionable feedback is posted.
 
 ## Commands
 
 ### `/code-review`
 
-Performs automated code review on a pull request using multiple specialized agents.
+Performs automated code review on a pull request using multiple specialized review passes.
 
 **What it does:**
 1. Checks if review is needed (skips closed, draft, trivial, or already-reviewed PRs)
 2. Gathers relevant CLAUDE.md guideline files from the repository
 3. Summarizes the pull request changes
-4. Launches 4 parallel agents to independently review:
-   - **Agents #1 & #2**: Audit for CLAUDE.md compliance
-   - **Agent #3**: Scan for obvious bugs in changes
-   - **Agent #4**: Analyze git blame/history for context-based issues
+4. Runs 4 parallel review passes to independently review:
+   - **Review passes #1 & #2**: Audit for CLAUDE.md compliance
+   - **Review pass #3**: Scan for obvious bugs in changes
+   - **Review pass #4**: Analyze git blame/history for context-based issues
 5. Scores each issue 0-100 for confidence level
 6. Filters out issues below 80 confidence threshold
 7. Posts review comment with high-confidence issues only
@@ -35,14 +35,14 @@ Performs automated code review on a pull request using multiple specialized agen
 /code-review
 
 # Claude will:
-# - Launch 4 review agents in parallel
+# - Run 4 review passes in parallel
 # - Score each issue for confidence
 # - Post comment with issues ≥80 confidence
 # - Skip posting if no high-confidence issues found
 ```
 
 **Features:**
-- Multiple independent agents for comprehensive review
+- Multiple independent review passes for comprehensive review
 - Confidence-based scoring reduces false positives (threshold: 80)
 - CLAUDE.md compliance checking with explicit guideline verification
 - Bug detection focused on changes (not pre-existing issues)
@@ -94,7 +94,7 @@ This plugin is included in the Claude Code repository. The command is automatica
 - Maintain clear CLAUDE.md files for better compliance checking
 - Trust the 80+ confidence threshold - false positives are filtered
 - Run on all non-trivial pull requests
-- Review agent findings as a starting point for human review
+- Review runtime findings as a starting point for human review
 - Update CLAUDE.md based on recurring review patterns
 
 ### When to use
@@ -138,11 +138,11 @@ This plugin is included in the Claude Code repository. The command is automatica
 
 ### Review takes too long
 
-**Issue**: Agents are slow on large PRs
+**Issue**: Review passes are slow on large PRs
 
 **Solution**:
-- Normal for large changes - agents run in parallel
-- 4 independent agents ensure thoroughness
+- Normal for large changes - review passes run in parallel
+- 4 independent review passes ensure thoroughness
 - Consider splitting large PRs into smaller ones
 
 ### Too many false positives
@@ -191,7 +191,7 @@ https://github.com/owner/repo/blob/[full-sha]/path/file.ext#L[start]-L[end]
 ## Tips
 
 - **Write specific CLAUDE.md files**: Clear guidelines = better reviews
-- **Include context in PRs**: Helps agents understand intent
+- **Include context in PRs**: Helps review passes understand intent
 - **Use confidence scores**: Issues ≥80 are usually correct
 - **Iterate on guidelines**: Update CLAUDE.md based on patterns
 - **Review automatically**: Set up as part of PR workflow
@@ -210,16 +210,16 @@ Change `80` to your preferred threshold (0-100).
 
 ### Customizing review focus
 
-Edit `commands/code-review.md` to add or modify agent tasks:
-- Add security-focused agents
-- Add performance analysis agents
-- Add accessibility checking agents
+Edit `commands/code-review.md` to add or modify runtime tasks:
+- Add security-focused review passes
+- Add performance analysis review passes
+- Add accessibility checking review passes
 - Add documentation quality checks
 
 ## Technical Details
 
-### Agent architecture
-- **2x CLAUDE.md compliance agents**: Redundancy for guideline checks
+### Skill architecture
+- **2x CLAUDE.md compliance review passes**: Redundancy for guideline checks
 - **1x bug detector**: Focused on obvious bugs in changes only
 - **1x history analyzer**: Context from git blame and history
 - **Nx confidence scorers**: One per issue for independent scoring

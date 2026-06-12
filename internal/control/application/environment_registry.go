@@ -344,7 +344,7 @@ func defaultEnvironmentDefinitions() []controldomain.EnvironmentDefinition {
 			Key:          "llm_react_max_iterations",
 			Name:         "ReAct Max Iterations",
 			Module:       "LLM",
-			Description:  "ReAct Agent 在一次任务中允许执行的“思考/行动”迭代上限。该值用于限制复杂任务的循环深度、工具调用次数和整体成本。",
+			Description:  "ReAct runner 在一次任务中允许执行的“思考/行动”迭代上限。该值用于限制复杂任务的循环深度、工具调用次数和整体成本。",
 			Type:         controldomain.EnvironmentValueTypeInteger,
 			DefaultValue: "10",
 			ApplyMode:    controldomain.EnvironmentApplyModeImmediate,

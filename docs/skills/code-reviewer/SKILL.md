@@ -8,7 +8,7 @@ description:
 
 # Code Reviewer
 
-This skill guides the agent in conducting professional and thorough code reviews for both local development and remote Pull Requests.
+This skill guides the runtime in conducting professional and thorough code reviews for both local development and remote Pull Requests.
 
 ## Workflow
 

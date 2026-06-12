@@ -4,7 +4,7 @@ import { loginIfNeeded } from "./helpers/guards/login";
 import { openTerminalRoute } from "./helpers/flows/routes";
 import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
-async function openRuntimeRoute(page: Page, route: "chat" | "agent-runtime"): Promise<void> {
+async function openRuntimeRoute(page: Page, route: "chat" | "chat"): Promise<void> {
   await page.goto(`/${route}`);
   await loginIfNeeded(page);
   if (!new URL(page.url()).pathname.endsWith(`/${route}`)) {
@@ -18,7 +18,7 @@ async function openRuntimeRoute(page: Page, route: "chat" | "agent-runtime"): Pr
 async function mockConversationRuntimeSessions(
   page: Page,
   options: {
-    route: "chat" | "agent-runtime";
+    route: "chat" | "chat";
     sessions: Array<Record<string, unknown>>;
     activeSessionID?: string;
   },
@@ -153,10 +153,10 @@ test.describe("Runtime workspace scaffold", () => {
     expect(terminalMetrics?.titleTop).toBe(chatMetrics?.titleTop);
   });
 
-  test("keeps the desktop agent runtime session pane scrollable with a long session list", async ({ page }) => {
+  test("keeps the desktop chat session pane scrollable with a long session list", async ({ page }) => {
     const now = Date.now();
     const sessions = Array.from({ length: 20 }, (_, index) => {
-      const sessionID = `agent-scroll-${index + 1}`;
+      const sessionID = `skill-scroll-${index + 1}`;
       const createdAt = new Date(now - index * 60_000).toISOString();
       return {
         id: sessionID,
@@ -164,9 +164,9 @@ test.describe("Runtime workspace scaffold", () => {
         created_at: createdAt,
         updated_at: createdAt,
         status: "ready",
-        target_type: "agent",
-        target_id: "coding",
-        target_name: "Coding Agent",
+        target_type: "skill",
+        target_id: "implementation",
+        target_name: "Implementation Skill",
         messages: [
           {
             id: `message-${sessionID}`,
@@ -180,15 +180,15 @@ test.describe("Runtime workspace scaffold", () => {
     });
 
     await mockConversationRuntimeSessions(page, {
-      route: "agent-runtime",
+      route: "chat",
       sessions,
       activeSessionID: sessions[0].id as string,
     });
     await page.setViewportSize({ width: 1440, height: 960 });
-    await openRuntimeRoute(page, "agent-runtime");
+    await openRuntimeRoute(page, "chat");
 
     const sessionList = page.locator(
-      "[data-nav-session-rail='agent-runtime'] [data-runtime-session-list='conversation']",
+      "[data-nav-session-rail='chat'] [data-runtime-session-list='conversation']",
     );
     await expect(sessionList).toHaveCount(1);
     await expect(sessionList.locator("[role='listitem']")).toHaveCount(20);
@@ -281,8 +281,8 @@ test.describe("Runtime workspace scaffold", () => {
     await expect(page.locator(".app-shell")).toHaveClass(/nav-open/);
   });
 
-  test("keeps the agent runtime viewport above the composer", async ({ page }) => {
-    await openRuntimeRoute(page, "agent-runtime");
+  test("keeps the chat viewport above the composer", async ({ page }) => {
+    await openRuntimeRoute(page, "chat");
 
     const metrics = await readConversationViewportGap(page);
     expect(metrics).not.toBeNull();
@@ -297,7 +297,7 @@ test.describe("Runtime workspace scaffold", () => {
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
   });
 
-  test("keeps chat, agent runtime, and terminal viewports above the composer on mobile", async ({ page }) => {
+  test("keeps chat, chat, and terminal viewports above the composer on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 932 });
 
     await openRuntimeRoute(page, "chat");
@@ -305,7 +305,7 @@ test.describe("Runtime workspace scaffold", () => {
     expect(metrics).not.toBeNull();
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
 
-    await openRuntimeRoute(page, "agent-runtime");
+    await openRuntimeRoute(page, "chat");
     metrics = await readConversationViewportGap(page);
     expect(metrics).not.toBeNull();
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);

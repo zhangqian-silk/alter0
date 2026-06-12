@@ -419,11 +419,11 @@ func TestServiceInputUpgradesAutoTitleWhenLaterPromptIsMoreSpecific(t *testing.T
 		t.Fatalf("expected bootstrap title after first input, got %q", firstSnapshot.Title)
 	}
 
-	if _, err := service.Input("owner-title-upgrade", session.ID, "修改 terminal 和 agent 的会话标题"); err != nil {
+	if _, err := service.Input("owner-title-upgrade", session.ID, "修改 terminal 和 chat 的会话标题"); err != nil {
 		t.Fatalf("second input: %v", err)
 	}
 	secondSnapshot, _ := waitForSessionEntries(t, service, "owner-title-upgrade", session.ID, 4)
-	if secondSnapshot.Title != "修改 terminal 和 agent 的会话标题" {
+	if secondSnapshot.Title != "修改 terminal 和 chat 的会话标题" {
 		t.Fatalf("expected upgraded title, got %q", secondSnapshot.Title)
 	}
 }
@@ -470,7 +470,7 @@ func TestServiceInputKeepsManualTitleWhenLaterPromptChanges(t *testing.T) {
 		t.Fatalf("first input: %v", err)
 	}
 	_, _ = waitForSessionEntries(t, service, "owner-manual-title", session.ID, 2)
-	if _, err := service.Input("owner-manual-title", session.ID, "修改 terminal 和 agent 的会话标题"); err != nil {
+	if _, err := service.Input("owner-manual-title", session.ID, "修改 terminal 和 chat 的会话标题"); err != nil {
 		t.Fatalf("second input: %v", err)
 	}
 	snapshot, _ := waitForSessionEntries(t, service, "owner-manual-title", session.ID, 4)

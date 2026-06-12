@@ -29,9 +29,9 @@ type LegacyShellCopy = {
   sessionHistoryCollapse: string;
   sessionHistoryExpand: string;
   sessionListAriaLabel: string;
-  sessionAgentListAriaLabel: string;
+  sessionSkillListAriaLabel: string;
   sessionEmpty: string;
-  sessionEmptyAgent: string;
+  sessionEmptySkill: string;
   promptDeckEyebrow: string;
   promptDeckTitle: string;
   promptDeckDescription: string;
@@ -39,8 +39,8 @@ type LegacyShellCopy = {
   composerTitle: string;
   composerDescription: string;
   runtimeTarget: string;
-  runtimeAgent: string;
-  runtimeAgentPick: string;
+  runtimeSkill: string;
+  runtimeSkillPick: string;
   runtimeProvider: string;
   runtimeModel: string;
   runtimeModelShort: string;
@@ -53,7 +53,7 @@ type LegacyShellCopy = {
   runtimeSkills: string;
   runtimeSkillsShort: string;
   runtimeTargetHint: string;
-  runtimeAgentHint: string;
+  runtimeSkillHint: string;
   runtimeModelHint: string;
   runtimeToolsHint: string;
   runtimeSkillsHint: string;
@@ -76,20 +76,19 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
   en: {
     headings: {
       Workspace: "Workspace",
-      "Agent Studio": "Agent Studio",
+      "Skill Studio": "Skill Studio",
       Control: "Control",
       Settings: "Settings",
     },
     routes: {
       chat: "Chat",
-      "agent-runtime": "Chat",
       terminal: "Terminal",
       settings: "Settings",
       runtime: "Runtime",
       workspaces: "Workspaces",
       schedules: "Schedules",
       maintenance: "Maintenance",
-      agent: "Profiles",
+      skill: "Profiles",
       memory: "Memory",
       skills: "Skills",
       mcp: "MCP",
@@ -103,10 +102,9 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     },
     routeTitles: {
       chat: "Chat",
-      coding: "Coding",
+      implementation: "Implementation",
       writing: "Writing",
-      "agent-runtime": "Chat",
-      agent: "Agent 配置",
+      skill: "Skill 配置",
       channels: "Channels",
       sessions: "Sessions",
       tasks: "Tasks",
@@ -127,10 +125,9 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     },
     routeSubtitles: {
       chat: "Alter0 workspace for general-purpose conversations and orchestration",
-      coding: "Coding Agent workspace for repository analysis, implementation, and verification",
-      writing: "Writing Agent workspace for documentation, copy, and structured drafting",
-      "agent-runtime": "Legacy agent sessions now open in Chat",
-      agent: "Create and configure the Agent Profiles available to Agent conversations. Service-managed ID and version are generated automatically.",
+      implementation: "Implementation workspace for repository analysis, implementation, and verification",
+      writing: "Writing workspace for documentation, copy, and structured drafting",
+      skill: "Create and configure reusable execution profiles for Chat sessions. Service-managed ID and version are generated automatically.",
       channels: "Manage connection channels",
       sessions: "View archived sessions with source filters",
       tasks: "Observe runtime tasks with source, status, and timeline filters",
@@ -145,7 +142,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       settings: "Configure runtime, skills, memory, workspaces, and schedules from one compact surface",
       runtime: "Claude Code, Codex Direct, providers, configuration, and execution health",
       workspaces: "Sessions, deployments, tasks, artifacts, logs, and cleanup state",
-      schedules: "Maintenance and agent-created schedules that can run silently or create Chat sessions",
+      schedules: "Maintenance and skill-created schedules that can run silently or create Chat sessions",
       maintenance: "Daily memory maintenance and cleanup for inactive sessions that have not been pinned",
       management: "Configure runtime, skills, memory, workspaces, and schedules from one compact surface",
     },
@@ -171,9 +168,9 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     sessionHistoryCollapse: "Collapse",
     sessionHistoryExpand: "Expand",
     sessionListAriaLabel: "Conversation sessions",
-    sessionAgentListAriaLabel: "Agent conversation sessions",
+    sessionSkillListAriaLabel: "Skill sessions",
     sessionEmpty: "No sessions yet. Click New to start.",
-    sessionEmptyAgent: "No sessions yet. Click New to start.",
+    sessionEmptySkill: "No sessions yet. Click New to start.",
     promptDeckEyebrow: "Quick starts",
     promptDeckTitle: "Launch a strong first turn",
     promptDeckDescription: "Pick a prompt, refine the goal, or hand the runtime a clear operating angle.",
@@ -181,8 +178,8 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     composerTitle: "Drive the next move",
     composerDescription: "Use the main composer for decisive instructions, follow-up context, or runtime tuning.",
     runtimeTarget: "Conversation Target",
-    runtimeAgent: "Agent",
-    runtimeAgentPick: "Choose Agent",
+    runtimeSkill: "Skill",
+    runtimeSkillPick: "Choose Skill",
     runtimeProvider: "Provider",
     runtimeModel: "Model",
     runtimeModelShort: "Model",
@@ -195,7 +192,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     runtimeSkills: "Skills",
     runtimeSkillsShort: "Skills",
     runtimeTargetHint: "Choose the execution target before the first message.",
-    runtimeAgentHint: "Choose the Agent for this session before the first message.",
+    runtimeSkillHint: "Choose the Skill for this session before the first message.",
     runtimeModelHint: "Switches apply to upcoming messages in this session.",
     runtimeToolsHint: "Select extra Tools and MCP integrations for upcoming messages.",
     runtimeSkillsHint: "Select extra Skills for upcoming messages.",
@@ -216,20 +213,19 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
   zh: {
     headings: {
       Workspace: "工作区",
-      "Agent Studio": "Agent Studio",
+      "Skill Studio": "Skill Studio",
       Control: "控制台",
       Settings: "设置",
     },
     routes: {
       chat: "对话",
-      "agent-runtime": "Chat",
       terminal: "终端代理",
       settings: "设置",
       runtime: "运行时",
       workspaces: "工作区",
       schedules: "定时任务",
       maintenance: "维护任务",
-      agent: "配置",
+      skill: "配置",
       memory: "记忆",
       skills: "技能",
       mcp: "MCP 协议",
@@ -243,10 +239,9 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     },
     routeTitles: {
       chat: "对话",
-      coding: "Coding",
+      implementation: "Implementation",
       writing: "Writing",
-      "agent-runtime": "Chat",
-      agent: "Agent Profiles",
+      skill: "Skill Profiles",
       channels: "通道",
       sessions: "会话列表",
       tasks: "任务观测",
@@ -266,11 +261,10 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       management: "设置",
     },
     routeSubtitles: {
-      chat: "默认 Alter0 对话工作区，适合通用任务与子 Agent 编排",
-      coding: "Coding Agent 工作区，面向仓库分析、实现与验证",
-      writing: "Writing Agent 工作区，面向文档、文案与结构化写作",
-      "agent-runtime": "旧 Agent 会话现在在 Chat 中打开",
-      agent: "维护可在 Agent 会话中使用的 Agent Profile，ID 与版本由服务自动生成和管理。",
+      chat: "默认 Alter0 对话工作区，适合通用任务与 Skill 编排",
+      implementation: "Implementation 工作区，面向仓库分析、实现与验证",
+      writing: "Writing 工作区，面向文档、文案与结构化写作",
+      skill: "维护可在 Chat 会话中复用的执行 Profile，ID 与版本由服务自动生成和管理。",
       channels: "管理连接通道",
       sessions: "查看归档会话并按来源筛选",
       tasks: "基于来源、状态和时间范围观测运行任务",
@@ -285,7 +279,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       settings: "在同一设置页维护运行时、技能、记忆、工作区与定时任务",
       runtime: "Claude Code、Codex Direct、Provider、配置与执行健康状态",
       workspaces: "会话、部署、任务、产物、日志与清理状态",
-      schedules: "维护任务与 Agent 创建的定时任务，可静默运行或创建 Chat 会话",
+      schedules: "维护任务与 Skill 创建的定时任务，可静默运行或创建 Chat 会话",
       maintenance: "每日记忆维护与未置顶非活跃会话清理",
       management: "在同一设置页维护运行时、技能、记忆、工作区与定时任务",
     },
@@ -311,9 +305,9 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     sessionHistoryCollapse: "折叠",
     sessionHistoryExpand: "展开",
     sessionListAriaLabel: "对话会话列表",
-    sessionAgentListAriaLabel: "Agent 会话列表",
+    sessionSkillListAriaLabel: "Skill 会话列表",
     sessionEmpty: "暂无会话，点击“新对话”开始。",
-    sessionEmptyAgent: "当前还没有 Agent 会话。请前往 Agent 页面开始。",
+    sessionEmptySkill: "当前还没有 Skill 会话。请前往 Skill 页面开始。",
     promptDeckEyebrow: "快速起手",
     promptDeckTitle: "直接发起一轮高质量对话",
     promptDeckDescription: "可以选择快捷提示、补充目标，也可以先调整运行时再发送。",
@@ -321,8 +315,8 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     composerTitle: "推动下一步执行",
     composerDescription: "主输入框用于发送明确指令、补充上下文，或结合运行时参数继续推进。",
     runtimeTarget: "会话目标",
-    runtimeAgent: "Agent",
-    runtimeAgentPick: "选择 Agent",
+    runtimeSkill: "Skill",
+    runtimeSkillPick: "选择 Skill",
     runtimeProvider: "提供方",
     runtimeModel: "模型",
     runtimeModelShort: "模型",
@@ -335,7 +329,7 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     runtimeSkills: "技能",
     runtimeSkillsShort: "技能",
     runtimeTargetHint: "请在发送第一条消息前确定当前会话目标。",
-    runtimeAgentHint: "请在发送第一条消息前为当前会话选择 Agent。",
+    runtimeSkillHint: "请在发送第一条消息前为当前会话选择 Skill。",
     runtimeModelHint: "切换后会作用于当前会话后续发送的消息。",
     runtimeToolsHint: "为后续消息选择额外启用的工具与 MCP。",
     runtimeSkillsHint: "为后续消息选择额外启用的技能。",

@@ -45,11 +45,6 @@ func ensureBuiltinSkillFiles() error {
 func builtinSkills() []controldomain.Skill {
 	return []controldomain.Skill{
 		{
-			ID:      "default-nl",
-			Name:    "default-nl",
-			Enabled: true,
-		},
-		{
 			ID:      "memory",
 			Name:    "Memory",
 			Enabled: true,
@@ -60,7 +55,7 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillGuideKey:       memorySkillGuide(),
 			},
 		},
-		fileBackedBuiltinSkill(
+		privateFileBackedBuiltinSkill(
 			"memory-maintenance",
 			"Memory Maintenance",
 			780,
@@ -69,15 +64,15 @@ func builtinSkills() []controldomain.Skill {
 			filepath.ToSlash(filepath.Join("docs", "skills", "memory-maintenance", "SKILL.md")),
 		),
 		{
-			ID:      "deploy-test-service",
-			Name:    "Deploy Test Service",
+			ID:      "preview-publish",
+			Name:    "Preview Publish",
 			Enabled: true,
 			Scope:   controldomain.CapabilityScopeGlobal,
 			Metadata: map[string]string{
 				builtinSkillPriorityKey:    "760",
 				builtinSkillDescriptionKey: "Session-scoped preview and test-service deployment playbook for the shared alter0 gateway.",
-				builtinSkillGuideKey:       deployTestServiceSkillGuide(),
-				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join("docs", "skills", "deploy-test-service", "SKILL.md")),
+				builtinSkillGuideKey:       previewPublishSkillGuide(),
+				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join("docs", "skills", "preview-publish", "SKILL.md")),
 			},
 		},
 		{
@@ -90,18 +85,6 @@ func builtinSkills() []controldomain.Skill {
 				builtinSkillDescriptionKey: "Distinctive, production-grade frontend design rulebook for pages, components, and interface implementation.",
 				builtinSkillGuideKey:       frontendDesignSkillGuide(),
 				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join("docs", "skills", "frontend-design", "SKILL.md")),
-			},
-		},
-		{
-			ID:      "artifact-preview",
-			Name:    "Artifact Preview",
-			Enabled: true,
-			Scope:   controldomain.CapabilityScopeGlobal,
-			Metadata: map[string]string{
-				builtinSkillPriorityKey:    "720",
-				builtinSkillDescriptionKey: "Publish text, image, and code artifacts as static preview pages on session-scoped subdomains.",
-				builtinSkillGuideKey:       artifactPreviewSkillGuide(),
-				builtinSkillFilePathKey:    filepath.ToSlash(filepath.Join("docs", "skills", "artifact-preview", "SKILL.md")),
 			},
 		},
 		fileBackedBuiltinSkill(
@@ -166,7 +149,7 @@ func builtinSkills() []controldomain.Skill {
 			560,
 			"Simplifies and refines code for clarity, consistency, and maintainability while preserving all functionality.",
 			codeSimplifierSkillGuide(),
-			filepath.ToSlash(filepath.Join("docs", "skills", "code-simplifier", "agents", "code-simplifier.md")),
+			filepath.ToSlash(filepath.Join("docs", "skills", "code-simplifier", "SKILL.md")),
 		),
 		fileBackedBuiltinSkill(
 			"code-review",
@@ -183,6 +166,14 @@ func builtinSkills() []controldomain.Skill {
 			"Brainstorming workflow for framing ambiguous problems, exploring options, and converging on promising directions.",
 			brainstormingSkillGuide(),
 			filepath.ToSlash(filepath.Join("docs", "skills", "brainstorming", "SKILL.md")),
+		),
+		fileBackedBuiltinSkill(
+			"travel",
+			"Travel",
+			500,
+			"Travel guide workflow for city itineraries, recommendation pools, route cards, generated map assets, and public HTML delivery.",
+			travelSkillGuide(),
+			filepath.ToSlash(filepath.Join("docs", "skills", "travel", "SKILL.md")),
 		),
 	}
 }
@@ -202,6 +193,12 @@ func fileBackedBuiltinSkill(id string, name string, priority int, description st
 	}
 }
 
+func privateFileBackedBuiltinSkill(id string, name string, priority int, description string, guide string, filePath string) controldomain.Skill {
+	skill := fileBackedBuiltinSkill(id, name, priority, description, guide, filePath)
+	skill.Metadata["alter0.skill.visibility"] = "private"
+	return skill
+}
+
 func memorySkillGuide() string {
 	return strings.Join([]string{
 		"# alter0 memory module",
@@ -217,7 +214,7 @@ func memorySkillGuide() string {
 		"",
 		"- `USER.md` stores stable user profile, collaboration style, output preferences, and recurring personal facts. Read it when personalization matters. Write only after the user gives a durable preference or identity fact that should persist.",
 		"- `SOUL.md` stores hard, long-lived rules and non-negotiable constraints. Read it before making strategy, tone, or policy decisions. Write only when the user explicitly changes durable rules.",
-		"- `AGENTS.md` stores repository or workspace operating rules for agents, including coding conventions, role boundaries, and delivery expectations. Read it when entering a repo and before making code or process decisions. Write only when maintainers update project rules.",
+				"- `AGENTS.md` stores repository or workspace operating rules for automation runtimes, including coding conventions, role boundaries, and delivery expectations. Read it when entering a repo and before making code or process decisions. Write only when maintainers update project rules.",
 		"- `.alter0/memory/long-term/MEMORY.md`, `MEMORY.md`, or `memory.md` stores cross-session durable project memory: stable decisions, architecture facts, validated workflows, and long-lived plans. Read it when the task depends on history beyond the current session. Write after durable conclusions are confirmed.",
 		"- `.alter0/memory/YYYY-MM-DD.md` or `memory/YYYY-MM-DD.md` for today stores same-day working memory: recent discoveries, active hypotheses, and task notes that may still change. Read it when continuing today's work. Write after meaningful progress, debugging findings, or short-lived decisions that may later be promoted.",
 		"- Yesterday's daily memory is read-only by default. Read it only when today's work continues yesterday's thread or today's file points back to it. Prefer writing new notes to today's daily memory instead of editing yesterday.",
@@ -236,7 +233,7 @@ func memorySkillGuide() string {
 		"",
 		"- Write to `USER.md` only for durable user preferences, identity facts, collaboration habits, or stable output expectations.",
 		"- Write to `SOUL.md` only for explicit hard rules or non-negotiable constraints confirmed by the user. Do not use it for task notes or ordinary preferences.",
-		"- Write to `AGENTS.md` only for repository or workspace operating rules, coding conventions, delivery expectations, or agent workflow rules maintained by the project.",
+		"- Write to `AGENTS.md` only for repository or workspace operating rules, coding conventions, delivery expectations, or runtime workflow rules maintained by the project.",
 		"- Write to long-term memory only for stable project facts: confirmed architecture decisions, validated workflows, durable conventions, and reusable historical conclusions.",
 		"- Write to today's daily memory for in-progress discoveries, debugging findings, active hypotheses, temporary plans, and same-day task context.",
 		"- Treat yesterday's daily memory as read-only unless the user or maintainer explicitly asks to correct historical notes.",
@@ -269,11 +266,13 @@ func memoryMaintenanceSkillGuide() string {
 	}, "\n")
 }
 
-func deployTestServiceSkillGuide() string {
+func previewPublishSkillGuide() string {
 	return strings.Join([]string{
-		"# deploy test service",
+		"# preview publish",
 		"",
-		"- Use `deploy_test_service` when the user needs a session-scoped preview host or an additional routed test service without changing Nginx.",
+		"- Use this skill when the user needs a session-scoped preview host, a static artifact preview, or an additional routed test service without changing Nginx.",
+		"- For text, image, code, markdown, JSON, screenshots, and standalone HTML artifact previews, stage files in the workspace and publish them with `bash docs/skills/preview-publish/scripts/publish_preview_artifact.sh <session_id> <service_name> --artifact <path> ...`.",
+		"- For full applications, routed backends, or frontend build previews, use `deploy_test_service`.",
 		"- Registrations land on `/api/control/workspace-services` and are routed by the shared gateway rather than per-service Nginx edits.",
 		"- Host routing is fixed at the gateway: `https://<short_hash>.alter0.cn` for the default `web` service, and `https://<service>-<short_hash>.alter0.cn` for additional services such as `api` or `docs`.",
 		"- Default `web` deploys should register `service_type=http` and boot the current session backend so the preview host serves both the latest frontend build and `/api/*` from the same branch.",
@@ -282,6 +281,8 @@ func deployTestServiceSkillGuide() string {
 		"- Keep test-service deployment session-scoped. Reuse the current session's short-hash namespace instead of inventing ad-hoc domains.",
 		"- Prefer concise service labels and stable health paths so repeated redeploys land on the same routed host.",
 		"- Keep additional services on certificate-safe single-label subdomains under `*.alter0.cn`. Do not generate nested hosts such as `https://<service>.<short_hash>.alter0.cn` or `https://<short_hash>.travel.alter0.cn`.",
+		"- Never report server-local artifact links such as `/srv/...`, `.alter0/workspaces/...`, `file://...`, `localhost`, or `127.0.0.1` as user-openable deliverables.",
+		"- Do not finish with a local HTML/file path as the primary artifact. Publish it first, then return the deployed `https://*.alter0.cn` URL.",
 		"- For public travel guides, deploy `service_name=travel` on `https://travel-<short_hash>.alter0.cn`. Publish only the current session workspace root after the current request's `index.html` has been generated there; do not publish a stale or unrelated page as a fallback.",
 	}, "\n")
 }
@@ -294,22 +295,6 @@ func frontendDesignSkillGuide() string {
 		"- Commit to a BOLD aesthetic direction before coding and keep one memorable visual idea coherent across typography, color, motion, composition, and surface treatment.",
 		"- Avoid generic fonts like Arial and Inter, cookie-cutter component layouts, and cliched purple-on-white AI styling.",
 		"- The canonical file-backed skill lives at `docs/skills/frontend-design/SKILL.md`; treat it as the reusable design rulebook for production-grade frontend implementation.",
-	}, "\n")
-}
-
-func artifactPreviewSkillGuide() string {
-	return strings.Join([]string{
-		"# artifact preview",
-		"",
-		"- Use this skill when the task is to publish text, image, or code artifacts to a session-scoped preview subdomain rather than a full application host.",
-		"- Use this skill for every static artifact that is intended to be shown to the user in a browser, including generated HTML pages, markdown previews, screenshots, image sets, text reports, JSON examples, code samples, and packaged review artifacts.",
-		"- Stage the content as files in the current workspace, then run `bash docs/skills/artifact-preview/scripts/publish_preview_artifact.sh <session_id> <service_name> --artifact <path> ...`.",
-		"- The helper script assembles a static preview page and deploys it through the shared gateway at `https://<service>-<short_hash>.alter0.cn`.",
-		"- Keep artifact preview hosts certificate-safe by staying on single-label subdomains covered by `*.alter0.cn`; do not use nested hosts such as `https://<service>.<short_hash>.alter0.cn`.",
-		"- Reuse stable service names so repeated deploys refresh the same preview URL instead of creating ad-hoc variants.",
-		"- For full-stack web apps or routed backend services, use `deploy_test_service` instead of this artifact-only preview flow.",
-		"- Never report server-local artifact links such as `/srv/...`, `.alter0/workspaces/...`, `file://...`, `localhost`, or `127.0.0.1` as user-openable deliverables.",
-		"- Do not finish with a local HTML/file path as the primary artifact. Publish it first, then return the deployed `https://*.alter0.cn` URL.",
 	}, "\n")
 }
 
@@ -381,7 +366,7 @@ func codeSimplifierSkillGuide() string {
 		"# code simplifier",
 		"",
 		"- Use this skill when the task is to simplify or refine recently modified code for clarity, consistency, and maintainability while preserving all functionality.",
-		"- This catalog entry originates from a plugin-style package. The canonical file-backed instructions for alter0 live at `docs/skills/code-simplifier/agents/code-simplifier.md`; plugin metadata remains in `docs/skills/code-simplifier/.claude-plugin/plugin.json`.",
+		"- This catalog entry originates from a plugin-style package. The canonical file-backed instructions for alter0 live at `docs/skills/code-simplifier/SKILL.md`; plugin metadata remains in `docs/skills/code-simplifier/.claude-plugin/plugin.json`.",
 	}, "\n")
 }
 
@@ -400,6 +385,15 @@ func brainstormingSkillGuide() string {
 		"",
 		"- Use this skill when the problem is still ambiguous and the immediate need is to frame the space, generate alternatives, compare directions, and converge on a practical plan.",
 		"- The canonical file-backed skill lives at `docs/skills/brainstorming/SKILL.md`; read it for the full ideation workflow and companion materials.",
+	}, "\n")
+}
+
+func travelSkillGuide() string {
+	return strings.Join([]string{
+		"# travel",
+		"",
+		"- Use this skill when creating or revising a city travel guide, itinerary, recommendation pool, route-map treatment, or public HTML travel page.",
+		"- The canonical file-backed skill lives at `docs/skills/travel/SKILL.md`; read it for the city guide workflow, mobile-first page contract, route-card structure, generated itinerary image requirements, and travel service delivery checks.",
 	}, "\n")
 }
 

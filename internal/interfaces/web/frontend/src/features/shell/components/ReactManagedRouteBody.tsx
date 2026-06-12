@@ -5,7 +5,6 @@ import { getLegacyShellCopy } from "../legacyShellCopy";
 import {
   isReactManagedRouteBody,
 } from "../reactManagedRouteContract";
-import { ReactManagedAgentRouteBody } from "./ReactManagedAgentRouteBody";
 import { ReactManagedCodexAccountsRouteBody } from "./ReactManagedCodexAccountsRouteBody";
 import { ReactManagedControlRouteBody } from "./ReactManagedControlRouteBody";
 import { ReactManagedMaintenanceRouteBody } from "./ReactManagedMaintenanceRouteBody";
@@ -23,7 +22,6 @@ const MANAGEMENT_ROUTE_BODY_RENDERERS: Record<string, RouteBodyRenderer> = {
   maintenance: ({ language }) => <ReactManagedMaintenanceRouteBody language={language} />,
   workspaces: ({ language }) => <WorkspaceSettingsSection language={language} />,
   schedules: ({ language }) => <ReactManagedControlRouteBody route="cron-jobs" language={language} />,
-  agent: ({ language }) => <ReactManagedAgentRouteBody language={language} />,
   sessions: ({ language }) => <ReactManagedSessionsRouteBody language={language} />,
   tasks: ({ language }) => <ReactManagedTasksRouteBody language={language} />,
   channels: ({ language }) => <ReactManagedControlRouteBody route="channels" language={language} />,

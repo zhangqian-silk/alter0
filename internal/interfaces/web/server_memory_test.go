@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestAgentMemoryHandlerReturnsUnifiedPayload(t *testing.T) {
+func TestMemoryContextHandlerReturnsUnifiedPayload(t *testing.T) {
 	root := t.TempDir()
 	dailyDir := filepath.Join(root, "memory")
 	if err := os.MkdirAll(dailyDir, 0o755); err != nil {
@@ -41,7 +41,7 @@ func TestAgentMemoryHandlerReturnsUnifiedPayload(t *testing.T) {
 	}
 
 	server := &Server{
-		memory: newAgentMemoryService(AgentMemoryOptions{
+		memory: newMemoryContextService(MemoryContextOptions{
 			LongTermPath:         longTermPath,
 			DailyDir:             dailyDir,
 			MandatoryContextPath: mandatoryPath,
@@ -50,14 +50,14 @@ func TestAgentMemoryHandlerReturnsUnifiedPayload(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent/memory", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/memory/context", nil)
 	rec := httptest.NewRecorder()
-	server.agentMemoryHandler(rec, req)
+	server.memoryContextHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
-	var body agentMemoryResponse
+	var body memoryContextResponse
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
@@ -82,25 +82,25 @@ func TestAgentMemoryHandlerReturnsUnifiedPayload(t *testing.T) {
 	}
 }
 
-func TestAgentMemoryHandlerMethodNotAllowed(t *testing.T) {
+func TestMemoryContextHandlerMethodNotAllowed(t *testing.T) {
 	server := &Server{
-		memory: newAgentMemoryService(AgentMemoryOptions{}),
+		memory: newMemoryContextService(MemoryContextOptions{}),
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
-	req := httptest.NewRequest(http.MethodPost, "/api/agent/memory", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/memory/context", nil)
 	rec := httptest.NewRecorder()
 
-	server.agentMemoryHandler(rec, req)
+	server.memoryContextHandler(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, rec.Code)
 	}
 }
 
-func TestAgentMemoryHandlerMissingFileReturnsEmptyState(t *testing.T) {
+func TestMemoryContextHandlerMissingFileReturnsEmptyState(t *testing.T) {
 	root := t.TempDir()
 	server := &Server{
-		memory: newAgentMemoryService(AgentMemoryOptions{
+		memory: newMemoryContextService(MemoryContextOptions{
 			LongTermPath:         filepath.Join(root, "missing", "MEMORY.md"),
 			DailyDir:             filepath.Join(root, "missing-memory"),
 			MandatoryContextPath: filepath.Join(root, "missing", "SOUL.md"),
@@ -108,15 +108,15 @@ func TestAgentMemoryHandlerMissingFileReturnsEmptyState(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent/memory", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/memory/context", nil)
 	rec := httptest.NewRecorder()
-	server.agentMemoryHandler(rec, req)
+	server.memoryContextHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	var body agentMemoryResponse
+	var body memoryContextResponse
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}

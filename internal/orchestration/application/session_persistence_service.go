@@ -14,11 +14,9 @@ import (
 )
 
 const (
-	sessionSourceMetadataJobIDKey     = "job_id"
-	sessionSourceMetadataJobNameKey   = "job_name"
-	sessionSourceMetadataFiredAtKey   = "fired_at"
-	sessionSourceMetadataAgentIDKey   = "alter0.agent.id"
-	sessionSourceMetadataAgentNameKey = "alter0.agent.name"
+	sessionSourceMetadataJobIDKey   = "job_id"
+	sessionSourceMetadataJobNameKey = "job_name"
+	sessionSourceMetadataFiredAtKey = "fired_at"
 )
 
 type sessionRecorder interface {
@@ -231,8 +229,6 @@ func buildSessionSource(msg shareddomain.UnifiedMessage) sessiondomain.MessageSo
 		ChannelType:   msg.ChannelType,
 		ChannelID:     strings.TrimSpace(msg.ChannelID),
 		CorrelationID: strings.TrimSpace(msg.CorrelationID),
-		AgentID:       strings.TrimSpace(msg.Metadata[sessionSourceMetadataAgentIDKey]),
-		AgentName:     strings.TrimSpace(msg.Metadata[sessionSourceMetadataAgentNameKey]),
 	}
 	if msg.TriggerType != shareddomain.TriggerTypeCron {
 		return source

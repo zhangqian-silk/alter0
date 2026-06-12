@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	configFileName           = "config.toml"
-	authFileName             = "auth.json"
-	managedConfigStartMarker = "# alter0:codex-runtime:start"
-	managedConfigEndMarker   = "# alter0:codex-runtime:end"
-	managedAgentsStartMarker = "<!-- alter0:codex-runtime:start -->"
-	managedAgentsEndMarker   = "<!-- alter0:codex-runtime:end -->"
+	configFileName                     = "config.toml"
+	authFileName                       = "auth.json"
+	managedConfigStartMarker           = "# alter0:codex-runtime:start"
+	managedConfigEndMarker             = "# alter0:codex-runtime:end"
+	managedRootInstructionsStartMarker = "<!-- alter0:codex-runtime:start -->"
+	managedRootInstructionsEndMarker   = "<!-- alter0:codex-runtime:end -->"
 )
 
 type Spec struct {
@@ -101,7 +101,7 @@ func Prepare(spec Spec) (Prepared, error) {
 		}
 	}
 	if strings.TrimSpace(spec.RootInstructions) != "" {
-		if err := writeManagedAgentsFile(workspaceDir, spec.RootInstructions); err != nil {
+		if err := writeManagedRootInstructionsFile(workspaceDir, spec.RootInstructions); err != nil {
 			return Prepared{}, err
 		}
 	}
@@ -292,7 +292,7 @@ func writeManagedFile(workspaceDir string, file ManagedFile) error {
 	return nil
 }
 
-func writeManagedAgentsFile(workspaceDir string, instructions string) error {
+func writeManagedRootInstructionsFile(workspaceDir string, instructions string) error {
 	path := filepath.Join(workspaceDir, "AGENTS.md")
 	existing, err := readOptionalFile(path)
 	if err != nil {
@@ -303,19 +303,19 @@ func writeManagedAgentsFile(workspaceDir string, instructions string) error {
 		"- Do not modify files, repositories, or services outside it unless the current task explicitly targets them.",
 		"- This alter0 service runs on a standalone server. Do not present server-local paths, workspace-internal paths, `file://` URLs, `localhost` URLs, or `127.0.0.1` URLs as user-openable hyperlinks.",
 		"- Any artifact intended for the user to view in a browser must be published through the session-scoped preview/service flow first, then reported as an `https://*.alter0.cn` URL.",
-		"- For static user-facing artifacts, use the `artifact-preview` skill flow. For full-stack apps or routed backend previews, use the `deploy-test-service` flow.",
+		"- For static artifacts, frontend builds, full-stack apps, and routed backend previews, use the `preview-publish` flow.",
 	}
 	if trimmed := strings.TrimSpace(instructions); trimmed != "" {
 		managedInstructions = append(managedInstructions, trimmed)
 	}
 	block := strings.Join([]string{
-		managedAgentsStartMarker,
+		managedRootInstructionsStartMarker,
 		"## Alter0 Codex Runtime",
 		"",
 		strings.Join(managedInstructions, "\n"),
-		managedAgentsEndMarker,
+		managedRootInstructionsEndMarker,
 	}, "\n")
-	content := upsertManagedBlock(existing, block, managedAgentsStartMarker, managedAgentsEndMarker)
+	content := upsertManagedBlock(existing, block, managedRootInstructionsStartMarker, managedRootInstructionsEndMarker)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write runtime AGENTS.md: %w", err)
 	}

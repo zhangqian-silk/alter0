@@ -81,7 +81,7 @@ describe("ReactManagedRouteBody", () => {
     expect(container.querySelector(".management-route-content")).toHaveAttribute("data-management-route-content", "memory");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/agent/memory",
+      "/api/memory/context",
       expect.objectContaining({ method: "GET" }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
@@ -168,7 +168,7 @@ describe("ReactManagedRouteBody", () => {
 
   it("does not treat old management subpages as react-managed route bodies", () => {
     expect(isReactManagedRouteBody("tasks")).toBe(false);
-    expect(isReactManagedRouteBody("agent")).toBe(false);
+    expect(isReactManagedRouteBody("skill")).toBe(false);
     expect(isReactManagedRouteBody("codex-accounts")).toBe(false);
   });
 
@@ -180,7 +180,7 @@ describe("ReactManagedRouteBody", () => {
     ]);
     expect(isReactManagedRouteBody("settings")).toBe(true);
     expect(isReactManagedRouteBody("management")).toBe(true);
-    expect(isReactManagedRouteBody("agent")).toBe(false);
+    expect(isReactManagedRouteBody("skill")).toBe(false);
     expect(isReactManagedRouteBody("memory")).toBe(false);
     expect(isReactManagedRouteBody("products")).toBe(false);
     expect(isReactManagedRouteBody("terminal")).toBe(true);

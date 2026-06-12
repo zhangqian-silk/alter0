@@ -94,25 +94,23 @@ func TestCodexCLIProcessorProcessEmptyContent(t *testing.T) {
 	}
 }
 
-func TestBuildCodexPromptIncludesTravelAgentDeliveryRules(t *testing.T) {
+func TestBuildCodexPromptIncludesTravelSkillDeliveryRules(t *testing.T) {
 	metadata := testRuntimeMetadata()
-	metadata[execdomain.AgentIDMetadataKey] = "travel"
-	metadata[execdomain.AgentSystemPromptMetadataKey] = "Own travel delivery."
-	metadata[execdomain.AgentDeliverablesMetadataKey] = `[{"id":"guide-html","label":"HTML Guide","format":"html","required":true,"session_attribute_key":"guide_html_url"}]`
+	markTravelSkill(t, metadata)
+	metadata[execdomain.DeliverablesMetadataKey] = `[{"id":"guide-html","label":"HTML Guide","format":"html","required":true,"session_attribute_key":"guide_html_url"}]`
 
 	rendered, err := buildCodexPrompt("整理武汉攻略", metadata)
 	if err != nil {
 		t.Fatalf("buildCodexPrompt() error = %v", err)
 	}
 	for _, expected := range []string{
-		"session-aware execution assistant",
+		"session-aware execution runtime",
 		"Only operate within the current session workspace",
 		"Do not modify other sessions, unrelated services, or repositories outside that workspace",
 		"Current delivery contract:",
 		"guide_html_url",
 		"index.html",
 		"travel-<session_short_hash>.alter0.cn",
-		"Own travel delivery.",
 		"整理武汉攻略",
 	} {
 		if !strings.Contains(rendered, expected) {
@@ -242,7 +240,7 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 			t.Fatalf("expected config to contain %q, got:\n%s", expected, string(configText))
 		}
 	}
-	agentsText, err := os.ReadFile(filepath.Join(sessionWorkspace, "AGENTS.md"))
+	rootInstructionsText, err := os.ReadFile(filepath.Join(sessionWorkspace, "AGENTS.md"))
 	if err != nil {
 		t.Fatalf("read runtime AGENTS: %v", err)
 	}
@@ -252,8 +250,8 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 		".alter0/codex-runtime/memory/",
 		"Stay inside the current workspace scope.",
 	} {
-		if !strings.Contains(string(agentsText), expected) {
-			t.Fatalf("expected AGENTS to contain %q, got:\n%s", expected, string(agentsText))
+		if !strings.Contains(string(rootInstructionsText), expected) {
+			t.Fatalf("expected AGENTS to contain %q, got:\n%s", expected, string(rootInstructionsText))
 		}
 	}
 	runtimeText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "runtime.md"))
@@ -387,14 +385,14 @@ func TestResolveCodexWorkspaceSupportsSessionRepoCloneMode(t *testing.T) {
 	})
 
 	workspace, err := resolveCodexWorkspace(map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "coding-session",
+		execdomain.RuntimeSessionIDMetadataKey: "implementation-session",
 		codexWorkspaceModeMetadataKey:          codexWorkspaceModeSessionRepo,
 		codexWorktreeSourceRootKey:             sourceRepoRoot,
 	})
 	if err != nil {
 		t.Fatalf("resolveCodexWorkspace() error = %v", err)
 	}
-	expected, absErr := filepath.Abs(filepath.Join(".alter0", "workspaces", "sessions", "coding-session", "repo"))
+	expected, absErr := filepath.Abs(filepath.Join(".alter0", "workspaces", "sessions", "implementation-session", "repo"))
 	if absErr != nil {
 		t.Fatalf("resolve expected workspace: %v", absErr)
 	}
@@ -428,35 +426,6 @@ func TestCodexCLIProcessorProcessAllowsRepoRootModeWithoutSessionContext(t *test
 	}
 	if output != "mock response" {
 		t.Fatalf("Process() output = %q, want %q", output, "mock response")
-	}
-}
-
-func TestBuildCodexExecMetadataUsesSessionRepoCloneForCodingAgent(t *testing.T) {
-	sourceRepoRoot := t.TempDir()
-	initGitRepoWithCommit(t, sourceRepoRoot)
-
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(sourceRepoRoot); err != nil {
-		t.Fatalf("chdir source repo root: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-
-	metadata := buildCodexExecMetadata(map[string]string{
-		execdomain.AgentIDMetadataKey:           "coding",
-		execdomain.RuntimeSessionIDMetadataKey:  "coding-session",
-		execdomain.AgentNameMetadataKey:         "Coding Agent",
-		execdomain.AgentSystemPromptMetadataKey: "Own coding delivery.",
-	})
-	if got := metadata[codexWorkspaceModeMetadataKey]; got != codexWorkspaceModeSessionRepo {
-		t.Fatalf("codex workspace mode = %q, want %q", got, codexWorkspaceModeSessionRepo)
-	}
-	if got := metadata[codexWorktreeSourceRootKey]; got != sourceRepoRoot {
-		t.Fatalf("codex repo source root = %q, want %q", got, sourceRepoRoot)
 	}
 }
 
@@ -541,7 +510,7 @@ func TestCodexCLIProcessorProcessStreamStoresCommentaryAsProcessSteps(t *testing
 	if !strings.Contains(processSteps[0].Detail, "我会先确认工作区。现在开始处理。") {
 		t.Fatalf("process step detail = %q, want commentary text", processSteps[0].Detail)
 	}
-	rawSteps := strings.TrimSpace(metadata[execdomain.AgentProcessStepsMetadataKey])
+	rawSteps := strings.TrimSpace(metadata[execdomain.ProcessStepsMetadataKey])
 	if rawSteps == "" {
 		t.Fatal("expected process steps metadata to be stored")
 	}
@@ -682,7 +651,7 @@ func TestCodexCLIProcessorProcessStreamPersistsAndResumesNativeThread(t *testing
 	})
 
 	metadata := map[string]string{
-		execdomain.RuntimeSessionIDMetadataKey: "agent-fallback-session",
+		execdomain.RuntimeSessionIDMetadataKey: "runtime-fallback-session",
 	}
 	expectedFirstPrompt := mustBuildTestPrompt(t, "first prompt", metadata)
 	expectedSecondPrompt := mustBuildTestPrompt(t, "second prompt", metadata)
@@ -696,12 +665,12 @@ func TestCodexCLIProcessorProcessStreamPersistsAndResumesNativeThread(t *testing
 		t.Fatalf("first ProcessStream() output = %q, want %q", output, "mock streamed response")
 	}
 
-	threadPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "agent-fallback-session", ".alter0", "codex-runtime", "thread.json")
+	threadPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "runtime-fallback-session", ".alter0", "codex-runtime", "thread.json")
 	threadData, err := os.ReadFile(threadPath)
 	if err != nil {
 		t.Fatalf("read persisted codex thread: %v", err)
 	}
-	if !strings.Contains(string(threadData), "thread-agent-fallback") {
+	if !strings.Contains(string(threadData), "thread-runtime-fallback") {
 		t.Fatalf("persisted thread state = %q, want thread id", string(threadData))
 	}
 
@@ -752,7 +721,7 @@ func TestCodexCLIProcessorArchivesCanonicalChatThreadsByArchiveDay(t *testing.T)
 		restoreClock()
 		t.Fatalf("read archived chat codex thread: %v", err)
 	}
-	if !strings.Contains(string(firstThreadData), "thread-agent-fallback") {
+	if !strings.Contains(string(firstThreadData), "thread-runtime-fallback") {
 		restoreClock()
 		t.Fatalf("archived thread state = %q, want thread id", string(firstThreadData))
 	}
@@ -1004,7 +973,7 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		os.Exit(2)
 	}
 	mode := os.Getenv("CODEX_HELPER_MODE")
-	if mode == "stream-resume-success" && !containsArgSequence(forwarded, "resume", "--json", "thread-agent-fallback", "-") {
+	if mode == "stream-resume-success" && !containsArgSequence(forwarded, "resume", "--json", "thread-runtime-fallback", "-") {
 		_, _ = os.Stderr.WriteString("unexpected resume args")
 		os.Exit(2)
 	}
@@ -1127,11 +1096,11 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"channel\":\"final\",\"text\":\"最终回复\"}}\n")
 		os.Exit(0)
 	case "stream-thread-success":
-		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\",\"thread_id\":\"thread-agent-fallback\"}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\",\"thread_id\":\"thread-runtime-fallback\"}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock streamed response\"}}\n")
 		os.Exit(0)
 	case "stream-resume-success":
-		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\",\"thread_id\":\"thread-agent-fallback\"}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\",\"thread_id\":\"thread-runtime-fallback\"}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock resumed response\"}}\n")
 		os.Exit(0)
 	case "stream-slow-success":

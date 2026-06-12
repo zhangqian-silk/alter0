@@ -1159,7 +1159,7 @@ body {
   color: #9f1239;
 }
 
-.agent-process-shell,
+.conversation-process-shell,
 .conversation-process-shell {
   display: grid;
   gap: 12px;
@@ -1173,12 +1173,12 @@ body {
   box-shadow: 0 20px 36px -34px rgba(8, 37, 69, 0.2);
 }
 
-.agent-process-shell.is-collapsed,
+.conversation-process-shell.is-collapsed,
 .conversation-process-shell.is-collapsed {
   gap: 0;
 }
 
-.agent-process-toggle,
+.conversation-process-toggle,
 .conversation-process-toggle {
   width: 100%;
   border: none;
@@ -1192,21 +1192,21 @@ body {
   text-align: left;
 }
 
-.agent-process-toggle-icon {
+.conversation-process-toggle-icon {
   flex: 0 0 auto;
   color: var(--ink-muted);
   font-size: 13px;
   line-height: 1;
 }
 
-.agent-process-copy {
+.conversation-process-copy {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.agent-process-title {
+.conversation-process-title {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1214,12 +1214,12 @@ body {
   color: #31517e;
 }
 
-.agent-process-summary {
+.conversation-process-summary {
   font-size: 13px;
   color: var(--ink-muted);
 }
 
-.agent-process-body,
+.conversation-process-body,
 .conversation-process-body {
   display: grid;
   gap: 10px;
@@ -1227,7 +1227,7 @@ body {
   width: 100%;
 }
 
-.agent-process-step,
+.conversation-process-step,
 .conversation-process-step {
   display: grid;
   gap: 8px;
@@ -1237,7 +1237,7 @@ body {
   border-left: 1px dashed rgba(148, 163, 184, 0.55);
 }
 
-.agent-process-step-head,
+.conversation-process-step-head,
 .conversation-process-step-head {
   display: flex;
   align-items: center;
@@ -1246,7 +1246,7 @@ body {
   width: 100%;
 }
 
-.agent-process-step-head > span:first-child,
+.conversation-process-step-head > span:first-child,
 .conversation-process-step-head > span:first-child {
   flex: 0 0 auto;
   display: inline-flex;
@@ -1254,14 +1254,14 @@ body {
   justify-content: center;
 }
 
-.agent-process-step-head > span:last-child,
+.conversation-process-step-head > span:last-child,
 .conversation-process-step-head > span:last-child {
   min-width: 0;
   flex: 1 1 auto;
   width: 100%;
 }
 
-.agent-process-step-index {
+.conversation-process-step-index {
   flex: 0 0 auto;
   width: 20px;
   height: 20px;
@@ -1275,7 +1275,7 @@ body {
   justify-content: center;
 }
 
-.agent-process-step-title,
+.conversation-process-step-title,
 .conversation-process-step-title {
   display: block;
   width: 100%;
@@ -1288,7 +1288,7 @@ body {
   word-break: normal;
 }
 
-.agent-process-step-body,
+.conversation-process-step-body,
 .conversation-process-step-body {
   min-width: 0;
   width: 100%;
@@ -1299,7 +1299,7 @@ body {
   word-break: normal;
 }
 
-.agent-process-step-body > .message-markdown-rendered,
+.conversation-process-step-body > .message-markdown-rendered,
 .conversation-process-step-body > .message-markdown-rendered {
   min-width: 0;
   display: block;
@@ -1309,25 +1309,25 @@ body {
   word-break: normal;
 }
 
-.agent-process-step-body > .message-markdown-rendered > :first-child,
 .conversation-process-step-body > .message-markdown-rendered > :first-child,
-.agent-process-answer > .message-markdown-rendered > :first-child {
+.conversation-process-step-body > .message-markdown-rendered > :first-child,
+.conversation-process-answer > .message-markdown-rendered > :first-child {
   margin-top: 0;
 }
 
-.agent-process-step-body > .message-markdown-rendered > :last-child,
 .conversation-process-step-body > .message-markdown-rendered > :last-child,
-.agent-process-answer > .message-markdown-rendered > :last-child {
+.conversation-process-step-body > .message-markdown-rendered > :last-child,
+.conversation-process-answer > .message-markdown-rendered > :last-child {
   margin-bottom: 0;
 }
 
-.agent-process-empty,
+.conversation-process-empty,
 .conversation-process-empty {
   font-size: 14px;
   color: var(--ink-muted);
 }
 
-.agent-process-answer,
+.conversation-process-answer,
 .conversation-process-answer {
   display: block;
   min-width: 0;
@@ -1981,23 +1981,23 @@ body {
     height: 26px;
   }
 
-  .agent-process-shell,
+  .conversation-process-shell,
   .conversation-process-shell {
     padding: 11px 12px 12px;
     border-radius: 20px;
   }
 
-  .agent-process-step,
+  .conversation-process-step,
   .conversation-process-step {
     padding-left: 10px;
   }
 
-  .agent-process-step-head,
+  .conversation-process-step-head,
   .conversation-process-step-head {
     align-items: center;
   }
 
-  .agent-process-step-body,
+  .conversation-process-step-body,
   .conversation-process-step-body {
     width: 100%;
   }

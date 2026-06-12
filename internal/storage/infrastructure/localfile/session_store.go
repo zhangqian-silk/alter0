@@ -15,7 +15,7 @@ import (
 	sessiondomain "alter0/internal/session/domain"
 )
 
-const defaultSessionAgentDir = "_default"
+const defaultSessionBucketDir = "_default"
 
 var chatSessionArchiveLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
 
@@ -91,7 +91,7 @@ func (s *SessionStore) saveSessionLayoutLocked(records []sessiondomain.MessageRe
 	groups := groupSessionRecords(records)
 	kept := make(map[string]struct{}, len(groups))
 	for _, group := range groups {
-		path := s.sessionFilePath(group.agentID, group.sessionID, group.archiveDay)
+		path := s.sessionFilePath(group.bucketID, group.sessionID, group.archiveDay)
 		raw, err := marshalPayload(s.format, "alter0 session history", sessionState{Messages: group.records})
 		if err != nil {
 			return err
@@ -109,7 +109,7 @@ func (s *SessionStore) saveSessionLayoutLocked(records []sessiondomain.MessageRe
 }
 
 type groupedSessionRecords struct {
-	agentID    string
+	bucketID   string
 	sessionID  string
 	archiveDay string
 	records    []sessiondomain.MessageRecord
@@ -243,11 +243,11 @@ func (s *SessionStore) cleanupRemovedSessionFiles(kept map[string]struct{}) erro
 	return nil
 }
 
-func (s *SessionStore) sessionFilePath(agentID string, sessionID string, archiveDay string) string {
-	_, _ = agentID, archiveDay
+func (s *SessionStore) sessionFilePath(bucketID string, sessionID string, archiveDay string) string {
+	_, _ = bucketID, archiveDay
 	return filepath.Join(
 		s.sessionsDir,
-		defaultSessionAgentDir,
+		defaultSessionBucketDir,
 		sanitizeSessionStoreSegment(sessionID)+"."+extension(s.format),
 	)
 }
@@ -272,7 +272,7 @@ func groupSessionRecords(records []sessiondomain.MessageRecord) []groupedSession
 		items := append([]sessiondomain.MessageRecord(nil), bySession[key]...)
 		sessionID := strings.TrimSpace(items[0].SessionID)
 		groups = append(groups, groupedSessionRecords{
-			agentID:   defaultSessionAgentDir,
+			bucketID:  defaultSessionBucketDir,
 			sessionID: sessionID,
 			records:   items,
 		})
@@ -280,12 +280,12 @@ func groupSessionRecords(records []sessiondomain.MessageRecord) []groupedSession
 	return groups
 }
 
-func isCanonicalChatSessionGroup(agentID string, sessionID string) bool {
-	return resolveSessionAgentID(agentID) == defaultSessionAgentDir &&
+func isCanonicalChatSessionGroup(bucketID string, sessionID string) bool {
+	return strings.TrimSpace(bucketID) == defaultSessionBucketDir &&
 		strings.EqualFold(strings.TrimSpace(sessionID), sessiondomain.CanonicalChatSessionID)
 }
 
-func groupCanonicalChatSessionRecords(agentID string, sessionID string, records []sessiondomain.MessageRecord) []groupedSessionRecords {
+func groupCanonicalChatSessionRecords(bucketID string, sessionID string, records []sessiondomain.MessageRecord) []groupedSessionRecords {
 	byDay := map[string][]sessiondomain.MessageRecord{}
 	order := []string{}
 	for _, record := range records {
@@ -298,7 +298,7 @@ func groupCanonicalChatSessionRecords(agentID string, sessionID string, records 
 	groups := make([]groupedSessionRecords, 0, len(order))
 	for _, day := range order {
 		groups = append(groups, groupedSessionRecords{
-			agentID:    agentID,
+			bucketID:   bucketID,
 			sessionID:  sessionID,
 			archiveDay: day,
 			records:    append([]sessiondomain.MessageRecord(nil), byDay[day]...),
@@ -364,21 +364,13 @@ func sessionRecordStorageKey(record sessiondomain.MessageRecord) string {
 	return strings.Join(parts, "\x00")
 }
 
-func resolveSessionAgentID(agentID string) string {
-	agentID = strings.TrimSpace(agentID)
-	if agentID == "" {
-		return defaultSessionAgentDir
-	}
-	return agentID
-}
-
 func sanitizeSessionStoreSegment(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
-		return defaultSessionAgentDir
+		return defaultSessionBucketDir
 	}
-	if trimmed == defaultSessionAgentDir {
-		return defaultSessionAgentDir
+	if trimmed == defaultSessionBucketDir {
+		return defaultSessionBucketDir
 	}
 	var builder strings.Builder
 	lastUnderscore := false
@@ -396,7 +388,7 @@ func sanitizeSessionStoreSegment(value string) string {
 	}
 	result := strings.Trim(builder.String(), "._-")
 	if result == "" {
-		return defaultSessionAgentDir
+		return defaultSessionBucketDir
 	}
 	return result
 }

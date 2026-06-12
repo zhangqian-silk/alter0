@@ -73,7 +73,7 @@ describe("ReactManagedMemoryRouteBody", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "/api/agent/memory",
+      "/api/memory/context",
       expect.objectContaining({ method: "GET" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(

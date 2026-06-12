@@ -315,7 +315,7 @@ type TerminalPollPlan = {
   refreshActiveSession: boolean;
 };
 
-const TERMINAL_DEFAULT_SKILL_EXCLUDE_IDS = new Set(["default-nl", "memory"]);
+const TERMINAL_DEFAULT_SKILL_EXCLUDE_IDS = new Set(["memory"]);
 const TERMINAL_NARRATIVE_BLOCK_TYPES = new Set(["text", "message", "reasoning", "plan", "log"]);
 
 function resolveLanguage(): "en" | "zh" {
@@ -371,7 +371,7 @@ function normalizeSelectionIDs(values: unknown): string[] {
 function isPublicTerminalSkill(skill: TerminalSkill): boolean {
   const metadata = skill.metadata || {};
   const visibility = normalizeAttachmentText(metadata["alter0.skill.visibility"] || metadata["skill.visibility"]).toLowerCase();
-  return visibility !== "agent-private" && visibility !== "private";
+  return visibility !== "private" && visibility !== "private";
 }
 
 function normalizeTerminalSkills(values: unknown): TerminalSkillSelection[] {

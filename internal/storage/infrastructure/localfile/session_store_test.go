@@ -84,26 +84,20 @@ func TestSessionStoreSavesConversationSessionsIntoDefaultFiles(t *testing.T) {
 	ts := time.Date(2026, 5, 24, 9, 0, 0, 0, time.UTC)
 	records := []sessiondomain.MessageRecord{
 		{
-			MessageID: "coding-user-1",
-			SessionID: "session-coding",
+			MessageID: "work-user-1",
+			SessionID: "session-work",
 			Role:      sessiondomain.MessageRoleUser,
 			Content:   "implement feature",
 			Timestamp: ts,
-			Source: sessiondomain.MessageSource{
-				AgentID:   "coding",
-				AgentName: "Coding Agent",
-			},
+			Source:    sessiondomain.MessageSource{},
 		},
 		{
-			MessageID: "coding-assistant-1",
-			SessionID: "session-coding",
+			MessageID: "work-assistant-1",
+			SessionID: "session-work",
 			Role:      sessiondomain.MessageRoleAssistant,
 			Content:   "done",
 			Timestamp: ts.Add(time.Minute),
-			Source: sessiondomain.MessageSource{
-				AgentID:   "coding",
-				AgentName: "Coding Agent",
-			},
+			Source:    sessiondomain.MessageSource{},
 		},
 		{
 			MessageID: "travel-user-1",
@@ -111,10 +105,7 @@ func TestSessionStoreSavesConversationSessionsIntoDefaultFiles(t *testing.T) {
 			Role:      sessiondomain.MessageRoleUser,
 			Content:   "plan trip",
 			Timestamp: ts.Add(2 * time.Minute),
-			Source: sessiondomain.MessageSource{
-				AgentID:   "travel",
-				AgentName: "Travel Agent",
-			},
+			Source:    sessiondomain.MessageSource{},
 		},
 	}
 
@@ -122,7 +113,7 @@ func TestSessionStoreSavesConversationSessionsIntoDefaultFiles(t *testing.T) {
 		t.Fatalf("save failed: %v", err)
 	}
 
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "session-coding.json"), []string{"coding-user-1", "coding-assistant-1"})
+	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "session-work.json"), []string{"work-user-1", "work-assistant-1"})
 	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "session-travel.json"), []string{"travel-user-1"})
 	if _, err := os.Stat(filepath.Join(baseDir, "sessions.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected aggregate sessions.json not to be written, stat error: %v", err)
@@ -208,43 +199,6 @@ func TestSessionStoreMigratesPreviousCanonicalChatArchiveDayDirectoryToSingleFil
 	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "alter0-chat.json"), []string{"chat-legacy-layout"})
 }
 
-func TestSessionStoreMigratesPreviousAgentSessionDirectoryToDefaultConversationFile(t *testing.T) {
-	baseDir := t.TempDir()
-	store := NewSessionStore(baseDir, FormatJSON)
-	previousPath := filepath.Join(baseDir, "sessions", "coding", "session-coding.json")
-	previous := sessionState{
-		Messages: []sessiondomain.MessageRecord{
-			{
-				MessageID: "coding-legacy-layout",
-				SessionID: "session-coding",
-				Role:      sessiondomain.MessageRoleUser,
-				Content:   "legacy coding",
-				Timestamp: time.Date(2026, 5, 24, 2, 0, 0, 0, time.UTC),
-				Source:    sessiondomain.MessageSource{AgentID: "coding", AgentName: "Coding Agent"},
-			},
-		},
-	}
-	raw, err := json.MarshalIndent(previous, "", "  ")
-	if err != nil {
-		t.Fatalf("marshal previous layout failed: %v", err)
-	}
-	if err := writeFile(previousPath, append(raw, '\n')); err != nil {
-		t.Fatalf("write previous layout failed: %v", err)
-	}
-
-	loaded, err := store.Load(context.Background())
-	if err != nil {
-		t.Fatalf("load failed: %v", err)
-	}
-	if len(loaded) != 1 || loaded[0].MessageID != "coding-legacy-layout" {
-		t.Fatalf("unexpected loaded messages: %+v", loaded)
-	}
-	if _, err := os.Stat(filepath.Dir(previousPath)); !os.IsNotExist(err) {
-		t.Fatalf("expected previous agent directory removed, stat error: %v", err)
-	}
-	assertSessionStoreFileMessages(t, filepath.Join(baseDir, "sessions", "_default", "session-coding.json"), []string{"coding-legacy-layout"})
-}
-
 func TestSessionStoreRemovesStaleSessionFilesOnSave(t *testing.T) {
 	baseDir := t.TempDir()
 	store := NewSessionStore(baseDir, FormatJSON)
@@ -257,7 +211,7 @@ func TestSessionStoreRemovesStaleSessionFilesOnSave(t *testing.T) {
 			Role:      sessiondomain.MessageRoleUser,
 			Content:   "keep",
 			Timestamp: ts,
-			Source:    sessiondomain.MessageSource{AgentID: "coding"},
+			Source:    sessiondomain.MessageSource{},
 		},
 		{
 			MessageID: "m-2",
@@ -265,7 +219,7 @@ func TestSessionStoreRemovesStaleSessionFilesOnSave(t *testing.T) {
 			Role:      sessiondomain.MessageRoleUser,
 			Content:   "delete",
 			Timestamp: ts,
-			Source:    sessiondomain.MessageSource{AgentID: "travel"},
+			Source:    sessiondomain.MessageSource{},
 		},
 	}); err != nil {
 		t.Fatalf("initial save failed: %v", err)
@@ -278,7 +232,7 @@ func TestSessionStoreRemovesStaleSessionFilesOnSave(t *testing.T) {
 			Role:      sessiondomain.MessageRoleUser,
 			Content:   "keep",
 			Timestamp: ts,
-			Source:    sessiondomain.MessageSource{AgentID: "coding"},
+			Source:    sessiondomain.MessageSource{},
 		},
 	}); err != nil {
 		t.Fatalf("second save failed: %v", err)
@@ -302,7 +256,7 @@ func TestSessionStoreMigratesLegacyAggregateFileOnLoad(t *testing.T) {
 				Role:      sessiondomain.MessageRoleUser,
 				Content:   "legacy",
 				Timestamp: ts,
-				Source:    sessiondomain.MessageSource{AgentID: "coding"},
+				Source:    sessiondomain.MessageSource{},
 			},
 		},
 	}
@@ -337,7 +291,7 @@ func TestSessionStoreMergesAndMigratesLayoutAndLegacyAggregateOnLoad(t *testing.
 		Role:      sessiondomain.MessageRoleUser,
 		Content:   "layout",
 		Timestamp: ts,
-		Source:    sessiondomain.MessageSource{AgentID: "coding"},
+		Source:    sessiondomain.MessageSource{},
 	}
 	legacyRecord := sessiondomain.MessageRecord{
 		MessageID: "legacy-m-1",
@@ -345,7 +299,7 @@ func TestSessionStoreMergesAndMigratesLayoutAndLegacyAggregateOnLoad(t *testing.
 		Role:      sessiondomain.MessageRoleUser,
 		Content:   "legacy",
 		Timestamp: ts.Add(time.Minute),
-		Source:    sessiondomain.MessageSource{AgentID: "travel"},
+		Source:    sessiondomain.MessageSource{},
 	}
 	if err := store.Save(context.Background(), []sessiondomain.MessageRecord{layoutRecord}); err != nil {
 		t.Fatalf("save layout failed: %v", err)

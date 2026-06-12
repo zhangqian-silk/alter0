@@ -49,7 +49,7 @@ test.describe("Terminal route", () => {
     await expect(page.locator(".terminal-session-title").first()).toContainText("先拉取仓库");
     await expect(terminalPage.workspace()).toHaveAttribute("data-runtime-status", "ready");
 
-    await terminalPage.composer().input().fill("修改 terminal 和 agent 的会话标题");
+    await terminalPage.composer().input().fill("修改 terminal 和 skill 的会话标题");
     await terminalPage.composer().submitButton().click();
     await expect(page.locator(".terminal-session-title").first()).toContainText("修改 terminal");
   });
@@ -1712,7 +1712,7 @@ test.describe("Terminal route", () => {
             duration_ms: 2000,
             final_output: [
               "现在实现最小生产代码：为 Chat 的 Codex thread 解析增加路径迁移。",
-              `2026-05-25T15:41:01.670264Z ERROR codex_core::tools::router: apply_patch verification failed: Failed to find expected lines in ${longPath}: func TestCodexCLIProcessorProcessStreamPersistThreadForFallbackAgent(*testing.T)`,
+              `2026-05-25T15:41:01.670264Z ERROR codex_core::tools::router: apply_patch verification failed: Failed to find expected lines in ${longPath}: func TestCodexCLIProcessorProcessStreamPersistThreadForFallbackSkill(*testing.T)`,
             ].join("\n\n"),
             steps: [
               {

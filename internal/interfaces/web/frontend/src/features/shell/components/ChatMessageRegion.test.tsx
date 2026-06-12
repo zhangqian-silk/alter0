@@ -207,15 +207,15 @@ describe("ChatMessageRegion", () => {
     expect(article.textContent).not.toContain("&gt;");
   });
 
-  it("renders agent-runtime assistant output through the shared runtime markdown shell", () => {
+  it("renders chat assistant output through the shared runtime markdown shell", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
         language="en"
         messages={[
           buildAssistantMessage({
-            route: "agent-runtime",
-            text: "Agent result with `selectable` markdown.",
+            route: "chat",
+            text: "Runtime result with `selectable` markdown.",
           }),
         ]}
       />,
@@ -277,8 +277,8 @@ describe("ChatMessageRegion", () => {
         messages={[
           buildAssistantMessage({
             text: [
-              "[agent] action: Inspect workspace",
-              "[agent] observation: Repository root detected.",
+              "[process] action: Inspect workspace",
+              "[process] observation: Repository root detected.",
               "",
               "Final answer with `details`.",
             ].join("\n"),
@@ -296,17 +296,17 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".conversation-process-body")).toBeInTheDocument();
     expect(article.querySelectorAll(".conversation-process-step")).toHaveLength(4);
     expect(article.querySelector(".conversation-process-step-head")).toBeInTheDocument();
-    expect(article.querySelector(".agent-process-step-title")).toBeInTheDocument();
+    expect(article.querySelector(".conversation-process-step-title")).toBeInTheDocument();
     expect(article).toHaveTextContent("Review runtime styles");
     expect(article).toHaveTextContent("Verify regression coverage");
-    const answer = document.querySelector(".agent-process-answer") as HTMLElement;
+    const answer = document.querySelector(".conversation-process-answer") as HTMLElement;
     expect(answer).toBeInTheDocument();
     expect(answer).toHaveClass("message-markdown-body");
     expect(answer.querySelector(".message-markdown-rendered")).toBeInTheDocument();
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
   });
 
-  it("uses a compact localized thought disclosure for completed agent process details", () => {
+  it("uses a compact localized thought disclosure for completed skill process details", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
@@ -320,14 +320,14 @@ describe("ChatMessageRegion", () => {
               { id: "step-3", title: "补充测试", detail: "覆盖多步骤思考过程。" },
               { id: "step-4", title: "完成验证", detail: "确认折叠态文案稳定。" },
             ],
-            agentProcessCollapsed: true,
+            processCollapsed: true,
           }),
         ]}
       />,
     );
 
-    const process = document.querySelector("[data-agent-process-shell='message-1']") as HTMLElement;
-    const toggle = process.querySelector("[data-agent-process-toggle='message-1']") as HTMLButtonElement;
+    const process = document.querySelector("[data-conversation-process-shell='message-1']") as HTMLElement;
+    const toggle = process.querySelector("[data-conversation-process-toggle='message-1']") as HTMLButtonElement;
     expect(process).toHaveClass("runtime-thinking-shell");
     expect(toggle).toHaveClass("runtime-thinking-toggle");
     expect(process).toHaveClass("is-collapsed");

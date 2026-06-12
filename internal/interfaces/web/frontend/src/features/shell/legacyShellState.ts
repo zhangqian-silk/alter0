@@ -6,10 +6,9 @@ export const LEGACY_SHELL_DEFAULT_ROUTE = "chat";
 export const LEGACY_SESSION_HISTORY_STORAGE_KEY = "alter0.web.session-history-panel.v1";
 export const LEGACY_SHELL_MOBILE_BREAKPOINT_PX = MOBILE_VIEWPORT_BREAKPOINT_PX;
 
-const LEGACY_CHAT_ROUTES = new Set(["chat", "agent-runtime"]);
+const LEGACY_CHAT_ROUTES = new Set(["chat"]);
 const LEGACY_SHELL_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);
 const LEGACY_ROUTE_ALIASES: Record<string, string> = {
-  "agent-runtime": "chat",
   management: "settings",
 };
 

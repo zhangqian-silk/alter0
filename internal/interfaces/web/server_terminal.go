@@ -345,7 +345,7 @@ func isPublicTerminalSkillCapability(capability controldomain.Capability) bool {
 	if visibility == "" {
 		visibility = strings.ToLower(strings.TrimSpace(metadata["skill.visibility"]))
 	}
-	return visibility != "agent-private" && visibility != "private"
+	return visibility != "private"
 }
 
 func terminalSkillSpecFromCapability(capability controldomain.Capability) execdomain.SkillSpec {

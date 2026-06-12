@@ -1,10 +1,15 @@
-# Travel Agent Skill
+---
+name: travel
+description: Travel guide workflow for city itineraries, recommendation pools, route cards, generated map assets, and public HTML delivery.
+---
+
+# Travel Skill
 
 ## Purpose
 
-This file is the private reusable rulebook for the `travel` travel agent.
+This skill is the reusable rulebook for city-focused travel guide generation.
 
-## Stable travel contract
+## Stable Travel Contract
 
 - One city page represents one city-focused travel space.
 - The Workspace detail view and standalone HTML city page must stay aligned to the same guide content.
@@ -19,7 +24,7 @@ This file is the private reusable rulebook for the `travel` travel agent.
 - The public guide host must use `https://travel-<session_short_hash>.alter0.cn`; do not fall back to nested hosts such as `<session_short_hash>.travel.alter0.cn`.
 - Travel guide publishing must stay certificate-safe by using a single-label subdomain under `*.alter0.cn`.
 
-## Default content expectations
+## Default Content Expectations
 
 - Provide a clear city title and short summary.
 - Recommendation sections should list the category pool before the day-by-day plan, so readers can review the full shortlist rather than only the places that made the final itinerary.
@@ -46,13 +51,13 @@ This file is the private reusable rulebook for the `travel` travel agent.
 
 - Durable travel-page structure, section ordering, tone, naming conventions, and stable rendering preferences.
 - Reusable itinerary composition heuristics, transit defaults, food recommendation framing, and map-output conventions requested by the user.
-- Stable travel-agent defaults that should apply across future city pages handled by this agent.
+- Stable travel defaults that should apply across future city pages.
 
 ## Keep Out
 
-- Repository or workspace operating rules that belong in `docs/agents/travel/AGENTS.md`.
+- Repository or workspace operating rules that belong in `AGENTS.md`.
 - One-off trip constraints, temporary dates, current-session notes, or single-city exceptions that should stay in the target guide data.
-- Shared repository policy or non-travel reusable behavior that should live outside this travel-agent skill.
+- Shared repository policy or non-travel reusable behavior that should live outside this travel skill.
 
 ## Editing Rules
 

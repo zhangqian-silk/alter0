@@ -11,11 +11,11 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 | 对象 | 职责 |
 | --- | --- |
 | `ChannelConfig` | 输入通道配置 |
-| `Capability` | Skill、MCP、Agent 等能力配置的统一生命周期对象 |
+| `Capability` | Skill、MCP 等能力配置的统一生命周期对象 |
 | `CapabilityAudit` | Capability 创建、更新、启停和删除审计 |
 | `SkillConfig` | Skill 配置、启停与文件型属性 |
 | `MCPServer` | MCP Server 配置、启停与运行上下文注入来源 |
-| `RuntimeProfile` | CLI Agent Runtime 的默认执行配置、Skill 组合与上下文注入策略 |
+| `RuntimeProfile` | CLI Runtime 的默认执行配置、Skill 组合与上下文注入策略 |
 | `ModelProvider` | Claude Code provider profile 的模型、base URL、凭据状态与健康状态 |
 | `ClaudeProviderProfile` | 启动 Claude Code 时使用的 provider/profile、环境变量和模型选择 |
 | `EnvironmentConfig` | 运行参数、任务并发、Shell、Codex 命令等配置 |
@@ -37,11 +37,11 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ### Skill
 
 - 支持 Skill 创建、更新、删除与列表查询。
-- 默认提供 `default-nl`、`memory`、`deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。
-- 这些项目内置 file-backed Skill 都由源码仓库直接承载并在启动时校验文件存在；标准 skill 继续使用 `docs/skills/<skill_id>/SKILL.md`，`artifact-preview` 之外的附属脚本或参考文件与 skill 一同放在对应目录中；plugin-style 的 `code-simplifier` 与 `code-review` 保留 `.claude-plugin/plugin.json` 元数据，并分别以 `docs/skills/code-simplifier/agents/code-simplifier.md`、`docs/skills/code-review/commands/code-review.md` 作为 alter0 的注入入口。CLI Agent Runtime 会把本轮选中的可读 file-backed Skill 目录复制到当前会话工作区，Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，运行时上下文中的 `file_path` 指向工作区内副本。
-- `artifact-preview` 额外提供 `docs/skills/artifact-preview/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>-<session_short_hash>.alter0.cn`。所有需要给用户浏览器查看的静态产物都必须通过该 skill 或等价会话预览服务发布，不得返回服务器本地路径、工作区内部路径、`file://`、`localhost` 或 `127.0.0.1` 作为用户入口；需要完整 Web 应用或后端路由时改用 `deploy-test-service`。
+- 默认提供 `memory`、`preview-publish`、`frontend-design`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review`、`brainstorming` 与 `travel` 公有 Skill；`memory-maintenance` 作为系统维护专用私有 Skill 保留。
+- 这些项目内置 file-backed Skill 都由源码仓库直接承载并在启动时校验文件存在；标准 skill 继续使用 `docs/skills/<skill_id>/SKILL.md`，附属脚本或参考文件与 skill 一同放在对应目录中；plugin-style 的 `code-simplifier` 与 `code-review` 保留 `.claude-plugin/plugin.json` 元数据，并分别以 `docs/skills/code-simplifier/SKILL.md`、`docs/skills/code-review/commands/code-review.md` 作为 alter0 的注入入口。CLI Runtime 会把本轮选中的可读 file-backed Skill 目录复制到当前会话工作区，Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，运行时上下文中的 `file_path` 指向工作区内副本。
+- `preview-publish` 额外提供 `docs/skills/preview-publish/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>-<session_short_hash>.alter0.cn`。所有需要给用户浏览器查看的静态产物都必须通过该 skill 发布，不得返回服务器本地路径、工作区内部路径、`file://`、`localhost` 或 `127.0.0.1` 作为用户入口；需要完整 Web 应用或后端路由时同样使用 `preview-publish`。
 - Skill 协议支持文件路径与可写属性。
-- Agent 私有 file-backed Skill 由运行时自动注入，不要求出现在控制面内置 Skill 列表。
+- 服务不再注册内置业务编排；执行层只注入当前会话显式选择且控制面可见的 Skill。
 
 ### Capability 与 MCP
 
@@ -54,8 +54,8 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ### Runtime Profile
 
 - 支持 Runtime Profile 的创建、更新、启用、禁用与查询。
-- Runtime Profile 维护默认 Skill 组合、MCP 选择、Memory 注入策略、执行边界说明与可选业务入口标签。
-- `coding`、`travel`、`writing` 等业务入口通过 Runtime Profile 预选 Skill，不改变底层 CLI Agent Runtime。
+- Runtime Profile 作为历史配置模型保留，当前稳定 Chat 入口不再依赖内置 Runtime Profile 或内置业务编排。
+- 代码开发、旅行攻略、结构化写作等业务能力通过用户选择的 Skill 组合表达，不改变底层 CLI 执行链。
 - Runtime Profile 编辑页中的短字段优先采用并排栅格布局，`Enabled` 使用显式开关控件。
 
 ### Cron、Maintenance 与 Codex Runtime
@@ -73,8 +73,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `GET /api/control/capabilities/audit` 查询 Capability 生命周期审计。
 - `GET /api/control/skills`、`PUT /api/control/skills/{skill_id}`、`POST /api/control/skills/{skill_id}`、`DELETE /api/control/skills/{skill_id}` 管理 Skill 兼容接口。
 - `GET /api/control/mcps`、`PUT /api/control/mcps/{mcp_id}`、`POST /api/control/mcps/{mcp_id}`、`DELETE /api/control/mcps/{mcp_id}` 管理 MCP 兼容接口。
-- `GET /api/control/agents`、`POST /api/control/agents`、`GET /api/control/agents/{agent_id}`、`PUT /api/control/agents/{agent_id}`、`DELETE /api/control/agents/{agent_id}` 兼容管理用户 Runtime Profile。
-- `GET /api/control/environments` 与 `PUT /api/control/environments` 读取和更新 Environment 配置。
+- - `GET /api/control/environments` 与 `PUT /api/control/environments` 读取和更新 Environment 配置。
 - `GET /api/control/environments/audits` 查询 Environment 配置审计。
 - `GET /api/control/workspace-services`、`GET /api/control/workspace-services/{session_id}`、`PUT /api/control/workspace-services/{session_id}`、`GET /api/control/workspace-services/{session_id}/{service_id}`、`PUT /api/control/workspace-services/{session_id}/{service_id}`、`DELETE /api/control/workspace-services/{session_id}/{service_id}` 管理 Session 级 workspace service 注册表。
 - `GET /api/control/runtime` 读取在线实例信息。
@@ -133,7 +132,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - Web & Queue 配置覆盖 `web_addr`、`web_bind_localhost_only`、`web_login_password`、`worker_pool_size`、`max_queue_size` 与 `queue_timeout`。
 - Async Tasks 配置覆盖 `async_task_workers`、`async_task_timeout`、`async_task_max_retries`、`async_task_trigger_threshold` 与 `async_long_content_threshold`。
 - Terminal 配置覆盖 `task_terminal_shell`；启动参数可继续提供 shell args 作为运行态输入。
-- CLI Agent Runtime 配置覆盖 Claude Code 命令、Claude profile 目录、Codex 命令、运行时 home、工作区注入目录和健康检查超时。
+- CLI Runtime 配置覆盖 Claude Code 命令、Claude profile 目录、Codex 命令、运行时 home、工作区注入目录和健康检查超时。
 - Session Memory 配置覆盖 `session_memory_turns`、`session_memory_ttl`、`context_compression_threshold`、`context_compression_summary_tokens` 与 `context_compression_retain_turns`。
 - Persistent Memory 配置覆盖 `daily_memory_dir`、`long_term_memory_path`、`long_term_memory_write_policy`、`long_term_memory_writeback_flush`、`long_term_memory_token_budget` 与 `mandatory_context_file`。
 - LLM 配置覆盖 `llm_temperature`、`llm_max_tokens` 与 `llm_react_max_iterations`，并按配置项声明决定立即生效或重启后生效。
@@ -278,7 +277,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 ## 验收口径
 
-- Channel、Capability、Skill、MCP、Agent、Cron、Models、Environments 控制面接口可用。
+- Channel、Capability、Skill、MCP、Skill、Cron、Models、Environments 控制面接口可用。
 - Capability 与 MCP 生命周期审计可查询。
 - 禁用默认 Provider 后自动收敛到可用配置。
 - Runtime 重启成功后页面连接到新实例，失败时自动回滚。

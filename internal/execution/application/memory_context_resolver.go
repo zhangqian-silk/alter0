@@ -13,19 +13,18 @@ import (
 )
 
 const (
-	memoryIncludeFilterKey       = "alter0.memory.include"
-	memoryFileMaxChars           = 12000
-	memoryFileTotalMaxChars      = 36000
-	memoryFileTruncatedSuffix    = "\n...[truncated]"
-	memoryAutoRecallMaxHits      = 6
-	memoryAutoRecallSnippetLines = 3
-	memorySelectionUserMD        = "user_md"
-	memorySelectionSoulMD        = "soul_md"
-	memorySelectionAgentsMD      = "agents_md"
-	memorySelectionLongTerm      = "memory_long_term"
-	memorySelectionDailyToday    = "memory_daily_today"
-	memorySelectionDailyPrevious = "memory_daily_yesterday"
-	memorySelectionAgentSession  = "agent_session_profile"
+	memoryIncludeFilterKey          = "alter0.memory.include"
+	memoryFileMaxChars              = 12000
+	memoryFileTotalMaxChars         = 36000
+	memoryFileTruncatedSuffix       = "\n...[truncated]"
+	memoryAutoRecallMaxHits         = 6
+	memoryAutoRecallSnippetLines    = 3
+	memorySelectionUserMD           = "user_md"
+	memorySelectionSoulMD           = "soul_md"
+	memorySelectionRootInstructions = "root_instructions"
+	memorySelectionLongTerm         = "memory_long_term"
+	memorySelectionDailyToday       = "memory_daily_today"
+	memorySelectionDailyPrevious    = "memory_daily_yesterday"
 )
 
 type memoryContextResolution struct {
@@ -109,11 +108,6 @@ func (r *memoryContextResolver) Resolve(msg shareddomain.UnifiedMessage) memoryC
 		if !ok {
 			continue
 		}
-		if spec.ID == memorySelectionAgentSession {
-			if _, err := ensureAgentSessionProfileFile(repoRoot, msg, now); err != nil {
-				continue
-			}
-		}
 		files := loadSelectionMemoryFiles(spec, repoRoot, msg, now, &remainingChars)
 		if len(files) == 0 {
 			continue
@@ -163,13 +157,11 @@ func memorySelectionByID(now time.Time, options MemoryContextOptions) map[string
 				return prependConfiguredPath(options.MandatoryFilePath, "SOUL.md")
 			},
 		},
-		memorySelectionAgentsMD: {
-			ID:       memorySelectionAgentsMD,
+		memorySelectionRootInstructions: {
+			ID:       memorySelectionRootInstructions,
 			Title:    "AGENTS.md",
 			Writable: true,
-			Paths: func(msg shareddomain.UnifiedMessage, _ time.Time) []string {
-				return agentPrivateRelativePaths(metadataValue(msg.Metadata, execdomain.AgentIDMetadataKey), "AGENTS.md")
-			},
+			Paths:    func(_ shareddomain.UnifiedMessage, _ time.Time) []string { return []string{"AGENTS.md"} },
 		},
 		memorySelectionLongTerm: {
 			ID:       memorySelectionLongTerm,
@@ -205,18 +197,6 @@ func memorySelectionByID(now time.Time, options MemoryContextOptions) map[string
 				)
 			},
 		},
-		memorySelectionAgentSession: {
-			ID:       memorySelectionAgentSession,
-			Title:    "Agent Session Profile",
-			Writable: false,
-			Paths: func(msg shareddomain.UnifiedMessage, _ time.Time) []string {
-				path := agentSessionProfileRelativePath(msg)
-				if path == "" {
-					return nil
-				}
-				return []string{path}
-			},
-		},
 	}
 }
 
@@ -249,7 +229,6 @@ func joinConfiguredMemoryDay(dailyDir string, day string) string {
 	return filepath.ToSlash(filepath.Join(dailyDir, day+".md"))
 }
 
-var memoryAgentIDSanitizer = regexp.MustCompile(`[^a-z0-9._-]+`)
 var memoryRecallTokenPattern = regexp.MustCompile(`[\p{Han}]+|[A-Za-z0-9_./-]+`)
 
 var memoryRecallStopWords = map[string]struct{}{
@@ -410,20 +389,7 @@ func appendImplicitMemorySelections(selected []string, msg shareddomain.UnifiedM
 	for _, item := range selected {
 		appendItem(item)
 	}
-	if strings.TrimSpace(metadataValue(msg.Metadata, execdomain.AgentIDMetadataKey)) != "" {
-		appendItem(memorySelectionAgentSession)
-	}
 	return items
-}
-
-func normalizeMemoryAgentID(raw string) string {
-	normalized := strings.ToLower(strings.TrimSpace(raw))
-	normalized = memoryAgentIDSanitizer.ReplaceAllString(normalized, "-")
-	normalized = strings.Trim(normalized, "-.")
-	if normalized == "" {
-		return "unknown"
-	}
-	return normalized
 }
 
 func resolveMemoryRepoRoot() (string, error) {

@@ -103,7 +103,7 @@ func (d *scriptWorkspaceServiceDeployer) Deploy(ctx context.Context, req Workspa
 	cmd.Dir = repoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return WorkspaceServiceDeployResult{}, fmt.Errorf("deploy test service: %w: %s", err, strings.TrimSpace(string(output)))
+		return WorkspaceServiceDeployResult{}, fmt.Errorf("preview publish: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 
 	var result WorkspaceServiceDeployResult
@@ -145,7 +145,7 @@ func resolveWorkspaceServiceRepositoryPath(repoRoot string, sessionID string, se
 		return "", fmt.Errorf("repository root unavailable")
 	}
 	if strings.EqualFold(strings.TrimSpace(serviceID), "travel") {
-		sessionWorkspace := buildCodingSessionWorkspacePath(repoRoot, sessionID)
+		sessionWorkspace := buildSessionWorkspacePath(repoRoot, sessionID)
 		if sessionWorkspace != "" {
 			indexPath := filepath.Join(filepath.FromSlash(sessionWorkspace), "index.html")
 			if _, err := os.Stat(indexPath); err == nil {
@@ -153,7 +153,7 @@ func resolveWorkspaceServiceRepositoryPath(repoRoot string, sessionID string, se
 			}
 		}
 	}
-	sessionRepo := buildCodingSessionRepoWorkspacePath(repoRoot, sessionID)
+	sessionRepo := buildSessionRepoWorkspacePath(repoRoot, sessionID)
 	if sessionRepo != "" {
 		gitMarker := filepath.FromSlash(filepath.Join(sessionRepo, ".git"))
 		if _, err := os.Stat(gitMarker); err == nil {

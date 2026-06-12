@@ -3,8 +3,8 @@
 ## 覆盖范围
 
 - 自然语言执行运行时 metadata 注入与执行来源回传。
-- Skill include/exclude、优先级、Agent 私有 Skill、冲突解析。
-- Memory Files 选择、自动召回、Agent 私有 AGENTS.md、Agent Session Profile。
+- Skill include/exclude、优先级、统一 Skill 注入、冲突解析。
+- Memory Files 选择、自动召回、私有运行规则与 Skill 上下文。
 - MCP 全局、会话、请求范围选择，transport、timeout、隔离、审计。
 
 ## 边界

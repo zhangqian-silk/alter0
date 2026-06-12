@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	agentapp "alter0/internal/agent/application"
 	codexapp "alter0/internal/codex/application"
 	codexlocal "alter0/internal/codex/infrastructure/localfile"
 	controlapp "alter0/internal/control/application"
@@ -249,8 +248,6 @@ func main() {
 		logger.Error("failed to initialize builtin skill files", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
-	agentCatalog := agentapp.NewCatalog(control)
-
 	registry := orchinfra.NewInMemoryCommandRegistry()
 	helpHandler := orchinfra.NewHelpCommandHandler(registry)
 	mustRegister(registry, helpHandler)
@@ -360,7 +357,7 @@ func main() {
 		sessionHistory,
 		taskService,
 		terminalService,
-		web.AgentMemoryOptions{
+		web.MemoryContextOptions{
 			LongTermPath:         resolvedLongTermMemoryPath,
 			DailyDir:             resolvedDailyMemoryDir,
 			MandatoryContextPath: resolvedMandatoryContextFile,
@@ -371,7 +368,6 @@ func main() {
 			BindLocalhost: resolvedWebBindLocalhostOnly,
 		},
 		llmService,
-		agentCatalog,
 		logger,
 	)
 	server.SetCodexAccountService(codexAccounts)

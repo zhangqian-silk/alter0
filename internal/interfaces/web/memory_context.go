@@ -19,7 +19,7 @@ const (
 	defaultWebDailyMemoryLimit   = 30
 )
 
-type AgentMemoryOptions struct {
+type MemoryContextOptions struct {
 	LongTermPath         string
 	DailyDir             string
 	MandatoryContextPath string
@@ -33,19 +33,19 @@ type TaskSummaryRuntime interface {
 	Rebuild(task taskdomain.Task) ([]tasksummaryapp.SummaryReference, error)
 }
 
-type agentMemoryService struct {
-	options            AgentMemoryOptions
+type memoryContextService struct {
+	options            MemoryContextOptions
 	taskSummaryRuntime TaskSummaryRuntime
 }
 
-type agentMemoryResponse struct {
-	LongTerm      agentMemoryDocument `json:"long_term"`
-	Daily         agentMemoryDaily    `json:"daily"`
-	Mandatory     agentMemoryDocument `json:"mandatory"`
-	Specification agentMemoryDocument `json:"specification"`
+type memoryContextResponse struct {
+	LongTerm      memoryContextDocument `json:"long_term"`
+	Daily         memoryContextDaily    `json:"daily"`
+	Mandatory     memoryContextDocument `json:"mandatory"`
+	Specification memoryContextDocument `json:"specification"`
 }
 
-type agentMemoryDocument struct {
+type memoryContextDocument struct {
 	Path      string `json:"path"`
 	Exists    bool   `json:"exists"`
 	UpdatedAt string `json:"updated_at,omitempty"`
@@ -53,13 +53,13 @@ type agentMemoryDocument struct {
 	Error     string `json:"error,omitempty"`
 }
 
-type agentMemoryDaily struct {
-	Directory string                 `json:"directory"`
-	Items     []agentMemoryDailyItem `json:"items"`
-	Error     string                 `json:"error,omitempty"`
+type memoryContextDaily struct {
+	Directory string                   `json:"directory"`
+	Items     []memoryContextDailyItem `json:"items"`
+	Error     string                   `json:"error,omitempty"`
 }
 
-type agentMemoryDailyItem struct {
+type memoryContextDailyItem struct {
 	Date      string `json:"date"`
 	Path      string `json:"path"`
 	UpdatedAt string `json:"updated_at,omitempty"`
@@ -67,8 +67,8 @@ type agentMemoryDailyItem struct {
 	Error     string `json:"error,omitempty"`
 }
 
-func newAgentMemoryService(options AgentMemoryOptions) *agentMemoryService {
-	normalized := normalizeAgentMemoryOptions(options)
+func newMemoryContextService(options MemoryContextOptions) *memoryContextService {
+	normalized := normalizeMemoryContextOptions(options)
 	runtime := normalized.TaskSummaryRuntime
 	if runtime == nil {
 		runtime = tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
@@ -76,13 +76,13 @@ func newAgentMemoryService(options AgentMemoryOptions) *agentMemoryService {
 			LongTermDir: filepath.Join(normalized.DailyDir, "long-term"),
 		})
 	}
-	return &agentMemoryService{
+	return &memoryContextService{
 		options:            normalized,
 		taskSummaryRuntime: runtime,
 	}
 }
 
-func normalizeAgentMemoryOptions(options AgentMemoryOptions) AgentMemoryOptions {
+func normalizeMemoryContextOptions(options MemoryContextOptions) MemoryContextOptions {
 	longTermPath := strings.TrimSpace(options.LongTermPath)
 	if longTermPath == "" {
 		longTermPath = defaultWebLongTermMemoryPath
@@ -103,7 +103,7 @@ func normalizeAgentMemoryOptions(options AgentMemoryOptions) AgentMemoryOptions 
 	if dailyLimit <= 0 {
 		dailyLimit = defaultWebDailyMemoryLimit
 	}
-	return AgentMemoryOptions{
+	return MemoryContextOptions{
 		LongTermPath:         filepath.Clean(longTermPath),
 		DailyDir:             filepath.Clean(dailyDir),
 		MandatoryContextPath: filepath.Clean(mandatoryContextPath),
@@ -112,8 +112,8 @@ func normalizeAgentMemoryOptions(options AgentMemoryOptions) AgentMemoryOptions 
 	}
 }
 
-func (s *agentMemoryService) Snapshot() agentMemoryResponse {
-	return agentMemoryResponse{
+func (s *memoryContextService) Snapshot() memoryContextResponse {
+	return memoryContextResponse{
 		LongTerm:      s.readDocument(s.options.LongTermPath),
 		Daily:         s.readDailyMemory(),
 		Mandatory:     s.readDocument(s.options.MandatoryContextPath),
@@ -121,7 +121,7 @@ func (s *agentMemoryService) Snapshot() agentMemoryResponse {
 	}
 }
 
-func (s *agentMemoryService) TaskSummaryRefs(taskID string) []tasksummaryapp.SummaryReference {
+func (s *memoryContextService) TaskSummaryRefs(taskID string) []tasksummaryapp.SummaryReference {
 	if s == nil || s.taskSummaryRuntime == nil {
 		return []tasksummaryapp.SummaryReference{}
 	}
@@ -134,7 +134,7 @@ func (s *agentMemoryService) TaskSummaryRefs(taskID string) []tasksummaryapp.Sum
 	return items
 }
 
-func (s *agentMemoryService) RebuildTaskSummary(task taskdomain.Task) ([]tasksummaryapp.SummaryReference, error) {
+func (s *memoryContextService) RebuildTaskSummary(task taskdomain.Task) ([]tasksummaryapp.SummaryReference, error) {
 	if s == nil || s.taskSummaryRuntime == nil {
 		return []tasksummaryapp.SummaryReference{}, nil
 	}
@@ -150,10 +150,10 @@ func (s *agentMemoryService) RebuildTaskSummary(task taskdomain.Task) ([]tasksum
 	return items, nil
 }
 
-func (s *agentMemoryService) readDocument(path string) agentMemoryDocument {
+func (s *memoryContextService) readDocument(path string) memoryContextDocument {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return agentMemoryDocument{
+		return memoryContextDocument{
 			Path:  path,
 			Error: "path not configured",
 		}
@@ -162,15 +162,15 @@ func (s *agentMemoryService) readDocument(path string) agentMemoryDocument {
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return agentMemoryDocument{Path: path}
+			return memoryContextDocument{Path: path}
 		}
-		return agentMemoryDocument{
+		return memoryContextDocument{
 			Path:  path,
 			Error: err.Error(),
 		}
 	}
 	if info.IsDir() {
-		return agentMemoryDocument{
+		return memoryContextDocument{
 			Path:  path,
 			Error: "path points to a directory",
 		}
@@ -178,12 +178,12 @@ func (s *agentMemoryService) readDocument(path string) agentMemoryDocument {
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return agentMemoryDocument{
+		return memoryContextDocument{
 			Path:  path,
 			Error: err.Error(),
 		}
 	}
-	return agentMemoryDocument{
+	return memoryContextDocument{
 		Path:      path,
 		Exists:    true,
 		UpdatedAt: info.ModTime().UTC().Format(time.RFC3339),
@@ -191,10 +191,10 @@ func (s *agentMemoryService) readDocument(path string) agentMemoryDocument {
 	}
 }
 
-func (s *agentMemoryService) readDailyMemory() agentMemoryDaily {
-	view := agentMemoryDaily{
+func (s *memoryContextService) readDailyMemory() memoryContextDaily {
+	view := memoryContextDaily{
 		Directory: s.options.DailyDir,
-		Items:     []agentMemoryDailyItem{},
+		Items:     []memoryContextDailyItem{},
 	}
 	entries, err := os.ReadDir(s.options.DailyDir)
 	if err != nil {
@@ -205,7 +205,7 @@ func (s *agentMemoryService) readDailyMemory() agentMemoryDaily {
 		return view
 	}
 
-	items := make([]agentMemoryDailyItem, 0, len(entries))
+	items := make([]memoryContextDailyItem, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -223,7 +223,7 @@ func (s *agentMemoryService) readDailyMemory() agentMemoryDaily {
 		path := filepath.Join(s.options.DailyDir, name)
 		info, err := entry.Info()
 		if err != nil {
-			items = append(items, agentMemoryDailyItem{
+			items = append(items, memoryContextDailyItem{
 				Date:  day.UTC().Format("2006-01-02"),
 				Path:  path,
 				Error: err.Error(),
@@ -232,14 +232,14 @@ func (s *agentMemoryService) readDailyMemory() agentMemoryDaily {
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			items = append(items, agentMemoryDailyItem{
+			items = append(items, memoryContextDailyItem{
 				Date:  day.UTC().Format("2006-01-02"),
 				Path:  path,
 				Error: err.Error(),
 			})
 			continue
 		}
-		items = append(items, agentMemoryDailyItem{
+		items = append(items, memoryContextDailyItem{
 			Date:      day.UTC().Format("2006-01-02"),
 			Path:      path,
 			UpdatedAt: info.ModTime().UTC().Format(time.RFC3339),

@@ -254,7 +254,7 @@ func TestTerminalSessionItemHandlerPassesSelectedSkills(t *testing.T) {
 		Scope:   controldomain.CapabilityScopeGlobal,
 		Version: controldomain.DefaultCapabilityVersion,
 		Metadata: map[string]string{
-			"alter0.skill.visibility": "agent-private",
+			"alter0.skill.visibility": "private",
 		},
 	}); err != nil {
 		t.Fatalf("upsert private skill failed: %v", err)

@@ -4,7 +4,7 @@
 
 - ModelProvider 默认值、API type、Provider type、OpenRouter 字段、默认模型和启用模型约束。
 - ModelConfig Provider 新增、更新、重命名、重复名称、默认项收敛。
-- ReAct Agent 多轮用户消息注入与迭代上限 fallback。
+- ReAct Skill 多轮用户消息注入与迭代上限 fallback。
 
 ## 边界
 

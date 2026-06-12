@@ -5,15 +5,15 @@ import (
 	"strings"
 )
 
-// ReActAgentConfig represents the configuration for a ReAct agent.
-type ReActAgentConfig struct {
+// ReActRunnerConfig represents the configuration for a ReAct runner.
+type ReActRunnerConfig struct {
 	// Client is the LLM client to use.
 	Client LLMClient
 	// Model is the model to use.
 	Model string
-	// SystemPrompt is the system prompt for the agent.
+	// SystemPrompt is the system prompt for the runner.
 	SystemPrompt string
-	// Tools are the tools available to the agent.
+	// Tools are the tools available to the runner.
 	Tools []Tool
 	// ToolExecutor executes tool calls.
 	ToolExecutor ToolExecutor
@@ -70,21 +70,21 @@ type ReActEvent struct {
 	Delta string
 }
 
-// ReActAgent implements the ReAct pattern.
-type ReActAgent struct {
-	config ReActAgentConfig
+// ReActRunner implements the ReAct pattern.
+type ReActRunner struct {
+	config ReActRunnerConfig
 }
 
-// NewReActAgent creates a new ReAct agent.
-func NewReActAgent(config ReActAgentConfig) *ReActAgent {
+// NewReActRunner creates a new ReAct runner.
+func NewReActRunner(config ReActRunnerConfig) *ReActRunner {
 	if config.MaxIterations <= 0 {
 		config.MaxIterations = 10
 	}
-	return &ReActAgent{config: config}
+	return &ReActRunner{config: config}
 }
 
 // Run runs the ReAct loop and returns the final answer.
-func (a *ReActAgent) Run(ctx context.Context, userMessage string) (string, error) {
+func (a *ReActRunner) Run(ctx context.Context, userMessage string) (string, error) {
 	state, err := a.RunWithState(ctx, userMessage, nil)
 	if err != nil {
 		return "", err
@@ -92,7 +92,7 @@ func (a *ReActAgent) Run(ctx context.Context, userMessage string) (string, error
 	return state.Answer, nil
 }
 
-func (a *ReActAgent) RunMessage(ctx context.Context, userMessage Message) (string, error) {
+func (a *ReActRunner) RunMessage(ctx context.Context, userMessage Message) (string, error) {
 	state, err := a.RunWithMessageState(ctx, userMessage, nil)
 	if err != nil {
 		return "", err
@@ -101,14 +101,14 @@ func (a *ReActAgent) RunMessage(ctx context.Context, userMessage Message) (strin
 }
 
 // RunWithState runs the ReAct loop and returns the final state.
-func (a *ReActAgent) RunWithState(ctx context.Context, userMessage string, onEvent func(ReActEvent) error) (*ReActState, error) {
+func (a *ReActRunner) RunWithState(ctx context.Context, userMessage string, onEvent func(ReActEvent) error) (*ReActState, error) {
 	return a.RunWithMessageState(ctx, Message{
 		Role:    "user",
 		Content: userMessage,
 	}, onEvent)
 }
 
-func (a *ReActAgent) RunWithMessageState(ctx context.Context, userMessage Message, onEvent func(ReActEvent) error) (*ReActState, error) {
+func (a *ReActRunner) RunWithMessageState(ctx context.Context, userMessage Message, onEvent func(ReActEvent) error) (*ReActState, error) {
 	state := &ReActState{
 		Messages: []Message{},
 	}
@@ -232,7 +232,7 @@ func (a *ReActAgent) RunWithMessageState(ctx context.Context, userMessage Messag
 	return state, nil
 }
 
-func (a *ReActAgent) hasTool(name string) bool {
+func (a *ReActRunner) hasTool(name string) bool {
 	if a == nil {
 		return false
 	}
@@ -249,14 +249,14 @@ func (a *ReActAgent) hasTool(name string) bool {
 }
 
 // RunStream runs the ReAct loop with streaming.
-func (a *ReActAgent) RunStream(ctx context.Context, userMessage string, onEvent func(ReActEvent) error) (string, error) {
+func (a *ReActRunner) RunStream(ctx context.Context, userMessage string, onEvent func(ReActEvent) error) (string, error) {
 	return a.RunMessageStream(ctx, Message{
 		Role:    "user",
 		Content: userMessage,
 	}, onEvent)
 }
 
-func (a *ReActAgent) RunMessageStream(ctx context.Context, userMessage Message, onEvent func(ReActEvent) error) (string, error) {
+func (a *ReActRunner) RunMessageStream(ctx context.Context, userMessage Message, onEvent func(ReActEvent) error) (string, error) {
 	if a != nil && a.config.Client != nil && len(a.config.Tools) == 0 {
 		messages := []Message{
 			{
@@ -308,7 +308,7 @@ func (a *ReActAgent) RunMessageStream(ctx context.Context, userMessage Message, 
 	return state.Answer, nil
 }
 
-func (a *ReActAgent) buildSystemPrompt() string {
+func (a *ReActRunner) buildSystemPrompt() string {
 	base := a.config.SystemPrompt
 	if base == "" {
 		base = "You are a helpful AI assistant."
@@ -339,7 +339,7 @@ Use the ReAct (Reasoning + Acting) pattern:
 When you have a final answer, respond directly without using any tools.`
 }
 
-func (a *ReActAgent) consumeLatestUserMessage(ctx context.Context) (string, bool) {
+func (a *ReActRunner) consumeLatestUserMessage(ctx context.Context) (string, bool) {
 	if a == nil || a.config.UserMessagePuller == nil {
 		return "", false
 	}
@@ -375,13 +375,13 @@ func normalizeUserInputMessage(message Message) Message {
 
 func buildIterationLimitAnswer(state *ReActState) string {
 	if state == nil {
-		return "Agent reached the maximum iteration limit before producing a final answer."
+		return "Runner reached the maximum iteration limit before producing a final answer."
 	}
 	if answer := strings.TrimSpace(state.Thought); answer != "" {
 		return answer
 	}
 
-	parts := []string{"Agent reached the maximum iteration limit before producing a final answer."}
+	parts := []string{"Runner reached the maximum iteration limit before producing a final answer."}
 	if state.Action != nil {
 		if name := strings.TrimSpace(state.Action.Name); name != "" {
 			parts = append(parts, "Last tool: "+name)

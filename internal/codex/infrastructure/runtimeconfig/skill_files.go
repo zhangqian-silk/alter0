@@ -123,7 +123,6 @@ func resolveFileBackedSkillRoot(sourcePath string, skillID string) string {
 	sourceSlash := filepath.ToSlash(cleanSource)
 	for _, marker := range []string{
 		path.Join("docs", "skills", normalizedID),
-		path.Join("docs", "agents", normalizedID),
 	} {
 		if root, ok := sourceRootThroughMarker(sourceSlash, marker); ok {
 			return filepath.FromSlash(root)

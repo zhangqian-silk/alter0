@@ -68,7 +68,7 @@ func TestControlStoreMarkdownRoundTrip(t *testing.T) {
 			{ID: "cli-default", Type: shareddomain.ChannelTypeCLI, Enabled: true},
 		},
 		[]controldomain.Capability{
-			{ID: "default-nl", Name: "Default NL", Type: controldomain.CapabilityTypeSkill, Enabled: true, Scope: controldomain.CapabilityScopeGlobal, Version: "v1.0.0"},
+			{ID: "sample-skill", Name: "Sample Skill", Type: controldomain.CapabilityTypeSkill, Enabled: true, Scope: controldomain.CapabilityScopeGlobal, Version: "v1.0.0"},
 		},
 		[]controldomain.CapabilityAudit{},
 		map[string]string{},
@@ -85,7 +85,7 @@ func TestControlStoreMarkdownRoundTrip(t *testing.T) {
 	if len(channels) != 1 || channels[0].ID != "cli-default" {
 		t.Fatalf("unexpected channels: %+v", channels)
 	}
-	if len(capabilities) != 1 || capabilities[0].ID != "default-nl" {
+	if len(capabilities) != 1 || capabilities[0].ID != "sample-skill" {
 		t.Fatalf("unexpected capabilities: %+v", capabilities)
 	}
 	if len(audits) != 0 {

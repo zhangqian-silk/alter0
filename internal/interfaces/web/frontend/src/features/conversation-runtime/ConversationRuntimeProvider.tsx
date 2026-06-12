@@ -65,7 +65,7 @@ export function resolveChatTaskPollPlan(options: { pendingCount: number; pageHid
 export type ConversationRoute = "chat";
 
 type ChatTarget = {
-  type: "model" | "agent";
+  type: "model";
   id: string;
   name: string;
 };
@@ -89,7 +89,7 @@ export type ChatMessage = {
   status: string;
   at: number;
   processSteps: ChatProcessStep[];
-  agentProcessCollapsed?: boolean;
+  processCollapsed?: boolean;
   taskID: string;
   taskStatus: string;
   taskPending: boolean;
@@ -300,7 +300,7 @@ type ConversationRuntimeContextValue = {
   selectModel: (providerID: string, modelID: string) => void;
   toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => void;
   toggleSkill: (id: string, checked: boolean) => void;
-  toggleAgentProcess: (messageID: string) => void;
+  toggleProcess: (messageID: string) => void;
 };
 
 type ConversationRuntimeWorkspaceContextValue = Omit<
@@ -359,7 +359,7 @@ function normalizeConversationRoute(_route: string): ConversationRoute {
 function isPublicSkillCapability(skill: ChatCapability): boolean {
   const metadata = skill.metadata || {};
   const visibility = normalizeText(metadata["alter0.skill.visibility"] || metadata["skill.visibility"]).toLowerCase();
-  return visibility !== "agent-private" && visibility !== "private";
+  return visibility !== "private" && visibility !== "private";
 }
 
 function defaultChatSkillIDs(skills: ChatCapability[]): string[] {
@@ -384,10 +384,11 @@ function makeID(prefix: string): string {
 }
 
 function normalizeChatTarget(target?: { type?: string; id?: string; name?: string } | null): ChatTarget {
-  const type = target?.type === "agent" ? "agent" : "model";
-  const id = normalizeText(target?.id) || (type === "agent" ? "" : "raw-model");
-  const name = normalizeText(target?.name) || (type === "agent" ? id : "Raw Model");
-  return { type, id, name };
+  return {
+    type: "model",
+    id: normalizeText(target?.id) || "raw-model",
+    name: normalizeText(target?.name) || "Raw Model",
+  };
 }
 
 function defaultChatTarget(): ChatTarget {
@@ -556,9 +557,9 @@ function normalizeStoredMessage(item: unknown): ChatMessage | null {
     status: normalizeText(record.status) || (role === "assistant" ? "done" : ""),
     at: Number.isFinite(Number(record.at)) ? Number(record.at) : Date.now(),
     processSteps: normalizeProcessSteps(record.process_steps),
-    agentProcessCollapsed:
-      typeof record.agent_process_collapsed === "boolean"
-        ? record.agent_process_collapsed
+    processCollapsed:
+      typeof record.process_collapsed === "boolean"
+        ? record.process_collapsed
         : undefined,
     taskID: normalizeText(record.task_id),
     taskStatus: normalizeText(record.task_status),
@@ -624,7 +625,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : Date.now(),
     pinned: record.pinned === true,
     target: normalizeChatTarget({
-      type: normalizeText(record.targetType) === "agent" ? "agent" : "model",
+      type: "model",
       id: normalizeText(record.targetID),
       name: normalizeText(record.targetName),
     }),
@@ -668,7 +669,7 @@ function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
     status: message.status,
     at: message.at,
     process_steps: message.processSteps,
-    agent_process_collapsed: message.agentProcessCollapsed,
+    process_collapsed: message.processCollapsed,
     task_id: message.taskID,
     task_status: message.taskStatus,
     task_pending: message.taskPending,
@@ -726,7 +727,7 @@ function loadActiveSessionState(): ActiveSessionState {
     chat:
       readWorkbenchRouteSessionID("chat")
       || normalizeText(parsed.chat)
-      || normalizeText(parsed["agent-runtime"])
+      || normalizeText(parsed["chat"])
       || CANONICAL_CHAT_SESSION_ID,
   };
 }
@@ -751,7 +752,7 @@ function loadActiveSessionSnapshots(): SessionsState {
   return {
     chat: normalizeRouteSessions("chat", [
       ...mergeStoredRouteSessions("chat"),
-      ...mergeStoredRouteSessions("agent-runtime"),
+      ...mergeStoredRouteSessions("chat"),
     ]),
   };
 }
@@ -898,7 +899,7 @@ function normalizeRuntimeSession(
     createdAt: normalizeDateValue(item.created_at),
     pinned: typeof item.pinned === "boolean" ? item.pinned : previous?.pinned || false,
     target: normalizeChatTarget({
-      type: normalizeText(item.target_type) === "agent" ? "agent" : "model",
+      type: "model",
       id: normalizeText(item.target_id),
       name: normalizeText(item.target_name),
     }),
@@ -971,9 +972,7 @@ function buildSessionMeta(session: ChatSession, _language: LegacyShellLanguage):
 }
 
 function buildSessionContextLabel(session: ChatSession): string | undefined {
-  if (session.target.type !== "agent") {
-    return undefined;
-  }
+  
   const name = normalizeText(session.target.name) || normalizeText(session.target.id);
   return name || undefined;
 }
@@ -1028,7 +1027,6 @@ function buildMessageMetadata(
   skillIDs: string[] = session?.skillIDs || [],
 ): Record<string, string> {
   const metadata: Record<string, string> = {
-    "alter0.agent.tools": JSON.stringify(session?.toolIDs || []),
     "alter0.skills.include": JSON.stringify(skillIDs),
     "alter0.mcp.request.enable": JSON.stringify(session?.mcpIDs || []),
   };
@@ -1250,7 +1248,7 @@ export function ConversationRuntimeProvider({
     status: patch.status || (role === "assistant" ? "done" : ""),
     at: patch.at || Date.now(),
     processSteps: patch.processSteps || [],
-    agentProcessCollapsed: patch.agentProcessCollapsed,
+    processCollapsed: patch.processCollapsed,
     taskID: patch.taskID || "",
     taskStatus: patch.taskStatus || "",
     taskPending: Boolean(patch.taskPending),
@@ -2236,7 +2234,7 @@ export function ConversationRuntimeProvider({
       }));
       void persistRuntimeSessionConfig(route, nextSession);
     },
-    toggleAgentProcess: (messageID: string) => {
+    toggleProcess: (messageID: string) => {
       if (!activeSession) {
         return;
       }
@@ -2244,7 +2242,7 @@ export function ConversationRuntimeProvider({
         ...session,
         messages: session.messages.map((message) =>
           message.id === messageID
-            ? { ...message, agentProcessCollapsed: !message.agentProcessCollapsed }
+            ? { ...message, processCollapsed: !message.processCollapsed }
             : message,
         ),
       }));

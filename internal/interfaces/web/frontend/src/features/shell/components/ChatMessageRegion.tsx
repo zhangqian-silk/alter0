@@ -28,7 +28,7 @@ export type ChatMessageSnapshot = {
   status: string;
   at: number;
   processSteps: ChatMessageProcessStepSnapshot[];
-  agentProcessCollapsed?: boolean;
+  processCollapsed?: boolean;
 };
 
 export type ChatMessageProcessStepSnapshot = {
@@ -199,7 +199,7 @@ function buildChatTimelineItemSignature(message: ChatMessageSnapshot) {
       detail: step.detail,
       status: step.status,
     })),
-    agentProcessCollapsed: message.agentProcessCollapsed,
+    processCollapsed: message.processCollapsed,
   });
 }
 
@@ -248,7 +248,7 @@ function buildChatTimelineItem(
     };
   }
 
-  const parsed = resolveAgentExecutionContent(message, language);
+  const parsed = resolveExecutionContent(message, language);
   if (!parsed.steps.length) {
     return {
       id: message.id,
@@ -277,8 +277,8 @@ function buildChatTimelineItem(
   }
 
   const collapsed =
-    typeof message.agentProcessCollapsed === "boolean"
-      ? message.agentProcessCollapsed
+    typeof message.processCollapsed === "boolean"
+      ? message.processCollapsed
       : Boolean(parsed.answer.trim()) && message.status !== "streaming";
 
   return {
@@ -290,9 +290,9 @@ function buildChatTimelineItem(
       {
         type: "process",
         shellClassName: `runtime-thinking-shell terminal-process-shell conversation-process-shell ${collapsed ? "is-collapsed" : ""}`,
-        shellProps: { "data-agent-process-shell": message.id },
+        shellProps: { "data-conversation-process-shell": message.id },
         toggleClassName: "runtime-thinking-toggle terminal-process-toggle conversation-process-toggle",
-        toggleProps: { "data-agent-process-toggle": message.id },
+        toggleProps: { "data-conversation-process-toggle": message.id },
         title: (
           <>
             <span className="terminal-step-toggle-icon" aria-hidden="true">{collapsed ? ">" : "v"}</span>
@@ -308,15 +308,15 @@ function buildChatTimelineItem(
         emptyState: <div className="terminal-process-empty conversation-process-empty">{copy.processEmpty}</div>,
         steps: parsed.steps.map((step, index) => ({
           id: step.id || `${step.title}-${index}`,
-          itemClassName: "agent-process-step conversation-process-step",
+          itemClassName: "conversation-process-step",
           toggleable: false,
           title: step.title || `${copy.processLabel} ${index + 1}`,
-          titleClassName: "agent-process-step-title conversation-process-step-title",
-          meta: <span className="agent-process-step-index">{index + 1}</span>,
+          titleClassName: "conversation-process-step-title",
+          meta: <span className="conversation-process-step-index">{index + 1}</span>,
           expanded: true,
           onToggle: () => undefined,
-          toggleClassName: "agent-process-step-head conversation-process-step-head",
-          bodyClassName: "agent-process-step-body conversation-process-step-body",
+          toggleClassName: "conversation-process-step-head",
+          bodyClassName: "conversation-process-step-body",
           detail: step.detail ? <MessageMarkdownHTML html={renderMessageMarkdownToHTML(step.detail)} /> : null,
         })),
       },
@@ -328,8 +328,8 @@ function buildChatTimelineItem(
           copyLabel: copy.copyValue,
           wrapperClassName: "terminal-final-output conversation-final-output",
           wrapperProps: { "data-conversation-final-output": message.id },
-          className: "terminal-final-text agent-process-answer-shell conversation-final-text",
-          bodyClassName: "terminal-final-rendered agent-process-answer conversation-final-rendered",
+          className: "terminal-final-text conversation-process-answer-shell conversation-final-text",
+          bodyClassName: "terminal-final-rendered conversation-process-answer conversation-final-rendered",
         },
       ] : []),
     ],
@@ -366,7 +366,7 @@ function shouldShowAssistantStatus(message: ChatMessageSnapshot) {
   return normalized !== "" && normalized !== "done" && normalized !== "success";
 }
 
-function resolveAgentExecutionContent(
+function resolveExecutionContent(
   message: ChatMessageSnapshot,
   language: LegacyShellLanguage,
 ) {
@@ -376,10 +376,10 @@ function resolveAgentExecutionContent(
       answer: message.text.trim(),
     };
   }
-  return parseAgentExecutionText(message.text, language);
+  return parseExecutionText(message.text, language);
 }
 
-function parseAgentExecutionText(value: string, language: LegacyShellLanguage) {
+function parseExecutionText(value: string, language: LegacyShellLanguage) {
   const copy = MESSAGE_COPY[language];
   const normalized = value.replace(/\r\n?/g, "\n");
   if (!normalized.trim()) {
@@ -407,25 +407,25 @@ function parseAgentExecutionText(value: string, language: LegacyShellLanguage) {
   while (index < lines.length) {
     const line = lines[index];
     const trimmed = line.trim();
-    if (trimmed.startsWith("[agent] action:")) {
+    if (trimmed.startsWith("[process] action:")) {
       pushCurrentStep();
       currentStep = {
         id: "",
         kind: "action",
-        title: trimmed.slice("[agent] action:".length).trim(),
+        title: trimmed.slice("[process] action:".length).trim(),
         detail: "",
         status: "",
       };
       index += 1;
       continue;
     }
-    if (trimmed === "[agent] observation:") {
+    if (trimmed === "[process] observation:") {
       const detailLines: string[] = [];
       index += 1;
       while (index < lines.length) {
         const nextLine = lines[index];
         const nextTrimmed = nextLine.trim();
-        if (nextTrimmed.startsWith("[agent] action:") || nextTrimmed === "[agent] observation:") {
+        if (nextTrimmed.startsWith("[process] action:") || nextTrimmed === "[process] observation:") {
           break;
         }
         detailLines.push(nextLine);

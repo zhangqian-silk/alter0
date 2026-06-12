@@ -27,7 +27,6 @@ describe("legacyShellConfig", () => {
 
     expect(workspaceRoutes).toEqual(["chat", "terminal", "settings"]);
     expect(allRoutes).toEqual(["chat", "terminal", "settings"]);
-    expect(allRoutes).not.toContain("agent-runtime");
     expect(allRoutes).not.toContain("memory");
     expect(allRoutes).not.toContain("tasks");
     expect(allRoutes).not.toContain("codex-accounts");

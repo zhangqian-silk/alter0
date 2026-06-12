@@ -36,12 +36,10 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if _, ok := service.ResolveSkill("travel-page"); ok {
 		t.Fatalf("did not expect legacy travel-page skill to remain registered")
 	}
-
 	expectedFileBackedSkills := map[string]string{
 		"memory-maintenance":      "docs/skills/memory-maintenance/SKILL.md",
-		"deploy-test-service":     "docs/skills/deploy-test-service/SKILL.md",
+		"preview-publish":         "docs/skills/preview-publish/SKILL.md",
 		"frontend-design":         "docs/skills/frontend-design/SKILL.md",
-		"artifact-preview":        "docs/skills/artifact-preview/SKILL.md",
 		"doc-coauthoring":         "docs/skills/doc-coauthoring/SKILL.md",
 		"fullstack-developer":     "docs/skills/fullstack-developer/SKILL.md",
 		"code-reviewer":           "docs/skills/code-reviewer/SKILL.md",
@@ -49,9 +47,10 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 		"find-skills":             "docs/skills/find-skills/SKILL.md",
 		"test-driven-development": "docs/skills/test-driven-development/SKILL.md",
 		"ui-ux-pro-max":           "docs/skills/ui-ux-pro-max/SKILL.md",
-		"code-simplifier":         "docs/skills/code-simplifier/agents/code-simplifier.md",
+		"code-simplifier":         "docs/skills/code-simplifier/SKILL.md",
 		"code-review":             "docs/skills/code-review/commands/code-review.md",
 		"brainstorming":           "docs/skills/brainstorming/SKILL.md",
+		"travel":                  "docs/skills/travel/SKILL.md",
 	}
 	for skillID, expectedPath := range expectedFileBackedSkills {
 		skill, ok := service.ResolveSkill(skillID)
@@ -71,23 +70,32 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	if !strings.Contains(memoryMaintenanceGuide, "daily memory") || !strings.Contains(memoryMaintenanceGuide, "long-term memory") {
 		t.Fatalf("expected memory-maintenance guide covers memory consolidation, got %q", memoryMaintenanceGuide)
 	}
+	if got := memoryMaintenance.Metadata["alter0.skill.visibility"]; got != "private" {
+		t.Fatalf("memory-maintenance visibility = %q, want private", got)
+	}
 
-	deploySkill, ok := service.ResolveSkill("deploy-test-service")
+	previewSkill, ok := service.ResolveSkill("preview-publish")
 	if !ok {
-		t.Fatalf("expected deploy-test-service skill exists")
+		t.Fatalf("expected preview-publish skill exists")
 	}
-	if got := deploySkill.Metadata[builtinSkillFilePathKey]; got != "docs/skills/deploy-test-service/SKILL.md" {
-		t.Fatalf("deploy-test-service skill file path = %q, want docs/skills/deploy-test-service/SKILL.md", got)
+	if got := previewSkill.Metadata[builtinSkillFilePathKey]; got != "docs/skills/preview-publish/SKILL.md" {
+		t.Fatalf("preview-publish skill file path = %q, want docs/skills/preview-publish/SKILL.md", got)
 	}
-	deployGuide := deploySkill.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(deployGuide, "deploy_test_service") || !strings.Contains(deployGuide, "workspace-services") {
-		t.Fatalf("expected deploy-test-service guide covers tool and gateway route, got %q", deployGuide)
+	previewGuide := previewSkill.Metadata[builtinSkillGuideKey]
+	if !strings.Contains(previewGuide, "deploy_test_service") || !strings.Contains(previewGuide, "workspace-services") {
+		t.Fatalf("expected preview-publish guide covers tool and gateway route, got %q", previewGuide)
 	}
-	if !strings.Contains(deployGuide, "service_type=http") || !strings.Contains(deployGuide, "frontend_dist") {
-		t.Fatalf("expected deploy-test-service guide covers full-stack web preview and static fallback, got %q", deployGuide)
+	if !strings.Contains(previewGuide, "service_type=http") || !strings.Contains(previewGuide, "frontend_dist") {
+		t.Fatalf("expected preview-publish guide covers full-stack web preview and static fallback, got %q", previewGuide)
 	}
-	if !strings.Contains(deployGuide, "single-label") || !strings.Contains(deployGuide, "*.alter0.cn") {
-		t.Fatalf("expected deploy-test-service guide to describe certificate-safe single-label subdomains, got %q", deployGuide)
+	if !strings.Contains(previewGuide, "single-label") || !strings.Contains(previewGuide, "*.alter0.cn") {
+		t.Fatalf("expected preview-publish guide to describe certificate-safe single-label subdomains, got %q", previewGuide)
+	}
+	if !strings.Contains(previewGuide, "text") || !strings.Contains(previewGuide, "image") || !strings.Contains(previewGuide, "code") {
+		t.Fatalf("expected preview-publish guide covers static artifact previews, got %q", previewGuide)
+	}
+	if !strings.Contains(previewGuide, "local HTML/file path") || !strings.Contains(previewGuide, "https://*.alter0.cn") {
+		t.Fatalf("expected preview-publish guide to reject local artifact links, got %q", previewGuide)
 	}
 
 	frontendDesign, ok := service.ResolveSkill("frontend-design")
@@ -102,33 +110,12 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 		t.Fatalf("expected frontend-design guide covers imported frontend direction, got %q", frontendGuide)
 	}
 
-	artifactPreview, ok := service.ResolveSkill("artifact-preview")
-	if !ok {
-		t.Fatalf("expected artifact-preview skill exists")
-	}
-	if got := artifactPreview.Metadata[builtinSkillFilePathKey]; got != "docs/skills/artifact-preview/SKILL.md" {
-		t.Fatalf("artifact-preview skill file path = %q, want docs/skills/artifact-preview/SKILL.md", got)
-	}
-	artifactGuide := artifactPreview.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(artifactGuide, "docs/skills/artifact-preview/scripts/publish_preview_artifact.sh") || !strings.Contains(artifactGuide, "<service>-<short_hash>.alter0.cn") {
-		t.Fatalf("expected artifact-preview guide covers helper script and session subdomain host, got %q", artifactGuide)
-	}
-	if !strings.Contains(artifactGuide, "single-label") || !strings.Contains(artifactGuide, "*.alter0.cn") {
-		t.Fatalf("expected artifact-preview guide to describe certificate-safe single-label subdomains, got %q", artifactGuide)
-	}
-	if !strings.Contains(artifactGuide, "text") || !strings.Contains(artifactGuide, "image") || !strings.Contains(artifactGuide, "code") {
-		t.Fatalf("expected artifact-preview guide covers text, image, and code previews, got %q", artifactGuide)
-	}
-	if !strings.Contains(artifactGuide, "local HTML/file path") || !strings.Contains(artifactGuide, "https://*.alter0.cn") {
-		t.Fatalf("expected artifact-preview guide to reject local artifact links, got %q", artifactGuide)
-	}
-
 	codeSimplifier, ok := service.ResolveSkill("code-simplifier")
 	if !ok {
 		t.Fatalf("expected code-simplifier skill exists")
 	}
 	codeSimplifierGuide := codeSimplifier.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(codeSimplifierGuide, "preserving all functionality") || !strings.Contains(codeSimplifierGuide, "docs/skills/code-simplifier/agents/code-simplifier.md") {
+	if !strings.Contains(codeSimplifierGuide, "preserving all functionality") || !strings.Contains(codeSimplifierGuide, "docs/skills/code-simplifier/SKILL.md") {
 		t.Fatalf("expected code-simplifier guide covers simplification contract and canonical file, got %q", codeSimplifierGuide)
 	}
 
@@ -139,6 +126,19 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 	codeReviewGuide := codeReview.Metadata[builtinSkillGuideKey]
 	if !strings.Contains(codeReviewGuide, "pull request") || !strings.Contains(codeReviewGuide, "docs/skills/code-review/commands/code-review.md") {
 		t.Fatalf("expected code-review guide covers PR review workflow and canonical file, got %q", codeReviewGuide)
+	}
+
+	travel, ok := service.ResolveSkill("travel")
+	if !ok {
+		t.Fatalf("expected travel skill exists")
+	}
+	travelGuide := travel.Metadata[builtinSkillGuideKey]
+	if !strings.Contains(travelGuide, "city guide") || !strings.Contains(travelGuide, "docs/skills/travel/SKILL.md") {
+		t.Fatalf("expected travel guide covers city guide workflow and canonical skill file, got %q", travelGuide)
+	}
+
+	if _, ok := service.ResolveSkill("coding"); ok {
+		t.Fatalf("did not expect coding skill to be registered")
 	}
 }
 

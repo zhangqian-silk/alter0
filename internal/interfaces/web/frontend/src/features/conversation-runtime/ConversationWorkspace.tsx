@@ -176,12 +176,12 @@ function useConversationWorkspaceController(
   const timelineSessionID = showMarkdownSyntaxDemo
     ? `${activeSessionID || "chat"}:markdown-demo`
     : activeSessionID;
-  const toggleAgentProcessRef = useRef(runtime.toggleAgentProcess);
+  const toggleProcessRef = useRef(runtime.toggleProcess);
   useEffect(() => {
-    toggleAgentProcessRef.current = runtime.toggleAgentProcess;
-  }, [runtime.toggleAgentProcess]);
-  const toggleAgentProcess = useCallback((messageID: string) => {
-    toggleAgentProcessRef.current(messageID);
+    toggleProcessRef.current = runtime.toggleProcess;
+  }, [runtime.toggleProcess]);
+  const toggleProcess = useCallback((messageID: string) => {
+    toggleProcessRef.current(messageID);
   }, []);
   const visibleMessageCount = timelineWindow.sessionID === timelineSessionID
     ? timelineWindow.visibleCount
@@ -341,9 +341,9 @@ function useConversationWorkspaceController(
       cacheScope: timelineSessionID,
       messages: visibleMessages,
       language,
-      onToggleProcess: toggleAgentProcess,
+      onToggleProcess: toggleProcess,
     }),
-    [language, timelineSessionID, toggleAgentProcess, visibleMessages],
+    [language, timelineSessionID, toggleProcess, visibleMessages],
   );
   const loadEarlierMessages = useCallback(() => {
     if (!timelineSessionID || hiddenMessageCount <= 0) {

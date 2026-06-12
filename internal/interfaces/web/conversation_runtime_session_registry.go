@@ -315,15 +315,6 @@ func normalizeConversationRuntimeRegistryTarget(route conversationRuntimeRoute, 
 	normalizedType := strings.TrimSpace(targetType)
 	normalizedID := strings.TrimSpace(targetID)
 	normalizedName := strings.TrimSpace(targetName)
-	if normalizedType == "agent" {
-		if normalizedID == "" {
-			normalizedID = "unknown"
-		}
-		if normalizedName == "" {
-			normalizedName = normalizedID
-		}
-		return "agent", normalizedID, normalizedName
-	}
 	if normalizedType != "model" {
 		normalizedType = "model"
 	}
@@ -403,7 +394,7 @@ func resolveConversationRuntimeCapabilitiesFromMetadata(metadata map[string]stri
 	if len(metadata) == 0 {
 		return nil, nil, nil
 	}
-	return normalizeConversationRuntimeIDs(metadata["alter0.agent.tools"]),
+	return nil,
 		normalizeConversationRuntimeIDs(metadata["alter0.skills.include"]),
 		normalizeConversationRuntimeIDs(metadata["alter0.mcp.request.enable"])
 }

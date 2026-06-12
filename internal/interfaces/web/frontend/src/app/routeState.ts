@@ -7,7 +7,6 @@ export type WorkbenchSessionRoute = "chat" | "terminal";
 
 const KNOWN_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);
 const LEGACY_ROUTE_ALIASES: Record<string, string> = {
-  "agent-runtime": "chat",
   management: "settings",
 };
 const SESSION_QUERY_KEY = "session_id";
