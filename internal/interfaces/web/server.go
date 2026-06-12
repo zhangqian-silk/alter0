@@ -296,6 +296,7 @@ type conversationRuntimeSessionResponse struct {
 	Title           string                               `json:"title"`
 	TitleAuto       bool                                 `json:"title_auto"`
 	TitleScore      int                                  `json:"title_score"`
+	Pinned          bool                                 `json:"pinned,omitempty"`
 	CreatedAt       time.Time                            `json:"created_at"`
 	TargetType      string                               `json:"target_type"`
 	TargetID        string                               `json:"target_id,omitempty"`
@@ -305,7 +306,6 @@ type conversationRuntimeSessionResponse struct {
 	ToolIDs         []string                             `json:"tool_ids,omitempty"`
 	SkillIDs        []string                             `json:"skill_ids,omitempty"`
 	MCPIDs          []string                             `json:"mcp_ids,omitempty"`
-	Pinned          bool                                 `json:"pinned,omitempty"`
 	Messages        []conversationRuntimeMessageResponse `json:"messages,omitempty"`
 }
 
@@ -1834,6 +1834,9 @@ func (s *Server) conversationRuntimeSessionCollectionHandler(w http.ResponseWrit
 		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
+		if items[i].Pinned != items[j].Pinned {
+			return items[i].Pinned
+		}
 		left := conversationRuntimeSessionSortTime(items[i])
 		right := conversationRuntimeSessionSortTime(items[j])
 		if left.Equal(right) {
@@ -2082,8 +2085,10 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if err := pinService.SetSessionPinned(sessionID, *request.Pinned); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
+			if !errors.Is(err, sessionapp.ErrSessionNotFound) || !s.setConversationRuntimeSessionPinned(sessionID, *request.Pinned) {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"session_id": sessionID,
@@ -2174,6 +2179,14 @@ func (s *Server) resolveConversationRuntimeRegistryEntry(route conversationRunti
 	return s.conversationRuntimeSessions.Resolve(route, sessionID)
 }
 
+func (s *Server) setConversationRuntimeSessionPinned(sessionID string, pinned bool) bool {
+	if s == nil || s.conversationRuntimeSessions == nil {
+		return false
+	}
+	_, err := s.conversationRuntimeSessions.SetPinned(conversationRuntimeRouteChat, sessionID, pinned)
+	return err == nil
+}
+
 func (s *Server) conversationRuntimeSessionResponseFromRegistryEntry(entry conversationRuntimeSessionRegistryEntry) conversationRuntimeSessionResponse {
 	return conversationRuntimeSessionResponse{
 		ID:              entry.SessionID,
@@ -2181,6 +2194,7 @@ func (s *Server) conversationRuntimeSessionResponseFromRegistryEntry(entry conve
 		Title:           entry.Title,
 		TitleAuto:       entry.TitleAuto,
 		TitleScore:      entry.TitleScore,
+		Pinned:          entry.Pinned,
 		CreatedAt:       entry.CreatedAt.UTC(),
 		TargetType:      entry.TargetType,
 		TargetID:        entry.TargetID,
@@ -2201,6 +2215,7 @@ func conversationRuntimeRegistryEntryFromSessionResponse(route conversationRunti
 		Title:           strings.TrimSpace(session.Title),
 		TitleAuto:       session.TitleAuto,
 		TitleScore:      session.TitleScore,
+		Pinned:          session.Pinned,
 		CreatedAt:       session.CreatedAt.UTC(),
 		UpdatedAt:       time.Now().UTC(),
 		TargetType:      session.TargetType,

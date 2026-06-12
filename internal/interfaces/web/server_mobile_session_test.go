@@ -34,7 +34,8 @@ func TestConversationRuntimeCreatesAndDeletesSessionsInReactState(t *testing.T) 
 		"return runtime.removeSession(sessionID);",
 		"onSessionPanePrimaryAction: handleCreateSession,",
 		"onMobilePrimary: handleCreateSession,",
-		"onDelete: () => void handleRemoveSession(item.id),",
+		"const isDraft = Boolean(item.draft);",
+		"onDelete: isDraft ? undefined : () => void handleRemoveSession(item.id),",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(source, marker) {

@@ -132,11 +132,12 @@ describe("RuntimeWorkspacePage", () => {
     expect(setRuntimeSessionRail).toHaveBeenLastCalledWith(null);
   });
 
-  it("keeps session pin, details, and delete as separate right-side actions", () => {
+  it("opens session actions from a compact more menu and confirms delete", () => {
     const controller = buildController();
     const onPinnedChange = vi.fn();
     const onViewDetails = vi.fn();
     const onDelete = vi.fn();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     Object.assign(controller.sessionList.groups[0].items[1], {
       pinned: true,
       pinLabel: "Pin",
@@ -150,21 +151,40 @@ describe("RuntimeWorkspacePage", () => {
       onDelete,
       deleteLabel: "Delete",
       deleteAriaLabel: "Delete session",
+      deleteConfirmLabel: "Delete this session?",
     });
 
-    renderRuntimeWorkspacePage(vi.fn(), controller);
+    try {
+      renderRuntimeWorkspacePage(vi.fn(), controller);
 
-    fireEvent.click(screen.getByRole("button", { name: "Unpin session", hidden: true }));
+      expect(screen.queryByRole("button", { name: "Unpin session", hidden: true })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "View session details", hidden: true })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Delete session", hidden: true })).not.toBeInTheDocument();
 
-    expect(onPinnedChange).toHaveBeenCalledWith(false);
-    expect(onViewDetails).not.toHaveBeenCalled();
-    expect(onDelete).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Session actions", hidden: true }));
 
-    fireEvent.click(screen.getByRole("button", { name: "View session details", hidden: true }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Unpin session", hidden: true }));
+      expect(onPinnedChange).toHaveBeenCalledWith(false);
+      expect(onViewDetails).not.toHaveBeenCalled();
+      expect(onDelete).not.toHaveBeenCalled();
 
-    expect(onViewDetails).toHaveBeenCalledTimes(1);
-    expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Delete session", hidden: true })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Session actions", hidden: true }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "View session details", hidden: true }));
+      expect(onViewDetails).toHaveBeenCalledTimes(1);
+      expect(onDelete).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Session actions", hidden: true }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete session", hidden: true }));
+      expect(confirmSpy).toHaveBeenCalledWith("Delete this session?");
+      expect(onDelete).not.toHaveBeenCalled();
+
+      confirmSpy.mockReturnValue(true);
+      fireEvent.click(screen.getByRole("button", { name: "Session actions", hidden: true }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete session", hidden: true }));
+      expect(onDelete).toHaveBeenCalledTimes(1);
+    } finally {
+      confirmSpy.mockRestore();
+    }
   });
 
 });

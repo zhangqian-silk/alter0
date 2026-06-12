@@ -37,6 +37,7 @@ const runtimeMock = {
       shortHash: "abcd1234",
       createdAt: Date.parse("2026-04-23T09:00:00Z"),
       active: true,
+      draft: true,
       pinned: false,
       pinning: false,
     },
@@ -176,6 +177,7 @@ describe("ConversationWorkspace", () => {
         shortHash: "abcd1234",
         createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
+        draft: true,
         pinned: false,
         pinning: false,
       },
@@ -285,23 +287,51 @@ describe("ConversationWorkspace", () => {
   });
 
   it("opens Chat session details from the session row without deleting the session", () => {
+    runtimeMock.activeSession = {
+      ...runtimeMock.activeSession,
+      messages: [{ id: "msg-1", role: "user", text: "hello", at: Date.now(), status: "done" }],
+      serverBacked: true,
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
     const closeMobileSessionPane = vi.fn();
     renderWorkspace({ isMobileViewport: false, closeMobileSessionPane });
 
     const sessionPane = screen.getByTestId("conversation-session-pane");
     closeMobileSessionPane.mockClear();
-    fireEvent.click(within(sessionPane).getByRole("button", {
+    fireEvent.click(within(sessionPane).getByRole("button", { name: "Session actions", hidden: true }));
+    fireEvent.click(within(sessionPane).getByRole("menuitem", {
       name: "View session details",
       hidden: true,
     }));
 
     expect(runtimeMock.focusSession).toHaveBeenCalledWith("session-1");
     expect(runtimeMock.removeSession).not.toHaveBeenCalled();
-    expect(closeMobileSessionPane).toHaveBeenCalledTimes(1);
+    expect(closeMobileSessionPane).not.toHaveBeenCalled();
     expect(document.querySelector("[data-runtime-details-panel='conversation']")).toBeInTheDocument();
   });
 
+  it("does not show real session actions for a draft Chat New placeholder", () => {
+    const closeMobileSessionPane = vi.fn();
+    renderWorkspace({ isMobileViewport: true, mobileSessionPaneOpen: true, closeMobileSessionPane });
+
+    const sessionPane = screen.getByTestId("conversation-session-pane");
+    expect(within(sessionPane).queryByRole("button", { name: "Session actions", hidden: true })).not.toBeInTheDocument();
+    const draftCard = sessionPane.querySelector("[data-runtime-session-card='session-1']") as HTMLElement;
+    fireEvent.click(within(draftCard).getByRole("button", { name: /New/, hidden: true }));
+
+    expect(runtimeMock.focusSession).toHaveBeenCalledWith("session-1");
+    expect(closeMobileSessionPane).toHaveBeenCalled();
+    expect(document.querySelector("[data-runtime-details-panel='conversation']")).not.toBeInTheDocument();
+  });
+
   it("pins Chat sessions directly from the session row action", () => {
+    runtimeMock.activeSession = {
+      ...runtimeMock.activeSession,
+      messages: [{ id: "msg-1", role: "user", text: "hello", at: Date.now(), status: "done" }],
+      serverBacked: true,
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
     runtimeMock.sessionItems = [
       {
         id: "session-1",
@@ -310,6 +340,7 @@ describe("ConversationWorkspace", () => {
         shortHash: "abcd1234",
         createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
+        draft: false,
         pinned: false,
         pinning: false,
       },
@@ -319,7 +350,8 @@ describe("ConversationWorkspace", () => {
 
     const sessionPane = screen.getByTestId("conversation-session-pane");
     closeMobileSessionPane.mockClear();
-    fireEvent.click(within(sessionPane).getByRole("button", {
+    fireEvent.click(within(sessionPane).getByRole("button", { name: "Session actions", hidden: true }));
+    fireEvent.click(within(sessionPane).getByRole("menuitem", {
       name: "Pin session",
       hidden: true,
     }));
@@ -341,6 +373,7 @@ describe("ConversationWorkspace", () => {
       ],
     };
     runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
 
     renderWorkspace();
 
@@ -367,6 +400,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.skills = [
       { id: "frontend-design", name: "Frontend Design", description: "UI guidance", kind: "skill", active: true },
     ];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
     renderWorkspace({ isMobileViewport: false });
 
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
@@ -447,6 +481,7 @@ describe("ConversationWorkspace", () => {
         shortHash: "zzzz1111",
         createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
+        draft: false,
         pinned: false,
         pinning: false,
       },

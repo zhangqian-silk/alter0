@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	sessionapp "alter0/internal/session/application"
 	shareddomain "alter0/internal/shared/domain"
 )
 
@@ -27,6 +28,7 @@ type conversationRuntimeSessionRegistryEntry struct {
 	Title           string                   `json:"title"`
 	TitleAuto       bool                     `json:"title_auto"`
 	TitleScore      int                      `json:"title_score"`
+	Pinned          bool                     `json:"pinned,omitempty"`
 	CreatedAt       time.Time                `json:"created_at"`
 	UpdatedAt       time.Time                `json:"updated_at"`
 	TargetType      string                   `json:"target_type"`
@@ -125,6 +127,9 @@ func (r *conversationRuntimeSessionRegistry) List(route conversationRuntimeRoute
 		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
+		if items[i].Pinned != items[j].Pinned {
+			return items[i].Pinned
+		}
 		left := items[i].UpdatedAt
 		right := items[j].UpdatedAt
 		if left.Equal(right) {
@@ -195,6 +200,9 @@ func (r *conversationRuntimeSessionRegistry) Upsert(entry conversationRuntimeSes
 	if normalized.MCPIDs == nil && mcpIDsSpecified {
 		normalized.MCPIDs = []string{}
 	}
+	if hadCurrent && current.Pinned {
+		normalized.Pinned = true
+	}
 	if normalized.CreatedAt.IsZero() {
 		if hadCurrent && !current.CreatedAt.IsZero() {
 			normalized.CreatedAt = current.CreatedAt
@@ -245,6 +253,40 @@ func (r *conversationRuntimeSessionRegistry) Upsert(entry conversationRuntimeSes
 		return conversationRuntimeSessionRegistryEntry{}, err
 	}
 	return normalized, nil
+}
+
+func (r *conversationRuntimeSessionRegistry) SetPinned(
+	route conversationRuntimeRoute,
+	sessionID string,
+	pinned bool,
+) (conversationRuntimeSessionRegistryEntry, error) {
+	if r == nil {
+		return conversationRuntimeSessionRegistryEntry{}, errors.New("conversation runtime session registry unavailable")
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return conversationRuntimeSessionRegistryEntry{}, errors.New("session_id is required")
+	}
+	route, ok := parseConversationRuntimeRoute(string(route))
+	if !ok {
+		return conversationRuntimeSessionRegistryEntry{}, errors.New("route is required")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := conversationRuntimeSessionRegistryKey(route, sessionID)
+	entry, ok := r.entries[key]
+	if !ok {
+		return conversationRuntimeSessionRegistryEntry{}, sessionapp.ErrSessionNotFound
+	}
+	entry.Pinned = pinned
+	entry.UpdatedAt = time.Now().UTC()
+	r.entries[key] = entry
+	if err := r.persistLocked(); err != nil {
+		return conversationRuntimeSessionRegistryEntry{}, err
+	}
+	return entry, nil
 }
 
 func (r *conversationRuntimeSessionRegistry) Delete(sessionID string) error {

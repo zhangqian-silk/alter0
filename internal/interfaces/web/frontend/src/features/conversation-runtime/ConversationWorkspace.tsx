@@ -208,6 +208,8 @@ function useConversationWorkspaceController(
   const viewSessionDetailsAriaLabel = language === "zh" ? "查看会话详情" : "View session details";
   const deleteSessionLabel = language === "zh" ? "删除" : "Delete";
   const deleteSessionAriaLabel = language === "zh" ? "删除会话" : "Delete session";
+  const deleteSessionConfirmLabel = language === "zh" ? "确认删除这个会话？" : "Delete this session?";
+  const sessionActionsLabel = language === "zh" ? "会话操作" : "Session actions";
   const pinSessionLabel = language === "zh" ? "置顶" : "Pin";
   const unpinSessionLabel = language === "zh" ? "取消置顶" : "Unpin";
   const pinSessionAriaLabel = language === "zh" ? "置顶会话" : "Pin session";
@@ -216,12 +218,14 @@ function useConversationWorkspaceController(
     () => groupSessionListItems(runtime.sessionItems, {
       language,
       getTimestamp: (item) => item.createdAt,
+      getPinned: (item) => item.pinned,
     }),
     [language, runtime.sessionItems],
   );
   const sessionEmptyLabel = copy.sessionEmpty;
   const compactDetailsLabel = language === "zh" ? "详情" : "Details";
   const activeSessionItem = runtime.sessionItems.find((item) => item.active) || null;
+  const activeSessionIsDraft = Boolean(activeSessionItem?.draft);
   const sessionStatusByID = useMemo(
     () => Object.fromEntries(
       runtime.sessions.map((session) => {
@@ -249,9 +253,8 @@ function useConversationWorkspaceController(
   }, [runtime, workbench]);
   const handleViewSessionDetails = useCallback((sessionID: string) => {
     runtime.focusSession(sessionID);
-    workbench.closeMobileSessionPane();
     setSessionDetailsOpen(true);
-  }, [runtime, workbench]);
+  }, [runtime]);
   const handleRemoveSession = useCallback((sessionID: string) => {
     workbench.closeMobileSessionPane();
     return runtime.removeSession(sessionID);
@@ -262,43 +265,50 @@ function useConversationWorkspaceController(
   const sessionListGroups = useMemo(
     () => groupedSessionItems.map((group) => ({
       ...group,
-      items: group.items.map((item) => ({
-        statusTone: sessionStatusByID[item.id]?.tone || "ready",
-        statusLabel: sessionStatusByID[item.id]?.label || conversationSessionStatusLabel("ready", language),
-        id: item.id,
-        active: item.active,
-        title: item.title,
-        contextLabel: item.contextLabel,
-        meta: item.meta,
-        shortHash: item.shortHash,
-        activeLabel: activeSessionBadgeLabel,
-        idleLabel: idleSessionBadgeLabel,
-        onSelect: () => handleFocusSession(item.id),
-        onViewDetails: () => handleViewSessionDetails(item.id),
-        viewDetailsLabel: viewSessionDetailsLabel,
-        viewDetailsAriaLabel: viewSessionDetailsAriaLabel,
-        pinned: item.pinned,
-        pinning: item.pinning,
-        onPinnedChange: (pinned) => handlePinnedChange(item.id, pinned),
-        pinLabel: pinSessionLabel,
-        unpinLabel: unpinSessionLabel,
-        pinAriaLabel: pinSessionAriaLabel,
-        unpinAriaLabel: unpinSessionAriaLabel,
-        onDelete: () => void handleRemoveSession(item.id),
-        deleteLabel: deleteSessionLabel,
-        deleteAriaLabel: deleteSessionAriaLabel,
-        shellClassName: item.active ? "runtime-session-card is-active" : "runtime-session-card",
-        shellProps: {
-          "data-runtime-session-state": item.active ? "active" : "idle",
-          "data-runtime-session-card": item.id,
-          "data-runtime-session-tone": sessionStatusByID[item.id]?.tone || "ready",
-        },
-        buttonClassName: item.active ? "runtime-session-select active" : "runtime-session-select",
-      })),
+      items: group.items.map((item) => {
+        const isDraft = Boolean(item.draft);
+        return {
+          statusTone: sessionStatusByID[item.id]?.tone || "ready",
+          statusLabel: sessionStatusByID[item.id]?.label || conversationSessionStatusLabel("ready", language),
+          id: item.id,
+          active: item.active,
+          title: item.title,
+          contextLabel: item.contextLabel,
+          meta: item.meta,
+          shortHash: item.shortHash,
+          activeLabel: activeSessionBadgeLabel,
+          idleLabel: idleSessionBadgeLabel,
+          onSelect: () => handleFocusSession(item.id),
+          onViewDetails: isDraft ? undefined : () => handleViewSessionDetails(item.id),
+          viewDetailsLabel: isDraft ? undefined : viewSessionDetailsLabel,
+          viewDetailsAriaLabel: isDraft ? undefined : viewSessionDetailsAriaLabel,
+          pinned: isDraft ? false : item.pinned,
+          pinning: isDraft ? false : item.pinning,
+          onPinnedChange: isDraft ? undefined : (pinned) => handlePinnedChange(item.id, pinned),
+          pinLabel: isDraft ? undefined : pinSessionLabel,
+          unpinLabel: isDraft ? undefined : unpinSessionLabel,
+          pinAriaLabel: isDraft ? undefined : pinSessionAriaLabel,
+          unpinAriaLabel: isDraft ? undefined : unpinSessionAriaLabel,
+          onDelete: isDraft ? undefined : () => void handleRemoveSession(item.id),
+          deleteLabel: isDraft ? undefined : deleteSessionLabel,
+          deleteAriaLabel: isDraft ? undefined : deleteSessionAriaLabel,
+          deleteConfirmLabel: isDraft ? undefined : deleteSessionConfirmLabel,
+          actionsLabel: isDraft ? undefined : sessionActionsLabel,
+          actionsAriaLabel: isDraft ? undefined : sessionActionsLabel,
+          shellClassName: item.active ? "runtime-session-card is-active" : "runtime-session-card",
+          shellProps: {
+            "data-runtime-session-state": item.active ? "active" : "idle",
+            "data-runtime-session-card": item.id,
+            "data-runtime-session-tone": sessionStatusByID[item.id]?.tone || "ready",
+          },
+          buttonClassName: item.active ? "runtime-session-select active" : "runtime-session-select",
+        };
+      }),
     })),
     [
       activeSessionBadgeLabel,
       deleteSessionAriaLabel,
+      deleteSessionConfirmLabel,
       deleteSessionLabel,
       groupedSessionItems,
       handleFocusSession,
@@ -310,6 +320,7 @@ function useConversationWorkspaceController(
       pinSessionAriaLabel,
       pinSessionLabel,
       sessionStatusByID,
+      sessionActionsLabel,
       unpinSessionAriaLabel,
       unpinSessionLabel,
       viewSessionDetailsAriaLabel,
@@ -533,8 +544,9 @@ function useConversationWorkspaceController(
       mobileTitleButtonProps: {
         "aria-haspopup": "dialog",
         "data-runtime-mobile-title": "conversation",
+        disabled: activeSessionIsDraft,
       },
-      onMobileTitle: () => setSessionDetailsOpen((current) => !current),
+      onMobileTitle: activeSessionIsDraft ? undefined : () => setSessionDetailsOpen((current) => !current),
       mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
       mobilePrimaryButtonLabel: newSessionLabel,
       mobilePrimaryButtonProps: { "data-runtime-mobile-primary": "conversation" },
@@ -544,6 +556,7 @@ function useConversationWorkspaceController(
     copy.chatMenu,
     activeSessionStatus.label,
     activeSessionStatus.tone,
+    activeSessionIsDraft,
     copy.sessionHide,
     emptyStateTitle,
     handleCreateSession,
@@ -573,9 +586,9 @@ function useConversationWorkspaceController(
       statusLabel: activeSessionStatus.label,
       statusTone: activeSessionStatus.tone,
       detailsLabel: compactDetailsLabel,
-      detailsOpen: sessionDetailsOpen,
-      onToggleDetails: () => setSessionDetailsOpen((current) => !current),
-      detailsDisabled: false,
+      detailsOpen: activeSessionIsDraft ? false : sessionDetailsOpen,
+      onToggleDetails: activeSessionIsDraft ? () => undefined : () => setSessionDetailsOpen((current) => !current),
+      detailsDisabled: activeSessionIsDraft,
       mobileEmpty: isMobileEmptyHeader,
       mobileCollapsed: workbench.isMobileViewport,
       detailsClassName: "conversation-inspector conversation-session-details workspace-details-content",
@@ -590,6 +603,7 @@ function useConversationWorkspaceController(
   }), [
     activeSessionStatus.label,
     activeSessionStatus.tone,
+    activeSessionIsDraft,
     compactDetailsLabel,
     emptyStateTitle,
     isMobileEmptyHeader,

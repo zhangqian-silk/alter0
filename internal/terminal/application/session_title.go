@@ -151,7 +151,9 @@ func buildAutoSessionTitle(input string, fallback string, maxLen int) (string, i
 func inferAutoSessionTitleState(title string, fallback string) (bool, int) {
 	normalizedTitle := normalizeSessionTitleText(title)
 	normalizedFallback := normalizeSessionTitleText(fallback)
-	if normalizedTitle == "" || strings.EqualFold(normalizedTitle, normalizedFallback) {
+	if normalizedTitle == "" ||
+		strings.EqualFold(normalizedTitle, normalizedFallback) ||
+		strings.EqualFold(normalizedTitle, defaultTerminalSessionTitle) {
 		return true, 0
 	}
 	trimmed := trimSessionBootstrapPrefix(normalizedTitle)
@@ -170,7 +172,9 @@ func nextAutoSessionTitle(currentTitle string, currentManual bool, currentScore 
 	if strings.TrimSpace(title) == "" {
 		return currentTitle, false, currentScore, false
 	}
-	if strings.EqualFold(normalizeSessionTitleText(currentTitle), normalizeSessionTitleText(fallback)) && title != currentTitle {
+	normalizedCurrent := normalizeSessionTitleText(currentTitle)
+	if (strings.EqualFold(normalizedCurrent, normalizeSessionTitleText(fallback)) ||
+		strings.EqualFold(normalizedCurrent, defaultTerminalSessionTitle)) && title != currentTitle {
 		return title, nextAuto, score, true
 	}
 	if score < currentScore {

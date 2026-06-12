@@ -34,6 +34,7 @@ const (
 	workspaceSessionsDirName          = "sessions"
 	terminalTurnAttachmentDirName     = "input-attachments"
 	terminalCodexHomeDirName          = "codex-home"
+	defaultTerminalSessionTitle       = "New"
 	maxEntryPageLimit                 = 200
 	terminalHostUnavailableMessage    = "terminal host unavailable"
 	terminalCompactionRecoveryMessage = "codex context compaction failed; next input will continue the previous runtime thread in the same workspace"
@@ -217,7 +218,7 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 	titleManual := false
 	titleAuto := false
 	if title == "" {
-		title = sessionID
+		title = defaultTerminalSessionTitle
 		titleAuto = true
 	} else {
 		titleManual = true
@@ -281,7 +282,7 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 	titleAuto := false
 	titleScore := 0
 	if title == "" {
-		title = sessionID
+		title = defaultTerminalSessionTitle
 		titleAuto = true
 	} else {
 		titleAuto, titleScore = inferAutoSessionTitleState(title, sessionID)

@@ -354,8 +354,8 @@
 .control-task-result-output > :first-child,
 .environment-description-text > :first-child,
 .codex-accounts-runtime-note > :first-child,
-.agent-route-card-prompt > :first-child,
-.agent-builder-option-description > :first-child,
+.skill-route-card-prompt > :first-child,
+.skill-builder-option-description > :first-child,
 .terminal-skill-description > :first-child {
   margin-top: 0;
 }
@@ -366,8 +366,8 @@
 .control-task-result-output > :last-child,
 .environment-description-text > :last-child,
 .codex-accounts-runtime-note > :last-child,
-.agent-route-card-prompt > :last-child,
-.agent-builder-option-description > :last-child,
+.skill-route-card-prompt > :last-child,
+.skill-builder-option-description > :last-child,
 .terminal-skill-description > :last-child {
   margin-bottom: 0;
 }
@@ -405,12 +405,12 @@
 .codex-accounts-runtime-note p,
 .codex-accounts-runtime-note ul,
 .codex-accounts-runtime-note ol,
-.agent-route-card-prompt p,
-.agent-route-card-prompt ul,
-.agent-route-card-prompt ol,
-.agent-builder-option-description p,
-.agent-builder-option-description ul,
-.agent-builder-option-description ol,
+.skill-route-card-prompt p,
+.skill-route-card-prompt ul,
+.skill-route-card-prompt ol,
+.skill-builder-option-description p,
+.skill-builder-option-description ul,
+.skill-builder-option-description ol,
 .terminal-skill-description p,
 .terminal-skill-description ul,
 .terminal-skill-description ol {
@@ -427,10 +427,10 @@
 .environment-description-text ol,
 .codex-accounts-runtime-note ul,
 .codex-accounts-runtime-note ol,
-.agent-route-card-prompt ul,
-.agent-route-card-prompt ol,
-.agent-builder-option-description ul,
-.agent-builder-option-description ol,
+.skill-route-card-prompt ul,
+.skill-route-card-prompt ol,
+.skill-builder-option-description ul,
+.skill-builder-option-description ol,
 .terminal-skill-description ul,
 .terminal-skill-description ol {
   padding-left: 18px;
@@ -442,8 +442,8 @@
 .control-task-result-output a,
 .environment-description-text a,
 .codex-accounts-runtime-note a,
-.agent-route-card-prompt a,
-.agent-builder-option-description a,
+.skill-route-card-prompt a,
+.skill-builder-option-description a,
 .terminal-skill-description a {
   color: var(--accent);
   text-decoration: none;
@@ -1180,7 +1180,7 @@
   display: none;
 }
 
-.agent-studio-view {
+.skill-studio-view {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
@@ -1188,14 +1188,14 @@
   align-items: start;
 }
 
-.agent-studio-list-pane,
-.agent-studio-form-pane {
+.skill-studio-list-pane,
+.skill-studio-form-pane {
   padding: 18px;
   display: grid;
   gap: 16px;
 }
 
-.agent-route-layout {
+.skill-route-layout {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: minmax(240px, 280px) minmax(260px, 320px) minmax(0, 1fr);
@@ -1203,57 +1203,57 @@
   min-height: calc(100dvh - 180px);
 }
 
-.agent-route-pane,
-.agent-workspace {
+.skill-route-pane,
+.skill-workspace {
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
-.agent-route-pane {
+.skill-route-pane {
   padding: 16px;
   gap: 14px;
 }
 
-.agent-route-pane-head,
-.agent-workspace-head {
+.skill-route-pane-head,
+.skill-workspace-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
-.agent-route-pane-copy {
+.skill-route-pane-copy {
   min-width: 0;
   display: grid;
   gap: 4px;
 }
 
-.agent-route-pane-copy p {
+.skill-route-pane-copy p {
   margin: 0;
   color: var(--ink-muted);
   font-size: 12px;
   line-height: 1.5;
 }
 
-.agent-route-pane-head h4,
-.agent-workspace-head h4 {
+.skill-route-pane-head h4,
+.skill-workspace-head h4 {
   margin: 0;
   font-size: 14px;
   color: var(--ink-strong);
 }
 
-.agent-route-list,
-.agent-session-list,
-.agent-thread {
+.skill-route-list,
+.skill-session-list,
+.skill-thread {
   min-height: 0;
   overflow-y: auto;
   display: grid;
   gap: 10px;
 }
 
-.agent-route-card {
+.skill-route-card {
   width: 100%;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 18px;
@@ -1267,7 +1267,7 @@
   transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.agent-route-card-button {
+.skill-route-card-button {
   width: 100%;
   border: 0;
   padding: 0;
@@ -1280,7 +1280,7 @@
   cursor: pointer;
 }
 
-.agent-session-card {
+.skill-session-card {
   width: 100%;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 18px;
@@ -1294,40 +1294,40 @@
   transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.agent-route-card:hover,
-.agent-session-card:hover {
+.skill-route-card:hover,
+.skill-session-card:hover {
   border-color: rgba(37, 99, 235, 0.16);
   transform: translateY(-1px);
   box-shadow: 0 14px 28px -24px rgba(15, 23, 42, 0.18);
 }
 
-.agent-route-card.is-active,
-.agent-session-card.is-active {
+.skill-route-card.is-active,
+.skill-session-card.is-active {
   border-color: rgba(37, 99, 235, 0.16);
   background: rgba(239, 246, 255, 0.92);
 }
 
-.agent-session-card.is-draft {
+.skill-session-card.is-draft {
   border-style: dashed;
 }
 
-.agent-route-card-head {
+.skill-route-card-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
 }
 
-.agent-route-card-copy,
-.agent-workspace-copy {
+.skill-route-card-copy,
+.skill-workspace-copy {
   min-width: 0;
   display: grid;
   gap: 4px;
 }
 
-.agent-route-card-copy strong,
-.agent-session-card strong,
-.agent-workspace-copy h4 {
+.skill-route-card-copy strong,
+.skill-session-card strong,
+.skill-workspace-copy h4 {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1337,9 +1337,9 @@
   letter-spacing: -0.02em;
 }
 
-.agent-route-card-copy span,
-.agent-session-card span,
-.agent-workspace-copy p {
+.skill-route-card-copy span,
+.skill-session-card span,
+.skill-workspace-copy p {
   margin: 0;
   color: var(--ink-muted);
   font-size: 12px;
@@ -1349,13 +1349,13 @@
   white-space: nowrap;
 }
 
-.agent-session-card em {
+.skill-session-card em {
   color: #64748b;
   font-size: 12px;
   font-style: normal;
 }
 
-.agent-route-state {
+.skill-route-state {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
@@ -1366,19 +1366,19 @@
   border: 1px solid transparent;
 }
 
-.agent-route-state.is-enabled {
+.skill-route-state.is-enabled {
   background: rgba(220, 252, 231, 0.88);
   border-color: rgba(22, 101, 52, 0.12);
   color: #166534;
 }
 
-.agent-route-state.is-disabled {
+.skill-route-state.is-disabled {
   background: rgba(248, 250, 252, 0.92);
   border-color: rgba(15, 23, 42, 0.08);
   color: #64748b;
 }
 
-.agent-route-card-prompt {
+.skill-route-card-prompt {
   margin: 0;
   color: var(--ink-body);
   font-size: 12px;
@@ -1389,13 +1389,13 @@
   overflow: hidden;
 }
 
-.agent-route-card-tags {
+.skill-route-card-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.agent-route-card-tags span {
+.skill-route-card-tags span {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
@@ -1408,24 +1408,24 @@
   font-weight: 600;
 }
 
-.agent-route-new {
+.skill-route-new {
   min-height: 34px;
   padding: 0 12px;
 }
 
-.agent-builder-form {
+.skill-builder-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px 14px;
 }
 
-.agent-builder-form label {
+.skill-builder-form label {
   display: grid;
   gap: 6px;
 }
 
-.agent-builder-form label span,
-.agent-builder-section h5 {
+.skill-builder-form label span,
+.skill-builder-section h5 {
   color: #64748b;
   font-size: 12px;
   font-weight: 700;
@@ -1433,9 +1433,9 @@
   text-transform: uppercase;
 }
 
-.agent-builder-form input[type="text"],
-.agent-builder-form input[type="number"],
-.agent-builder-form textarea {
+.skill-builder-form input[type="text"],
+.skill-builder-form input[type="number"],
+.skill-builder-form textarea {
   width: 100%;
   min-height: 40px;
   border-radius: 12px;
@@ -1448,17 +1448,17 @@
   box-sizing: border-box;
 }
 
-.agent-builder-form textarea {
+.skill-builder-form textarea {
   min-height: 140px;
   padding: 10px 12px;
   resize: vertical;
 }
 
-.agent-builder-wide {
+.skill-builder-wide {
   grid-column: 1 / -1;
 }
 
-.agent-builder-toggle {
+.skill-builder-toggle {
   display: flex !important;
   align-items: center;
   justify-content: space-between;
@@ -1470,12 +1470,12 @@
   background: rgba(248, 250, 252, 0.92);
 }
 
-.agent-builder-toggle input {
+.skill-builder-toggle input {
   width: 18px;
   height: 18px;
 }
 
-.agent-builder-section {
+.skill-builder-section {
   display: grid;
   gap: 10px;
   padding: 16px;
@@ -1484,17 +1484,17 @@
   background: rgba(248, 250, 252, 0.92);
 }
 
-.agent-builder-section h5 {
+.skill-builder-section h5 {
   margin: 0;
 }
 
-.agent-builder-options {
+.skill-builder-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.agent-builder-option {
+.skill-builder-option {
   display: inline-flex !important;
   align-items: center;
   gap: 8px;
@@ -1507,31 +1507,31 @@
   font-size: 13px;
 }
 
-.agent-builder-option input {
+.skill-builder-option input {
   margin: 0;
 }
 
-.agent-builder-option-description {
+.skill-builder-option-description {
   display: block;
   color: var(--ink-muted);
   font-size: 12px;
   line-height: 1.45;
 }
 
-.agent-builder-actions {
+.skill-builder-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.agent-builder-managed {
+.skill-builder-managed {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 4px;
 }
 
-.agent-builder-managed-item {
+.skill-builder-managed-item {
   min-width: 140px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 14px;
@@ -1541,7 +1541,7 @@
   gap: 4px;
 }
 
-.agent-builder-managed-item span {
+.skill-builder-managed-item span {
   color: var(--ink-muted);
   font-size: 11px;
   font-weight: 700;
@@ -1549,13 +1549,13 @@
   text-transform: uppercase;
 }
 
-.agent-builder-managed-item strong {
+.skill-builder-managed-item strong {
   color: var(--ink-strong);
   font-size: 13px;
   font-weight: 700;
 }
 
-.agent-builder-actions button {
+.skill-builder-actions button {
   min-height: 34px;
   border-radius: 999px;
   border: 1px solid var(--line-soft);
@@ -1568,22 +1568,22 @@
   cursor: pointer;
 }
 
-.agent-builder-actions button:disabled {
+.skill-builder-actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.agent-builder-status {
+.skill-builder-status {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
 }
 
-.agent-builder-status.is-success {
+.skill-builder-status.is-success {
   color: #166534;
 }
 
-.agent-builder-status.is-error {
+.skill-builder-status.is-error {
   color: #b91c1c;
 }
 
@@ -2327,27 +2327,27 @@
   white-space: pre-wrap;
 }
 
-.agent-workspace {
+.skill-workspace {
   padding: 18px;
   gap: 14px;
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
-.agent-workspace-meta {
+.skill-workspace-meta {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.agent-workspace-meta .route-field-row {
+.skill-workspace-meta .route-field-row {
   grid-template-columns: 88px minmax(0, 1fr);
   gap: 8px;
 }
 
-.agent-thread {
+.skill-thread {
   padding: 4px;
   align-content: start;
 }
 
-.agent-thread-empty {
+.skill-thread-empty {
   min-height: 160px;
   display: grid;
   place-items: center;
@@ -2360,20 +2360,20 @@
   padding: 20px;
 }
 
-.agent-thread-message {
+.skill-thread-message {
   display: grid;
   gap: 6px;
 }
 
-.agent-thread-message.is-user {
+.skill-thread-message.is-user {
   justify-items: end;
 }
 
-.agent-thread-message.is-assistant {
+.skill-thread-message.is-assistant {
   justify-items: start;
 }
 
-.agent-thread-bubble {
+.skill-thread-bubble {
   max-width: min(720px, 100%);
   border-radius: 18px;
   padding: 12px 14px;
@@ -2385,24 +2385,24 @@
   line-height: 1.65;
 }
 
-.agent-thread-message.is-user .agent-thread-bubble {
+.skill-thread-message.is-user .skill-thread-bubble {
   max-width: var(--user-message-max-width);
   background: #2563eb;
   border-color: #2563eb;
   color: #ffffff;
 }
 
-.agent-thread-message.is-error .agent-thread-bubble {
+.skill-thread-message.is-error .skill-thread-bubble {
   border-color: #fecaca;
   background: #fff1f2;
   color: #9f1239;
 }
 
-.agent-thread-message.is-streaming .agent-thread-bubble {
+.skill-thread-message.is-streaming .skill-thread-bubble {
   box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15), 0 18px 34px -28px rgba(37, 99, 235, 0.45);
 }
 
-.agent-thread-meta {
+.skill-thread-meta {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2411,17 +2411,17 @@
   font-size: 11px;
 }
 
-.agent-route-composer {
+.skill-route-composer {
   border: 1px solid var(--line-soft);
   border-radius: 16px;
   background: #ffffff;
 }
 
-.agent-route-composer textarea {
+.skill-route-composer textarea {
   min-height: 96px;
 }
 
-.agent-route-composer .composer-actions span {
+.skill-route-composer .composer-actions span {
   color: var(--ink-muted);
   font-size: 12px;
 }
@@ -2444,31 +2444,31 @@
     height: auto;
   }
 
-  .agent-route-layout {
+  .skill-route-layout {
     grid-template-columns: minmax(220px, 250px) minmax(240px, 280px) minmax(0, 1fr);
   }
 }
 
 @media (max-width: 1100px) {
-  .agent-studio-view {
+  .skill-studio-view {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .agent-builder-form {
+  .skill-builder-form {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .agent-route-layout {
+  .skill-route-layout {
     grid-template-columns: minmax(0, 1fr);
     min-height: auto;
   }
 
-  .agent-route-pane,
-  .agent-workspace {
+  .skill-route-pane,
+  .skill-workspace {
     grid-template-rows: auto auto;
   }
 
-  .agent-workspace {
+  .skill-workspace {
     grid-template-rows: auto minmax(260px, 1fr) auto;
   }
 }

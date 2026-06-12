@@ -698,7 +698,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-session-topline .task-summary-status");
   });
 
-  it("renders the navigation-owned session rail as a quiet title-only chat sidebar", () => {
+  it("renders the navigation-owned session rail as a quiet title-only chat sidebar with a compact actions menu", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
@@ -706,7 +706,7 @@ describe("shell layout stylesheet", () => {
       /\.nav-session-rail\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(stylesheet).toMatch(
-      /\.nav-session-rail \.runtime-session-card\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 60px;[\s\S]*?padding:\s*0 4px 0 10px;[\s\S]*?border-radius:\s*9px;[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*transparent;/,
+      /\.nav-session-rail \.runtime-session-card\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 32px;[\s\S]*?padding:\s*0 4px 0 10px;[\s\S]*?border-radius:\s*9px;[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*transparent;/,
     );
     expect(stylesheet).toMatch(
       /\.nav-session-rail \.runtime-session-card\.is-active\s*\{[\s\S]*?border-color:\s*transparent;[\s\S]*?background:\s*rgba\(37, 99, 235, 0\.08\);[\s\S]*?box-shadow:\s*none;/,
@@ -715,10 +715,16 @@ describe("shell layout stylesheet", () => {
       /\.nav-session-rail \.runtime-session-title\s*\{[\s\S]*?font-size:\s*14px;[\s\S]*?letter-spacing:\s*0;/,
     );
     expect(stylesheet).toMatch(
-      /\.nav-session-rail \.runtime-session-actions\s*\{[\s\S]*?min-width:\s*60px;[\s\S]*?gap:\s*2px;/,
+      /\.nav-session-rail \.runtime-session-actions\s*\{[\s\S]*?min-width:\s*28px;[\s\S]*?gap:\s*2px;/,
     );
     expect(stylesheet).toMatch(
-      /\.nav-session-rail \.runtime-session-action\s*\{[\s\S]*?min-width:\s*28px;[\s\S]*?min-height:\s*28px;[\s\S]*?border-radius:\s*8px;[\s\S]*?opacity:\s*0;/,
+      /\.nav-session-rail \.runtime-session-action\s*\{[\s\S]*?min-width:\s*28px;[\s\S]*?min-height:\s*28px;[\s\S]*?border-radius:\s*8px;[\s\S]*?opacity:\s*1;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.runtime-session-action-menu\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*0;[\s\S]*?min-width:\s*168px;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.nav-session-rail \.runtime-session-action-menu\s*\{[\s\S]*?top:\s*calc\(100% \+ 6px\);[\s\S]*?min-width:\s*152px;/,
     );
     expect(stylesheet).toMatch(
       /@media \(min-width: 761px\) \{[\s\S]*?\.primary-nav\.has-session-rail > \.menu\s*\{[\s\S]*?flex:\s*0 0 clamp\(260px, 34vh, 312px\);[\s\S]*?overflow-y:\s*auto;/,
@@ -889,9 +895,12 @@ describe("shell layout stylesheet", () => {
 
     expect(stylesheet).toContain(".workspace-details-content {");
     expect(stylesheet).toContain(".workspace-details-summary {");
-    expect(stylesheet).toContain("grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));");
+    expect(stylesheet).toContain("grid-template-columns: repeat(auto-fit, minmax(188px, 1fr));");
+    expect(stylesheet).toContain(".workspace-details-panel-head {");
+    expect(stylesheet).toContain(".workspace-details-close {");
     expect(stylesheet).toContain(".workspace-details-panel .route-field-row {");
-    expect(stylesheet).toContain("grid-template-columns: minmax(64px, 82px) minmax(0, 1fr);");
+    expect(stylesheet).toContain("grid-template-columns: minmax(62px, 84px) minmax(0, 1fr);");
+    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.72);");
     expect(stylesheet).toContain(".workspace-details-panel .route-field-row > span:first-child {");
     expect(stylesheet).toContain("text-transform: uppercase;");
     expect(stylesheet).toContain(".workspace-details-panel .route-field-value.is-multiline {");
@@ -909,8 +918,8 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("z-index: 130;");
     expect(stylesheet).toContain(".workspace-details-backdrop {");
     expect(stylesheet).toContain(".workspace-details-panel {");
-    expect(stylesheet).toContain("border-radius: 14px;");
-    expect(stylesheet).toContain("background: rgba(255, 255, 255, 0.98);");
+    expect(stylesheet).toContain("border-radius: 12px;");
+    expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);");
     expect(stylesheet).toContain("max-height: min(64vh, calc(100dvh - 168px));");
     expect(stylesheet).toContain("overflow: auto;");
     expect(stylesheet).toContain("overscroll-behavior: contain;");

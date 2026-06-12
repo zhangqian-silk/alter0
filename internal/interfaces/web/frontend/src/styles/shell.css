@@ -858,7 +858,6 @@ body {
   box-shadow: none;
 }
 
-.workspace-details-panel,
 .modal-dialog {
   border: 0;
   border-radius: 0;
@@ -1238,7 +1237,6 @@ body {
   box-shadow: none;
 }
 
-.workspace-details-panel,
 .modal-dialog {
   border: 0;
   border-radius: 0;
@@ -1533,7 +1531,6 @@ body {
   box-shadow: none;
 }
 
-.workspace-details-panel,
 .modal-dialog {
   border: 0;
   border-radius: 0;
@@ -3667,7 +3664,7 @@ body::after {
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  grid-template-columns: minmax(0, 1fr) 60px;
+  grid-template-columns: minmax(0, 1fr) 32px;
   gap: 4px;
   padding: 0 4px 0 10px;
   border-radius: 9px;
@@ -3760,7 +3757,7 @@ body::after {
 }
 
 .nav-session-rail .runtime-session-actions {
-  min-width: 88px;
+  min-width: 28px;
   gap: 2px;
 }
 
@@ -3771,15 +3768,6 @@ body::after {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
-  opacity: 0;
-}
-
-.nav-session-rail .runtime-session-card:hover .runtime-session-action,
-.nav-session-rail .runtime-session-card:focus-within .runtime-session-action {
-  opacity: 1;
-}
-
-.nav-session-rail .runtime-session-pin.is-pinned {
   opacity: 1;
 }
 
@@ -3787,6 +3775,11 @@ body::after {
 .nav-session-rail .runtime-session-action-icon svg {
   width: 16px;
   height: 16px;
+}
+
+.nav-session-rail .runtime-session-action-menu {
+  top: calc(100% + 6px);
+  min-width: 152px;
 }
 
 .nav-management-item {
@@ -7790,13 +7783,14 @@ body::after {
 }
 
 .runtime-session-actions {
+  position: relative;
   align-self: center;
   justify-self: end;
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  min-width: 88px;
+  min-width: 42px;
 }
 
 .runtime-session-action {
@@ -7825,6 +7819,54 @@ body::after {
 .runtime-session-action-icon svg {
   width: 18px;
   height: 18px;
+}
+
+.runtime-session-action-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 168px;
+  padding: 6px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 22px 48px -28px rgba(15, 23, 42, 0.34);
+}
+
+.runtime-session-menu-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(51, 65, 85, 0.96);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.runtime-session-menu-item:hover {
+  background: rgba(241, 245, 249, 0.98);
+}
+
+.runtime-session-menu-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.runtime-session-menu-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .runtime-session-details:hover {
@@ -8298,8 +8340,9 @@ body::after {
   inset: 0;
   border: 0;
   padding: 0;
-  background: rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.16);
   pointer-events: auto;
+  backdrop-filter: blur(2px);
 }
 
 .workspace-details-panel {
@@ -8307,26 +8350,72 @@ body::after {
   z-index: 1;
   display: grid;
   gap: 0;
-  padding: 12px 14px 14px;
-  border: 1px solid rgba(191, 219, 254, 0.92);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.98);
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);
   max-height: min(64vh, calc(100dvh - 168px));
   overflow: auto;
   overscroll-behavior: contain;
   pointer-events: auto;
-  box-shadow: 0 28px 60px -42px rgba(15, 23, 42, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  box-shadow: 0 24px 54px -34px rgba(15, 23, 42, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.workspace-details-panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px 10px 14px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.92);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+}
+
+.workspace-details-panel-head strong {
+  min-width: 0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.2;
+}
+
+.workspace-details-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.92);
+  color: #475569;
+  cursor: pointer;
+}
+
+.workspace-details-close:hover {
+  background: #eef2f7;
+  color: #0f172a;
+}
+
+.workspace-details-close svg {
+  width: 16px;
+  height: 16px;
 }
 
 .workspace-details-content {
   display: grid;
   gap: 10px;
+  padding: 12px;
 }
 
 .workspace-details-summary {
   display: grid;
-  gap: 8px 12px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(188px, 1fr));
 }
 
 .workspace-details-body {
@@ -8335,17 +8424,22 @@ body::after {
 }
 
 .workspace-details-panel .route-field-row {
-  grid-template-columns: minmax(64px, 82px) minmax(0, 1fr);
+  grid-template-columns: minmax(62px, 84px) minmax(0, 1fr);
   gap: 8px;
+  align-items: start;
+  padding: 9px 10px;
+  border: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
   font-size: 13px;
   line-height: 1.4;
 }
 
 .workspace-details-panel .route-field-row > span:first-child {
-  color: #64748b;
-  font-size: 11px;
+  color: #758195;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
@@ -9871,7 +9965,7 @@ body::after {
 }
 
 .runtime-session-actions {
-  min-width: 88px;
+  min-width: 42px;
 }
 
 .runtime-session-action {
@@ -10373,7 +10467,7 @@ body::after {
   }
 
   .primary-nav .nav-session-rail .runtime-session-actions {
-    min-width: 60px;
+    min-width: 28px;
   }
 
   .primary-nav .nav-session-rail .runtime-session-action {
@@ -11891,7 +11985,6 @@ body {
   box-shadow: none;
 }
 
-.workspace-details-panel,
 .modal-dialog {
   border: 0;
   border-radius: 0;

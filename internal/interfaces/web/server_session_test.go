@@ -32,6 +32,7 @@ type stubSessionHistory struct {
 	lastDeletedID     string
 	lastPinnedID      string
 	lastPinnedValue   bool
+	pinErr            error
 	lastTouchedID     string
 	cleanupResult     sessionapp.CleanupInactiveSessionsResult
 	lastCleanupOption sessionapp.CleanupInactiveSessionsOptions
@@ -55,7 +56,7 @@ func (s *stubSessionHistory) DeleteSession(sessionID string) error {
 func (s *stubSessionHistory) SetSessionPinned(sessionID string, pinned bool) error {
 	s.lastPinnedID = sessionID
 	s.lastPinnedValue = pinned
-	return nil
+	return s.pinErr
 }
 
 func (s *stubSessionHistory) TouchSession(sessionID string, at time.Time) error {
@@ -341,6 +342,51 @@ func TestSessionPinHandlerUpdatesPinnedState(t *testing.T) {
 	}
 	if history.lastPinnedID != "session-pin" || !history.lastPinnedValue {
 		t.Fatalf("expected pinned session-pin=true, got id=%q value=%v", history.lastPinnedID, history.lastPinnedValue)
+	}
+}
+
+func TestSessionPinHandlerUpdatesConversationRuntimeRegistryWhenHistoryIsMissing(t *testing.T) {
+	registry, err := newFileConversationRuntimeSessionRegistry(filepath.Join(t.TempDir(), "conversation-runtime.json"))
+	if err != nil {
+		t.Fatalf("create registry: %v", err)
+	}
+	if _, err := registry.Upsert(conversationRuntimeSessionRegistryEntry{
+		SessionID:  "blank-chat",
+		Route:      conversationRuntimeRouteChat,
+		Status:     conversationRuntimeSessionStatusReady,
+		Title:      "New",
+		TitleAuto:  true,
+		CreatedAt:  time.Date(2026, 4, 23, 9, 0, 0, 0, time.UTC),
+		TargetType: "model",
+		TargetID:   "raw-model",
+		TargetName: "Raw Model",
+	}); err != nil {
+		t.Fatalf("upsert registry entry: %v", err)
+	}
+
+	history := &stubSessionHistory{pinErr: sessionapp.ErrSessionNotFound}
+	server := &Server{
+		sessions:                    history,
+		conversationRuntimeSessions: registry,
+		logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/blank-chat/pin", strings.NewReader(`{"pinned":true}`))
+	rec := httptest.NewRecorder()
+	server.sessionMessageListHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	if history.lastPinnedID != "blank-chat" || !history.lastPinnedValue {
+		t.Fatalf("expected history pin attempt blank-chat=true, got id=%q value=%v", history.lastPinnedID, history.lastPinnedValue)
+	}
+	entry, ok := registry.Resolve(conversationRuntimeRouteChat, "blank-chat")
+	if !ok {
+		t.Fatalf("expected registry entry")
+	}
+	if !entry.Pinned {
+		t.Fatalf("expected registry entry to be pinned")
 	}
 }
 
