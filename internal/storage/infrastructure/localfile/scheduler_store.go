@@ -16,6 +16,7 @@ type persistedJob struct {
 	Name           string                     `json:"name"`
 	Interval       string                     `json:"interval,omitempty"`
 	Enabled        bool                       `json:"enabled"`
+	Builtin        bool                       `json:"builtin,omitempty"`
 	SessionID      string                     `json:"session_id,omitempty"`
 	UserID         string                     `json:"user_id,omitempty"`
 	ChannelID      string                     `json:"channel_id,omitempty"`
@@ -78,6 +79,7 @@ func (s *SchedulerStore) Load(_ context.Context) ([]schedulerdomain.Job, error) 
 			Name:           item.Name,
 			Interval:       interval,
 			Enabled:        item.Enabled,
+			Builtin:        item.Builtin,
 			SessionID:      item.SessionID,
 			UserID:         item.UserID,
 			ChannelID:      item.ChannelID,
@@ -107,6 +109,7 @@ func (s *SchedulerStore) Save(_ context.Context, jobs []schedulerdomain.Job) err
 			Name:           job.Name,
 			Interval:       interval,
 			Enabled:        job.Enabled,
+			Builtin:        job.Builtin,
 			SessionID:      job.SessionID,
 			UserID:         job.UserID,
 			ChannelID:      job.ChannelID,

@@ -494,4 +494,63 @@ describe("ReactManagedControlRouteBody", () => {
     expect(screen.getByText("Asia/Shanghai")).toBeInTheDocument();
     expect(screen.getByText("summarize latest tasks")).toBeInTheDocument();
   });
+
+  it("shows builtin cron jobs as protected and allows disabling them", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "system-memory-maintenance",
+              name: "Memory Maintenance",
+              enabled: true,
+              builtin: true,
+              schedule_mode: "daily",
+              cron_expression: "10 5 * * *",
+              timezone: "Asia/Shanghai",
+              task_config: {
+                input: "Run system memory maintenance.",
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "system-memory-maintenance",
+          name: "Memory Maintenance",
+          enabled: false,
+          builtin: true,
+          schedule_mode: "daily",
+          cron_expression: "10 5 * * *",
+          timezone: "Asia/Shanghai",
+          task_config: {
+            input: "Run system memory maintenance.",
+          },
+        }),
+      );
+
+    render(<ReactManagedControlRouteBody route="cron-jobs" language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Memory Maintenance")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Built-in")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Disable job" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/control/cron/jobs/system-memory-maintenance",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ enabled: false }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Disabled")).toBeInTheDocument();
+    });
+  });
 });

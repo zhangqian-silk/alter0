@@ -33,7 +33,15 @@ type memoryContextResolution struct {
 	InjectedIDs []string
 }
 
-type memoryContextResolver struct{}
+type MemoryContextOptions struct {
+	DailyDir          string
+	LongTermPath      string
+	MandatoryFilePath string
+}
+
+type memoryContextResolver struct {
+	options MemoryContextOptions
+}
 
 type memorySelectionSpec struct {
 	ID       string
@@ -53,8 +61,20 @@ type memoryFileRecord struct {
 	Content   string
 }
 
-func newMemoryContextResolver() *memoryContextResolver {
-	return &memoryContextResolver{}
+func newMemoryContextResolver(options ...MemoryContextOptions) *memoryContextResolver {
+	resolver := &memoryContextResolver{}
+	if len(options) > 0 {
+		resolver.options = normalizeMemoryContextOptions(options[0])
+	}
+	return resolver
+}
+
+func normalizeMemoryContextOptions(options MemoryContextOptions) MemoryContextOptions {
+	return MemoryContextOptions{
+		DailyDir:          strings.TrimSpace(options.DailyDir),
+		LongTermPath:      strings.TrimSpace(options.LongTermPath),
+		MandatoryFilePath: strings.TrimSpace(options.MandatoryFilePath),
+	}
 }
 
 func (r *memoryContextResolver) Resolve(msg shareddomain.UnifiedMessage) memoryContextResolution {
@@ -85,7 +105,7 @@ func (r *memoryContextResolver) Resolve(msg shareddomain.UnifiedMessage) memoryC
 	records := make([]memoryFileRecord, 0, len(selected))
 	remainingChars := memoryFileTotalMaxChars
 	for _, selectionID := range selected {
-		spec, ok := memorySelectionByID(now)[strings.ToLower(strings.TrimSpace(selectionID))]
+		spec, ok := memorySelectionByID(now, r.options)[strings.ToLower(strings.TrimSpace(selectionID))]
 		if !ok {
 			continue
 		}
@@ -125,7 +145,7 @@ func (r *memoryContextResolver) Resolve(msg shareddomain.UnifiedMessage) memoryC
 	return resolution
 }
 
-func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
+func memorySelectionByID(now time.Time, options MemoryContextOptions) map[string]memorySelectionSpec {
 	day := now.UTC().Format("2006-01-02")
 	yesterday := now.UTC().Add(-24 * time.Hour).Format("2006-01-02")
 	return map[string]memorySelectionSpec{
@@ -139,7 +159,9 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 			ID:       memorySelectionSoulMD,
 			Title:    "SOUL.md",
 			Writable: true,
-			Paths:    func(_ shareddomain.UnifiedMessage, _ time.Time) []string { return []string{"SOUL.md"} },
+			Paths: func(_ shareddomain.UnifiedMessage, _ time.Time) []string {
+				return prependConfiguredPath(options.MandatoryFilePath, "SOUL.md")
+			},
 		},
 		memorySelectionAgentsMD: {
 			ID:       memorySelectionAgentsMD,
@@ -154,11 +176,11 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 			Title:    "MEMORY.md",
 			Writable: true,
 			Paths: func(_ shareddomain.UnifiedMessage, _ time.Time) []string {
-				return []string{
+				return prependConfiguredPath(options.LongTermPath,
 					filepath.ToSlash(filepath.Join(".alter0", "memory", "long-term", "MEMORY.md")),
 					"MEMORY.md",
 					"memory.md",
-				}
+				)
 			},
 		},
 		memorySelectionDailyToday: {
@@ -166,10 +188,10 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 			Title:    "daily memory (today)",
 			Writable: true,
 			Paths: func(_ shareddomain.UnifiedMessage, _ time.Time) []string {
-				return []string{
+				return prependConfiguredPath(joinConfiguredMemoryDay(options.DailyDir, day),
 					filepath.ToSlash(filepath.Join(".alter0", "memory", day+".md")),
 					filepath.ToSlash(filepath.Join("memory", day+".md")),
-				}
+				)
 			},
 		},
 		memorySelectionDailyPrevious: {
@@ -177,10 +199,10 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 			Title:    "daily memory (yesterday)",
 			Writable: true,
 			Paths: func(_ shareddomain.UnifiedMessage, _ time.Time) []string {
-				return []string{
+				return prependConfiguredPath(joinConfiguredMemoryDay(options.DailyDir, yesterday),
 					filepath.ToSlash(filepath.Join(".alter0", "memory", yesterday+".md")),
 					filepath.ToSlash(filepath.Join("memory", yesterday+".md")),
-				}
+				)
 			},
 		},
 		memorySelectionAgentSession: {
@@ -196,6 +218,35 @@ func memorySelectionByID(now time.Time) map[string]memorySelectionSpec {
 			},
 		},
 	}
+}
+
+func prependConfiguredPath(configuredPath string, fallbacks ...string) []string {
+	items := make([]string, 0, len(fallbacks)+1)
+	seen := map[string]struct{}{}
+	appendPath := func(path string) {
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			return
+		}
+		key := filepath.Clean(filepath.FromSlash(trimmed))
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		items = append(items, trimmed)
+	}
+	appendPath(configuredPath)
+	for _, fallback := range fallbacks {
+		appendPath(fallback)
+	}
+	return items
+}
+
+func joinConfiguredMemoryDay(dailyDir string, day string) string {
+	if strings.TrimSpace(dailyDir) == "" || strings.TrimSpace(day) == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Join(dailyDir, day+".md"))
 }
 
 var memoryAgentIDSanitizer = regexp.MustCompile(`[^a-z0-9._-]+`)
@@ -396,7 +447,7 @@ func loadSelectionMemoryFiles(spec memorySelectionSpec, repoRoot string, msg sha
 	seenRealpaths := map[string]struct{}{}
 	existingCount := 0
 	for _, relativePath := range paths {
-		candidatePath := filepath.Join(repoRoot, filepath.FromSlash(relativePath))
+		candidatePath := resolveMemoryCandidatePath(repoRoot, relativePath)
 		record := memoryFileRecord{
 			ID:        spec.ID,
 			Selection: spec.ID,
@@ -435,11 +486,19 @@ func loadSelectionMemoryFiles(spec memorySelectionSpec, repoRoot string, msg sha
 			ID:        spec.ID,
 			Selection: spec.ID,
 			Title:     spec.Title,
-			Path:      filepath.ToSlash(filepath.Join(repoRoot, filepath.FromSlash(paths[0]))),
+			Path:      filepath.ToSlash(resolveMemoryCandidatePath(repoRoot, paths[0])),
 			Writable:  spec.Writable,
 		})
 	}
 	return records
+}
+
+func resolveMemoryCandidatePath(repoRoot string, path string) string {
+	candidate := filepath.FromSlash(strings.TrimSpace(path))
+	if filepath.IsAbs(candidate) {
+		return filepath.Clean(candidate)
+	}
+	return filepath.Clean(filepath.Join(repoRoot, candidate))
 }
 
 func normalizeMemoryContent(content string) string {

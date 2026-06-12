@@ -98,7 +98,7 @@ memory/
   conversations/<conversation_id>/summary.md
 ```
 
-用户显式要求“记住”时，CLI Agent 可更新对应记忆文件；会话内压缩由 Claude Code 或 Codex 自身处理；跨会话长期记忆由系统维护任务每日定时启动同一 CLI Agent 并加载 `memory-maintenance` Skill 进行整理。维护状态、上次运行、下次运行、变更文件与失败重试入口在 `Settings > Maintenance` 展示。
+用户显式要求“记住”时，CLI Agent 可更新对应记忆文件；会话内压缩由 Claude Code 或 Codex 自身处理；跨会话长期记忆由系统维护任务每日定时启动同一 CLI Agent 并加载 `memory-maintenance` Skill 进行整理。记忆维护与会话清理作为 Scheduler 内置任务随服务启动注册，不能删除，可在 `Settings > Schedules` 停用或重新启用；维护状态、上次运行、下次运行、变更文件与失败重试入口在 `Settings > Maintenance` 展示。
 
 ## Repository Layout
 
@@ -128,7 +128,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Terminal / Settings` 三个稳定入口，主工作区按运行态或设置页渲染。`/chat` 是唯一对话入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；历史 `/agent-runtime` 会自动映射到 `/chat`，旧 Agent 会话会作为 Chat 会话继续展示和恢复。`/settings` 承接运行时、Skill、Memory、Maintenance、Workspaces 与 Schedules；历史 `/management` 会自动映射到 `/settings`。
 
-当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；会话条目尾侧提供 `Details` 与 `Delete` 两个独立图标按钮，查看详情会聚焦对应会话并打开详情面板，删除才进入会话删除链路。右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。工作台采用参考 Gemini 的扁平视觉基线：主工作区、Settings frame、管理分区、表格、详情面板和空态不再依赖外层圆角、卡片边框或厚阴影，视觉层级主要通过留白、轻量分割线、选中态底色和 Composer 胶囊建立；设计图保存在 `docs/design/workbench-flat-redesign.html` 与 `docs/design/workbench-flat-redesign-*.png`。Chat、Terminal 与 Settings 顶部标题使用同一套紧凑工作台标题栏节奏：运行页显示会话标题、状态信号与 `Details`，Settings 显示同规格标题标记与路由标题，并收进同规格主面板 frame，不再使用独立大标题块、标题副文案或页面出现动效；移动端 `Menu / New` 等边缘操作使用无边框图标按钮并保留可访问文本标签。Settings 正文作为 frame 内部滚动区承载紧凑分区：`Runtime` 管理 Model Provider 与 Codex Runtime，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Maintenance` 管理自动记忆维护和会话清理，`Workspaces` 管理会话/任务工作区，`Schedules` 管理定时任务与触发记录。旧管理子页面不再作为一级路由展示。
+当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；会话条目尾侧提供 `Details` 与 `Delete` 两个独立图标按钮，查看详情会聚焦对应会话并打开详情面板，删除才进入会话删除链路。右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。工作台采用参考 Gemini 的扁平视觉基线：主工作区、Settings frame、管理分区、表格、详情面板和空态不再依赖外层圆角、卡片边框或厚阴影，视觉层级主要通过留白、轻量分割线、选中态底色和 Composer 胶囊建立；设计图保存在 `docs/design/workbench-flat-redesign.html` 与 `docs/design/workbench-flat-redesign-*.png`。Chat、Terminal 与 Settings 顶部标题使用同一套紧凑工作台标题栏节奏：运行页显示会话标题、状态信号与 `Details`，Settings 显示同规格标题标记与路由标题，并收进同规格主面板 frame，不再使用独立大标题块、标题副文案或页面出现动效；移动端 `Menu / New` 等边缘操作使用无边框图标按钮并保留可访问文本标签。Settings 正文作为 frame 内部滚动区承载紧凑分区：`Runtime` 管理 Model Provider 与 Codex Runtime，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Maintenance` 查看维护状态并执行手动维护，`Workspaces` 管理会话/任务工作区，`Schedules` 管理普通定时任务、内置维护任务启停与触发记录。旧管理子页面不再作为一级路由展示。
 
 `Chat / Terminal` 的消息区采用轻量 IM 式消息流：用户消息右对齐并使用低对比紧凑气泡，助手消息左对齐为无边框正文阅读流，思考过程默认收敛为 `Thinking / 已思考` 内联披露入口，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情。Chat 发送后会立即创建本地 running 过程步骤，收到后端 `process` 事件后替换为真实执行步骤，避免流式静默阶段没有过程入口。最终回复统一使用稳定的运行页 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块，逐条消息时间不在正文区显示。直连 Codex 的流式消息只把 `final` 或旧版无频道内容进入 assistant 正文；`commentary` 收敛为结构化过程步骤并展示在 `Thinking / 已思考` 内联区域，其他非最终频道不进入最终回复或会话正文。长会话默认优先展示最新消息，顶部提供 `Load earlier messages / 加载更早消息`，滚到顶部也会按批次渐进加载更早历史；右侧阅读定位条支持连续 `上一条 / 下一条` 跳转。
 `/chat`、`/terminal`、`/settings` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 内可通过语言切换入口改为中文。登录页只携带当前 canonical path 作为稳定回跳入口，不携带 query。`Chat / Terminal` 使用统一 `session_id=<8位短hash>` 表达显式会话恢复，不把完整会话 id 暴露在 URL 与页面提示中；从主导航进入 `Chat` 会清理旧 `session_id` 并默认打开当前最新会话。
@@ -653,8 +653,8 @@ curl -X POST http://127.0.0.1:18088/api/messages \
 3. Runtime Resolver 优先使用已启用且健康的 `Claude Code + provider profile`；无可用 Provider 或 Claude Code 运行失败时使用 `Codex Direct`。
 4. 启动前会在当前 Session 工作区注入 `CLAUDE.md` 或 `AGENTS.md`、Skill 副本、Memory 摘要、MCP 配置、仓库/附件/产物路径和工作区边界；Codex Direct 的托管 `AGENTS.md` 同时约束用户可见产物必须先发布到会话预览或服务域名，不得把服务器本地路径作为用户验收入口。
 5. Skill 文件由 `docs/skills/<skill_id>/SKILL.md` 承载，业务能力通过 Skill 复用；用户可在会话级调整公有 Skill 选择。
-6. Memory Files 当前使用 `memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。
-7. 用户显式要求记住时，当前 CLI agent 可写入对应 Markdown 记忆；会话归档生成 summary；系统维护任务每日加载 `memory-maintenance` Skill 做长期整理。
+6. Memory Files 当前使用仓库级 `USER.md`、强约束 `SOUL.md`、Agent 私有 `docs/agents/<agent_id>/AGENTS.md`、启动参数解析后的长期记忆文件和天级记忆目录；默认长期记忆为 `.alter0/memory/long-term/MEMORY.md`，默认天级记忆为 `.alter0/memory/<YYYY-MM-DD>.md`。
+7. 用户显式要求记住时，当前 CLI agent 可写入对应 Markdown 记忆；会话归档生成 summary；系统维护任务每日加载 `memory-maintenance` Skill 做长期整理。系统维护任务作为 Scheduler 内置 Cron Job 注册，不可删除，可停用或重新启用。
 8. Web `Profiles` 页面用于管理 Runtime Profile；`Chat` 是通用入口，`Agent` 页面作为预选 Skill 入口的通用运行页。
 
 ### Cron Jobs
@@ -662,6 +662,12 @@ curl -X POST http://127.0.0.1:18088/api/messages \
 ```bash
 # 列表
 curl http://127.0.0.1:18088/api/control/cron/jobs
+
+# 内置任务返回 builtin=true；例如 system-memory-maintenance 与 system-session-cleanup。
+# 内置任务不能 DELETE，可通过 enabled 停用或重新启用。
+curl -X PUT http://127.0.0.1:18088/api/control/cron/jobs/system-memory-maintenance \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":false}'
 
 # 创建/更新（可视化字段 + cron_expression）
 curl -X PUT http://127.0.0.1:18088/api/control/cron/jobs/job1 \

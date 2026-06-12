@@ -208,7 +208,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
                 ) : null}
                 {item.onDelete ? (
                   <button
-                    className={item.deleteClassName || "runtime-session-action runtime-session-delete"}
+                    className={item.deleteClassName || ["runtime-session-action", "runtime-session-delete"].join(" ")}
                     type="button"
                     aria-label={item.deleteAriaLabel || item.deleteLabel}
                     disabled={item.deleting}

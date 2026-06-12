@@ -269,7 +269,11 @@ func main() {
 		Codex:          codexProcessor,
 		Logger:         logger,
 	})
-	executor := execapp.NewServiceWithSkills(processor, control, logger)
+	executor := execapp.NewServiceWithSkillsAndMemoryOptions(processor, control, logger, execapp.MemoryContextOptions{
+		DailyDir:          resolvedDailyMemoryDir,
+		LongTermPath:      resolvedLongTermMemoryPath,
+		MandatoryFilePath: resolvedMandatoryContextFile,
+	})
 	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
 	taskSummaryRuntime := tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
 		DailyDir:    resolvedDailyMemoryDir,

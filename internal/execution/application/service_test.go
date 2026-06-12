@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
@@ -685,6 +686,73 @@ func TestExecuteNaturalLanguageAutoRecallsSelectedMemorySnippets(t *testing.T) {
 	}
 	if memoryContext.Recall[0].Line != 2 {
 		t.Fatalf("expected recalled line 2, got %+v", memoryContext.Recall[0])
+	}
+}
+
+func TestExecuteNaturalLanguageInjectsConfiguredMemoryStoreFiles(t *testing.T) {
+	root := t.TempDir()
+	storageDir := t.TempDir()
+	dailyDir := filepath.Join(storageDir, "memory")
+	longTermPath := filepath.Join(dailyDir, "long-term", "MEMORY.md")
+	today := time.Date(2026, 3, 3, 9, 30, 0, 0, time.UTC)
+	todayPath := filepath.Join(dailyDir, "2026-03-03.md")
+	if err := os.MkdirAll(filepath.Dir(longTermPath), 0o755); err != nil {
+		t.Fatalf("mkdir long-term memory dir: %v", err)
+	}
+	if err := os.WriteFile(longTermPath, []byte("# Long-Term Memory\n- runtime: configured storage"), 0o644); err != nil {
+		t.Fatalf("write long-term memory: %v", err)
+	}
+	if err := os.WriteFile(todayPath, []byte("# Daily Memory\n- today: configured storage"), 0o644); err != nil {
+		t.Fatalf("write daily memory: %v", err)
+	}
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir temp root: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(previousWD)
+	})
+
+	processor := &stubProcessor{output: "ok"}
+	service := NewServiceWithSkillsAndMemoryOptions(processor, nil, nil, MemoryContextOptions{
+		DailyDir:     dailyDir,
+		LongTermPath: longTermPath,
+	})
+
+	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "m-configured-memory",
+		SessionID:   "s-configured-memory",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "use configured storage",
+		TraceID:     "t-configured-memory",
+		ReceivedAt:  today,
+		Metadata: map[string]string{
+			memoryIncludeFilterKey: `["memory_long_term","memory_daily_today"]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+	}
+
+	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
+	longTerm, ok := findMemoryFileBySelection(memoryContext, memorySelectionLongTerm)
+	if !ok {
+		t.Fatalf("expected %s in memory context: %+v", memorySelectionLongTerm, memoryContext.Files)
+	}
+	if longTerm.Path != filepath.ToSlash(longTermPath) || !strings.Contains(longTerm.Content, "configured storage") {
+		t.Fatalf("unexpected configured long-term memory file: %+v", longTerm)
+	}
+	daily, ok := findMemoryFileBySelection(memoryContext, memorySelectionDailyToday)
+	if !ok {
+		t.Fatalf("expected %s in memory context: %+v", memorySelectionDailyToday, memoryContext.Files)
+	}
+	if daily.Path != filepath.ToSlash(todayPath) || !strings.Contains(daily.Content, "today: configured storage") {
+		t.Fatalf("unexpected configured daily memory file: %+v", daily)
 	}
 }
 

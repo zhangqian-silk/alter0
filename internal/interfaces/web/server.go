@@ -507,6 +507,7 @@ type cronJobResponse struct {
 	ID             string                 `json:"id"`
 	Name           string                 `json:"name"`
 	Enabled        bool                   `json:"enabled"`
+	Builtin        bool                   `json:"builtin,omitempty"`
 	Timezone       string                 `json:"timezone"`
 	ScheduleMode   string                 `json:"schedule_mode"`
 	CronExpression string                 `json:"cron_expression"`
@@ -713,6 +714,7 @@ func NewServer(
 		workspaceRuntime:            newWorkspaceServiceRuntime(logger),
 	}
 	server.ensureMaintenanceService()
+	server.registerMaintenanceSchedulerJobs()
 	return server
 }
 
@@ -813,8 +815,6 @@ func (s *Server) Run(ctx context.Context) error {
 	if s.webLoginEnabled {
 		handler = s.authMiddleware(handler)
 	}
-	s.startMaintenanceScheduler(ctx)
-
 	server := &http.Server{
 		Addr:    s.addr,
 		Handler: handler,
@@ -4279,6 +4279,23 @@ func (s *Server) cronJobItemHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
 		}
+		if existing, ok := s.findCronJob(jobID); ok && existing.Builtin {
+			if req.Enabled == nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "builtin scheduler job can only be enabled or disabled"})
+				return
+			}
+			updated, found, err := s.scheduler.SetEnabled(jobID, *req.Enabled)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			if !found {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "cron job not found"})
+				return
+			}
+			writeJSON(w, http.StatusOK, toCronJobResponse(updated))
+			return
+		}
 
 		interval := time.Duration(0)
 		intervalRaw := strings.TrimSpace(req.Interval)
@@ -4328,6 +4345,10 @@ func (s *Server) cronJobItemHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, toCronJobResponse(normalized))
 	case http.MethodDelete:
+		if existing, ok := s.findCronJob(jobID); ok && existing.Builtin {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "builtin scheduler job cannot be deleted"})
+			return
+		}
 		if !s.scheduler.Delete(jobID) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "cron job not found"})
 			return
@@ -4336,6 +4357,19 @@ func (s *Server) cronJobItemHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func (s *Server) findCronJob(jobID string) (schedulerdomain.Job, bool) {
+	if s == nil || s.scheduler == nil {
+		return schedulerdomain.Job{}, false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(jobID))
+	for _, job := range s.scheduler.List() {
+		if strings.ToLower(strings.TrimSpace(job.ID)) == normalized {
+			return job, true
+		}
+	}
+	return schedulerdomain.Job{}, false
 }
 
 func (s *Server) cronJobRunsHandler(w http.ResponseWriter, r *http.Request, jobID string) {
@@ -4391,6 +4425,7 @@ func toCronJobResponse(job schedulerdomain.Job) cronJobResponse {
 		ID:             job.ID,
 		Name:           job.Name,
 		Enabled:        job.Enabled,
+		Builtin:        job.Builtin,
 		Timezone:       job.Timezone,
 		ScheduleMode:   string(job.ScheduleMode),
 		CronExpression: job.CronExpression,

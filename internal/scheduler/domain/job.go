@@ -17,6 +17,7 @@ type Job struct {
 	Name           string            `json:"name"`
 	Interval       time.Duration     `json:"-"`
 	Enabled        bool              `json:"enabled"`
+	Builtin        bool              `json:"builtin,omitempty"`
 	SessionID      string            `json:"session_id,omitempty"`
 	UserID         string            `json:"user_id,omitempty"`
 	ChannelID      string            `json:"channel_id,omitempty"`
@@ -39,6 +40,7 @@ func (j Job) Normalize() (Job, error) {
 		Name:           strings.TrimSpace(j.Name),
 		Interval:       j.Interval,
 		Enabled:        j.Enabled,
+		Builtin:        j.Builtin,
 		SessionID:      strings.TrimSpace(j.SessionID),
 		UserID:         strings.TrimSpace(j.UserID),
 		ChannelID:      strings.TrimSpace(j.ChannelID),

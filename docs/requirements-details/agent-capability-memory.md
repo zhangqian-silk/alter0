@@ -69,25 +69,26 @@ Agent Capability & Memory 负责 CLI Agent Runtime 的上下文注入、Skill �
 ### 文件结构
 
 ```text
-memory/
-  USER.md
-  MEMORY.md
-  daily/YYYY-MM-DD.md
-  projects/<project>.md
-  conversations/<conversation_id>/summary.md
+USER.md
+SOUL.md
+docs/agents/<agent_id>/AGENTS.md
+.alter0/memory/
+  YYYY-MM-DD.md
+  long-term/MEMORY.md
 ```
 
 - `USER.md` 保存稳定用户偏好、身份信息、长期协作习惯和跨项目约束。
-- `MEMORY.md` 保存跨会话长期事实、常用约定、已确认偏好和可复用经验。
-- `daily/YYYY-MM-DD.md` 保存当天重要上下文、阶段性进展和待整理事实。
-- `projects/<project>.md` 保存项目级事实、仓库路径、技术栈、部署规则、交付偏好和长期约束。
-- `conversations/<conversation_id>/summary.md` 保存单会话归档摘要、决策、结果、待办和记忆候选。
+- `SOUL.md` 保存最高优先级强约束；启动参数 `mandatory-context-file` 可把该文件解析到自定义位置。
+- `docs/agents/<agent_id>/AGENTS.md` 保存 Agent 私有运行规则。
+- `long-term/MEMORY.md` 保存跨会话长期事实、常用约定、已确认偏好和可复用经验；实际路径来自 `long-term-memory-path`。
+- `<YYYY-MM-DD>.md` 保存当天重要上下文、阶段性进展和待整理事实；实际目录来自 `daily-memory-dir`。
 
 用户可见 Markdown 保持可读结构，不写入 confidence、source、status、sensitivity 等机器元数据。需要检索加速时，可生成派生索引；Markdown 文件仍是真相源。
 
 ### 注入协议
 
 - 执行前根据会话、项目、用户输入和选中 Skill 解析 `MemoryContext`。
+- 执行注入、Web Memory 只读页面、任务摘要运行时和系统维护任务使用同一组已解析 `daily-memory-dir`、`long-term-memory-path` 与 `mandatory-context-file`。
 - 注入内容包含文件路径、存在状态、可写性、内容摘要、召回片段和截断标记。
 - 单文件与总注入体积必须设置上限；超出预算时优先注入摘要、最近事实、强相关片段和项目关键约束。
 - 本轮命中长期记忆时，执行前生成 Active Recall 摘要，作为隐藏上下文注入 CLI agent。
@@ -96,12 +97,12 @@ memory/
 
 - 用户显式表达“记住”“以后都按这个来”“把这个作为偏好”时，当前 CLI agent 可直接更新目标记忆文件。
 - 会话完成或归档时，系统生成 `ConversationSummary`，记录目标、关键决策、已完成结果、未完成事项、文件/链接/任务引用和记忆候选。
-- 系统维护任务每日定时启动 CLI Agent 并加载 `memory-maintenance` Skill，把会话摘要、天级记忆和项目记忆合并到长期记忆。该任务使用固定默认策略，不向用户暴露复杂调度或文件选择配置。
+- 系统维护任务以 Scheduler 内置 Job 形式每日定时启动 CLI Agent 并加载 `memory-maintenance` Skill，把会话摘要、天级记忆和项目记忆合并到长期记忆。该任务使用固定默认策略，不向用户暴露复杂文件选择配置；内置 Job 不能删除，但可在 Scheduler 控制面停用或重新启用。
 - 任务完成后生成或刷新任务摘要，供 Memory 页面展示和后续召回。
 
 ### 自动维护
 
-- 记忆维护任务固定作为系统维护能力运行，默认读取长期记忆、当日/昨日天级记忆、用户记忆、项目记忆与会话摘要候选。
+- 记忆维护任务固定作为系统维护能力运行，并作为 Scheduler 内置 Job 注册，默认读取长期记忆、当日/昨日天级记忆、用户记忆、项目记忆与会话摘要候选。
 - 维护结果需记录运行状态、开始/完成时间、下次运行时间、变更文件、失败错误；CLI Agent Runtime 不可用时必须记录为失败，失败后可从 `Settings > Maintenance` 手动重试。
 - 手动执行记忆维护与每日自动维护走同一执行链路，均通过 CLI Agent Runtime 注入 `memory-maintenance` Skill，不提供额外文件范围或整理策略配置项。
 

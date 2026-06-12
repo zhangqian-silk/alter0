@@ -4,6 +4,7 @@
 
 - Scheduler Manager 到点触发 Cron UnifiedMessage。
 - 每次 Cron 触发使用独立会话。
+- 服务内置 Scheduler Job 随 Manager 注册后出现在列表中，不能删除，只能切换 enabled 状态。
 
 ## 边界
 

@@ -62,6 +62,17 @@ func NewServiceWithSkills(
 	return NewServiceWithSkillsAndSessionProfileExtractor(processor, skillSource, nil, logger)
 }
 
+func NewServiceWithSkillsAndMemoryOptions(
+	processor execdomain.NLProcessor,
+	skillSource SkillCapabilitySource,
+	logger *slog.Logger,
+	memoryOptions MemoryContextOptions,
+) *Service {
+	service := NewServiceWithSkillsAndSessionProfileExtractor(processor, skillSource, nil, logger)
+	service.memoryResolver = newMemoryContextResolver(memoryOptions)
+	return service
+}
+
 func NewServiceWithSkillsAndSessionProfileExtractor(
 	processor execdomain.NLProcessor,
 	skillSource SkillCapabilitySource,

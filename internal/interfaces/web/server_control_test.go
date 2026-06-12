@@ -13,6 +13,8 @@ import (
 	agentapp "alter0/internal/agent/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
+	schedulerapp "alter0/internal/scheduler/application"
+	schedulerdomain "alter0/internal/scheduler/domain"
 )
 
 type stubRuntimeRestarter struct {
@@ -459,5 +461,65 @@ func TestRuntimeRestartEndpointRejectsConcurrentRestart(t *testing.T) {
 
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("expected conflict status, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCronJobEndpointProtectsBuiltinJobsAndAllowsDisable(t *testing.T) {
+	scheduler := schedulerapp.NewManager(nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := scheduler.RegisterBuiltinJobs([]schedulerdomain.Job{
+		{
+			ID:             "system-memory-maintenance",
+			Name:           "Memory Maintenance",
+			Enabled:        true,
+			Timezone:       "Asia/Shanghai",
+			ScheduleMode:   schedulerdomain.ScheduleModeDaily,
+			CronExpression: "10 5 * * *",
+			TaskConfig: schedulerdomain.TaskConfig{
+				Input: "Run system memory maintenance.",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register builtin job failed: %v", err)
+	}
+	server := &Server{
+		scheduler: scheduler,
+		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/control/cron/jobs", nil)
+	listRec := httptest.NewRecorder()
+	server.cronJobListHandler(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+	var listResp struct {
+		Items []cronJobResponse `json:"items"`
+	}
+	if err := json.NewDecoder(listRec.Body).Decode(&listResp); err != nil {
+		t.Fatalf("decode list response failed: %v", err)
+	}
+	if len(listResp.Items) != 1 || !listResp.Items[0].Builtin {
+		t.Fatalf("expected builtin cron job in list, got %+v", listResp.Items)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/control/cron/jobs/system-memory-maintenance", nil)
+	deleteRec := httptest.NewRecorder()
+	server.cronJobItemHandler(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusConflict {
+		t.Fatalf("expected builtin delete 409, got %d: %s", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	disableReq := httptest.NewRequest(http.MethodPut, "/api/control/cron/jobs/system-memory-maintenance", strings.NewReader(`{"enabled":false}`))
+	disableRec := httptest.NewRecorder()
+	server.cronJobItemHandler(disableRec, disableReq)
+	if disableRec.Code != http.StatusOK {
+		t.Fatalf("expected builtin disable 200, got %d: %s", disableRec.Code, disableRec.Body.String())
+	}
+	var disabled cronJobResponse
+	if err := json.NewDecoder(disableRec.Body).Decode(&disabled); err != nil {
+		t.Fatalf("decode disable response failed: %v", err)
+	}
+	if !disabled.Builtin || disabled.Enabled {
+		t.Fatalf("expected disabled builtin response, got %+v", disabled)
 	}
 }

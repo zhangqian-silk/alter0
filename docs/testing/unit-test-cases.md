@@ -90,7 +90,7 @@
 用例范围：
 
 - 登录保护、Chat 页面、静态资源、消息 JSON/SSE、Agent 消息入口。
-- Control API：Channel、Capability、Skill、MCP、Agent、Cron、Environment、Runtime、LLM Provider、Maintenance。
+- Control API：Channel、Capability、Skill、MCP、Agent、Cron、Cron 内置任务保护、Environment、Runtime、LLM Provider、Maintenance。
 - Session API：历史列表、消息列表、删除、置顶、维护清理、置顶跳过、queued/running 任务保护、workspace 删除、维护执行器不可用和清理资源删除失败。
 - Workspace service 注册表：`/api/control/workspace-services` 的注册、查询、删除，以及 `<session_short_hash>.alter0.cn` / `<service>-<session_short_hash>.alter0.cn` 命中后的前端构建分发和 HTTP 反向代理；`travel` 服务额外覆盖 `travel-<session_short_hash>.alter0.cn` 的公开只读、免登录与 API 阻断。
 
