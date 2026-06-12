@@ -300,7 +300,7 @@ Terminal input
 - `ReactManagedTerminalRouteBody.tsx` 负责把 Terminal 领域状态映射到共享状态信号：`ready` 直接输出绿色 `ready`，`busy` 输出黄色 `busy`，`exited / interrupted` 等非活跃态统一收敛为红色失败信号，再复用 `RuntimeWorkspacePage.tsx` 的共享会话条目与 `RuntimeWorkspaceHeader` 渲染链路；Terminal 不再保留独立 workspace header selector 或不同规格的 `Details` 按钮。
 - Terminal 跨设备共享同一 Web 登录态下的服务端会话历史，不再按 browser client 分桶。
 - 共享 `shell.css` 在真手机宽度下负责运行页工作区头部和移动 workbar 的收缩规则：Terminal 与 Chat/Agent Runtime 使用同一标题、状态信号和 `Details` 触发元素，长标题按共享规则截断或换行，避免横向溢出。
-- `WorkbenchApp` 在根壳层安装共享 `mobileViewportSync` controller，把 `VisualViewport` 变化稳定写入 `--mobile-viewport-height / --keyboard-offset`；移动端 App Shell 在键盘弹起期间保持基线高度，避免整个 workbench 被 `visualViewport` 收缩带着上移；Terminal 移动端 Composer 通过 `bottom: var(--keyboard-offset)` 贴住可见底边，而不是通过增大 footer padding 把输入区继续留在文档流里。
+- `WorkbenchApp` 在根壳层安装共享 `mobileViewportSync` controller，把 `VisualViewport` 变化稳定写入 `--mobile-viewport-height / --keyboard-offset`；移动端 App Shell 在键盘弹起期间保持基线高度，避免整个 workbench 被 `visualViewport` 收缩带着上移；Terminal 移动端 Composer 通过 `bottom: var(--keyboard-offset)` 贴住可见底边，而不是通过增大 footer padding 把输入区继续留在文档流里。共享 `useRuntimeComposerViewportSync` 只在运行页输入框未保持真实可编辑焦点时回正窗口滚动；输入焦点存在时，键盘动画里的 `window.scroll`、`VisualViewport resize` 与 `VisualViewport scroll` 只用于重算 composer 遮挡高度，避免程序化 `window.scrollTo` 触发移动端浏览器收起软键盘。
 - Conversation runtime 的窄屏四行工作区网格仅作用于带 `data-conversation-view` 的运行页，避免 Terminal 复用共享 surface class 时被错误套用 `auto auto minmax(0, 1fr) auto` 布局，导致长历史输出把 Composer 挤出屏幕。
 
 ### 验证策略
