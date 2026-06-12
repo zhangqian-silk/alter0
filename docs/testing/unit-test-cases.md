@@ -53,7 +53,7 @@
 
 用例范围：
 
-- `Intent` 稳定类型：`command` 与 `nl` 保持为编排层意图分流契约。
+- `Intent` 稳定类型：`command` 与 `agent` 保持为编排层意图分流契约。
 - `CommandHandler` 契约：命令处理器接收 `CommandRequest`，保留 `UnifiedMessage`、命令名、参数并返回 `CommandResult` 输出与元数据。
 
 边界：
@@ -155,7 +155,7 @@
 
 - `codex_cli_processor_test.go`
 - `claude_code_processor_test.go`
-- `hybrid_nl_processor_test.go`
+- `runtime_resolver_processor_test.go`
 - `runtime_resolver_processor_test.go`
 
 用例范围：
@@ -164,8 +164,8 @@
 - 原生 Codex Runtime 资产生成、Session 工作区解析、repo root 与 session repo clone 模式。
 - 直连 Codex 路径解析 `thread.started.thread_id`，持久化 `.alter0/codex-runtime/thread.json`，后续同 Session 使用 `codex exec resume <thread_id> -` 续写。
 - Claude Code 执行器的 provider 环境变量、`CLAUDE.md`、runtime/skill 文件注入与 file-backed Skill 工作区副本。
-- Runtime Resolver 的执行器选择：显式 Codex、可用 Provider 优先 Claude Code、Claude 失败兜底 Codex。
-- 既有 Hybrid NL 的 Skill/ReAct/Codex 执行源、工具调用、委派与 Memory 工具兼容行为。
+- Runtime Resolver 的执行器选择：显式 Codex、可用 Provider 优先 Claude Code、Claude 失败直接返回错误且不自动切换 Codex。
+- RuntimeResolver 的 Claude/Codex 选择、执行源 metadata、流式输出和 Memory 注入兼容行为。
 
 边界：
 

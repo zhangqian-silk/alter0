@@ -46,7 +46,23 @@ func TestClassifyRegisteredCommandWithoutSlash(t *testing.T) {
 	}
 }
 
-func TestClassifyNL(t *testing.T) {
+func TestClassifyUnknownSlashInputAsAgent(t *testing.T) {
+	classifier := NewSimpleIntentClassifier(&fakeLookup{
+		commands: map[string]struct{}{
+			"echo": {},
+		},
+	})
+
+	intent := classifier.Classify("/goal ship native slash support")
+	if intent.Type != "agent" {
+		t.Fatalf("expected agent intent, got %s", intent.Type)
+	}
+	if intent.CommandName != "" {
+		t.Fatalf("expected no command name for agent intent, got %q", intent.CommandName)
+	}
+}
+
+func TestClassifyAgent(t *testing.T) {
 	classifier := NewSimpleIntentClassifier(&fakeLookup{
 		commands: map[string]struct{}{
 			"echo": {},
@@ -54,7 +70,7 @@ func TestClassifyNL(t *testing.T) {
 	})
 
 	intent := classifier.Classify("帮我总结这段文本")
-	if intent.Type != "nl" {
-		t.Fatalf("expected nl intent, got %s", intent.Type)
+	if intent.Type != "agent" {
+		t.Fatalf("expected agent intent, got %s", intent.Type)
 	}
 }

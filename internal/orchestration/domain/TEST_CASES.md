@@ -2,7 +2,7 @@
 
 ## 覆盖范围
 
-- Intent 稳定类型：`command` 与 `nl`。
+- Intent 稳定类型：`command` 与 `agent`。
 - CommandHandler 接收 UnifiedMessage、命令名和参数，并返回输出与 metadata。
 
 ## 边界

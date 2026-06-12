@@ -89,11 +89,6 @@ func main() {
 	asyncTaskMaxRetries := flag.Int("async-task-max-retries", 1, "background async task max retries")
 	asyncTaskTriggerThreshold := flag.Duration("async-task-trigger-threshold", 5*time.Minute, "estimated duration threshold to route request into async task")
 	asyncLongContentThreshold := flag.Int("async-long-content-threshold", 240, "request content length threshold to trigger async task")
-	sessionMemoryTurns := flag.Int("session-memory-turns", 6, "short-term memory window size per session")
-	sessionMemoryTTL := flag.Duration("session-memory-ttl", 20*time.Minute, "short-term memory ttl per session")
-	contextCompressionThreshold := flag.Int("context-compression-threshold", 1200, "estimated token threshold to trigger session context compression")
-	contextCompressionSummaryTokens := flag.Int("context-compression-summary-tokens", 220, "estimated token budget per compressed summary fragment")
-	contextCompressionRetainTurns := flag.Int("context-compression-retain-turns", 4, "recent turns retained before compressing historical turns")
 	dailyMemoryDir := flag.String("daily-memory-dir", filepath.Join(defaultStorageProfile.Dir, "memory"), "day-level markdown memory directory")
 	longTermMemoryPath := flag.String("long-term-memory-path", filepath.Join(defaultStorageProfile.Dir, "memory", "long-term", "MEMORY.md"), "tiered long-term memory persistence file path")
 	longTermMemoryWritePolicy := flag.String("long-term-memory-write-policy", "write_through", "tiered long-term memory write policy: write_through/write_back")
@@ -184,11 +179,6 @@ func main() {
 	resolvedAsyncTaskMaxRetries := control.ResolveEnvironmentInt("async_task_max_retries", *asyncTaskMaxRetries)
 	resolvedAsyncTaskTriggerThreshold := control.ResolveEnvironmentDuration("async_task_trigger_threshold", *asyncTaskTriggerThreshold)
 	resolvedAsyncLongContentThreshold := control.ResolveEnvironmentInt("async_long_content_threshold", *asyncLongContentThreshold)
-	resolvedSessionMemoryTurns := control.ResolveEnvironmentInt("session_memory_turns", *sessionMemoryTurns)
-	resolvedSessionMemoryTTL := control.ResolveEnvironmentDuration("session_memory_ttl", *sessionMemoryTTL)
-	resolvedContextCompressionThreshold := control.ResolveEnvironmentInt("context_compression_threshold", *contextCompressionThreshold)
-	resolvedContextCompressionSummaryTokens := control.ResolveEnvironmentInt("context_compression_summary_tokens", *contextCompressionSummaryTokens)
-	resolvedContextCompressionRetainTurns := control.ResolveEnvironmentInt("context_compression_retain_turns", *contextCompressionRetainTurns)
 	resolvedDailyMemoryDir := control.ResolveEnvironmentString("daily_memory_dir", strings.TrimSpace(*dailyMemoryDir))
 	resolvedLongTermMemoryPath := control.ResolveEnvironmentString("long_term_memory_path", strings.TrimSpace(*longTermMemoryPath))
 	resolvedLongTermMemoryWritePolicy := control.ResolveEnvironmentString("long_term_memory_write_policy", strings.TrimSpace(*longTermMemoryWritePolicy))
@@ -197,30 +187,25 @@ func main() {
 	resolvedMandatoryContextFile := control.ResolveEnvironmentString("mandatory_context_file", strings.TrimSpace(*mandatoryContextFile))
 
 	control.SetEnvironmentRuntime(map[string]string{
-		"web_addr":                           listenAddr,
-		"web_bind_localhost_only":            strconv.FormatBool(resolvedWebBindLocalhostOnly),
-		"web_login_password":                 resolvedWebLoginPassword,
-		"worker_pool_size":                   strconv.Itoa(resolvedWorkerPoolSize),
-		"max_queue_size":                     strconv.Itoa(resolvedMaxQueueSize),
-		"queue_timeout":                      resolvedQueueTimeout.String(),
-		"async_task_workers":                 strconv.Itoa(resolvedAsyncTaskWorkers),
-		"task_terminal_shell":                resolvedTaskTerminalShell,
-		"task_terminal_shell_args":           resolvedTaskTerminalShellArgs,
-		"async_task_timeout":                 resolvedAsyncTaskTimeout.String(),
-		"async_task_max_retries":             strconv.Itoa(resolvedAsyncTaskMaxRetries),
-		"async_task_trigger_threshold":       resolvedAsyncTaskTriggerThreshold.String(),
-		"async_long_content_threshold":       strconv.Itoa(resolvedAsyncLongContentThreshold),
-		"session_memory_turns":               strconv.Itoa(resolvedSessionMemoryTurns),
-		"session_memory_ttl":                 resolvedSessionMemoryTTL.String(),
-		"context_compression_threshold":      strconv.Itoa(resolvedContextCompressionThreshold),
-		"context_compression_summary_tokens": strconv.Itoa(resolvedContextCompressionSummaryTokens),
-		"context_compression_retain_turns":   strconv.Itoa(resolvedContextCompressionRetainTurns),
-		"daily_memory_dir":                   resolvedDailyMemoryDir,
-		"long_term_memory_path":              resolvedLongTermMemoryPath,
-		"long_term_memory_write_policy":      resolvedLongTermMemoryWritePolicy,
-		"long_term_memory_writeback_flush":   resolvedLongTermMemoryWriteBackFlush.String(),
-		"long_term_memory_token_budget":      strconv.Itoa(resolvedLongTermMemoryTokenBudget),
-		"mandatory_context_file":             resolvedMandatoryContextFile,
+		"web_addr":                         listenAddr,
+		"web_bind_localhost_only":          strconv.FormatBool(resolvedWebBindLocalhostOnly),
+		"web_login_password":               resolvedWebLoginPassword,
+		"worker_pool_size":                 strconv.Itoa(resolvedWorkerPoolSize),
+		"max_queue_size":                   strconv.Itoa(resolvedMaxQueueSize),
+		"queue_timeout":                    resolvedQueueTimeout.String(),
+		"async_task_workers":               strconv.Itoa(resolvedAsyncTaskWorkers),
+		"task_terminal_shell":              resolvedTaskTerminalShell,
+		"task_terminal_shell_args":         resolvedTaskTerminalShellArgs,
+		"async_task_timeout":               resolvedAsyncTaskTimeout.String(),
+		"async_task_max_retries":           strconv.Itoa(resolvedAsyncTaskMaxRetries),
+		"async_task_trigger_threshold":     resolvedAsyncTaskTriggerThreshold.String(),
+		"async_long_content_threshold":     strconv.Itoa(resolvedAsyncLongContentThreshold),
+		"daily_memory_dir":                 resolvedDailyMemoryDir,
+		"long_term_memory_path":            resolvedLongTermMemoryPath,
+		"long_term_memory_write_policy":    resolvedLongTermMemoryWritePolicy,
+		"long_term_memory_writeback_flush": resolvedLongTermMemoryWriteBackFlush.String(),
+		"long_term_memory_token_budget":    strconv.Itoa(resolvedLongTermMemoryTokenBudget),
+		"mandatory_context_file":           resolvedMandatoryContextFile,
 	})
 
 	sessionHistory, err := newSessionHistory(rootCtx, sessionStore)
@@ -283,15 +268,6 @@ func main() {
 		executor,
 		telemetry,
 		logger,
-		orchapp.WithSessionMemoryOptions(orchapp.SessionMemoryOptions{
-			MaxTurns:                 resolvedSessionMemoryTurns,
-			TTL:                      resolvedSessionMemoryTTL,
-			CompressionTriggerTokens: resolvedContextCompressionThreshold,
-			CompressionSummaryTokens: resolvedContextCompressionSummaryTokens,
-			CompressionRetainTurns:   resolvedContextCompressionRetainTurns,
-			DailyMemoryDir:           resolvedDailyMemoryDir,
-		}),
-		orchapp.WithSessionHistoryMemory(sessionHistory),
 		orchapp.WithLongTermMemoryOptions(orchapp.LongTermMemoryOptions{
 			InjectionTokenBudget: resolvedLongTermMemoryTokenBudget,
 			PersistencePath:      resolvedLongTermMemoryPath,

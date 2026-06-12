@@ -31,6 +31,12 @@ describe("ReactManagedMemoryRouteBody", () => {
             updated_at: "2026-03-04T08:00:00Z",
             content: "# Long-Term Memory\n- key: value",
           },
+          root_instructions: {
+            exists: true,
+            path: "/workspace/AGENTS.md",
+            updated_at: "2026-03-04T08:00:00Z",
+            content: "# AGENTS\n- run tests",
+          },
           daily: {
             directory: "/memory/daily",
             items: [],
@@ -87,6 +93,12 @@ describe("ReactManagedMemoryRouteBody", () => {
     expect(document.querySelector(".memory-content h1")).toHaveTextContent("Long-Term Memory");
     expect(document.querySelector(".memory-content li")).toHaveTextContent("key: value");
     expect(screen.getByText("/memory/MEMORY.md")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "AGENTS.md" }));
+
+    expect(document.querySelector(".memory-content h1")).toHaveTextContent("AGENTS");
+    expect(document.querySelector(".memory-content li")).toHaveTextContent("run tests");
+    expect(screen.getByText("/workspace/AGENTS.md")).toBeInTheDocument();
   });
 
   it("opens task detail from the table and loads logs and artifacts on demand", async () => {

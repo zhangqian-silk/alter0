@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	execdomain "alter0/internal/execution/domain"
@@ -88,7 +89,7 @@ func TestRuntimeResolverProcessorUsesClaudeWhenProviderIsEnabled(t *testing.T) {
 	}
 }
 
-func TestRuntimeResolverProcessorFallsBackToCodexWhenClaudeFails(t *testing.T) {
+func TestRuntimeResolverProcessorReturnsClaudeErrorWithoutCodexFallback(t *testing.T) {
 	claude := &recordingRuntimeProcessor{err: errors.New("claude auth failed")}
 	codex := &recordingRuntimeProcessor{output: "codex result"}
 	processor := NewRuntimeResolverProcessor(RuntimeResolverOptions{
@@ -105,17 +106,17 @@ func TestRuntimeResolverProcessorFallsBackToCodexWhenClaudeFails(t *testing.T) {
 	})
 
 	output, err := processor.Process(context.Background(), "整理方案", map[string]string{})
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
+	if err == nil {
+		t.Fatalf("Process() error = nil, want claude error")
 	}
-	if output != "codex result" {
-		t.Fatalf("Process() output = %q, want codex result", output)
+	if !strings.Contains(err.Error(), "claude auth failed") {
+		t.Fatalf("Process() error = %v, want claude auth failed", err)
 	}
-	if claude.called != 1 || codex.called != 1 {
-		t.Fatalf("calls claude=%d codex=%d, want 1/1", claude.called, codex.called)
+	if output != "" {
+		t.Fatalf("Process() output = %q, want empty output", output)
 	}
-	if codex.lastMeta[execdomain.ExecutionSourceMetadataKey] != execdomain.ExecutionSourceCodexCLI {
-		t.Fatalf("execution source = %q, want %q", codex.lastMeta[execdomain.ExecutionSourceMetadataKey], execdomain.ExecutionSourceCodexCLI)
+	if claude.called != 1 || codex.called != 0 {
+		t.Fatalf("calls claude=%d codex=%d, want 1/0", claude.called, codex.called)
 	}
 }
 

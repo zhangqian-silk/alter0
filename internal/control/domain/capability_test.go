@@ -56,7 +56,7 @@ func TestCapabilityValidateRejectsUnsupportedType(t *testing.T) {
 func TestSkillValidateUsesUnifiedModel(t *testing.T) {
 	skill := Skill{
 		ID:      "sample-skill",
-		Name:    "Default NL",
+		Name:    "Default Agent",
 		Enabled: true,
 	}
 	if err := skill.Validate(); err != nil {

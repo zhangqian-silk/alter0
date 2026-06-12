@@ -206,7 +206,7 @@ func (s *ConcurrentService) Classify(content string) orchdomain.Intent {
 	}); ok {
 		return classifier.Classify(content)
 	}
-	return orchdomain.Intent{Type: orchdomain.IntentTypeNL}
+	return orchdomain.Intent{Type: orchdomain.IntentTypeAgent}
 }
 
 func (s *ConcurrentService) HandleStream(

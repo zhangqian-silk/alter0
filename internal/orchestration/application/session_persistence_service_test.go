@@ -93,7 +93,7 @@ func TestSessionPersistenceServiceRecordsUserAndAssistantMessages(t *testing.T) 
 		result: shareddomain.OrchestrationResult{
 			MessageID: "msg-1",
 			SessionID: "s-1",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "answer",
 		},
 	}
@@ -128,8 +128,8 @@ func TestSessionPersistenceServiceRecordsUserAndAssistantMessages(t *testing.T) 
 	if recorder.records[1].MessageID != "assistant-1" {
 		t.Fatalf("expected assistant message id assistant-1, got %q", recorder.records[1].MessageID)
 	}
-	if recorder.records[1].RouteResult.Route != shareddomain.RouteNL {
-		t.Fatalf("expected route nl, got %q", recorder.records[1].RouteResult.Route)
+	if recorder.records[1].RouteResult.Route != shareddomain.RouteAgent {
+		t.Fatalf("expected route agent, got %q", recorder.records[1].RouteResult.Route)
 	}
 	if recorder.records[0].Source.TriggerType != shareddomain.TriggerTypeUser {
 		t.Fatalf("expected trigger_type user, got %s", recorder.records[0].Source.TriggerType)
@@ -146,7 +146,7 @@ func TestSessionPersistenceServicePersistsUserMessageBeforeStreamCompletes(t *te
 		result: shareddomain.OrchestrationResult{
 			MessageID: "msg-stream",
 			SessionID: "s-stream",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "answer",
 		},
 	}
@@ -199,13 +199,13 @@ func TestSessionPersistenceServicePersistsUserMessageBeforeStreamCompletes(t *te
 }
 
 func TestSessionPersistenceServiceKeepsResultWhenStoreFails(t *testing.T) {
-	expectedErr := errors.New("nl failed")
+	expectedErr := errors.New("agent failed")
 	downstream := &stubPersistenceDownstream{
 		result: shareddomain.OrchestrationResult{
 			MessageID: "msg-1",
 			SessionID: "s-1",
-			Route:     shareddomain.RouteNL,
-			ErrorCode: "nl_execution_failed",
+			Route:     shareddomain.RouteAgent,
+			ErrorCode: "agent_execution_failed",
 		},
 		err: expectedErr,
 	}
@@ -232,8 +232,8 @@ func TestSessionPersistenceServiceKeepsResultWhenStoreFails(t *testing.T) {
 	if !errors.Is(err, expectedErr) {
 		t.Fatalf("expected downstream error %v, got %v", expectedErr, err)
 	}
-	if result.ErrorCode != "nl_execution_failed" {
-		t.Fatalf("expected error_code nl_execution_failed, got %q", result.ErrorCode)
+	if result.ErrorCode != "agent_execution_failed" {
+		t.Fatalf("expected error_code agent_execution_failed, got %q", result.ErrorCode)
 	}
 	if len(recorder.records) != 2 {
 		t.Fatalf("expected 2 persisted records, got %d", len(recorder.records))
@@ -248,7 +248,7 @@ func TestSessionPersistenceServicePersistsTaskIDFromMetadata(t *testing.T) {
 		result: shareddomain.OrchestrationResult{
 			MessageID: "msg-task",
 			SessionID: "s-task",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "done",
 		},
 	}
@@ -291,7 +291,7 @@ func TestSessionPersistenceServicePersistsRequestMetadata(t *testing.T) {
 		result: shareddomain.OrchestrationResult{
 			MessageID: "msg-meta",
 			SessionID: "s-meta",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "done",
 		},
 	}
@@ -337,7 +337,7 @@ func TestSessionPersistenceServicePersistsStructuredProcessSteps(t *testing.T) {
 		result: shareddomain.OrchestrationResult{
 			MessageID: "msg-steps",
 			SessionID: "s-steps",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "任务已完成",
 			ProcessSteps: []shareddomain.ProcessStep{
 				{
@@ -396,7 +396,7 @@ func TestSessionPersistenceServiceLocalizesAssistantMarkdownImagesIntoSessionWor
 		result: shareddomain.OrchestrationResult{
 			MessageID: "msg-image",
 			SessionID: "s-image",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "Preview:\n\n![Generated image](" + imageServer.URL + "/generated.png)",
 			ProcessSteps: []shareddomain.ProcessStep{
 				{
@@ -524,7 +524,7 @@ func TestSessionPersistenceServicePersistsRuntimeSourceMetadata(t *testing.T) {
 		result: shareddomain.OrchestrationResult{
 			MessageID: "msg-runtime",
 			SessionID: "s-runtime",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "done",
 		},
 	}

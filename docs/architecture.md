@@ -59,7 +59,7 @@
 
 输出路由与结果摘要：
 
-1. `route`：`command` / `nl`
+1. `route`：`command` / `agent`
 2. `output`：执行结果
 3. `error_code`：统一错误编码
 
@@ -71,7 +71,7 @@
 2. 调用 `orchestrator.Handle(...)`。
 3. 编排层识别意图并路由：
 - command -> CommandHandler
-- nl -> ExecutionPort
+- agent -> ExecutionPort
 4. 返回 `OrchestrationResult` 给调用方。
 
 ### 4.2 定时任务消息（Cron）

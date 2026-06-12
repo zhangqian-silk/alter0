@@ -12,8 +12,7 @@ import (
 
 	execdomain "alter0/internal/execution/domain"
 	orchdomain "alter0/internal/orchestration/domain"
-	sessionapp "alter0/internal/session/application"
-	sessiondomain "alter0/internal/session/domain"
+	orchinfra "alter0/internal/orchestration/infrastructure"
 	shareddomain "alter0/internal/shared/domain"
 	taskdomain "alter0/internal/task/domain"
 	tasksummaryapp "alter0/internal/tasksummary/application"
@@ -81,7 +80,7 @@ type stubExecutor struct {
 	lastMessage shareddomain.UnifiedMessage
 }
 
-func (e *stubExecutor) ExecuteNaturalLanguage(_ context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error) {
+func (e *stubExecutor) ExecuteAgent(_ context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error) {
 	e.called++
 	e.lastMessage = msg
 	output := e.output
@@ -108,43 +107,6 @@ func newSpyTelemetry() *spyTelemetry {
 		commandCnt:  map[string]int{},
 		errorCount:  map[string]int{},
 		memoryEvent: map[string]int{},
-	}
-}
-
-type stubSessionMemoryStore struct {
-	snapshotCalls int
-	recordCalls   int
-	snapshot      sessionMemorySnapshot
-}
-
-func (s *stubSessionMemoryStore) Snapshot(_ string, _ string, _ time.Time) sessionMemorySnapshot {
-	s.snapshotCalls++
-	return s.snapshot
-}
-
-func (s *stubSessionMemoryStore) Record(_ shareddomain.UnifiedMessage, _ shareddomain.Route, _ string) {
-	s.recordCalls++
-}
-
-type stubSessionHistoryMemory struct {
-	page sessionapp.MessagePage
-}
-
-func (s *stubSessionHistoryMemory) ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage {
-	items := make([]sessiondomain.MessageRecord, 0, len(s.page.Items))
-	for _, item := range s.page.Items {
-		if strings.TrimSpace(query.SessionID) != "" && strings.TrimSpace(item.SessionID) != strings.TrimSpace(query.SessionID) {
-			continue
-		}
-		items = append(items, item)
-	}
-	return sessionapp.MessagePage{
-		Items: items,
-		Pagination: sessionapp.Pagination{
-			Page:     1,
-			PageSize: len(items),
-			Total:    len(items),
-		},
 	}
 }
 
@@ -200,7 +162,7 @@ func TestHandleCommand(t *testing.T) {
 		},
 	}
 	telemetry := newSpyTelemetry()
-	executor := &stubExecutor{output: "nl"}
+	executor := &stubExecutor{output: "agent"}
 	service := NewService(
 		&stubClassifier{
 			intent: orchdomain.Intent{
@@ -229,13 +191,13 @@ func TestHandleCommand(t *testing.T) {
 	}
 }
 
-func TestHandleNL(t *testing.T) {
+func TestHandleAgent(t *testing.T) {
 	registry := &stubRegistry{}
 	telemetry := newSpyTelemetry()
-	executor := &stubExecutor{output: "nl response"}
+	executor := &stubExecutor{output: "agent response"}
 	service := NewService(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,
@@ -247,10 +209,10 @@ func TestHandleNL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Route != shareddomain.RouteNL {
-		t.Fatalf("expected nl route, got %s", result.Route)
+	if result.Route != shareddomain.RouteAgent {
+		t.Fatalf("expected agent route, got %s", result.Route)
 	}
-	if result.Output != "nl response" {
+	if result.Output != "agent response" {
 		t.Fatalf("unexpected output: %q", result.Output)
 	}
 	if result.Metadata != nil {
@@ -261,18 +223,18 @@ func TestHandleNL(t *testing.T) {
 	}
 }
 
-func TestHandleNLPassesExecutionMetadata(t *testing.T) {
+func TestHandleAgentPassesExecutionMetadata(t *testing.T) {
 	registry := &stubRegistry{}
 	telemetry := newSpyTelemetry()
 	executor := &stubExecutor{
-		output: "nl response",
+		output: "agent response",
 		meta: map[string]string{
 			"skills.injected_count": "1",
 		},
 	}
 	service := NewService(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,
@@ -300,7 +262,7 @@ func TestHandleUnknownCommand(t *testing.T) {
 			},
 		},
 		registry,
-		&stubExecutor{output: "nl"},
+		&stubExecutor{output: "agent"},
 		telemetry,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
@@ -314,18 +276,53 @@ func TestHandleUnknownCommand(t *testing.T) {
 	}
 }
 
-func TestHandleDirectCodexSlashInputBypassesCommandRouting(t *testing.T) {
-	registry := &stubRegistry{}
+func TestHandleBuiltInCommandWinsOverExecutionEngineMetadata(t *testing.T) {
+	registry := &stubRegistry{
+		handlers: map[string]orchdomain.CommandHandler{
+			"echo": &stubHandler{name: "echo", output: "system command response"},
+		},
+	}
 	telemetry := newSpyTelemetry()
 	executor := &stubExecutor{output: "codex response"}
 	service := NewService(
 		&stubClassifier{
 			intent: orchdomain.Intent{
 				Type:        orchdomain.IntentTypeCommand,
-				CommandName: "goal",
-				Args:        []string{"ship", "native", "slash", "support"},
+				CommandName: "echo",
+				Args:        []string{"hello"},
 			},
 		},
+		registry,
+		executor,
+		telemetry,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+
+	msg := validMessage("/echo hello")
+	msg.Metadata = map[string]string{
+		execdomain.ExecutionEngineMetadataKey: execdomain.ExecutionEngineCodex,
+	}
+	result, err := service.Handle(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Route != shareddomain.RouteCommand {
+		t.Fatalf("expected command route, got %s", result.Route)
+	}
+	if result.Output != "system command response" {
+		t.Fatalf("unexpected output: %q", result.Output)
+	}
+	if executor.called != 0 {
+		t.Fatalf("executor should not be called for built-in command, got %d", executor.called)
+	}
+}
+
+func TestHandleUnknownSlashInputFallsThroughToAgent(t *testing.T) {
+	registry := orchinfra.NewInMemoryCommandRegistry()
+	telemetry := newSpyTelemetry()
+	executor := &stubExecutor{output: "agent response"}
+	service := NewService(
+		orchinfra.NewSimpleIntentClassifier(registry),
 		registry,
 		executor,
 		telemetry,
@@ -340,10 +337,10 @@ func TestHandleDirectCodexSlashInputBypassesCommandRouting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Route != shareddomain.RouteNL {
-		t.Fatalf("expected nl route, got %s", result.Route)
+	if result.Route != shareddomain.RouteAgent {
+		t.Fatalf("expected agent route, got %s", result.Route)
 	}
-	if result.Output != "codex response" {
+	if result.Output != "agent response" {
 		t.Fatalf("unexpected output: %q", result.Output)
 	}
 	if executor.called != 1 {
@@ -352,12 +349,9 @@ func TestHandleDirectCodexSlashInputBypassesCommandRouting(t *testing.T) {
 	if executor.lastMessage.Content != "/goal ship native slash support" {
 		t.Fatalf("expected original slash input passed to executor, got %q", executor.lastMessage.Content)
 	}
-	if got := telemetry.errorCount[string(shareddomain.RouteCommand)]; got != 0 {
-		t.Fatalf("expected no command route error, got %d", got)
-	}
 }
 
-func TestHandleNLTerminalTaskBypassesHistoryMemory(t *testing.T) {
+func TestHandleAgentTerminalTaskBypassesHistoryMemory(t *testing.T) {
 	dir := t.TempDir()
 	contextPath := filepath.Join(dir, "SOUL.md")
 	if err := os.WriteFile(contextPath, []byte("response_style: concise\n"), 0o644); err != nil {
@@ -368,15 +362,6 @@ func TestHandleNLTerminalTaskBypassesHistoryMemory(t *testing.T) {
 	telemetry := newSpyTelemetry()
 	executor := &stubExecutor{
 		output: "terminal response",
-	}
-	sessionStore := &stubSessionMemoryStore{
-		snapshot: sessionMemorySnapshot{
-			RecentTurns: []sessionMemoryTurn{
-				{
-					UserInput: "previous context from history",
-				},
-			},
-		},
 	}
 	longTermStore := &stubLongTermMemoryStore{
 		snapshot: longTermMemorySnapshot{
@@ -407,13 +392,12 @@ func TestHandleNLTerminalTaskBypassesHistoryMemory(t *testing.T) {
 
 	service := NewServiceWithOptions(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,
 		telemetry,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		WithSessionMemory(sessionStore),
 		WithLongTermMemory(longTermStore),
 		WithTaskSummaryMemory(taskStore),
 		WithMandatoryContextOptions(MandatoryContextOptions{
@@ -443,17 +427,11 @@ func TestHandleNLTerminalTaskBypassesHistoryMemory(t *testing.T) {
 	if !strings.Contains(prompt, "[MANDATORY CONTEXT]") {
 		t.Fatalf("expected mandatory context injected, got %q", prompt)
 	}
-	if got := sessionStore.snapshotCalls; got != 0 {
-		t.Fatalf("expected no session memory snapshot call, got %d", got)
-	}
 	if got := longTermStore.snapshotCalls; got != 0 {
 		t.Fatalf("expected no long-term memory snapshot call, got %d", got)
 	}
 	if got := taskStore.snapshotCalls; got != 0 {
 		t.Fatalf("expected no task summary snapshot call, got %d", got)
-	}
-	if got := sessionStore.recordCalls; got != 0 {
-		t.Fatalf("expected no session memory record call, got %d", got)
 	}
 	if got := longTermStore.recordCalls; got != 0 {
 		t.Fatalf("expected no long-term memory record call, got %d", got)
@@ -473,7 +451,6 @@ func TestHandleCommandTerminalTaskSkipsMemoryRecord(t *testing.T) {
 		},
 	}
 	telemetry := newSpyTelemetry()
-	sessionStore := &stubSessionMemoryStore{}
 	longTermStore := &stubLongTermMemoryStore{}
 	service := NewServiceWithOptions(
 		&stubClassifier{
@@ -483,10 +460,9 @@ func TestHandleCommandTerminalTaskSkipsMemoryRecord(t *testing.T) {
 			},
 		},
 		registry,
-		&stubExecutor{output: "nl"},
+		&stubExecutor{output: "agent"},
 		telemetry,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		WithSessionMemory(sessionStore),
 		WithLongTermMemory(longTermStore),
 	)
 
@@ -501,191 +477,12 @@ func TestHandleCommandTerminalTaskSkipsMemoryRecord(t *testing.T) {
 	if result.Route != shareddomain.RouteCommand {
 		t.Fatalf("expected command route, got %s", result.Route)
 	}
-	if got := sessionStore.recordCalls; got != 0 {
-		t.Fatalf("expected no session memory record call, got %d", got)
-	}
 	if got := longTermStore.recordCalls; got != 0 {
 		t.Fatalf("expected no long-term memory record call, got %d", got)
 	}
 }
 
-func TestHandleNLInjectsSessionMemory(t *testing.T) {
-	registry := &stubRegistry{}
-	telemetry := newSpyTelemetry()
-	executor := &stubExecutor{
-		outputs: []string{
-			"plan alpha: blue green rollout",
-			"refined execution plan",
-		},
-	}
-	service := NewServiceWithOptions(
-		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
-		},
-		registry,
-		executor,
-		telemetry,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		WithSessionMemoryOptions(SessionMemoryOptions{
-			MaxTurns:    4,
-			TTL:         30 * time.Minute,
-			MaxSnippets: 180,
-		}),
-	)
-
-	firstMessage := validMessage("Give me a release plan for this sprint")
-	firstMessage.SessionID = "session-memory"
-	if _, err := service.Handle(context.Background(), firstMessage); err != nil {
-		t.Fatalf("first message failed: %v", err)
-	}
-
-	secondMessage := validMessage("Please expand that plan with rollback details")
-	secondMessage.SessionID = "session-memory"
-	result, err := service.Handle(context.Background(), secondMessage)
-	if err != nil {
-		t.Fatalf("second message failed: %v", err)
-	}
-
-	prompt := executor.lastMessage.Content
-	if !strings.Contains(prompt, "Recent turns:") {
-		t.Fatalf("expected recent turns in prompt, got %q", prompt)
-	}
-	if !strings.Contains(prompt, "release plan for this sprint") {
-		t.Fatalf("expected previous user message in prompt, got %q", prompt)
-	}
-	if !strings.Contains(prompt, "plan alpha: blue green rollout") {
-		t.Fatalf("expected previous assistant output in prompt, got %q", prompt)
-	}
-	if !strings.Contains(prompt, "Reference resolution:") {
-		t.Fatalf("expected reference resolution section, got %q", prompt)
-	}
-	if result.Metadata["memory_reference_resolved"] != "true" {
-		t.Fatalf("expected memory_reference_resolved=true, got %q", result.Metadata["memory_reference_resolved"])
-	}
-}
-
-func TestHandleNLRehydratesSessionMemoryFromPersistedHistory(t *testing.T) {
-	registry := &stubRegistry{}
-	telemetry := newSpyTelemetry()
-	executor := &stubExecutor{
-		output: "current answer",
-	}
-	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
-	history := &stubSessionHistoryMemory{
-		page: sessionapp.MessagePage{
-			Items: []sessiondomain.MessageRecord{
-				{
-					MessageID: "user-old",
-					SessionID: "session-rehydrate",
-					Role:      sessiondomain.MessageRoleUser,
-					Content:   "拉取下 alter0 仓库",
-					Timestamp: now.Add(-4 * 24 * time.Hour),
-					RouteResult: sessiondomain.RouteResult{
-						Route: shareddomain.RouteNL,
-					},
-				},
-				{
-					MessageID: "assistant-old",
-					SessionID: "session-rehydrate",
-					Role:      sessiondomain.MessageRoleAssistant,
-					Content:   "已执行 fetch --all --prune，并执行 git pull --ff-only，结果 Already up to date.",
-					Timestamp: now.Add(-4*24*time.Hour + time.Minute),
-					RouteResult: sessiondomain.RouteResult{
-						Route: shareddomain.RouteNL,
-					},
-				},
-			},
-		},
-	}
-
-	service := NewServiceWithOptions(
-		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
-		},
-		registry,
-		executor,
-		telemetry,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		WithSessionMemoryOptions(SessionMemoryOptions{
-			MaxTurns:    4,
-			TTL:         20 * time.Minute,
-			MaxSnippets: 180,
-		}),
-		WithSessionHistoryMemory(history),
-	)
-
-	msg := validMessage("当前逻辑执行了哪些内容，感觉耗时有些久")
-	msg.MessageID = "user-current"
-	msg.SessionID = "session-rehydrate"
-	msg.ReceivedAt = now
-	result, err := service.Handle(context.Background(), msg)
-	if err != nil {
-		t.Fatalf("handle message failed: %v", err)
-	}
-
-	prompt := executor.lastMessage.Content
-	if !strings.Contains(prompt, "Recent turns:") {
-		t.Fatalf("expected rehydrated recent turns in prompt, got %q", prompt)
-	}
-	if !strings.Contains(prompt, "拉取下 alter0 仓库") {
-		t.Fatalf("expected persisted user message in prompt, got %q", prompt)
-	}
-	if !strings.Contains(prompt, "git pull --ff-only") {
-		t.Fatalf("expected persisted assistant output in prompt, got %q", prompt)
-	}
-	if result.Metadata["memory_history_rehydrated"] != "true" {
-		t.Fatalf("expected memory_history_rehydrated=true, got %+v", result.Metadata)
-	}
-}
-
-func TestHandleNLMemoryKeepsStableReferenceAcrossFollowUps(t *testing.T) {
-	registry := &stubRegistry{}
-	telemetry := newSpyTelemetry()
-	executor := &stubExecutor{
-		outputs: []string{
-			"plan alpha: baseline rollout",
-			"plan alpha: add canary validation",
-			"plan alpha: include release calendar",
-		},
-	}
-	service := NewServiceWithOptions(
-		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
-		},
-		registry,
-		executor,
-		telemetry,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		WithSessionMemoryOptions(SessionMemoryOptions{
-			MaxTurns:    3,
-			TTL:         time.Hour,
-			MaxSnippets: 180,
-		}),
-	)
-
-	messages := []string{
-		"Draft a release plan",
-		"Refine that plan with verification gates",
-		"For that plan, add owner and timeline",
-	}
-	for _, content := range messages {
-		msg := validMessage(content)
-		msg.SessionID = "session-stable"
-		if _, err := service.Handle(context.Background(), msg); err != nil {
-			t.Fatalf("handle message %q failed: %v", content, err)
-		}
-	}
-
-	prompt := executor.lastMessage.Content
-	if !strings.Contains(prompt, "plan alpha: add canary validation") {
-		t.Fatalf("expected latest plan context in prompt, got %q", prompt)
-	}
-	if !strings.Contains(prompt, "Reference resolution:") {
-		t.Fatalf("expected reference resolution in prompt, got %q", prompt)
-	}
-}
-
-func TestHandleNLInjectsLongTermMemoryAcrossSessions(t *testing.T) {
+func TestHandleAgentInjectsLongTermMemoryAcrossSessions(t *testing.T) {
 	registry := &stubRegistry{}
 	telemetry := newSpyTelemetry()
 	executor := &stubExecutor{
@@ -696,17 +493,12 @@ func TestHandleNLInjectsLongTermMemoryAcrossSessions(t *testing.T) {
 	}
 	service := NewServiceWithOptions(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,
 		telemetry,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		WithSessionMemoryOptions(SessionMemoryOptions{
-			MaxTurns:    4,
-			TTL:         30 * time.Minute,
-			MaxSnippets: 180,
-		}),
 		WithLongTermMemoryOptions(LongTermMemoryOptions{
 			MaxEntriesPerScope: 64,
 			MaxHits:            3,
@@ -752,7 +544,7 @@ func TestHandleNLInjectsLongTermMemoryAcrossSessions(t *testing.T) {
 	}
 }
 
-func TestHandleNLLongTermMemoryPreventsCrossUserPollution(t *testing.T) {
+func TestHandleAgentLongTermMemoryPreventsCrossUserPollution(t *testing.T) {
 	registry := &stubRegistry{}
 	telemetry := newSpyTelemetry()
 	executor := &stubExecutor{
@@ -764,7 +556,7 @@ func TestHandleNLLongTermMemoryPreventsCrossUserPollution(t *testing.T) {
 	}
 	service := NewServiceWithOptions(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,
@@ -826,7 +618,7 @@ func TestHandleNLLongTermMemoryPreventsCrossUserPollution(t *testing.T) {
 	}
 }
 
-func TestHandleNLMandatoryContextOverridesConflictingLongTermMemory(t *testing.T) {
+func TestHandleAgentMandatoryContextOverridesConflictingLongTermMemory(t *testing.T) {
 	dir := t.TempDir()
 	contextPath := filepath.Join(dir, "SOUL.md")
 	if err := os.WriteFile(contextPath, []byte("response_style: concise bullet answers\n"), 0o644); err != nil {
@@ -843,7 +635,7 @@ func TestHandleNLMandatoryContextOverridesConflictingLongTermMemory(t *testing.T
 	}
 	service := NewServiceWithOptions(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,
@@ -905,7 +697,7 @@ func TestHandleNLMandatoryContextOverridesConflictingLongTermMemory(t *testing.T
 	}
 }
 
-func TestHandleNLMandatoryContextHotReloadAcrossSessions(t *testing.T) {
+func TestHandleAgentMandatoryContextHotReloadAcrossSessions(t *testing.T) {
 	dir := t.TempDir()
 	contextPath := filepath.Join(dir, "SOUL.md")
 	if err := os.WriteFile(contextPath, []byte("language: zh-cn\n"), 0o644); err != nil {
@@ -922,7 +714,7 @@ func TestHandleNLMandatoryContextHotReloadAcrossSessions(t *testing.T) {
 	}
 	service := NewServiceWithOptions(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,
@@ -968,7 +760,7 @@ func TestHandleNLMandatoryContextHotReloadAcrossSessions(t *testing.T) {
 	}
 }
 
-func TestHandleNLInjectsRecentTaskSummariesByDefault(t *testing.T) {
+func TestHandleAgentInjectsRecentTaskSummariesByDefault(t *testing.T) {
 	registry := &stubRegistry{}
 	telemetry := newSpyTelemetry()
 	executor := &stubExecutor{
@@ -988,7 +780,7 @@ func TestHandleNLInjectsRecentTaskSummariesByDefault(t *testing.T) {
 
 	service := NewServiceWithOptions(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,
@@ -1021,7 +813,7 @@ func TestHandleNLInjectsRecentTaskSummariesByDefault(t *testing.T) {
 	}
 }
 
-func TestHandleNLTriggersDeepRetrievalWithHistoryIntent(t *testing.T) {
+func TestHandleAgentTriggersDeepRetrievalWithHistoryIntent(t *testing.T) {
 	registry := &stubRegistry{}
 	telemetry := newSpyTelemetry()
 	executor := &stubExecutor{
@@ -1049,7 +841,7 @@ func TestHandleNLTriggersDeepRetrievalWithHistoryIntent(t *testing.T) {
 
 	service := NewServiceWithOptions(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,
@@ -1082,7 +874,7 @@ func TestHandleNLTriggersDeepRetrievalWithHistoryIntent(t *testing.T) {
 	}
 }
 
-func TestHandleNLOverridesDeepRetrievalWithNegation(t *testing.T) {
+func TestHandleAgentOverridesDeepRetrievalWithNegation(t *testing.T) {
 	registry := &stubRegistry{}
 	telemetry := newSpyTelemetry()
 	executor := &stubExecutor{
@@ -1097,7 +889,7 @@ func TestHandleNLOverridesDeepRetrievalWithNegation(t *testing.T) {
 
 	service := NewServiceWithOptions(
 		&stubClassifier{
-			intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL},
+			intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent},
 		},
 		registry,
 		executor,

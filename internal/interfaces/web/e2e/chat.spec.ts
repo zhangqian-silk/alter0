@@ -1487,7 +1487,7 @@ data: {"process_step":{"id":"step-3","kind":"analysis","title":"准备回归验�
 `));
             window.setTimeout(() => {
               controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"codex_exec","detail":"检查仓库状态","status":"completed"},{"id":"step-2","kind":"analysis","title":"读取样式约束","detail":"检查 Thinking 披露入口在移动端的布局规则。","status":"completed"},{"id":"step-3","kind":"analysis","title":"准备回归验证","detail":"确认多步骤过程能在同一消息内连续展示。","status":"completed"}]}}
+data: {"result":{"route":"agent","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"codex_exec","detail":"检查仓库状态","status":"completed"},{"id":"step-2","kind":"analysis","title":"读取样式约束","detail":"检查 Thinking 披露入口在移动端的布局规则。","status":"completed"},{"id":"step-3","kind":"analysis","title":"准备回归验证","detail":"确认多步骤过程能在同一消息内连续展示。","status":"completed"}]}}
 
 `));
               controller.close();
@@ -1586,7 +1586,7 @@ data: {"delta":"[process] action: codex_exec\\n"}
 
 `));
               controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"读取运行状态","detail":"检查仓库状态、当前分支和工作区清洁度。","status":"completed"},{"id":"step-2","kind":"action","title":"定位 Thinking 样式","detail":"确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。","status":"completed"},{"id":"step-3","kind":"action","title":"调整展开方式","detail":"将过程详情保持在当前消息内联展开，不再脱离消息流。","status":"completed"},{"id":"step-4","kind":"action","title":"回归验证","detail":"补充样式断言并确认最终回复仍独立展示。","status":"completed"}]}}
+data: {"result":{"route":"agent","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"读取运行状态","detail":"检查仓库状态、当前分支和工作区清洁度。","status":"completed"},{"id":"step-2","kind":"action","title":"定位 Thinking 样式","detail":"确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。","status":"completed"},{"id":"step-3","kind":"action","title":"调整展开方式","detail":"将过程详情保持在当前消息内联展开，不再脱离消息流。","status":"completed"},{"id":"step-4","kind":"action","title":"回归验证","detail":"补充样式断言并确认最终回复仍独立展示。","status":"completed"}]}}
 
 `));
               controller.close();
@@ -1647,7 +1647,7 @@ data: {"delta":"[process] action: codex_exec\\n"}
 
 `));
               controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"nl","output":"任务已完成","process_steps":[{"id":"mobile-step-1","kind":"action","title":"确认目标工作区","detail":"需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。","status":"completed"},{"id":"mobile-step-2","kind":"action","title":"读取前端契约","detail":"检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。","status":"completed"},{"id":"mobile-step-3","kind":"action","title":"调整移动端展开","detail":"移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。","status":"completed"},{"id":"mobile-step-4","kind":"action","title":"同步静态产物","detail":"重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。","status":"completed"},{"id":"mobile-step-5","kind":"action","title":"部署预览服务","detail":"通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。","status":"completed"},{"id":"mobile-step-6","kind":"action","title":"补充测试数据","detail":"增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。","status":"completed"}]}}
+data: {"result":{"route":"agent","output":"任务已完成","process_steps":[{"id":"mobile-step-1","kind":"action","title":"确认目标工作区","detail":"需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。","status":"completed"},{"id":"mobile-step-2","kind":"action","title":"读取前端契约","detail":"检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。","status":"completed"},{"id":"mobile-step-3","kind":"action","title":"调整移动端展开","detail":"移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。","status":"completed"},{"id":"mobile-step-4","kind":"action","title":"同步静态产物","detail":"重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。","status":"completed"},{"id":"mobile-step-5","kind":"action","title":"部署预览服务","detail":"通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。","status":"completed"},{"id":"mobile-step-6","kind":"action","title":"补充测试数据","detail":"增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。","status":"completed"}]}}
 
 `));
               controller.close();
@@ -1738,7 +1738,7 @@ data: {"delta":"[process] action: codex_exec\\n"}
 
 `));
               controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"nl","output":"Node 更偏应用层与生态速度，Go 更偏并发效率与部署稳定性。","process_steps":[{"kind":"action","title":"codex_exec","detail":"整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。","status":"completed"}]}}
+data: {"result":{"route":"agent","output":"Node 更偏应用层与生态速度，Go 更偏并发效率与部署稳定性。","process_steps":[{"kind":"action","title":"codex_exec","detail":"整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。","status":"completed"}]}}
 
 `));
               controller.close();

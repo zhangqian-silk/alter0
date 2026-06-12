@@ -23,6 +23,7 @@ type MemoryPayload = {
     items?: DailyMemoryItem[];
     error?: string;
   };
+  root_instructions?: MemoryDocument;
   mandatory?: MemoryDocument;
   specification?: MemoryDocument;
 };
@@ -98,18 +99,20 @@ type TaskArtifactsPayload = {
   error?: string;
 };
 
-type MemoryTab = "tasks" | "long_term" | "daily" | "mandatory" | "specification";
+type MemoryTab = "tasks" | "long_term" | "daily" | "root_instructions" | "mandatory" | "specification";
 
 type Copy = {
   loading: string;
   longTerm: string;
   daily: string;
   tasks: string;
+  rootInstructions: string;
   mandatory: string;
   specification: string;
   readOnly: string;
   noLongTerm: string;
   noDaily: string;
+  noRootInstructions: string;
   noMandatory: string;
   noSpecification: string;
   noTaskHistory: string;
@@ -153,11 +156,13 @@ const COPY: Record<LegacyShellLanguage, Copy> = {
     longTerm: "Long-Term",
     daily: "Daily",
     tasks: "Task History",
+    rootInstructions: "AGENTS.md",
     mandatory: "SOUL.md",
     specification: "Specification",
     readOnly: "Read-only",
     noLongTerm: "No long-term memory file available.",
     noDaily: "No daily memory files available.",
+    noRootInstructions: "No AGENTS.md file available.",
     noMandatory: "No SOUL.md file available.",
     noSpecification: "No memory specification document available.",
     noTaskHistory: "No task history.",
@@ -199,11 +204,13 @@ const COPY: Record<LegacyShellLanguage, Copy> = {
     longTerm: "长期记忆",
     daily: "天级记忆",
     tasks: "任务历史",
+    rootInstructions: "AGENTS.md",
     mandatory: "SOUL.md",
     specification: "说明文档",
     readOnly: "只读",
     noLongTerm: "暂无长期记忆文件。",
     noDaily: "暂无天级记忆文件。",
+    noRootInstructions: "暂无 AGENTS.md 文件。",
     noMandatory: "暂无 SOUL.md 文件。",
     noSpecification: "暂无记忆模块说明文档。",
     noTaskHistory: "暂无任务历史。",
@@ -320,6 +327,7 @@ export function ReactManagedMemoryRouteBody({
           { id: "tasks" as const, label: copy.tasks },
           { id: "long_term" as const, label: copy.longTerm },
           { id: "daily" as const, label: copy.daily },
+          { id: "root_instructions" as const, label: copy.rootInstructions },
           { id: "mandatory" as const, label: copy.mandatory },
           { id: "specification" as const, label: copy.specification },
         ].map((tab) => (
@@ -549,6 +557,17 @@ export function ReactManagedMemoryRouteBody({
             copy={copy}
             payload={memoryPayload?.mandatory}
             empty={copy.noMandatory}
+          />
+        </section>
+      ) : null}
+
+      {activeTab === "root_instructions" ? (
+        <section className="memory-panel active">
+          <MemoryDocumentCard
+            title={copy.rootInstructions}
+            copy={copy}
+            payload={memoryPayload?.root_instructions}
+            empty={copy.noRootInstructions}
           />
         </section>
       ) : null}

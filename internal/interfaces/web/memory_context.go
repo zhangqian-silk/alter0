@@ -14,6 +14,7 @@ import (
 const (
 	defaultWebLongTermMemoryPath = ".alter0/memory/long-term/MEMORY.md"
 	defaultWebDailyMemoryDir     = ".alter0/memory"
+	defaultWebRootInstructions   = "AGENTS.md"
 	defaultWebMandatoryFilePath  = "SOUL.md"
 	defaultWebSpecFilePath       = "docs/memory/persistent-memory-module-spec.md"
 	defaultWebDailyMemoryLimit   = 30
@@ -22,6 +23,7 @@ const (
 type MemoryContextOptions struct {
 	LongTermPath         string
 	DailyDir             string
+	RootInstructionsPath string
 	MandatoryContextPath string
 	SpecPath             string
 	DailyLimit           int
@@ -39,10 +41,11 @@ type memoryContextService struct {
 }
 
 type memoryContextResponse struct {
-	LongTerm      memoryContextDocument `json:"long_term"`
-	Daily         memoryContextDaily    `json:"daily"`
-	Mandatory     memoryContextDocument `json:"mandatory"`
-	Specification memoryContextDocument `json:"specification"`
+	LongTerm         memoryContextDocument `json:"long_term"`
+	Daily            memoryContextDaily    `json:"daily"`
+	RootInstructions memoryContextDocument `json:"root_instructions"`
+	Mandatory        memoryContextDocument `json:"mandatory"`
+	Specification    memoryContextDocument `json:"specification"`
 }
 
 type memoryContextDocument struct {
@@ -91,6 +94,10 @@ func normalizeMemoryContextOptions(options MemoryContextOptions) MemoryContextOp
 	if dailyDir == "" {
 		dailyDir = defaultWebDailyMemoryDir
 	}
+	rootInstructionsPath := strings.TrimSpace(options.RootInstructionsPath)
+	if rootInstructionsPath == "" {
+		rootInstructionsPath = defaultWebRootInstructions
+	}
 	mandatoryContextPath := strings.TrimSpace(options.MandatoryContextPath)
 	if mandatoryContextPath == "" {
 		mandatoryContextPath = defaultWebMandatoryFilePath
@@ -106,6 +113,7 @@ func normalizeMemoryContextOptions(options MemoryContextOptions) MemoryContextOp
 	return MemoryContextOptions{
 		LongTermPath:         filepath.Clean(longTermPath),
 		DailyDir:             filepath.Clean(dailyDir),
+		RootInstructionsPath: filepath.Clean(rootInstructionsPath),
 		MandatoryContextPath: filepath.Clean(mandatoryContextPath),
 		SpecPath:             filepath.Clean(specPath),
 		DailyLimit:           dailyLimit,
@@ -114,10 +122,11 @@ func normalizeMemoryContextOptions(options MemoryContextOptions) MemoryContextOp
 
 func (s *memoryContextService) Snapshot() memoryContextResponse {
 	return memoryContextResponse{
-		LongTerm:      s.readDocument(s.options.LongTermPath),
-		Daily:         s.readDailyMemory(),
-		Mandatory:     s.readDocument(s.options.MandatoryContextPath),
-		Specification: s.readDocument(s.options.SpecPath),
+		LongTerm:         s.readDocument(s.options.LongTermPath),
+		Daily:            s.readDailyMemory(),
+		RootInstructions: s.readDocument(s.options.RootInstructionsPath),
+		Mandatory:        s.readDocument(s.options.MandatoryContextPath),
+		Specification:    s.readDocument(s.options.SpecPath),
 	}
 }
 

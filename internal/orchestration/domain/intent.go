@@ -4,7 +4,7 @@ type IntentType string
 
 const (
 	IntentTypeCommand IntentType = "command"
-	IntentTypeNL      IntentType = "nl"
+	IntentTypeAgent   IntentType = "agent"
 )
 
 type Intent struct {

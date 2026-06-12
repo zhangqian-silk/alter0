@@ -29,7 +29,7 @@
 - `internal/interfaces/*` 负责外部输入适配，只生成内部统一消息，不承载业务路由。
 - `internal/shared/domain` 承载 `UnifiedMessage`、`OrchestrationResult` 等跨领域消息对象。
 - `internal/orchestration/domain` 承载 `Intent`、`Command` 等编排领域模型。
-- `internal/orchestration/application` 承载意图识别、命令路由、自然语言执行分发。
+- `internal/orchestration/application` 承载意图识别、命令路由、Agent 执行分发。
 - `internal/execution/domain` 定义执行端口和运行时上下文契约。
 - `internal/scheduler` 负责 Cron 配置、触发与回注编排。
 
@@ -52,8 +52,8 @@ CLI / Web / Cron
 - 命令路由优先于复杂度评估和模型执行；显式 `alter0.execution.engine=codex` 的消息会在编排层绕过命令路由，使 Codex CLI 内置斜线输入作为直连 Codex 内容进入 `ExecutionPort`。
 - Cron 触发不直接调用执行器，必须复用编排链路。
 - Cron runs 接口通过 Session history 按 `trigger_type=cron` 与 `job_id` 查询触发会话，不另建独立运行记录存储。
-- `ExecutionPort` 是自然语言执行能力的稳定边界；具体执行由 `RuntimeResolver` 选择 CLI Runtime。
-- `RuntimeResolver` 按优先级选择执行器：显式 `alter0.execution.engine=codex` 进入 `Codex Direct`；存在启用且健康的 Model Provider 时进入 `Claude Code + provider profile`；其余情况进入 `Codex Direct`。
+- `ExecutionPort` 是 Agent 执行能力的稳定边界；具体执行由 `RuntimeResolver` 选择 CLI Runtime。
+- `RuntimeResolver` 按优先级选择执行器：显式 `alter0.execution.engine=codex` 进入 `Codex Direct`；存在启用且健康的 Model Provider 时进入 `Claude Code + provider profile`；其余情况进入 `Codex Direct`；Claude 执行失败不自动回退。
 - Claude Code 运行前注入 `CLAUDE.md`、provider profile 环境、Skill、Memory、MCP 和工作区事实；Codex Direct 运行前注入 `AGENTS.md`、独立 `CODEX_HOME`、Skill、Memory、MCP 和工作区事实。
 - trace、session、message、correlation 字段贯穿日志、指标、会话与任务。
 
@@ -198,9 +198,9 @@ Web input
 - 前端组件测试需覆盖 React 工作台的稳定契约，至少校验 `WorkbenchApp` 的 canonical path 路由、语言切换、移动端导航收口、左侧主导航会话列表，以及 Conversation / Terminal workspace 的固定 header、消息区、Composer 和 `Details` 面板未被回归破坏；Conversation 消息区还需覆盖轻量 IM 气泡 DOM 与样式契约、长历史最新优先渲染与加载更早批次。
 - `legacyRouteLayoutStyles.test.ts` 需继续对 `chat-core.css` 的 `Process` 阅读契约做源码断言，至少覆盖步骤标题收缩、正文整列宽度和 `max-width: 760px` 下的移动端可读性约束。
 - `ReactManagedTerminalRouteBody.test.tsx` 需覆盖三类终端步骤回归：步骤头保留独立 `.terminal-step-toggle-icon` 且展开前后状态与标题主列同时成立；命令/终端输出类 block 继续渲染 `<pre><code>`；说明类 block 在详情展开后必须落到 `.message-markdown-rendered`，并对零宽字符或“每字一行”病态内容完成可读性归一化。
-- 图片输入链路的最小稳定测试面包括：前端文件选择与剪贴板图片读取限制、Composer 附件预览与移除、Web 消息接口对附件元数据的编码、`HybridNLProcessor` 对图片 part 的构造与禁回退约束、OpenAI Responses / Chat Completions 适配层对视觉内容的序列化。
+- 图片输入链路的最小稳定测试面包括：前端文件选择与剪贴板图片读取限制、Composer 附件预览与移除、Web 消息接口对附件元数据的编码、`RuntimeResolverProcessor` 对图片 part 的构造与禁回退约束、OpenAI Responses / Chat Completions 适配层对视觉内容的序列化。
 - `src/app/routeState.test.ts`、`src/app/WorkbenchApp.test.tsx`、`features/shell/legacyShellConfig.test.ts`、`features/shell/components/PrimaryNav.test.tsx`、`shellLayoutStyles.test.ts`、`legacyRouteLayoutStyles.test.ts` 与各 `ReactManaged*RouteBody.test.tsx` 共同覆盖路由解析、三入口主导航、Management 工具入口、Management 页族标记、语言切换、Conversation runtime 入口、Skill/Terminal/Memory/Control/Tasks/Sessions 页面取数与窄屏布局契约；Go 侧 `internal/interfaces/web/server_*_test.go` 继续通过源码与嵌入资产断言校验 `WorkbenchApp`、`ConversationRuntimeProvider`、`ConversationWorkspace`、`ReactManagedRouteBody`、共享样式和静态资源分发策略。
-- 图片输入链路的最小稳定测试面包括：前端文件选择与剪贴板图片读取限制、发送 payload 与会话恢复预览资产的分离、Composer 附件预览与移除、AI markdown 图片渲染、Web 消息接口对附件元数据的编码、`HybridNLProcessor` 对图片 part 的构造与禁回退约束、OpenAI Responses / Chat Completions 适配层对视觉内容的序列化。
+- 图片输入链路的最小稳定测试面包括：前端文件选择与剪贴板图片读取限制、发送 payload 与会话恢复预览资产的分离、Composer 附件预览与移除、AI markdown 图片渲染、Web 消息接口对附件元数据的编码、`RuntimeResolverProcessor` 对图片 part 的构造与禁回退约束、OpenAI Responses / Chat Completions 适配层对视觉内容的序列化。
 - 回归测试优先覆盖空白会话重复、软键盘残留空白、整段列表重建、断流恢复与残留 `In Progress` 等高频问题。
 
 ## Skill & Memory
@@ -233,16 +233,18 @@ Natural language message
 - Claude Code 路径在会话工作区生成 `.alter0/claude-runtime/`、`CLAUDE.md`、Skill 副本、Memory 注入摘要和 provider profile 环境。
 - Codex Direct 路径在会话工作区生成 `.alter0/codex-runtime/`、`AGENTS.md`、独立 `codex-home/`、Skill 副本、Memory 注入摘要和 thread id。
 - `internal/storage/infrastructure/localfile.SessionStore` 使用分文件布局持久化 Chat 历史：新 Chat 会话按 `session_id` 写入 `_default` 分组；历史 `alter0-chat` 归档日文件与旧 `chat` 分文件布局在读取时按消息身份去重合并到当前 Chat 会话模型。删除会话后保存全量快照会清理已不存在的会话文件。加载时扫描当前目录布局，并读取旧版 `.alter0/sessions.json` / `.alter0/sessions.md` 聚合文件；当多种布局同时存在时按消息身份去重合并，随后立即把合并结果重写为新的分文件布局并删除旧聚合文件，避免迁移中断造成历史缺失。
-- Web 上传的会话附件经 `internal/interfaces/web/server.go` 与 `session_attachment_store.go` 规范化后统一写入 `alter0.user_input.attachments`；图片附件额外保留兼容性的 `alter0.user_input.image_attachments`。`/api/sessions/{session_id}/attachments` 现在支持“原文件 + 可选预览”模型：图片仍落原图与预览图，普通文件只落原文件并让 `preview_url` 回退到 `asset_url`。Conversation runtime 消息接口随后只携带 `id + asset_url + preview_url` 引用，服务端再解析出工作区内的原图路径写入元数据；前端渲染层再按场景分流，缩略位读取 `preview_url`，回显与预览弹层读取 `asset_url`。assistant 最终回复中的 markdown 外链图片则由 `internal/orchestration/application/session_output_image_assets.go` 在 SessionPersistenceService 中做结果后处理：仅对可下载的 `http(s)` 图片做抓取，写入同一 Session 附件目录，并把 `result.Output / result.ProcessSteps[].Detail` 里的图片地址改写为 `/api/sessions/{session_id}/attachments/{asset_id}/original`。`/api/messages`、Terminal 输入与 Control Task follow-up 输入都会复用同一附件目录与交付 URL；已移除的 `/api/messages*` 不再作为附件消费入口。`internal/execution/infrastructure/hybrid_nl_processor.go` 继续只把图片子集解码成 `llmdomain.Message.Parts`；显式 Codex Direct 则由 `internal/execution/infrastructure/codex_cli_processor.go` 从同一图片 metadata 读取 `workspace_path` 并生成 Codex CLI `-i <path>` 参数；Terminal 侧普通文件则不进入多模态图片 part，而是在执行前写入 Terminal 工作区并通过 prompt 注入稳定路径，交给 Codex 读盘。带图请求不进入异步 Task，也不会在模型链失败后静默回退到 Codex CLI，避免把视觉请求错误降级为纯文本执行。
+- Web 上传的会话附件经 `internal/interfaces/web/server.go` 与 `session_attachment_store.go` 规范化后统一写入 `alter0.user_input.attachments`；图片附件额外保留兼容性的 `alter0.user_input.image_attachments`。`/api/sessions/{session_id}/attachments` 现在支持“原文件 + 可选预览”模型：图片仍落原图与预览图，普通文件只落原文件并让 `preview_url` 回退到 `asset_url`。Conversation runtime 消息接口随后只携带 `id + asset_url + preview_url` 引用，服务端再解析出工作区内的原图路径写入元数据；前端渲染层再按场景分流，缩略位读取 `preview_url`，回显与预览弹层读取 `asset_url`。assistant 最终回复中的 markdown 外链图片则由 `internal/orchestration/application/session_output_image_assets.go` 在 SessionPersistenceService 中做结果后处理：仅对可下载的 `http(s)` 图片做抓取，写入同一 Session 附件目录，并把 `result.Output / result.ProcessSteps[].Detail` 里的图片地址改写为 `/api/sessions/{session_id}/attachments/{asset_id}/original`。`/api/messages`、Terminal 输入与 Control Task follow-up 输入都会复用同一附件目录与交付 URL；已移除的 `/api/messages*` 不再作为附件消费入口。图片附件进入 Claude Code 或 Codex CLI 时由对应 runtime processor 解析元数据；显式 Codex Direct 由 `internal/execution/infrastructure/codex_cli_processor.go` 从同一图片 metadata 读取 `workspace_path` 并生成 Codex CLI `-i <path>` 参数；Terminal 侧普通文件则不进入多模态图片 part，而是在执行前写入 Terminal 工作区并通过 prompt 注入稳定路径，交给 Codex 读盘。带图请求不进入异步 Task，也不会在模型链失败后静默回退到 Codex CLI，避免把视觉请求错误降级为纯文本执行。
 - Memory Files 注入需要携带路径、存在状态、可写性、内容摘要、召回片段和截断标记。
-- Markdown 主存结构固定为 `memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。
+- `cmd/alter0` 解析 `daily-memory-dir`、`long-term-memory-path` 与 `mandatory-context-file` 后，同时传入 `internal/execution/application.MemoryContextOptions`、Web Memory 聚合服务、任务摘要读取链路与系统维护链路；执行侧优先读取这些配置路径，再回退到仓库内兼容路径。
+- Markdown 上下文主存结构固定为根级 `AGENTS.md`、`SOUL.md`、`memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。`AGENTS.md` 由 execution memory resolver 以 `root_instructions` selection 注入，定位为运行规则上下文；`SOUL.md` 由 `mandatory-context-file` 解析为强约束上下文；其余文件承载事实型记忆。
+- 持久记忆 Markdown 由 CLI Runtime 维护；服务侧会话记忆只保留在运行态和 `ConversationSummary` 中，用于恢复、召回和维护任务输入，不把每轮会话、压缩片段或任务摘要直接写入天级记忆或长期候选 Markdown。
 - 用户可见 Markdown 不写入 confidence、source、status、sensitivity 等机器元数据；检索索引可作为派生文件重建。
-- 用户显式记忆写入由当前 CLI runtime 完成；会话归档由服务生成 `ConversationSummary`；长期整理由系统维护任务启动 CLI runtime 并加载 `memory-maintenance` Skill 完成。该维护任务状态由 Web `maintenanceService` 记录，并通过 Settings 的 Maintenance 分区展示。
-- Skill Memory Web 聚合接口只读返回长期记忆、天级记忆、项目记忆、会话摘要与说明文档；任务摘要刷新走 Task summary 子域接口。
+- 用户显式记忆写入由当前 CLI runtime 完成；会话归档由服务生成 `ConversationSummary`；任务摘要保留在 Task 领域对象与存储中，不再由 `RuntimeMarkdownStore` 直接追加到 Daily/Long-term Markdown；长期整理由系统维护任务启动 CLI runtime 并加载 `memory-maintenance` Skill 完成。维护任务入口 prompt 固定要求读取当日/昨日天级记忆、对照长期记忆、只提升稳定事实/偏好/决策/流程/约束、禁止复制原始 transcript、日志、密钥和一次性任务细节，合并重复项并报告变更文件与跳过候选。该维护任务状态由 Web `maintenanceService` 记录，并通过 Settings 的 Maintenance 分区展示。
+- Skill Memory Web 聚合接口只读返回 `AGENTS.md` root instructions、`SOUL.md` 强约束、长期记忆、天级记忆、项目记忆、会话摘要与说明文档；任务摘要刷新走 Task summary 子域接口。
 
 ### 验证策略
 
-- Execution 应用测试覆盖 Runtime Resolver、Skill/MCP/Memory Context 注入、工作区文件生成和 Provider 兜底。
+- Execution 应用测试覆盖 Runtime Resolver、Skill/MCP/Memory Context 注入、工作区文件生成和 Provider 选择错误收口。
 - Infrastructure 测试覆盖 Claude Code 启动参数、Codex Direct 运行目录、thread 状态持久化、日志解析和错误收口。
 - Memory 测试覆盖 Markdown 编解码、会话摘要、长期召回、系统维护整理输入和任务摘要深检索。
 
@@ -252,7 +254,7 @@ Natural language message
 
 - `internal/task/domain` 定义任务状态、来源字段、摘要与执行元数据。
 - `internal/task/application` 负责异步执行池、复杂度预判、任务生命周期和心跳续租。
-- `internal/tasksummary/application` 负责任务摘要存储和运行态 Markdown 记录。
+- `internal/tasksummary/application` 负责任务摘要存储与重建；记忆 Markdown 写入由 Agent 维护，不由任务摘要模块直接落盘。
 - `internal/terminal/domain` 定义 Terminal 会话态、turn 和 step。
 - `internal/terminal/application` 负责 Terminal 会话持久化、恢复、输入续写和工作区分配。
 
@@ -285,7 +287,7 @@ Terminal input
 - `ReactManagedTasksRouteBody.tsx` 负责 Control Task 输出页的日志读取：打开任务详情时先通过 `/api/control/tasks/{task_id}/logs` 回补游标日志，再通过 `/api/control/tasks/{task_id}/logs/stream?cursor=<cursor>` 接入实时日志；页面隐藏时关闭当前 `EventSource` 并保持已读日志，页面恢复可见后通过 page-activation 触发详情与日志回源，再从最新 cursor 续接，避免后台标签页持续处理输出日志事件。
 - Web 不直接暴露本地文件路径，产物通过引用、下载或预览接口交付。
 - Task 产物列表响应需要过滤本地 URI；下载和预览由任务接口按 artifact id 读取并输出安全响应头。
-- Memory 任务视图读取 Task 与 task summary 数据，支持任务摘要重建，但不直接执行 retry/cancel。
+- Memory 任务视图读取 Task 与 task summary 数据，支持任务摘要重建；重建结果保留在 Task 存储与视图数据中，不直接写入记忆 Markdown，也不直接执行 retry/cancel。
 - 工作区按 Chat、Task、Terminal 分层隔离，删除会话或 Terminal 时同步清理对应目录。
 - 直连 Codex 的 Chat / Chat 会话在自身工作区下维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Chat 的 Codex thread id 写入 `.alter0/codex-runtime/thread.json`，Chat 的 Codex thread id 写入 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json`；Terminal 会话在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Terminal 会话态与 turn/step 执行态分离，历史 `running / starting` 需要兼容归一。
@@ -353,7 +355,7 @@ Environment restart
 - Codex Direct 的托管 `AGENTS.md` 由 `internal/codex/infrastructure/runtimeconfig` 生成，并固定包含工作区隔离、禁止把 `/srv/...`、`.alter0/workspaces/...`、`file://`、`localhost`、`127.0.0.1` 作为用户链接返回，以及静态产物、完整服务与后端路由统一走 `preview-publish` 的交付约束。
 - 服务启动时不再注册任何内置业务编排；对应业务能力通过用户选择的 Skill 组合表达。
 - Models 控制面需要保持空 API Key 语义、占位值过滤、禁用态恢复和默认 Provider 收敛。
-- Environment registry 按 Web & Queue、Async Tasks、Terminal、Session Memory、Persistent Memory、LLM 模块声明 key、类型、默认值、校验规则、敏感性与生效方式。
+- Environment registry 按 Web & Queue、Async Tasks、Terminal、CLI Runtime、Persistent Memory、LLM 模块声明 key、类型、默认值、校验规则、敏感性与生效方式；会话内上下文压缩由 CLI runtime 自身处理，不在服务侧暴露 `session_memory_*` 或 `context_compression_*` 配置。
 - Environment 配置更新写入 audit store，控制面按时间倒序读取变更记录。
 - Codex Runtime 服务固定解析当前活动 `CODEX_HOME`，未显式设置时回退到 `$HOME/.codex`；当前服务运行账户的 `<active_codex_home>/auth.json` 与 `config.toml` 作为运行时认证和配置来源。
 - Codex 运行时状态接口同时返回活动 `auth.json`、`config.toml`、当前 profile、活动 model、思考深度、配置来源、`model/list` 返回的可选 model 能力集，以及当前 `auth.json` 解析出的身份快照与实时刷新后的 quota 信息；更新运行时设置时，后端先通过 `config/read` 解析当前生效 key path，再调用 `config/batchWrite` 更新 `model` 与 `model_reasoning_effort`，并触发 `reloadUserConfig` 让当前运行时立即生效。

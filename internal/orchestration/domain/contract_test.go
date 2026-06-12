@@ -29,9 +29,9 @@ func TestIntentContractUsesStableRouteTypes(t *testing.T) {
 		t.Fatalf("command intent = %+v, want stable command contract", commandIntent)
 	}
 
-	nlIntent := Intent{Type: IntentTypeNL}
-	if nlIntent.Type != "nl" {
-		t.Fatalf("nl intent type = %q, want nl", nlIntent.Type)
+	nlIntent := Intent{Type: IntentTypeAgent}
+	if nlIntent.Type != "agent" {
+		t.Fatalf("agent intent type = %q, want agent", nlIntent.Type)
 	}
 }
 

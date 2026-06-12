@@ -1,6 +1,7 @@
 package application
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,7 @@ import (
 	taskdomain "alter0/internal/task/domain"
 )
 
-func TestRuntimeMarkdownStoreRecordWritesDailyAndLongTerm(t *testing.T) {
+func TestRuntimeMarkdownStoreRecordDoesNotWriteMemoryFilesDirectly(t *testing.T) {
 	root := t.TempDir()
 	dailyDir := filepath.Join(root, "memory")
 	longTermDir := filepath.Join(root, "memory", "long-term")
@@ -25,23 +26,19 @@ func TestRuntimeMarkdownStoreRecordWritesDailyAndLongTerm(t *testing.T) {
 
 	dailyPath := filepath.Join(dailyDir, "2026-03-04.md")
 	longTermPath := filepath.Join(longTermDir, "2026-03-04.md")
-	assertPathExists(t, dailyPath)
-	assertPathExists(t, longTermPath)
-
-	dailyRaw, err := os.ReadFile(dailyPath)
-	if err != nil {
-		t.Fatalf("read daily summary: %v", err)
+	if _, err := os.Stat(dailyPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected task summary not to write daily memory directly, got %v", err)
 	}
-	if !strings.Contains(string(dailyRaw), "task_id: task-r032-1") {
-		t.Fatalf("expected task_id reference in daily summary, got %s", string(dailyRaw))
+	if _, err := os.Stat(longTermPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected task summary not to write long-term memory directly, got %v", err)
 	}
 	refs := store.FindSummaryRefs("task-r032-1")
-	if len(refs) != 2 {
-		t.Fatalf("expected two summary refs, got %+v", refs)
+	if len(refs) != 0 {
+		t.Fatalf("expected no markdown summary refs, got %+v", refs)
 	}
 }
 
-func TestRuntimeMarkdownStoreRebuildUpsertsEntry(t *testing.T) {
+func TestRuntimeMarkdownStoreRebuildReturnsNoMemoryRefs(t *testing.T) {
 	root := t.TempDir()
 	dailyDir := filepath.Join(root, "memory")
 	longTermDir := filepath.Join(root, "memory", "long-term")
@@ -52,26 +49,22 @@ func TestRuntimeMarkdownStoreRebuildUpsertsEntry(t *testing.T) {
 
 	finished := time.Date(2026, 3, 4, 11, 0, 0, 0, time.UTC)
 	first := buildTerminalSummaryTask("task-r032-2", taskdomain.TaskStatusFailed, finished, "first")
-	if _, err := store.Rebuild(first); err != nil {
+	refs, err := store.Rebuild(first)
+	if err != nil {
 		t.Fatalf("first rebuild: %v", err)
+	}
+	if len(refs) != 0 {
+		t.Fatalf("expected no direct memory refs, got %+v", refs)
 	}
 	updated := first
 	updated.TaskSummary.Result = "updated"
 	updated.Summary = "updated"
-	if _, err := store.Rebuild(updated); err != nil {
+	refs, err = store.Rebuild(updated)
+	if err != nil {
 		t.Fatalf("second rebuild: %v", err)
 	}
-
-	raw, err := os.ReadFile(filepath.Join(dailyDir, "2026-03-04.md"))
-	if err != nil {
-		t.Fatalf("read summary file: %v", err)
-	}
-	body := string(raw)
-	if strings.Count(body, "### task_id: task-r032-2") != 1 {
-		t.Fatalf("expected unique task entry, got %s", body)
-	}
-	if !strings.Contains(body, "- result: updated") {
-		t.Fatalf("expected updated summary content, got %s", body)
+	if len(refs) != 0 {
+		t.Fatalf("expected no direct memory refs after rebuild, got %+v", refs)
 	}
 }
 

@@ -1329,7 +1329,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	hasImageAttachments := len(execdomain.DecodeUserImageAttachments(msg.Metadata)) > 0
 	intent := s.classifyMessageIntent(msg.Content)
 	assessment := s.defaultComplexityAssessment()
-	if intent.Type == orchdomain.IntentTypeNL {
+	if intent.Type == orchdomain.IntentTypeAgent {
 		assessment = s.assessComplexity(msg)
 		msg = enrichMessageWithComplexityMetadata(msg, assessment)
 		if !hasImageAttachments {
@@ -1366,7 +1366,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 
 	execCtx, _ := executionContextForMessage(r.Context(), msg)
 	result, err := s.orchestrator.Handle(execCtx, msg)
-	if intent.Type == orchdomain.IntentTypeNL {
+	if intent.Type == orchdomain.IntentTypeAgent {
 		result = attachComplexityMetadata(result, assessment, nil)
 	}
 	if err != nil {
@@ -1374,7 +1374,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		s.touchSessionActivity(msg.SessionID)
 		statusCode := http.StatusBadRequest
 		switch result.ErrorCode {
-		case "command_failed", "nl_execution_failed":
+		case "command_failed", "agent_execution_failed":
 			statusCode = http.StatusInternalServerError
 		case "queue_timeout":
 			statusCode = http.StatusGatewayTimeout
@@ -1474,7 +1474,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	assessmentReady := false
 	assessmentCh := (<-chan taskapp.ComplexityAssessment)(nil)
 	cancelAssessment := func() {}
-	if intent.Type == orchdomain.IntentTypeNL && s.tasks != nil && !hasImageAttachments {
+	if intent.Type == orchdomain.IntentTypeAgent && s.tasks != nil && !hasImageAttachments {
 		assessmentCtx, cancel := context.WithCancel(execCtx)
 		cancelAssessment = cancel
 		defer cancelAssessment()
@@ -1515,7 +1515,7 @@ func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 		result := streamResult.result
 		handleErr := streamResult.err
 		_ = s.flushPendingStreamEvents(writeEvent, streamEventCh, "")
-		if intent.Type == orchdomain.IntentTypeNL {
+		if intent.Type == orchdomain.IntentTypeAgent {
 			result = attachComplexityMetadata(result, assessment, nil)
 		}
 		if handleErr != nil {
@@ -5371,7 +5371,7 @@ func (s *Server) classifyMessageIntent(content string) orchdomain.Intent {
 	if strings.HasPrefix(trimmed, "/") {
 		return orchdomain.Intent{Type: orchdomain.IntentTypeCommand}
 	}
-	return orchdomain.Intent{Type: orchdomain.IntentTypeNL}
+	return orchdomain.Intent{Type: orchdomain.IntentTypeAgent}
 }
 
 func (s *Server) defaultComplexityAssessment() taskapp.ComplexityAssessment {

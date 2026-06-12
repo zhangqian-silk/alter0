@@ -23,6 +23,7 @@ const (
 	defaultMaintenanceInactiveDuration = 7 * 24 * time.Hour
 	defaultMemoryMaintenanceJobID      = "system-memory-maintenance"
 	defaultSessionCleanupJobID         = "system-session-cleanup"
+	defaultMemoryMaintenancePrompt     = "Summarize daily memory into durable memory candidates. Read today's and yesterday's daily memory, compare against long-term memory, promote only stable facts, preferences, decisions, workflows, and constraints. Do not copy raw transcript text. Merge duplicates, keep unresolved or one-off details in daily memory, and never promote secrets or credentials. Return changed files and skipped candidates."
 )
 
 type sessionMaintenanceService interface {
@@ -120,7 +121,7 @@ func (m *maintenanceService) RunMemoryMaintenance(ctx context.Context, now time.
 		ChannelID:   "scheduler-default",
 		ChannelType: shareddomain.ChannelTypeScheduler,
 		TriggerType: shareddomain.TriggerTypeSystem,
-		Content:     "Run system memory maintenance. Consolidate daily memory into long-term memory, remove duplicates, and report changed files.",
+		Content:     defaultMemoryMaintenancePrompt,
 		Metadata: map[string]string{
 			"alter0.skills.include":  `["memory-maintenance"]`,
 			"alter0.memory.include":  `["memory_long_term","memory_daily_today","memory_daily_yesterday","user_md","soul_md"]`,
@@ -321,7 +322,7 @@ func (s *Server) registerMaintenanceSchedulerJobs() {
 				"alter0.maintenance.job": defaultMemoryMaintenanceJobID,
 			},
 			TaskConfig: schedulerdomain.TaskConfig{
-				Input: "Run system memory maintenance. Consolidate daily memory into long-term memory, remove duplicates, and report changed files.",
+				Input: defaultMemoryMaintenancePrompt,
 			},
 		},
 		{

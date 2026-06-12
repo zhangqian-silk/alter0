@@ -94,7 +94,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - 支持 OpenAI Compatible Provider。
 - 支持 OpenRouter Provider。
 - Provider 支持启用、禁用、默认切换、模型列表、base URL、API type、Claude Code profile 名称和健康状态。
-- 启用且健康的默认 Provider 作为自然语言任务的 Claude Code 首选运行来源。
+- 启用且健康的默认 Provider 作为 Agent 请求的 Claude Code 首选运行来源。
 
 ### API type
 
@@ -133,7 +133,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - Async Tasks 配置覆盖 `async_task_workers`、`async_task_timeout`、`async_task_max_retries`、`async_task_trigger_threshold` 与 `async_long_content_threshold`。
 - Terminal 配置覆盖 `task_terminal_shell`；启动参数可继续提供 shell args 作为运行态输入。
 - CLI Runtime 配置覆盖 Claude Code 命令、Claude profile 目录、Codex 命令、运行时 home、工作区注入目录和健康检查超时。
-- Session Memory 配置覆盖 `session_memory_turns`、`session_memory_ttl`、`context_compression_threshold`、`context_compression_summary_tokens` 与 `context_compression_retain_turns`。
+- 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理，服务侧不提供 `session_memory_*` 或 `context_compression_*` 配置项。
 - Persistent Memory 配置覆盖 `daily_memory_dir`、`long_term_memory_path`、`long_term_memory_write_policy`、`long_term_memory_writeback_flush`、`long_term_memory_token_budget` 与 `mandatory_context_file`。
 - LLM 配置覆盖 `llm_temperature`、`llm_max_tokens` 与 `llm_react_max_iterations`，并按配置项声明决定立即生效或重启后生效。
 - 配置更新不得破坏当前已运行会话的持久化状态。

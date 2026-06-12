@@ -35,7 +35,7 @@ func TestTaskStorePersistsTaskLayoutRoundTrip(t *testing.T) {
 			RequestMetadata: map[string]string{"k": "v"},
 			Summary:         "completed",
 			Result: taskdomain.TaskResult{
-				Route:    shareddomain.RouteNL,
+				Route:    shareddomain.RouteAgent,
 				Output:   "report ready",
 				Metadata: map[string]string{"task_id": "task-1"},
 			},

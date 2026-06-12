@@ -34,10 +34,10 @@ func TestServiceAppendAndListMessagesByTimeRange(t *testing.T) {
 	base := time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC)
 
 	if err := service.Append(
-		newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteNL, ""),
-		newRecord("m-2", "s-1", sessiondomain.MessageRoleAssistant, "hi", base.Add(1*time.Minute), shareddomain.RouteNL, ""),
+		newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteAgent, ""),
+		newRecord("m-2", "s-1", sessiondomain.MessageRoleAssistant, "hi", base.Add(1*time.Minute), shareddomain.RouteAgent, ""),
 		newRecord("m-3", "s-1", sessiondomain.MessageRoleAssistant, "done", base.Add(2*time.Minute), shareddomain.RouteCommand, "command_failed"),
-		newRecord("m-4", "s-2", sessiondomain.MessageRoleUser, "other", base.Add(3*time.Minute), shareddomain.RouteNL, ""),
+		newRecord("m-4", "s-2", sessiondomain.MessageRoleUser, "other", base.Add(3*time.Minute), shareddomain.RouteAgent, ""),
 	); err != nil {
 		t.Fatalf("append failed: %v", err)
 	}
@@ -68,9 +68,9 @@ func TestServiceListSessionsPagination(t *testing.T) {
 	base := time.Date(2026, 3, 3, 8, 0, 0, 0, time.UTC)
 
 	if err := service.Append(
-		newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "a", base, shareddomain.RouteNL, ""),
-		newRecord("m-2", "s-2", sessiondomain.MessageRoleUser, "b", base.Add(1*time.Minute), shareddomain.RouteNL, ""),
-		newRecord("m-3", "s-3", sessiondomain.MessageRoleUser, "c", base.Add(2*time.Minute), shareddomain.RouteNL, ""),
+		newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "a", base, shareddomain.RouteAgent, ""),
+		newRecord("m-2", "s-2", sessiondomain.MessageRoleUser, "b", base.Add(1*time.Minute), shareddomain.RouteAgent, ""),
+		newRecord("m-3", "s-3", sessiondomain.MessageRoleUser, "c", base.Add(2*time.Minute), shareddomain.RouteAgent, ""),
 	); err != nil {
 		t.Fatalf("append failed: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestServiceListSessionsSupportsSourceFilters(t *testing.T) {
 			sessiondomain.MessageRoleUser,
 			"user task",
 			base.Add(1*time.Minute),
-			shareddomain.RouteNL,
+			shareddomain.RouteAgent,
 			"",
 			sessiondomain.MessageSource{
 				TriggerType: shareddomain.TriggerTypeUser,
@@ -138,7 +138,7 @@ func TestServiceListSessionsSupportsSourceFilters(t *testing.T) {
 			sessiondomain.MessageRoleAssistant,
 			"done",
 			base.Add(2*time.Minute),
-			shareddomain.RouteNL,
+			shareddomain.RouteAgent,
 			"",
 			sessiondomain.MessageSource{
 				TriggerType: shareddomain.TriggerTypeUser,
@@ -205,8 +205,8 @@ func TestServiceLoadsFromStoreAndBuildsIndex(t *testing.T) {
 	base := time.Date(2026, 3, 3, 6, 0, 0, 0, time.UTC)
 	store := &stubStore{
 		loadRecords: []sessiondomain.MessageRecord{
-			newRecord("m-2", "s-1", sessiondomain.MessageRoleAssistant, "second", base.Add(2*time.Minute), shareddomain.RouteNL, ""),
-			newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "first", base.Add(1*time.Minute), shareddomain.RouteNL, ""),
+			newRecord("m-2", "s-1", sessiondomain.MessageRoleAssistant, "second", base.Add(2*time.Minute), shareddomain.RouteAgent, ""),
+			newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "first", base.Add(1*time.Minute), shareddomain.RouteAgent, ""),
 		},
 	}
 
@@ -232,7 +232,7 @@ func TestServiceAppendRollbackWhenStoreFails(t *testing.T) {
 	}
 
 	base := time.Date(2026, 3, 3, 9, 0, 0, 0, time.UTC)
-	err = service.Append(newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteNL, ""))
+	err = service.Append(newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteAgent, ""))
 	if err == nil {
 		t.Fatal("expected append error")
 	}
@@ -255,9 +255,9 @@ func TestServiceDeleteSessionRemovesRecordsAndIndex(t *testing.T) {
 
 	base := time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC)
 	if err := service.Append(
-		newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteNL, ""),
-		newRecord("m-2", "s-1", sessiondomain.MessageRoleAssistant, "world", base.Add(time.Minute), shareddomain.RouteNL, ""),
-		newRecord("m-3", "s-2", sessiondomain.MessageRoleUser, "other", base.Add(2*time.Minute), shareddomain.RouteNL, ""),
+		newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteAgent, ""),
+		newRecord("m-2", "s-1", sessiondomain.MessageRoleAssistant, "world", base.Add(time.Minute), shareddomain.RouteAgent, ""),
+		newRecord("m-3", "s-2", sessiondomain.MessageRoleUser, "other", base.Add(2*time.Minute), shareddomain.RouteAgent, ""),
 	); err != nil {
 		t.Fatalf("append failed: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestServiceDeleteSessionRollsBackOnStoreFailure(t *testing.T) {
 	}
 
 	base := time.Date(2026, 3, 3, 10, 0, 0, 0, time.UTC)
-	if err := service.Append(newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteNL, "")); err != nil {
+	if err := service.Append(newRecord("m-1", "s-1", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteAgent, "")); err != nil {
 		t.Fatalf("append failed: %v", err)
 	}
 
@@ -309,9 +309,9 @@ func TestServicePinnedSessionIsExcludedFromInactiveCleanup(t *testing.T) {
 
 	now := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
 	if err := service.Append(
-		newRecord("m-old", "s-old", sessiondomain.MessageRoleUser, "old", now.Add(-8*24*time.Hour), shareddomain.RouteNL, ""),
-		newRecord("m-pinned", "s-pinned", sessiondomain.MessageRoleUser, "pinned", now.Add(-9*24*time.Hour), shareddomain.RouteNL, ""),
-		newRecord("m-active", "s-active", sessiondomain.MessageRoleUser, "active", now.Add(-2*24*time.Hour), shareddomain.RouteNL, ""),
+		newRecord("m-old", "s-old", sessiondomain.MessageRoleUser, "old", now.Add(-8*24*time.Hour), shareddomain.RouteAgent, ""),
+		newRecord("m-pinned", "s-pinned", sessiondomain.MessageRoleUser, "pinned", now.Add(-9*24*time.Hour), shareddomain.RouteAgent, ""),
+		newRecord("m-active", "s-active", sessiondomain.MessageRoleUser, "active", now.Add(-2*24*time.Hour), shareddomain.RouteAgent, ""),
 	); err != nil {
 		t.Fatalf("append failed: %v", err)
 	}
@@ -358,8 +358,8 @@ func TestServiceProtectedSessionIsExcludedFromInactiveCleanup(t *testing.T) {
 
 	now := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
 	if err := service.Append(
-		newRecord("m-old", "s-old", sessiondomain.MessageRoleUser, "old", now.Add(-8*24*time.Hour), shareddomain.RouteNL, ""),
-		newRecord("m-protected", "s-protected", sessiondomain.MessageRoleUser, "protected", now.Add(-9*24*time.Hour), shareddomain.RouteNL, ""),
+		newRecord("m-old", "s-old", sessiondomain.MessageRoleUser, "old", now.Add(-8*24*time.Hour), shareddomain.RouteAgent, ""),
+		newRecord("m-protected", "s-protected", sessiondomain.MessageRoleUser, "protected", now.Add(-9*24*time.Hour), shareddomain.RouteAgent, ""),
 	); err != nil {
 		t.Fatalf("append failed: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestServiceTouchSessionUpdatesLastActiveAt(t *testing.T) {
 
 	base := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	touchedAt := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
-	if err := service.Append(newRecord("m-1", "s-touch", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteNL, "")); err != nil {
+	if err := service.Append(newRecord("m-1", "s-touch", sessiondomain.MessageRoleUser, "hello", base, shareddomain.RouteAgent, "")); err != nil {
 		t.Fatalf("append failed: %v", err)
 	}
 	if err := service.TouchSession("s-touch", touchedAt); err != nil {

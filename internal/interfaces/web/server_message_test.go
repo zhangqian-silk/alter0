@@ -145,7 +145,7 @@ func TestMessageHandlerUsesCanonicalChatSessionWhenRequestOmitsSessionID(t *test
 	orchestrator := &stubWebOrchestrator{
 		result: shareddomain.OrchestrationResult{
 			MessageID: "message-generated",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "ok",
 		},
 	}
@@ -170,7 +170,7 @@ func TestMessageHandlerCarriesImageAttachmentsInMetadata(t *testing.T) {
 		result: shareddomain.OrchestrationResult{
 			MessageID: "message-generated",
 			SessionID: "session-fixed",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "ok",
 		},
 	}
@@ -208,7 +208,7 @@ func TestMessageStreamHandlerEmitsStartDeltaDone(t *testing.T) {
 		result: shareddomain.OrchestrationResult{
 			MessageID: "message-generated",
 			SessionID: "session-fixed",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    output,
 		},
 	}
@@ -245,8 +245,8 @@ func TestMessageStreamHandlerEmitsError(t *testing.T) {
 		result: shareddomain.OrchestrationResult{
 			MessageID: "message-generated",
 			SessionID: "session-fixed",
-			Route:     shareddomain.RouteNL,
-			ErrorCode: "nl_execution_failed",
+			Route:     shareddomain.RouteAgent,
+			ErrorCode: "agent_execution_failed",
 		},
 		err: errors.New("processor failed"),
 	}
@@ -286,7 +286,7 @@ func TestMessageStreamHandlerEmitsKeepAliveWhileWaiting(t *testing.T) {
 		result: shareddomain.OrchestrationResult{
 			MessageID: "message-generated",
 			SessionID: "session-fixed",
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "slow-response",
 		},
 		delay: 35 * time.Millisecond,
@@ -312,7 +312,7 @@ func TestMessageStreamHandlerIgnoresCanceledRequestContextForWebConversation(t *
 			result: shareddomain.OrchestrationResult{
 				MessageID: "message-generated",
 				SessionID: "session-fixed",
-				Route:     shareddomain.RouteNL,
+				Route:     shareddomain.RouteAgent,
 				Output:    "chat-ok",
 			},
 		},

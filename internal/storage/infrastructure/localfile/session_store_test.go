@@ -23,7 +23,7 @@ func TestSessionStoreJSONRoundTrip(t *testing.T) {
 			Content:   "hello",
 			Timestamp: ts,
 			RouteResult: sessiondomain.RouteResult{
-				Route: shareddomain.RouteNL,
+				Route: shareddomain.RouteAgent,
 			},
 		},
 	}
@@ -41,8 +41,8 @@ func TestSessionStoreJSONRoundTrip(t *testing.T) {
 	if loaded[0].MessageID != "m-1" || loaded[0].SessionID != "s-1" {
 		t.Fatalf("unexpected record: %+v", loaded[0])
 	}
-	if loaded[0].RouteResult.Route != shareddomain.RouteNL {
-		t.Fatalf("expected route nl, got %q", loaded[0].RouteResult.Route)
+	if loaded[0].RouteResult.Route != shareddomain.RouteAgent {
+		t.Fatalf("expected route agent, got %q", loaded[0].RouteResult.Route)
 	}
 }
 

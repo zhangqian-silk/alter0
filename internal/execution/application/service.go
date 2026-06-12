@@ -12,7 +12,7 @@ import (
 )
 
 type Service struct {
-	processor      execdomain.NLProcessor
+	processor      execdomain.AgentProcessor
 	skillResolver  *skillContextResolver
 	mcpResolver    *mcpContextResolver
 	memoryResolver *memoryContextResolver
@@ -48,12 +48,12 @@ const (
 	resultMemoryRecallKey      = "memory.recall_count"
 )
 
-func NewService(processor execdomain.NLProcessor) *Service {
+func NewService(processor execdomain.AgentProcessor) *Service {
 	return &Service{processor: processor}
 }
 
 func NewServiceWithSkills(
-	processor execdomain.NLProcessor,
+	processor execdomain.AgentProcessor,
 	skillSource SkillCapabilitySource,
 	logger *slog.Logger,
 ) *Service {
@@ -67,7 +67,7 @@ func NewServiceWithSkills(
 }
 
 func NewServiceWithSkillsAndMemoryOptions(
-	processor execdomain.NLProcessor,
+	processor execdomain.AgentProcessor,
 	skillSource SkillCapabilitySource,
 	logger *slog.Logger,
 	memoryOptions MemoryContextOptions,
@@ -77,8 +77,8 @@ func NewServiceWithSkillsAndMemoryOptions(
 	return service
 }
 
-func (s *Service) ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error) {
-	output, resultMetadata, err := s.executeNaturalLanguage(ctx, msg, nil)
+func (s *Service) ExecuteAgent(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error) {
+	output, resultMetadata, err := s.executeAgent(ctx, msg, nil)
 	if err != nil {
 		return shareddomain.ExecutionResult{}, err
 	}
@@ -89,7 +89,7 @@ func (s *Service) ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.U
 	}, nil
 }
 
-func (s *Service) ExecuteNaturalLanguageStream(
+func (s *Service) ExecuteAgentStream(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
 	onEvent func(shareddomain.StreamEvent) error,
@@ -121,7 +121,7 @@ func (s *Service) ExecuteNaturalLanguageStream(
 		}
 	}
 
-	output, resultMetadata, err := s.executeNaturalLanguage(ctx, msg, streamHandler)
+	output, resultMetadata, err := s.executeAgent(ctx, msg, streamHandler)
 	if err != nil {
 		return shareddomain.ExecutionResult{}, err
 	}
@@ -132,7 +132,7 @@ func (s *Service) ExecuteNaturalLanguageStream(
 	}, nil
 }
 
-func (s *Service) executeNaturalLanguage(
+func (s *Service) executeAgent(
 	ctx context.Context,
 	msg shareddomain.UnifiedMessage,
 	streamHandler func(event execdomain.StreamEvent) error,

@@ -324,37 +324,6 @@ func renderMandatoryContextSection(snapshot mandatoryContextSnapshot) string {
 	return strings.TrimSpace(builder.String())
 }
 
-func applyMandatoryContextToSessionMemory(
-	snapshot sessionMemorySnapshot,
-	mandatorySnapshot mandatoryContextSnapshot,
-) (sessionMemorySnapshot, []mandatoryContextConflict) {
-	if len(snapshot.KeyState) == 0 || len(mandatorySnapshot.Rules) == 0 {
-		return snapshot, nil
-	}
-
-	keyState := cloneStringMap(snapshot.KeyState)
-	conflicts := make([]mandatoryContextConflict, 0)
-	for key, value := range snapshot.KeyState {
-		required, ok := mandatorySnapshot.Rules[normalizeMandatoryContextKey(key)]
-		if !ok || !mandatoryContextValuesConflict(required, value) {
-			continue
-		}
-
-		conflicts = append(conflicts, mandatoryContextConflict{
-			Source:         "session_memory",
-			Key:            key,
-			MemoryValue:    value,
-			MandatoryValue: required,
-		})
-		keyState[key] = required
-	}
-	if len(conflicts) == 0 {
-		return snapshot, nil
-	}
-	snapshot.KeyState = keyState
-	return snapshot, conflicts
-}
-
 func applyMandatoryContextToLongTermMemory(
 	snapshot longTermMemorySnapshot,
 	mandatorySnapshot mandatoryContextSnapshot,

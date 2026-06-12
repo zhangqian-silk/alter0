@@ -6,7 +6,7 @@ import (
 	shareddomain "alter0/internal/shared/domain"
 )
 
-type NLProcessor interface {
+type AgentProcessor interface {
 	Process(ctx context.Context, content string, metadata map[string]string) (string, error)
 }
 

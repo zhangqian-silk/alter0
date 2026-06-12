@@ -41,11 +41,11 @@ func TestApplicationPortsKeepStableMethodContracts(t *testing.T) {
 	telemetry := &contractTelemetry{}
 	var port Telemetry = telemetry
 	port.CountGateway("web")
-	port.CountRoute("nl")
+	port.CountRoute("agent")
 	port.CountCommand("help")
-	port.CountError("nl")
+	port.CountError("agent")
 	port.CountMemoryEvent("recall")
-	port.ObserveDuration("nl", 2*time.Second)
+	port.ObserveDuration("agent", 2*time.Second)
 
 	if telemetry.gatewayCount != 1 || telemetry.routeCount != 1 || telemetry.commandCount != 1 || telemetry.errorCount != 1 || telemetry.memoryCount != 1 {
 		t.Fatalf("telemetry counts = %+v, want one call per counter", telemetry)

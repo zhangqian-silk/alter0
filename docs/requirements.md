@@ -136,8 +136,8 @@
 - Product Skill 独立维护在 `docs/skills/<skill_id>/SKILL.md`，编码、旅行、前端设计、部署预览、文档协作、测试、评审与记忆整理都以 Skill 表达执行规则和交付要求。
 - 启动 CLI Runtime 前，运行时按会话工作区生成 `AGENTS.md` 或 `CLAUDE.md`，同步选中 Skill 文件、Memory 文件、MCP 配置、会话事实、工作区边界、仓库路径与交付要求。
 - 代码、旅行、前端设计、部署预览、文档协作、测试、评审与记忆整理都通过 Skill 注入当前会话；执行层直接使用 Claude Code CLI 或 Codex CLI。`travel` 需把行程安排沉淀为移动端 HTML 攻略、路线化内容和按行程密度生成的 Codex 手绘地图图片资产。
-- Memory Files 支持 `USER.md`、长期 `MEMORY.md`、`daily/<YYYY-MM-DD>.md`、`projects/<project>.md`、`conversations/<conversation_id>/summary.md`，并支持启动参数解析后的长期记忆文件与天级记忆目录。用户可见记忆文件保持 Markdown 主存，不在正文中暴露 confidence、source、status、sensitivity 等附加元数据。
-- 记忆更新由三条路径触发：用户显式要求记住时由当前 CLI Runtime 写入；会话结束或归档时生成 `ConversationSummary`；系统维护任务每日启动同一 CLI Runtime 并加载 `memory-maintenance` Skill，把会话摘要、日记忆和长期记忆合并整理。
+- Context Files 支持根级 `AGENTS.md`、`SOUL.md`、`USER.md`、长期 `MEMORY.md`、`daily/<YYYY-MM-DD>.md`、`projects/<project>.md`、`conversations/<conversation_id>/summary.md`，并支持启动参数解析后的长期记忆文件与天级记忆目录。`AGENTS.md` 是运行规则上下文，`SOUL.md` 是强约束上下文，其余为事实型记忆。用户可见记忆文件保持 Markdown 主存，不在正文中暴露 confidence、source、status、sensitivity 等附加元数据。所有持久记忆 Markdown 均由 CLI Runtime 维护，服务侧不直接把会话轮次、压缩片段或任务摘要写入 Daily/Long-term Markdown。
+- 记忆更新由三条路径触发：用户显式要求记住时由当前 CLI Runtime 写入目标记忆文件；会话结束或归档时服务生成 `ConversationSummary`；系统维护任务每日启动同一 CLI Runtime 并加载 `memory-maintenance` Skill，把会话摘要、日记忆和长期记忆合并整理。
 - 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理；alter0 保存原始消息、运行日志、结果与摘要，用于恢复、审计、跨会话召回和定时记忆整理。
 - `Skill -> Memory` 页面提供长期记忆、天级记忆、项目记忆、会话摘要与任务历史的只读可视化入口，并支持摘要重建。
 
@@ -189,7 +189,7 @@
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 Claude Code provider profile 配置，包含 base URL、API Key 保留语义、model、profile、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复；启用且健康的 Provider 作为 Claude Code 首选运行来源。
 - Codex Runtime 作为 `Codex Direct` 的账号与模型管理来源，在无可用 Model Provider 或 Claude Code 运行失败时承接自然语言任务兜底执行。
-- Environments 页面支持 Web/Queue、Async Tasks、Terminal、Session Memory、Persistent Memory 与 LLM 运行参数可视化配置、敏感值显隐、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、仅丢弃 Git 已跟踪本地改动的重启前同步策略、候选二进制构建、readyz 探活与失败回滚。
+- Environments 页面支持 Web/Queue、Async Tasks、Terminal、CLI Runtime、Persistent Memory 与 LLM 运行参数可视化配置、敏感值显隐、配置审计、在线实例启动时间与 commit hash 展示、运行时重启、远端 master 快进同步、仅丢弃 Git 已跟踪本地改动的重启前同步策略、候选二进制构建、readyz 探活与失败回滚。
 - Settings 页面提供 Codex Runtime 面板，使用单一顶部面板承载当前服务运行账户的 Codex 身份快照、邮箱、计划、认证模式、hourly / weekly 额度、profile、LLM Provider 注册状态，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换。首屏加载时 Codex Runtime 状态与 LLM Provider 状态需并行读取。页面不展示 Account ID / User ID、保存名称、多账号导入/登录/切换入口、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。额度必须来自当前 `auth.json` 的实时 quota 刷新结果，model / 思考深度选择变更后仅实时写回当前用户配置中的 `model` 与 `model_reasoning_effort`。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、统一 `HOME=/var/lib/alter0`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。

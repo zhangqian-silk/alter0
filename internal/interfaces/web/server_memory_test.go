@@ -21,11 +21,15 @@ func TestMemoryContextHandlerReturnsUnifiedPayload(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(longTermPath), 0o755); err != nil {
 		t.Fatalf("create long-term dir: %v", err)
 	}
+	rootInstructionsPath := filepath.Join(root, "AGENTS.md")
 	mandatoryPath := filepath.Join(root, "SOUL.md")
 	specPath := filepath.Join(root, "docs", "memory", "persistent-memory-module-spec.md")
 
 	if err := os.WriteFile(longTermPath, []byte("# Long-Term Memory\n- key: value"), 0o644); err != nil {
 		t.Fatalf("write long-term memory: %v", err)
+	}
+	if err := os.WriteFile(rootInstructionsPath, []byte("# AGENTS\n- run tests"), 0o644); err != nil {
+		t.Fatalf("write root instructions: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dailyDir, "2026-03-03.md"), []byte("# Daily Memory"), 0o644); err != nil {
 		t.Fatalf("write daily memory: %v", err)
@@ -44,6 +48,7 @@ func TestMemoryContextHandlerReturnsUnifiedPayload(t *testing.T) {
 		memory: newMemoryContextService(MemoryContextOptions{
 			LongTermPath:         longTermPath,
 			DailyDir:             dailyDir,
+			RootInstructionsPath: rootInstructionsPath,
 			MandatoryContextPath: mandatoryPath,
 			SpecPath:             specPath,
 		}),
@@ -67,6 +72,12 @@ func TestMemoryContextHandlerReturnsUnifiedPayload(t *testing.T) {
 	}
 	if body.LongTerm.Content == "" {
 		t.Fatal("expected long-term memory content")
+	}
+	if !body.RootInstructions.Exists {
+		t.Fatal("expected root instructions exists")
+	}
+	if body.RootInstructions.Content == "" {
+		t.Fatal("expected root instructions content")
 	}
 	if len(body.Daily.Items) != 1 || body.Daily.Items[0].Date != "2026-03-03" {
 		t.Fatalf("unexpected daily memory payload: %+v", body.Daily.Items)
