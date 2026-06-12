@@ -127,8 +127,17 @@ function SessionListHarness() {
   const runtime = useConversationRuntimeWorkspace();
   return (
     <div>
+      <button type="button" onClick={runtime.createSession}>
+        new session
+      </button>
       <button type="button" onClick={() => void runtime.setSessionPinned("alter0-chat", false)}>
         unpin active
+      </button>
+      <button type="button" onClick={() => void runtime.setSessionPinned(runtime.activeSession?.id || "", true)}>
+        pin active
+      </button>
+      <button type="button" onClick={() => void runtime.setSessionPinned("older-chat", true)}>
+        pin older
       </button>
       <output data-testid="sessions">
         {runtime.sessionItems.map((session) => `${session.title}:${session.shortHash}:${session.pinned ? "pinned" : "unpinned"}`).join("|")}
@@ -282,6 +291,25 @@ describe("ConversationRuntimeProvider", () => {
     expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat");
   });
 
+  it("reuses the existing blank Chat draft when New is pressed repeatedly", async () => {
+    window.sessionStorage.clear();
+    apiClientMock.get.mockImplementation(async () => ({ items: [] }));
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SessionListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:/));
+    const firstSessionList = screen.getByTestId("sessions").textContent || "";
+
+    fireEvent.click(screen.getByRole("button", { name: "new session" }));
+    fireEvent.click(screen.getByRole("button", { name: "new session" }));
+
+    expect(screen.getByTestId("sessions").textContent).toBe(firstSessionList);
+  });
+
   it("updates Chat session pin state through the session history pin endpoint", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -327,6 +355,95 @@ describe("ConversationRuntimeProvider", () => {
       );
     });
     expect(screen.getByTestId("sessions")).toHaveTextContent("unpinned");
+  });
+
+  it("moves pinned Chat sessions ahead of newer unpinned sessions", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "newer-chat",
+                title: "Newer session",
+                created_at: "2026-04-23T04:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                pinned: false,
+              },
+              {
+                id: "older-chat",
+                title: "Older session",
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                pinned: false,
+              },
+            ],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.post.mockResolvedValueOnce({ session_id: "older-chat", pinned: true });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SessionListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent(/^Newer session:/));
+
+    fireEvent.click(screen.getByRole("button", { name: "pin older" }));
+
+    await waitFor(() => {
+      expect(apiClientMock.post).toHaveBeenCalledWith(
+        "/api/sessions/older-chat/pin",
+        { pinned: true },
+      );
+    });
+    expect(screen.getByTestId("sessions")).toHaveTextContent(/^Older session:[^|]*:pinned\|Newer session:[^|]*:unpinned$/);
+  });
+
+  it("keeps local Chat sessions pinned when the session history endpoint has no record yet", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.post.mockRejectedValueOnce(new Error("session not found"));
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SessionListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:/));
+
+    fireEvent.click(screen.getByRole("button", { name: "pin active" }));
+
+    await waitFor(() => {
+      expect(apiClientMock.post.mock.calls.some(([path, body]) => (
+        typeof path === "string"
+        && /^\/api\/sessions\/session-[^/]+\/pin$/.test(path)
+        && body && typeof body === "object" && (body as { pinned?: boolean }).pinned === true
+      ))).toBe(true);
+    });
+    expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:[^|]*:pinned$/);
   });
 
   it("selects all public skills by default for a new blank Chat session", async () => {

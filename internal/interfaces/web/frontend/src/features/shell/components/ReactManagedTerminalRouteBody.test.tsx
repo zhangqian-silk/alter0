@@ -122,6 +122,12 @@ function applyTerminalTurnMetrics(
   });
 }
 
+function openTerminalSessionActions(sessionID: string): HTMLElement {
+  const card = document.querySelector(`[data-runtime-session-card='${sessionID}']`) as HTMLElement;
+  fireEvent.click(within(card).getByRole("button", { name: "Session actions", hidden: true }));
+  return card;
+}
+
 describe("ReactManagedTerminalRouteBody", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -635,9 +641,11 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-runtime-view='terminal']")).toHaveClass("runtime-workspace-view");
     expect(document.querySelector("[data-runtime-workspace-page='true']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-select")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-pin")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-details")).toBeInTheDocument();
-    expect(document.querySelector(".runtime-session-delete")).toBeInTheDocument();
+    const sessionActionCard = openTerminalSessionActions("terminal-1");
+    expect(sessionActionCard.querySelector(".runtime-session-more")).toBeInTheDocument();
+    expect(within(sessionActionCard).getByRole("menuitem", { name: "Pin session", hidden: true })).toBeInTheDocument();
+    expect(within(sessionActionCard).getByRole("menuitem", { name: "Details", hidden: true })).toBeInTheDocument();
+    expect(within(sessionActionCard).getByRole("menuitem", { name: "Delete", hidden: true })).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-card")).not.toHaveClass("route-card");
     expect(document.querySelector(".runtime-session-select")).not.toHaveClass("route-card-button");
     expect(document.querySelector(".runtime-session-topline .task-summary-status")).not.toBeInTheDocument();
@@ -820,8 +828,15 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-runtime-session-card='terminal-new-placeholder']")).toHaveClass("is-active");
     expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute("data-runtime-session-id", "");
     expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Details" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Details" })).toBeDisabled();
+    expect(within(sessionPane).queryByRole("button", { name: "Session actions", hidden: true })).not.toBeInTheDocument();
     expect(document.querySelector("[data-runtime-composer-input='terminal']")).toHaveAttribute("placeholder", "Type command or prompt...");
+
+    fireEvent.click(within(sessionPane).getByRole("button", { name: "New", hidden: true }));
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls.filter(([request, init]) =>
+      String(request) === "/api/terminal/sessions"
+      && String(init?.method || "GET").toUpperCase() === "POST")).toHaveLength(0);
 
     fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "pwd" },
@@ -832,7 +847,6 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(document.querySelector("[data-runtime-session-select='terminal-new-1']")).toBeInTheDocument();
     });
 
-    const fetchMock = vi.mocked(fetch);
     expect(fetchMock.mock.calls.some(([request, init]) =>
       String(request) === "/api/terminal/sessions"
       && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
@@ -901,15 +915,21 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     renderTerminalRouteBody();
 
-    const pinButton = await screen.findByRole("button", { name: "Pin session", hidden: true });
-    fireEvent.click(pinButton);
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-session-card='terminal-1']")).toBeInTheDocument();
+    });
+    const card = openTerminalSessionActions("terminal-1");
+    fireEvent.click(within(card).getByRole("menuitem", { name: "Pin session", hidden: true }));
 
-    await screen.findByRole("button", { name: "Unpin session", hidden: true });
-    expect(vi.mocked(fetch).mock.calls.some(([request, init]) =>
-      String(request) === "/api/terminal/sessions/terminal-1/pin"
-      && String(init?.method || "GET").toUpperCase() === "POST"
-      && init?.body === JSON.stringify({ pinned: true })
-    )).toBe(true);
+    await waitFor(() => {
+      expect(vi.mocked(fetch).mock.calls.some(([request, init]) =>
+        String(request) === "/api/terminal/sessions/terminal-1/pin"
+        && String(init?.method || "GET").toUpperCase() === "POST"
+        && init?.body === JSON.stringify({ pinned: true })
+      )).toBe(true);
+    });
+    const updatedCard = openTerminalSessionActions("terminal-1");
+    expect(within(updatedCard).getByRole("menuitem", { name: "Unpin session", hidden: true })).toBeInTheDocument();
   });
 
   it("keeps terminal status copy inside the shared composer form instead of adding an outer note row", async () => {
@@ -991,6 +1011,46 @@ describe("ReactManagedTerminalRouteBody", () => {
     resolveSessions?.();
     await waitFor(() => {
       expect(document.querySelector("[data-runtime-session-select='terminal-new-placeholder']")).toBeInTheDocument();
+    });
+  });
+
+  it("treats the empty terminal New placeholder as an interactive draft session like Chat", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+    const closeMobileSessionPane = vi.fn();
+
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+      mobileSessionPaneOpen: true,
+      closeMobileSessionPane,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-runtime-session-select='terminal-new-placeholder']")).toBeInTheDocument();
+    });
+    const input = document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement;
+    expect(document.activeElement).not.toBe(input);
+
+    const placeholderCard = document.querySelector("[data-runtime-session-card='terminal-new-placeholder']") as HTMLElement;
+    fireEvent.click(within(placeholderCard).getByRole("button", { name: /New/, hidden: true }));
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls.filter(([request, init]) =>
+      String(request) === "/api/terminal/sessions"
+      && String(init?.method || "GET").toUpperCase() === "POST")).toHaveLength(0);
+    expect(closeMobileSessionPane).toHaveBeenCalled();
+    expect(document.querySelector("[data-runtime-session-pane='terminal']")).not.toHaveClass("is-open");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(input);
     });
   });
 
@@ -1239,8 +1299,19 @@ describe("ReactManagedTerminalRouteBody", () => {
             },
             {
               id: "terminal-3",
-              title: "Older archival session",
+              title: "Pinned archival session",
               terminal_session_id: "terminal-3",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              pinned: true,
+              created_at: new Date(earlierStart.getTime() + (60 * 60 * 1000)).toISOString(),
+              updated_at: new Date(earlierStart.getTime() + (2 * 60 * 60 * 1000)).toISOString(),
+            },
+            {
+              id: "terminal-4",
+              title: "Older archival session",
+              terminal_session_id: "terminal-4",
               status: "exited",
               shell: "codex exec",
               working_dir: "/workspace/alter0",
@@ -1278,10 +1349,17 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(sessionPane).toHaveClass("is-navigation-owned");
     expect(sessionPane).toHaveAttribute("aria-hidden", "true");
     expect(sessionPane).toHaveAttribute("data-session-pane-placement", "navigation");
+    expect(Array.from(sessionPane.querySelectorAll(".runtime-session-group-label")).map((item) => item.textContent)).toEqual([
+      "Pinned",
+      "Today",
+      "Yesterday",
+      "Earlier",
+    ]);
+    expect(within(sessionPane).getByText("Pinned")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Today")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Yesterday")).toBeInTheDocument();
     expect(within(sessionPane).getByText("Earlier")).toBeInTheDocument();
-    expect(within(sessionPane).getAllByRole("listitem", { hidden: true })).toHaveLength(3);
+    expect(within(sessionPane).getAllByRole("listitem", { hidden: true })).toHaveLength(4);
     const firstCard = within(sessionPane).getAllByRole("listitem", { hidden: true })[0] as HTMLElement;
     expect(firstCard.querySelector(".runtime-session-summary-row")).not.toBeInTheDocument();
     expect(firstCard.querySelector(".runtime-session-context")).not.toBeInTheDocument();
@@ -1368,7 +1446,8 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(document.querySelector("[data-runtime-session-select='terminal-2']")).toBeInTheDocument();
     });
 
-    fireEvent.click(document.querySelector("[data-runtime-delete-session='terminal-2']") as HTMLButtonElement);
+    const card = openTerminalSessionActions("terminal-2");
+    fireEvent.click(within(card).getByRole("menuitem", { name: "Delete", hidden: true }));
 
     await waitFor(() => {
       expect(document.querySelector("[data-runtime-session-select='terminal-2']")).not.toBeInTheDocument();
@@ -2913,7 +2992,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
 
-    fireEvent.click(document.querySelector("[data-runtime-delete-session='terminal-2']") as HTMLButtonElement);
+    const card = openTerminalSessionActions("terminal-2");
+    fireEvent.click(within(card).getByRole("menuitem", { name: "Delete", hidden: true }));
 
     await waitFor(() => {
       expect(document.querySelectorAll("[data-runtime-session-select]")).toHaveLength(1);
@@ -3006,7 +3086,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).toHaveClass("is-open");
 
-    fireEvent.click(document.querySelector("[data-runtime-delete-session='terminal-1']") as HTMLButtonElement);
+    const card = openTerminalSessionActions("terminal-1");
+    fireEvent.click(within(card).getByRole("menuitem", { name: "Delete", hidden: true }));
 
     await waitFor(() => {
       expect(document.querySelectorAll("[data-runtime-session-select]")).toHaveLength(1);

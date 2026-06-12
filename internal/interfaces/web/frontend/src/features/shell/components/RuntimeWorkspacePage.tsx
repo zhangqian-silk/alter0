@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode, type TouchEvent } from "react";
+import { useEffect, useMemo, useState, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode, type TouchEvent } from "react";
 import { useWorkbenchContext, type WorkbenchSessionRail } from "../../../app/WorkbenchContext";
 import { RuntimeComposer } from "./RuntimeComposer";
 import { RuntimeSessionList, type RuntimeSessionListGroup } from "./RuntimeSessionList";
@@ -25,6 +25,16 @@ function RuntimeSessionDeleteIcon() {
       <path d="M5 7.6h10" stroke="currentColor" strokeLinecap="round" strokeWidth="1.55" />
       <path d="M8.2 5.1h3.6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.55" />
       <path d="M8.85 10.1v3.45M11.15 10.1v3.45" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+    </svg>
+  );
+}
+
+function RuntimeSessionMoreIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <circle cx="4.75" cy="10" r="1.45" fill="currentColor" />
+      <circle cx="10" cy="10" r="1.45" fill="currentColor" />
+      <circle cx="15.25" cy="10" r="1.45" fill="currentColor" />
     </svg>
   );
 }
@@ -94,9 +104,12 @@ export type RuntimeWorkspaceSessionItem = {
   onDelete?: () => void;
   deleteLabel?: string;
   deleteAriaLabel?: string;
+  deleteConfirmLabel?: string;
   deleting?: boolean;
   deleteClassName?: string;
   deleteProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "aria-label" | "disabled" | "onClick">;
+  actionsLabel?: string;
+  actionsAriaLabel?: string;
   shellClassName?: string;
   buttonClassName?: string;
   shellProps?: ComponentPropsWithoutRef<"div">;
@@ -139,6 +152,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
     route,
     setRuntimeSessionRail,
   } = useWorkbenchContext();
+  const [openActionMenuID, setOpenActionMenuID] = useState("");
   const detailsSummary = controller.header.detailsSummary || [];
   const workspaceHeader = useMemo(() => controller.header.customHeaderContent ?? (
     <RuntimeWorkspaceHeader
@@ -189,7 +203,10 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
               className={item.buttonClassName}
               type="button"
               aria-current={item.active ? "true" : undefined}
-              onClick={item.onSelect}
+              onClick={() => {
+                setOpenActionMenuID("");
+                item.onSelect();
+              }}
               {...item.buttonProps}
             >
               <span className="runtime-session-main">
@@ -213,73 +230,109 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
             </button>
             {item.onPinnedChange || item.onViewDetails || item.onDelete ? (
               <span className="runtime-session-actions">
-                {item.onPinnedChange ? (
-                  <button
-                    className={item.pinClassName || [
-                      "runtime-session-action",
-                      "runtime-session-pin",
-                      item.pinned ? "is-pinned" : undefined,
-                    ].filter(Boolean).join(" ")}
-                    type="button"
-                    aria-label={
-                      item.pinned
-                        ? item.unpinAriaLabel || item.unpinLabel
-                        : item.pinAriaLabel || item.pinLabel
-                    }
-                    aria-pressed={item.pinned ? "true" : "false"}
-                    disabled={item.pinning}
-                    onMouseDown={swallowSessionActionGesture}
-                    onTouchStart={swallowSessionActionGesture}
-                    onClick={(event) => {
-                      swallowSessionActionGesture(event);
-                      item.onPinnedChange?.(!item.pinned);
-                    }}
-                    {...item.pinProps}
+                <button
+                  className="runtime-session-action runtime-session-more"
+                  type="button"
+                  aria-label={item.actionsAriaLabel || item.actionsLabel || "Session actions"}
+                  aria-haspopup="menu"
+                  aria-expanded={openActionMenuID === item.id ? "true" : "false"}
+                  aria-controls={`runtime-session-actions-${item.id}`}
+                  onMouseDown={swallowSessionActionGesture}
+                  onTouchStart={swallowSessionActionGesture}
+                  onClick={(event) => {
+                    swallowSessionActionGesture(event);
+                    setOpenActionMenuID((current) => current === item.id ? "" : item.id);
+                  }}
+                >
+                  <span className="runtime-session-action-icon runtime-session-more-icon" aria-hidden="true">
+                    <RuntimeSessionMoreIcon />
+                  </span>
+                  <span className="sr-only">{item.actionsLabel || "Session actions"}</span>
+                </button>
+                {openActionMenuID === item.id ? (
+                  <span
+                    id={`runtime-session-actions-${item.id}`}
+                    className="runtime-session-action-menu"
+                    role="menu"
+                    aria-label={item.actionsLabel || "Session actions"}
                   >
-                    <span className="runtime-session-action-icon runtime-session-pin-icon" aria-hidden="true">
-                      <RuntimeSessionPinIcon pinned={Boolean(item.pinned)} />
-                    </span>
-                    <span className="sr-only">{item.pinned ? item.unpinLabel : item.pinLabel}</span>
-                  </button>
-                ) : null}
-                {item.onViewDetails ? (
-                  <button
-                    className={item.viewDetailsClassName || "runtime-session-action runtime-session-details"}
-                    type="button"
-                    aria-label={item.viewDetailsAriaLabel || item.viewDetailsLabel}
-                    onMouseDown={swallowSessionActionGesture}
-                    onTouchStart={swallowSessionActionGesture}
-                    onClick={(event) => {
-                      swallowSessionActionGesture(event);
-                      item.onViewDetails?.();
-                    }}
-                    {...item.viewDetailsProps}
-                  >
-                    <span className="runtime-session-action-icon" aria-hidden="true">
-                      <RuntimeSessionDetailsIcon />
-                    </span>
-                    <span className="sr-only">{item.viewDetailsLabel}</span>
-                  </button>
-                ) : null}
-                {item.onDelete ? (
-                  <button
-                    className={item.deleteClassName || ["runtime-session-action", "runtime-session-delete"].join(" ")}
-                    type="button"
-                    aria-label={item.deleteAriaLabel || item.deleteLabel}
-                    disabled={item.deleting}
-                    onMouseDown={swallowSessionActionGesture}
-                    onTouchStart={swallowSessionActionGesture}
-                    onClick={(event) => {
-                      swallowSessionActionGesture(event);
-                      item.onDelete?.();
-                    }}
-                    {...item.deleteProps}
-                  >
-                    <span className="runtime-session-action-icon runtime-session-delete-icon" aria-hidden="true">
-                      <RuntimeSessionDeleteIcon />
-                    </span>
-                    <span className="sr-only">{item.deleteLabel}</span>
-                  </button>
+                    {item.onPinnedChange ? (
+                      <button
+                        className={item.pinClassName || [
+                          "runtime-session-menu-item",
+                          "runtime-session-pin",
+                          item.pinned ? "is-pinned" : undefined,
+                        ].filter(Boolean).join(" ")}
+                        type="button"
+                        role="menuitem"
+                        aria-label={
+                          item.pinned
+                            ? item.unpinAriaLabel || item.unpinLabel
+                            : item.pinAriaLabel || item.pinLabel
+                        }
+                        disabled={item.pinning}
+                        onMouseDown={swallowSessionActionGesture}
+                        onTouchStart={swallowSessionActionGesture}
+                        onClick={(event) => {
+                          swallowSessionActionGesture(event);
+                          setOpenActionMenuID("");
+                          item.onPinnedChange?.(!item.pinned);
+                        }}
+                        {...item.pinProps}
+                      >
+                        <span className="runtime-session-action-icon runtime-session-pin-icon" aria-hidden="true">
+                          <RuntimeSessionPinIcon pinned={Boolean(item.pinned)} />
+                        </span>
+                        <span className="runtime-session-menu-label">{item.pinned ? item.unpinLabel : item.pinLabel}</span>
+                      </button>
+                    ) : null}
+                    {item.onViewDetails ? (
+                      <button
+                        className={item.viewDetailsClassName || "runtime-session-menu-item runtime-session-details"}
+                        type="button"
+                        role="menuitem"
+                        aria-label={item.viewDetailsAriaLabel || item.viewDetailsLabel}
+                        onMouseDown={swallowSessionActionGesture}
+                        onTouchStart={swallowSessionActionGesture}
+                        onClick={(event) => {
+                          swallowSessionActionGesture(event);
+                          setOpenActionMenuID("");
+                          item.onViewDetails?.();
+                        }}
+                        {...item.viewDetailsProps}
+                      >
+                        <span className="runtime-session-action-icon" aria-hidden="true">
+                          <RuntimeSessionDetailsIcon />
+                        </span>
+                        <span className="runtime-session-menu-label">{item.viewDetailsLabel}</span>
+                      </button>
+                    ) : null}
+                    {item.onDelete ? (
+                      <button
+                        className={item.deleteClassName || ["runtime-session-menu-item", "runtime-session-delete"].join(" ")}
+                        type="button"
+                        role="menuitem"
+                        aria-label={item.deleteAriaLabel || item.deleteLabel}
+                        disabled={item.deleting}
+                        onMouseDown={swallowSessionActionGesture}
+                        onTouchStart={swallowSessionActionGesture}
+                        onClick={(event) => {
+                          swallowSessionActionGesture(event);
+                          setOpenActionMenuID("");
+                          if (item.deleteConfirmLabel && typeof window !== "undefined" && !window.confirm(item.deleteConfirmLabel)) {
+                            return;
+                          }
+                          item.onDelete?.();
+                        }}
+                        {...item.deleteProps}
+                      >
+                        <span className="runtime-session-action-icon runtime-session-delete-icon" aria-hidden="true">
+                          <RuntimeSessionDeleteIcon />
+                        </span>
+                        <span className="runtime-session-menu-label">{item.deleteLabel}</span>
+                      </button>
+                    ) : null}
+                  </span>
                 ) : null}
               </span>
             ) : null}
@@ -287,7 +340,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
         );
       }}
     />
-  ), [controller.sessionList]);
+  ), [controller.sessionList, openActionMenuID]);
   const runtimeSessionRail = useMemo<WorkbenchSessionRail>(() => ({
     route,
     countLabel: controller.shell.sessionPaneCountLabel,

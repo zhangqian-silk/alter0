@@ -52,6 +52,7 @@ describe("RuntimeWorkspaceHeader", () => {
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
 
     expect(screen.getByRole("dialog", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss Details" })).toBeInTheDocument();
     expect(screen.getByTestId("runtime-details-panel")).toHaveTextContent("Session metadata");
 
     fireEvent.click(screen.getByRole("button", { name: "Close Details" }));

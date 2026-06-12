@@ -150,6 +150,7 @@ type TerminalCopy = {
   unpin: string;
   pinSession: string;
   unpinSession: string;
+  sessionActions: string;
   delete: string;
   deleteConfirm: string;
   inputPlaceholder: string;
@@ -206,6 +207,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     unpin: "Unpin",
     pinSession: "Pin session",
     unpinSession: "Unpin session",
+    sessionActions: "Session actions",
     delete: "Delete",
     deleteConfirm: "Delete this terminal session?",
     inputPlaceholder: "Type command or prompt...",
@@ -260,6 +262,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     unpin: "取消置顶",
     pinSession: "置顶会话",
     unpinSession: "取消置顶会话",
+    sessionActions: "会话操作",
     delete: "删除",
     deleteConfirm: "确认删除这个终端会话？",
     inputPlaceholder: "输入命令或继续追问...",
@@ -787,6 +790,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       language,
       getTimestamp: (session) =>
         parseTimestamp(session.updated_at) || parseTimestamp(session.last_output_at) || parseTimestamp(session.created_at),
+      getPinned: (session) => Boolean(session.pinned),
     }),
     [language, sessions],
   );
@@ -1057,6 +1061,17 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     return nextSession;
   };
 
+  const focusNewSessionPlaceholder = () => {
+    setActiveSessionID("");
+    closeMobileSessionPane();
+    setMetaOpen(false);
+    setExpandedTurns({});
+    setExpandedSteps({});
+    setStepDetails({});
+    setStepErrors({});
+    requestAnimationFrame(() => focusComposerInputWithoutScroll());
+  };
+
   useEffect(() => {
     const observer = new MutationObserver(() => setLanguage(resolveLanguage()));
     observer.observe(document.documentElement, {
@@ -1318,14 +1333,17 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   };
 
   const viewSessionDetails = async (sessionID: string) => {
-    await selectSession(sessionID);
+    setActiveSessionID(sessionID);
+    setMetaOpen(false);
+    setExpandedTurns({});
+    setExpandedSteps({});
+    setStepDetails({});
+    setStepErrors({});
+    await refreshActiveSession(sessionID);
     setSessionDetailsOpen(true);
   };
 
   const deleteSession = async (sessionID: string) => {
-    if (!window.confirm(copy.deleteConfirm)) {
-      return;
-    }
     const keepMobileSessionPaneOpen = workbench.isMobileViewport && workbench.mobileSessionPaneOpen;
     restoreMobileSessionPaneRef.current = keepMobileSessionPaneOpen;
     setDeletingSessionID(sessionID);
@@ -1555,6 +1573,13 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const inputPlaceholder = canInput ? copy.inputPlaceholder : copy.busy;
   const showNewSessionPlaceholder = !loadError && sessions.length === 0;
   const visibleSessionCount = showNewSessionPlaceholder ? 1 : sessions.length;
+  const startNewSession = () => {
+    if (showNewSessionPlaceholder) {
+      focusNewSessionPlaceholder();
+      return;
+    }
+    void createSession();
+  };
   const activeSessionTitle = activeSession
     ? normalizeText(activeSession.title || activeSession.id)
     : showNewSessionPlaceholder
@@ -1683,7 +1708,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       sessionPaneTitle: copy.sessions,
       sessionPaneCountLabel: copy.sessionCount(visibleSessionCount),
       sessionPanePrimaryActionLabel: copy.newShort,
-      onSessionPanePrimaryAction: () => void createSession(),
+      onSessionPanePrimaryAction: startNewSession,
       sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.hideSessions : undefined,
       onSessionPaneSecondaryAction: workbench.isMobileViewport ? closeMobileSessionPane : undefined,
       workspaceProps: {
@@ -1706,16 +1731,16 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       mobileTitleButtonProps: {
         "aria-haspopup": "dialog",
         "data-runtime-mobile-title": "terminal",
-        disabled: !activeSession && !showNewSessionPlaceholder,
+        disabled: !activeSession,
       },
-      onMobileTitle: () => setSessionDetailsOpen((current) => !current),
+      onMobileTitle: activeSession ? () => setSessionDetailsOpen((current) => !current) : undefined,
       mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
       mobilePrimaryButtonLabel: copy.newShort,
       mobilePrimaryButtonProps: {
         "data-runtime-create-session": "terminal",
         "data-runtime-mobile-primary": "terminal",
       },
-      onMobilePrimary: () => void createSession(),
+      onMobilePrimary: startNewSession,
     },
     sessionList: {
       groups: showNewSessionPlaceholder
@@ -1732,7 +1757,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
               statusLabel: copy.ready,
               activeLabel: copy.current,
               idleLabel: copy.sessionLabel,
-              onSelect: () => undefined,
+              onSelect: startNewSession,
               shellClassName: "runtime-session-card is-active",
               shellProps: {
                 "data-runtime-session-card": TERMINAL_NEW_SESSION_PLACEHOLDER_ID,
@@ -1773,6 +1798,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
                 onDelete: () => void deleteSession(session.id),
                 deleteLabel: copy.delete,
                 deleteAriaLabel: copy.delete,
+                deleteConfirmLabel: copy.deleteConfirm,
+                actionsLabel: copy.sessionActions,
+                actionsAriaLabel: copy.sessionActions,
                 deleting: deletingSessionID === session.id,
                 deleteProps: { "data-runtime-delete-session": session.id },
                 shellClassName: active ? "runtime-session-card is-active" : "runtime-session-card",
@@ -1801,9 +1829,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       statusLabel: activeSession ? renderStatus(activeSession.status || "", copy) : copy.ready,
       statusTone: activeStatus,
       detailsLabel: copy.details,
-      detailsOpen: sessionDetailsOpen,
-      onToggleDetails: () => setSessionDetailsOpen((current) => !current),
-      detailsDisabled: !activeSession && !showNewSessionPlaceholder,
+      detailsOpen: activeSession ? sessionDetailsOpen : false,
+      onToggleDetails: activeSession ? () => setSessionDetailsOpen((current) => !current) : () => undefined,
+      detailsDisabled: !activeSession,
       mobileCollapsed: workbench.isMobileViewport,
       detailsSummary: terminalDetailsSummary,
       detailsBody: null,

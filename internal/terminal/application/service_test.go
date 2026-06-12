@@ -243,6 +243,22 @@ func TestCreateAssignsSessionWorkspaceDir(t *testing.T) {
 	}
 }
 
+func TestCreateUsesNewAsDefaultSessionTitle(t *testing.T) {
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: t.TempDir()})
+
+	session, err := service.Create(CreateRequest{OwnerID: "owner-title"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if session.Title != "New" {
+		t.Fatalf("expected default terminal session title %q, got %q", "New", session.Title)
+	}
+	if !strings.HasPrefix(session.ID, "terminal-") {
+		t.Fatalf("expected generated terminal session id, got %q", session.ID)
+	}
+}
+
 func TestRecoverAssignsDeterministicWorkspaceDir(t *testing.T) {
 	baseDir := t.TempDir()
 	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})

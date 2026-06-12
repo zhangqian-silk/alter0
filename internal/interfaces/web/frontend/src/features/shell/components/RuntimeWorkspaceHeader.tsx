@@ -33,6 +33,15 @@ function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
+function RuntimeDetailsCloseIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <path d="M5.5 5.5 14.5 14.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M14.5 5.5 5.5 14.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function RuntimeWorkspaceHeader({
   title,
   statusLabel,
@@ -50,6 +59,7 @@ export function RuntimeWorkspaceHeader({
   detailsPanelProps,
 }: RuntimeWorkspaceHeaderProps) {
   const detailsID = useId();
+  const detailsTitleID = useId();
   const headerRef = useRef<HTMLElement | null>(null);
   const [detailsPanelStyle, setDetailsPanelStyle] = useState<CSSProperties>({});
   const detailsPanelStyleRef = useRef<CSSProperties>({});
@@ -161,7 +171,7 @@ export function RuntimeWorkspaceHeader({
           id={detailsID}
           role="dialog"
           aria-modal="true"
-          aria-label={detailsLabel}
+          aria-labelledby={detailsTitleID}
           className={joinClassNames(
             "runtime-workspace-details-panel workspace-details-panel",
             detailsPanelClassName,
@@ -172,6 +182,17 @@ export function RuntimeWorkspaceHeader({
           }}
           {...detailsPanelRestProps}
         >
+          <header className="workspace-details-panel-head">
+            <strong id={detailsTitleID}>{detailsLabel}</strong>
+            <button
+              type="button"
+              className="workspace-details-close"
+              aria-label={`Dismiss ${detailsLabel}`}
+              onClick={onToggleDetails}
+            >
+              <RuntimeDetailsCloseIcon />
+            </button>
+          </header>
           {detailsContent}
         </section>
       </div>,

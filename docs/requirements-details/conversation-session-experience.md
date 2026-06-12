@@ -61,7 +61,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 本地 Session history 按会话类型拆分物理文件：`Chat` 的 `alter0-chat` 按北京时间 05:00 的归档日边界写入 `.alter0/sessions/_default/alter0-chat/<YYYY-MM-DD>.json` 或 `.md`；具备明确 Skill 来源的会话按 Skill bucket 与会话身份写入 `.alter0/sessions/<skill_bucket>/<session_id>.json` 或 `.md`。缺少 Skill 来源的非 Chat 会话归入 `_default`；服务读取旧版 `.alter0/sessions.json` 或 `.alter0/sessions.md` 聚合文件时需立即重构为新的分文件布局，并删除旧聚合文件。
 - Chat/Chat 消息接口接受请求后，服务端先把本轮 `user` 消息写入 Session history，再进入同步或流式执行；assistant 回复在执行完成、失败或任务收口后追加写入。同一轮请求的浏览器关闭、刷新、SSE 断开或前端取消不会让用户已发送内容只留在浏览器缓存中。
 - Session history 维护会话级 `last_active_at` 与 `pinned`。`last_active_at` 在用户发送消息、assistant 完成或失败、流式收口、打开会话详情、Terminal 输入/详情读取和任务结果写回时刷新；没有显式活跃时间的历史会话回退使用最后消息时间。
-- 会话列表排序规则为置顶优先、最近活跃优先；Settings 的 Sessions 页面展示最后活跃时间并提供置顶/取消置顶操作。置顶状态持久化在 Session history metadata 中，不改变消息内容。
+- 运行页会话列表把置顶会话汇入独立 `Pinned / 置顶` 分组并固定在 `Today / 今天` 上方；非置顶会话继续按最近活跃时间排序并进入时间分组。Settings 的 Sessions 页面展示最后活跃时间并提供置顶/取消置顶操作。置顶状态持久化在 Session history metadata 中，不改变消息内容；尚未产生消息、只存在于当前浏览器或 Conversation Runtime registry 的空白 `Chat` 会话，也必须在前端快照与 registry 可用范围内保留置顶反馈。
 - 系统维护任务默认每日清理超过 7 天不活跃的未置顶会话。清理会删除该会话的 Session history、运行时 registry、关联任务引用和 `.alter0/workspaces/sessions/<session_id>` 下的附件/工作区数据；置顶会话始终跳过自动清理，仍有关联 queued/running 任务的会话在任务进入终态前跳过清理。
 - 会话清理不提供复杂配置项。`Settings > Maintenance` 只提供当前状态、上次/下次运行、手动 `Clean up now`、失败重试，以及删除数量、置顶跳过数量、任务保护数量和扫描数量。清理后续资源删除失败时，本次维护状态必须记录为 `failed` 并暴露失败原因。
 - 具备独立前端入口的 Skill 不进入通用 Settings 页面历史。
@@ -113,7 +113,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
 - `Chat` 需维护独立的服务端会话 registry，记录 `session_id -> route / title / target / model / capabilities / status / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
-- `Chat / Terminal` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前运行页会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。列表项主体只展示标题，尾侧固定提供查看详情与删除两个独立按钮；查看详情会聚焦该会话并打开 `Details` 面板，删除按钮才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、短 hash、Skill 标签或额外摘要。运行页空列表和 Terminal 加载态优先展示一条 active `New` 占位会话；Terminal 占位会话不立即写入服务端，首次发送输入或添加附件后才创建真实 Terminal session 并替换占位项。三条运行页继续生成同一规则的 8 位短 hash，用于运行页 URL 恢复、预览域名映射与人工排障引用；左侧会话列表不展示短 hash。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表或 URL 展示值。
+- `Chat / Terminal` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前运行页会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。列表项主体只展示标题，真实会话尾侧固定提供单个三点更多按钮；展开菜单承载置顶、查看详情与删除操作，查看详情会聚焦该会话并打开 `Details` 面板且不主动收起已打开的移动会话抽屉，删除操作必须二次确认后才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、短 hash、Skill 标签或额外摘要。运行页空列表、Chat 本地空白草稿和 Terminal 加载态优先展示一条 active `New` 占位会话；`New` 草稿/占位只作为输入入口，不显示三点菜单，不支持置顶、详情或删除，同一路由内重复点击 `New` 只聚焦既有空白虚拟会话，不创建多个空会话。Terminal 占位会话不立即写入服务端，点击列表占位或移动端顶部 `New` 关闭会话抽屉并聚焦输入框，首次发送输入或添加附件后才创建真实 Terminal session 并替换占位项；真实 Terminal session 在首条输入命名前也以 `New` 作为默认标题。三条运行页继续生成同一规则的 8 位短 hash，用于运行页 URL 恢复、预览域名映射与人工排障引用；左侧会话列表不展示短 hash。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表或 URL 展示值。
 - `Chat` 的会话列表项与 workspace header 状态按钮共享同一会话状态语义：前端按当前 assistant 消息与任务态派生 `ready / busy / failed`；其中 `streaming / queued / running / in_progress` 与挂起任务映射为 `busy`，错误、失败、取消与显式 `message.error` 映射为 `failed`，其余稳定态映射为 `ready`。列表项只在 `busy` 时于标题旁显示 loading，`ready / failed` 不显示行内状态灯；workspace header 的状态按钮可见层只显示信号，状态名称只保留给读屏与悬浮语义。
 
 ## 流式响应
@@ -215,7 +215,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - Chat 历史区支持折叠与展开，减少长对话阅读空间占用。
 - Conversation workspace 的新会话入口在 `chat` 路由下切换为 Chat 会话语义，并随语言切换同步更新。
 - Session 历史区的空态提示与列表可访问标签需按当前路由与语言即时切换文案；这些文案更新不得清空或重建 runtime 已注入的会话卡片节点。
-- 左侧主导航中的会话列表需按最近时间分组为 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`），并与主导航 `menu` 复用同一套分组容器、hover、激活态视觉和桌面会话列宽；分组内条目保持主导航式紧凑信息结构，采用低噪音列表项关系：主体只保留标题并在可用宽度内单行截断，长标题不得撑开导航会话区、分组容器、列表容器或列表项自身宽度；新增会话插入、列表刚好填满或跨过滚动阈值时，不得触发浏览器滚动锚点补偿、滚动槽宽度重算、头部高度重算或列表区重新分配，并且不得让 `Sessions / New` 区块在不同运行页之间发生位置跳变，尾侧收纳两个 30px 级方形操作按钮，分别用于查看详情和删除，不再额外挂出独立 footer、胶囊操作面、完整会话 id、时间、短 hash、Skill 标签或摘要字符串。
+- 左侧主导航中的会话列表需先渲染独立 `Pinned / 置顶` 分组，再把非置顶会话按最近时间分组为 `Today / Yesterday / Earlier`（中文对应 `今天 / 昨天 / 更早`），并与主导航 `menu` 复用同一套分组容器、hover、激活态视觉和桌面会话列宽；分组内条目保持主导航式紧凑信息结构，采用低噪音列表项关系：主体只保留标题并在可用宽度内单行截断，长标题不得撑开导航会话区、分组容器、列表容器或列表项自身宽度；新增会话插入、列表刚好填满或跨过滚动阈值时，不得触发浏览器滚动锚点补偿、滚动槽宽度重算、头部高度重算或列表区重新分配，并且不得让 `Sessions / New` 区块在不同运行页之间发生位置跳变，真实会话尾侧只保留 30px 级三点更多按钮，展开菜单承载置顶、查看详情与删除操作；删除需二次确认。草稿/占位 `New` 不渲染更多按钮。不再额外挂出独立 footer、胶囊操作面、完整会话 id、时间、短 hash、Skill 标签或摘要字符串。
 - Session 历史区的会话条目不展示 ready、failed、exited 或 interrupted 状态灯；只有处理中条目显示 loading，并为读屏输出当前忙碌状态文案。
 - Conversation workspace 头部的标题、状态按钮、`Details` 标签页和新会话入口需按当前路由与语言即时切换文案；状态按钮同时反映当前活动会话派生状态，但可见层只显示信号，不再展示固定 `Ready` 或其他状态文案；该信号固定排在当前会话标题左侧，右侧工具区只保留 `Details` 入口；这些壳层文案更新不得覆盖当前会话标题或消息内容。
 - `Chat` 的会话列表、工作区外壳、聊天滚动区和输入区需输出 `runtime-*` 主契约并保留必要的 `terminal-* + conversation-*` 兼容 class，确保两条运行页与 `Terminal` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
@@ -229,7 +229,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 欢迎区与 Composer 面板在同一主工作区内采用主仓库式上下结构：欢迎区直接输出 `Alter0 workspace` tag、面向 repo / task / runtime 的默认标题与说明、target picker 与快捷提示，Composer 独立贴底；欢迎区内容超出可视高度时，输入区仍需稳定贴底，不得与欢迎区、消息区发生叠层覆盖。
 - 用户消息右对齐并使用浅灰低对比紧凑气泡，`Chat / Terminal` 统一采用克制的冷灰工作台阅读主题；助手回复弱化厚重卡片层级，默认呈现为无边框正文阅读流，Chat 正文工作区不显示明显外框或分隔背景；复制操作贴在正文下方，思考过程只保留一行内联可点披露入口，只展示步骤数量，不展示耗时，Process 详情和代码块只保留必要边界与有限强调色；Markdown 表格在消息正文内以真实表格结构呈现，采用横向分割线而不是卡片外框或表头色块，短表格不强制固定最小像素宽度，普通长文本在单元格内自动换行，窄屏下只有不可断内容超宽时才在表格块内部横向滚动。
 - `Chat / Terminal` 助手消息尾部默认不显示时间；仅当回复仍在生成、排队或失败时展示紧凑状态标签，不再为已完成消息重复展示 route/source/status 元信息。
-- Chat 与 Terminal 工作区头部在进入会话态或桌面空态时收敛为共享单行标题区：只显示当前会话标题、状态按钮与 `Details` 入口，不再额外叠加 `Chat / Terminal` 标签以及模型、工具或目标摘要，Terminal 也不得为标题或 `Details` 按钮派生单独元素。`Details` 只展示会话元信息；模型、Tools / MCP 与 Skills 统一通过底部 Composer 工具栏的 `Session` 按钮打开配置面板。新空白 Chat 会话在 Skill 目录加载完成后默认勾选全部可用 Skill；已有服务端会话、用户显式清空或手动调整后的会话不得被默认值回填覆盖，但其历史 Skill 选择必须按当前目录实时收敛，删除或禁用的 Skill 不得继续作为有效选择。Chat 的 model tab 除已启用 Provider 模型外，都需稳定展示一个可直接点击的 `Codex` chip；选中该项后，后续消息请求不再携带普通 `alter0.llm.provider_id / alter0.llm.model` 组合，而是显式写入 `alter0.execution.engine=codex`。Chat 的配置 tab 中勾选或取消 Provider / Model、Tools / MCP 与 Skills 后，当前会话摘要、后续消息 metadata 和刷新恢复结果需立即对齐；取消所有 Skills 或 MCP 时保存为空选择，不得在下一次详情回源中恢复旧勾选。独立 Chat 的 Skill、Deliverables 与 Session Profile 配置区已移除。`Details` 需以顶层浮层方式覆盖在工作区上方，内部独立滚动，浮层尺寸保持克制，并始终具备明确可见的 dialog 层级；点击浮层外区域或按 `Escape` 关闭面板，打开时不得推动消息列表、输入区或对话正文重新布局。
+- Chat 与 Terminal 工作区头部在进入会话态或桌面空态时收敛为共享单行标题区：只显示当前会话标题、状态按钮与 `Details` 入口，不再额外叠加 `Chat / Terminal` 标签以及模型、工具或目标摘要，Terminal 也不得为标题或 `Details` 按钮派生单独元素。`Details` 只展示会话元信息；模型、Tools / MCP 与 Skills 统一通过底部 Composer 工具栏的 `Session` 按钮打开配置面板。新空白 Chat 会话在 Skill 目录加载完成后默认勾选全部可用 Skill；已有服务端会话、用户显式清空或手动调整后的会话不得被默认值回填覆盖，但其历史 Skill 选择必须按当前目录实时收敛，删除或禁用的 Skill 不得继续作为有效选择。Chat 的 model tab 除已启用 Provider 模型外，都需稳定展示一个可直接点击的 `Codex` chip；选中该项后，后续消息请求不再携带普通 `alter0.llm.provider_id / alter0.llm.model` 组合，而是显式写入 `alter0.execution.engine=codex`。Chat 的配置 tab 中勾选或取消 Provider / Model、Tools / MCP 与 Skills 后，当前会话摘要、后续消息 metadata 和刷新恢复结果需立即对齐；取消所有 Skills 或 MCP 时保存为空选择，不得在下一次详情回源中恢复旧勾选。独立 Chat 的 Skill、Deliverables 与 Session Profile 配置区已移除。`Details` 需以顶层浮层方式覆盖在工作区上方，内部独立滚动，浮层尺寸保持克制，并始终具备明确可见的 dialog 层级；面板顶部需保留标题栏和显式关闭按钮，点击浮层外区域、关闭按钮或按 `Escape` 关闭面板，打开时不得推动消息列表、输入区或对话正文重新布局。
 - 桌面宽屏下 Chat 消息列与 Composer 按主工作区宽度自适应放宽，并保持统一居中；正文区统一保留 `960px` 最大阅读宽度，但外层工作台也必须同步收缩导航与间距，避免在中等桌面宽度下出现阅读区限宽而整体布局仍然拥挤、遮挡或越界。
 - Web Shell 主导航需根据 URL hash 即时同步当前路由高亮；导航折叠与语言切换更新不得导致会话卡片、消息节点或 route 内容被清空重建。
 - React 壳层发出的主导航跳转、新建会话、欢迎区快捷提示、语言切换、导航折叠同步与会话历史折叠同步事件，必须由当前前端运行时在同一页面内完成确认、路由更新、快捷发送或会话创建，且不能要求用户重复点击或依赖额外脚本注入的全局函数。
@@ -270,8 +270,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 ### 会话设置
 
 - Chat 与 Terminal 的会话设置入口统一位于底部 Composer 工具栏的 `Session` 按钮；发送按钮只负责提交当前草稿。
-- 移动端会话列表不再与正文上下堆叠，也不再使用运行页内部独立抽屉；三条运行页都通过 `Menu` 打开左侧主导航抽屉。抽屉内的会话区左侧将会话标题与会话总数收敛为上下两行，右侧保留 `New` 入口并复用运行页紧凑按钮规格；列表项沿用标题-only 卡片与尾侧详情、删除双按钮结构，处理中会话显示 loading，并支持遮罩点击收起。
-- 左侧主导航内的会话条目统一采用工作台列表项语义：列表先按最近时间分组，再在条目内展示标题与尾侧详情、删除动作；列表容器需保留独立滚动能力并输出稳定 `role="list"` 语义，视觉层级保持克制，不使用多余胶囊装饰。
+- 移动端会话列表不再与正文上下堆叠，也不再使用运行页内部独立抽屉；三条运行页都通过 `Menu` 打开左侧主导航抽屉。抽屉内的会话区左侧将会话标题与会话总数收敛为上下两行，右侧保留 `New` 入口并复用运行页紧凑按钮规格；列表项沿用标题-only 卡片与尾侧三点更多菜单结构，处理中会话显示 loading，并支持遮罩点击收起。
+- 左侧主导航内的会话条目统一采用工作台列表项语义：列表先按最近时间分组，再在条目内展示标题与尾侧三点更多菜单；菜单内承载置顶、详情、删除动作，删除需确认弹窗；列表容器需保留独立滚动能力并输出稳定 `role="list"` 语义，视觉层级保持克制，不使用多余胶囊装饰。
 - 会话设置展开后采用独立固定底部面板，带遮罩、关闭入口与内部滚动区。
 - 会话设置面板的关闭路径在桌面与移动端保持一致：关闭按钮、遮罩、面板外点击和主输入框点击都必须走同一条收口逻辑，不保留“点输入框但面板仍悬停”的状态。
 - 独立 Chat 移动端会话设置底部面板已移除；Chat 保留与 Terminal 一致的 Composer `Session` 入口。

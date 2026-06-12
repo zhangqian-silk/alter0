@@ -270,6 +270,7 @@ type ConversationRuntimeContextValue = {
     shortHash: string;
     createdAt: number;
     active: boolean;
+    draft: boolean;
     pinned: boolean;
     pinning: boolean;
   }>;
@@ -395,13 +396,24 @@ function defaultChatTarget(): ChatTarget {
   return normalizeChatTarget({ type: "model", id: "raw-model", name: "Raw Model" });
 }
 
+function compareSessions(left: ChatSession, right: ChatSession): number {
+  if (left.pinned !== right.pinned) {
+    return left.pinned ? -1 : 1;
+  }
+  return right.createdAt - left.createdAt;
+}
+
+function isBlankDraftSession(session: ChatSession): boolean {
+  return session.serverBacked !== true && session.messages.length === 0;
+}
+
 function normalizeRouteSessions(routeKey: ConversationRoute, sessions: ChatSession[]): ChatSession[] {
   void routeKey;
   const merged = new Map<string, ChatSession>();
   sessions.forEach((session) => {
     merged.set(session.id, session);
   });
-  return Array.from(merged.values()).sort((left, right) => right.createdAt - left.createdAt);
+  return Array.from(merged.values()).sort(compareSessions);
 }
 
 function isCodexRuntimeSelection(providerID: string, modelID: string): boolean {
@@ -654,7 +666,7 @@ function normalizeStoredSessionList(value: unknown): ChatSession[] {
     }
     merged.set(session.id, session);
   });
-  return Array.from(merged.values()).sort((left, right) => right.createdAt - left.createdAt);
+  return Array.from(merged.values()).sort(compareSessions);
 }
 
 function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
@@ -746,7 +758,7 @@ function loadActiveSessionSnapshots(): SessionsState {
     }
     return normalizeRouteSessions(
       "chat",
-      Array.from(sessions.values()).sort((left, right) => right.createdAt - left.createdAt),
+      Array.from(sessions.values()).sort(compareSessions),
     );
   };
   return {
@@ -944,7 +956,7 @@ function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSession[]): C
     .forEach((session) => {
       merged.set(session.id, session);
     });
-  return Array.from(merged.values()).sort((left, right) => right.createdAt - left.createdAt);
+  return Array.from(merged.values()).sort(compareSessions);
 }
 
 function formatRelativeTime(at: number, language: LegacyShellLanguage): string {
@@ -1225,12 +1237,19 @@ export function ConversationRuntimeProvider({
     sessionID: string,
     updater: (session: ChatSession) => ChatSession,
   ) => {
-    setSessionsByRoute((current) => ({
-      ...current,
-      [routeKey]: current[routeKey].map((session) =>
-        session.id === sessionID ? updater(session) : session,
-      ),
-    }));
+    setSessionsByRoute((current) => {
+      const nextState = {
+        ...current,
+        [routeKey]: normalizeRouteSessions(
+          routeKey,
+          current[routeKey].map((session) =>
+            session.id === sessionID ? updater(session) : session,
+          ),
+        ),
+      };
+      sessionsByRouteRef.current = nextState;
+      return nextState;
+    });
   }, []);
 
   const createMessage = (
@@ -1335,14 +1354,18 @@ export function ConversationRuntimeProvider({
     if (!normalizedSessionID) {
       return;
     }
-    setPinningSessionIDs((current) => ({ ...current, [normalizedSessionID]: true }));
-    try {
-      await apiClient.post(`/api/sessions/${encodeURIComponent(normalizedSessionID)}/pin`, { pinned });
+    const applyPinnedState = () => {
       patchSession(route, normalizedSessionID, (session) => ({
         ...session,
         pinned,
       }));
+    };
+    setPinningSessionIDs((current) => ({ ...current, [normalizedSessionID]: true }));
+    try {
+      await apiClient.post(`/api/sessions/${encodeURIComponent(normalizedSessionID)}/pin`, { pinned });
+      applyPinnedState();
     } catch {
+      applyPinnedState();
     } finally {
       setPinningSessionIDs((current) => ({ ...current, [normalizedSessionID]: false }));
     }
@@ -1411,7 +1434,7 @@ export function ConversationRuntimeProvider({
         : [normalizedSession, ...current[routeKey]];
       const nextState = {
         ...current,
-        [routeKey]: nextSessions.sort((left, right) => right.createdAt - left.createdAt),
+        [routeKey]: normalizeRouteSessions(routeKey, nextSessions),
       };
       sessionsByRouteRef.current = nextState;
       return nextState;
@@ -2101,6 +2124,7 @@ export function ConversationRuntimeProvider({
       shortHash: hashSessionIDShort(session.id),
       createdAt: session.createdAt,
       active: session.id === activeSessionID,
+      draft: isBlankDraftSession(session),
       pinned: session.pinned,
       pinning: Boolean(pinningSessionIDs[session.id]),
     })),
@@ -2151,6 +2175,11 @@ export function ConversationRuntimeProvider({
     toolCount: (activeSession?.toolIDs.length || 0) + (activeSession?.mcpIDs.length || 0),
     skillCount: activeSkillIDs.length,
     createSession: () => {
+      const existingBlankDraft = activeSessions.find(isBlankDraftSession) || null;
+      if (existingBlankDraft) {
+        focusSession(existingBlankDraft.id);
+        return;
+      }
       ensureSession(null, { ...activeSessionByRoute, [route]: "" });
     },
     focusSession,
@@ -2267,6 +2296,7 @@ export function ConversationRuntimeProvider({
     mcps,
     skills,
     activeSessionByRoute,
+    focusSession,
     persistRuntimeSessionConfig,
     removeSession,
     setSessionPinned,
