@@ -16,15 +16,15 @@ type runtimeModelProviderSource interface {
 
 type RuntimeResolverOptions struct {
 	ProviderSource runtimeModelProviderSource
-	Claude         execdomain.NLProcessor
-	Codex          execdomain.NLProcessor
+	Claude         execdomain.AgentProcessor
+	Codex          execdomain.AgentProcessor
 	Logger         *slog.Logger
 }
 
 type RuntimeResolverProcessor struct {
 	providers runtimeModelProviderSource
-	claude    execdomain.NLProcessor
-	codex     execdomain.NLProcessor
+	claude    execdomain.AgentProcessor
+	codex     execdomain.AgentProcessor
 	logger    *slog.Logger
 }
 
@@ -52,11 +52,7 @@ func (p *RuntimeResolverProcessor) Process(ctx context.Context, content string, 
 	if provider := p.resolveClaudeProvider(ctx, metadata); provider != nil && p.claude != nil {
 		p.applyProviderMetadata(metadata, *provider)
 		setExecutionSource(metadata, execdomain.ExecutionSourceClaudeCode)
-		output, err := p.claude.Process(ctx, content, metadata)
-		if err == nil {
-			return output, nil
-		}
-		p.logClaudeFallback(provider.ID, err)
+		return p.claude.Process(ctx, content, metadata)
 	}
 	return p.processCodex(ctx, content, metadata)
 }
@@ -73,11 +69,7 @@ func (p *RuntimeResolverProcessor) ProcessStream(
 	if provider := p.resolveClaudeProvider(ctx, metadata); provider != nil && p.claude != nil {
 		p.applyProviderMetadata(metadata, *provider)
 		setExecutionSource(metadata, execdomain.ExecutionSourceClaudeCode)
-		output, err := processRuntimeStream(ctx, p.claude, content, metadata, emit)
-		if err == nil {
-			return output, nil
-		}
-		p.logClaudeFallback(provider.ID, err)
+		return processRuntimeStream(ctx, p.claude, content, metadata, emit)
 	}
 	return p.processCodexStream(ctx, content, metadata, emit)
 }
@@ -151,7 +143,7 @@ func (p *RuntimeResolverProcessor) processCodexStream(
 
 func processRuntimeStream(
 	ctx context.Context,
-	processor execdomain.NLProcessor,
+	processor execdomain.AgentProcessor,
 	content string,
 	metadata map[string]string,
 	emit func(event execdomain.StreamEvent) error,
@@ -171,15 +163,4 @@ func processRuntimeStream(
 		}
 	}
 	return output, nil
-}
-
-func (p *RuntimeResolverProcessor) logClaudeFallback(providerID string, err error) {
-	if p == nil || p.logger == nil || err == nil {
-		return
-	}
-	p.logger.Warn(
-		"claude code runtime failed; falling back to codex direct",
-		slog.String("provider_id", strings.TrimSpace(providerID)),
-		slog.String("error", err.Error()),
-	)
 }

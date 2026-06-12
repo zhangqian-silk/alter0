@@ -23,7 +23,7 @@ func (s *stubOrchestrator) Handle(_ context.Context, msg shareddomain.UnifiedMes
 	return shareddomain.OrchestrationResult{
 		MessageID: msg.MessageID,
 		SessionID: msg.SessionID,
-		Route:     shareddomain.RouteNL,
+		Route:     shareddomain.RouteAgent,
 		Output:    "ok",
 	}, nil
 }

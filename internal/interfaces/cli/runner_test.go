@@ -41,7 +41,7 @@ func (g *sequenceIDGenerator) NewID() string {
 
 func TestRunnerRunRoutesNonEmptyInputAsCLIUnifiedMessage(t *testing.T) {
 	orchestrator := &fakeOrchestrator{
-		result: shareddomain.OrchestrationResult{Route: shareddomain.RouteNL, Output: "handled"},
+		result: shareddomain.OrchestrationResult{Route: shareddomain.RouteAgent, Output: "handled"},
 	}
 	telemetry := observability.NewTelemetry()
 	runner := NewRunner(

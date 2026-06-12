@@ -33,7 +33,7 @@ func (s *stubTaskOrchestrator) Handle(ctx context.Context, msg shareddomain.Unif
 		return shareddomain.OrchestrationResult{
 			MessageID: msg.MessageID,
 			SessionID: msg.SessionID,
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 			Output:    "ok",
 		}, nil
 	}
@@ -246,7 +246,7 @@ func TestServiceDeleteBySessionRemovesQueuedAndInflightTasks(t *testing.T) {
 				return shareddomain.OrchestrationResult{
 					MessageID: msg.MessageID,
 					SessionID: msg.SessionID,
-					Route:     shareddomain.RouteNL,
+					Route:     shareddomain.RouteAgent,
 					Output:    "ok",
 				}, nil
 			case <-ctx.Done():
@@ -356,7 +356,7 @@ func TestServiceSubmitAndCompleteSuccess(t *testing.T) {
 			return shareddomain.OrchestrationResult{
 				MessageID: msg.MessageID,
 				SessionID: msg.SessionID,
-				Route:     shareddomain.RouteNL,
+				Route:     shareddomain.RouteAgent,
 				Output:    "artifact output",
 				Metadata:  map[string]string{"source": "test"},
 			}, nil
@@ -476,14 +476,14 @@ func TestServiceQueuePositionAndQueueWait(t *testing.T) {
 					return shareddomain.OrchestrationResult{
 						MessageID: msg.MessageID,
 						SessionID: msg.SessionID,
-						Route:     shareddomain.RouteNL,
+						Route:     shareddomain.RouteAgent,
 					}, ctx.Err()
 				}
 			}
 			return shareddomain.OrchestrationResult{
 				MessageID: msg.MessageID,
 				SessionID: msg.SessionID,
-				Route:     shareddomain.RouteNL,
+				Route:     shareddomain.RouteAgent,
 				Output:    "done",
 			}, nil
 		},
@@ -547,7 +547,7 @@ func TestServiceCapturesTerminalOutputLogs(t *testing.T) {
 			return shareddomain.OrchestrationResult{
 				MessageID: msg.MessageID,
 				SessionID: msg.SessionID,
-				Route:     shareddomain.RouteNL,
+				Route:     shareddomain.RouteAgent,
 				Output:    "已运行 ls -la\n  - README.md\n  - cmd/",
 			}, nil
 		},
@@ -693,14 +693,14 @@ func TestServiceRetryTerminalTask(t *testing.T) {
 				return shareddomain.OrchestrationResult{
 					MessageID: msg.MessageID,
 					SessionID: msg.SessionID,
-					Route:     shareddomain.RouteNL,
+					Route:     shareddomain.RouteAgent,
 					ErrorCode: "task_failed",
 				}, errors.New("first failed")
 			}
 			return shareddomain.OrchestrationResult{
 				MessageID: msg.MessageID,
 				SessionID: msg.SessionID,
-				Route:     shareddomain.RouteNL,
+				Route:     shareddomain.RouteAgent,
 				Output:    "recovered",
 			}, nil
 		},
@@ -756,14 +756,14 @@ func TestServiceRetryBeforeSuccess(t *testing.T) {
 				return shareddomain.OrchestrationResult{
 					MessageID: msg.MessageID,
 					SessionID: msg.SessionID,
-					Route:     shareddomain.RouteNL,
+					Route:     shareddomain.RouteAgent,
 					ErrorCode: "temporary_failure",
 				}, errors.New("temporary failure")
 			}
 			return shareddomain.OrchestrationResult{
 				MessageID: msg.MessageID,
 				SessionID: msg.SessionID,
-				Route:     shareddomain.RouteNL,
+				Route:     shareddomain.RouteAgent,
 				Output:    "recovered",
 			}, nil
 		},
@@ -805,13 +805,13 @@ func TestServiceCancelQueuedTask(t *testing.T) {
 				return shareddomain.OrchestrationResult{
 					MessageID: msg.MessageID,
 					SessionID: msg.SessionID,
-					Route:     shareddomain.RouteNL,
+					Route:     shareddomain.RouteAgent,
 				}, ctx.Err()
 			case <-blockCh:
 				return shareddomain.OrchestrationResult{
 					MessageID: msg.MessageID,
 					SessionID: msg.SessionID,
-					Route:     shareddomain.RouteNL,
+					Route:     shareddomain.RouteAgent,
 					Output:    "done",
 				}, nil
 			}
@@ -864,7 +864,7 @@ func TestServiceTimeoutTransitionsToFailed(t *testing.T) {
 			return shareddomain.OrchestrationResult{
 				MessageID: msg.MessageID,
 				SessionID: msg.SessionID,
-				Route:     shareddomain.RouteNL,
+				Route:     shareddomain.RouteAgent,
 			}, ctx.Err()
 		},
 	}
@@ -906,13 +906,13 @@ func TestServiceHeartbeatExtendsRunningTaskTimeout(t *testing.T) {
 					return shareddomain.OrchestrationResult{
 						MessageID: msg.MessageID,
 						SessionID: msg.SessionID,
-						Route:     shareddomain.RouteNL,
+						Route:     shareddomain.RouteAgent,
 					}, ctx.Err()
 				case <-done:
 					return shareddomain.OrchestrationResult{
 						MessageID: msg.MessageID,
 						SessionID: msg.SessionID,
-						Route:     shareddomain.RouteNL,
+						Route:     shareddomain.RouteAgent,
 						Output:    "finished after heartbeat",
 					}, nil
 				case <-ticker.C:

@@ -50,7 +50,7 @@ func TestTieredLongTermMemoryAcceptancePersistenceAndLifecycleObservability(t *t
 		longTermMemoryTierMetadataKey:     "L3",
 		longTermMemoryKeyMetadataKey:      "release_guardrail",
 		longTermMemoryValueMetadataKey:    "slo_target 99.95%",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	firstQuery := longTermMessage("accept-query-1", "u-1", "tenant-a", "Need release guardrail", start.Add(time.Minute), nil)
 	firstSnapshot := store.Snapshot(firstQuery, firstQuery.Content, firstQuery.ReceivedAt)
@@ -118,14 +118,14 @@ func runHighValueHitRateScenario(t *testing.T, important bool) float64 {
 		longTermMemoryTierMetadataKey:     "L1",
 		longTermMemoryKeyMetadataKey:      "release_context",
 		longTermMemoryValueMetadataKey:    "release operations baseline",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 	store.Record(longTermMessage("scenario-l2", "u-2", "tenant-a", "seed", start.Add(time.Second), map[string]string{
 		longTermMemoryStrategyMetadataKey: "add",
 		longTermMemoryKindMetadataKey:     "fact",
 		longTermMemoryTierMetadataKey:     "L2",
 		longTermMemoryKeyMetadataKey:      "operations_context",
 		longTermMemoryValueMetadataKey:    "release ops notes",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	highValueMetadata := map[string]string{
 		longTermMemoryStrategyMetadataKey: "add",
@@ -137,7 +137,7 @@ func runHighValueHitRateScenario(t *testing.T, important bool) float64 {
 	if important {
 		highValueMetadata[longTermMemoryImportantMetadataKey] = "true"
 	}
-	store.Record(longTermMessage("scenario-high", "u-2", "tenant-a", "seed", start.Add(2*time.Second), highValueMetadata), shareddomain.RouteNL, "")
+	store.Record(longTermMessage("scenario-high", "u-2", "tenant-a", "seed", start.Add(2*time.Second), highValueMetadata), shareddomain.RouteAgent, "")
 
 	total := 8
 	hits := 0

@@ -84,7 +84,7 @@ func testWebServer(orch Orchestrator) *Server {
 func TestMessageStreamHandlerSuccess(t *testing.T) {
 	orch := &stubOrchestrator{
 		result: shareddomain.OrchestrationResult{
-			Route:  shareddomain.RouteNL,
+			Route:  shareddomain.RouteAgent,
 			Output: "这是一次流式响应输出",
 		},
 	}
@@ -120,8 +120,8 @@ func TestMessageStreamHandlerSuccess(t *testing.T) {
 func TestMessageStreamHandlerErrorEvent(t *testing.T) {
 	orch := &stubOrchestrator{
 		result: shareddomain.OrchestrationResult{
-			Route:     shareddomain.RouteNL,
-			ErrorCode: "nl_execution_failed",
+			Route:     shareddomain.RouteAgent,
+			ErrorCode: "agent_execution_failed",
 		},
 		err: errors.New("processor timeout"),
 	}
@@ -150,7 +150,7 @@ func TestMessageStreamHandlerErrorEvent(t *testing.T) {
 func TestMessageHandlerKeepsJSONCompatibility(t *testing.T) {
 	orch := &stubOrchestrator{
 		result: shareddomain.OrchestrationResult{
-			Route:  shareddomain.RouteNL,
+			Route:  shareddomain.RouteAgent,
 			Output: "fallback-response",
 		},
 	}
@@ -194,7 +194,7 @@ func TestMessageStreamHandlerUsesStreamingOrchestrator(t *testing.T) {
 	orch := &stubStreamOrchestrator{
 		stubOrchestrator: stubOrchestrator{
 			result: shareddomain.OrchestrationResult{
-				Route:  shareddomain.RouteNL,
+				Route:  shareddomain.RouteAgent,
 				Output: "stream-finished",
 			},
 		},

@@ -81,11 +81,11 @@ func runGitCommand(t *testing.T, dir string, args ...string) {
 	}
 }
 
-func TestExecuteNaturalLanguageInjectsRuntimeMetadata(t *testing.T) {
+func TestExecuteAgentInjectsRuntimeMetadata(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	service := NewService(processor)
 
-	_, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	_, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "msg-runtime",
 		SessionID:   "session-runtime",
 		ChannelID:   "web-default",
@@ -98,7 +98,7 @@ func TestExecuteNaturalLanguageInjectsRuntimeMetadata(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if got := processor.lastMetadata[execdomain.RuntimeSessionIDMetadataKey]; got != "session-runtime" {
 		t.Fatalf("runtime session metadata = %q, want session-runtime", got)
@@ -114,11 +114,11 @@ func TestExecuteNaturalLanguageInjectsRuntimeMetadata(t *testing.T) {
 	}
 }
 
-func TestExecuteNaturalLanguageReturnsExecutionSourceMetadata(t *testing.T) {
+func TestExecuteAgentReturnsExecutionSourceMetadata(t *testing.T) {
 	processor := &stubProcessor{output: "ok", source: execdomain.ExecutionSourceModel}
 	service := NewService(processor)
 
-	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "msg-source",
 		SessionID:   "session-source",
 		ChannelID:   "web-default",
@@ -127,7 +127,7 @@ func TestExecuteNaturalLanguageReturnsExecutionSourceMetadata(t *testing.T) {
 		Content:     "source metadata",
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if got := result.Metadata[execdomain.ExecutionSourceMetadataKey]; got != execdomain.ExecutionSourceModel {
 		t.Fatalf("execution source metadata = %q, want %q", got, execdomain.ExecutionSourceModel)
@@ -158,7 +158,7 @@ func (s *stubSkillSource) ListCapabilitiesByType(capabilityType controldomain.Ca
 	}
 }
 
-func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
+func TestExecuteAgentInjectsEnabledSkillsByPriority(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	source := &stubSkillSource{items: []controldomain.Capability{
 		{
@@ -197,7 +197,7 @@ func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
 	}}
 	service := NewServiceWithSkills(processor, source, nil)
 
-	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "m1",
 		SessionID:   "s1",
 		ChannelID:   "web-default",
@@ -207,10 +207,10 @@ func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
 		TraceID:     "t1",
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if result.Output != "ok" {
-		t.Fatalf("ExecuteNaturalLanguage() output = %q, want %q", result.Output, "ok")
+		t.Fatalf("ExecuteAgent() output = %q, want %q", result.Output, "ok")
 	}
 	if got := result.Metadata[resultSkillInjectedKey]; got != "2" {
 		t.Fatalf("skills injected count = %q, want 2", got)
@@ -259,7 +259,7 @@ func TestExecuteNaturalLanguageInjectsEnabledSkillsByPriority(t *testing.T) {
 	}
 }
 
-func TestExecuteNaturalLanguageRespectsIncludeExcludeSelection(t *testing.T) {
+func TestExecuteAgentRespectsIncludeExcludeSelection(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	source := &stubSkillSource{items: []controldomain.Capability{
 		{ID: "summary", Name: "Summary", Type: controldomain.CapabilityTypeSkill, Enabled: true},
@@ -268,7 +268,7 @@ func TestExecuteNaturalLanguageRespectsIncludeExcludeSelection(t *testing.T) {
 	}}
 	service := NewServiceWithSkills(processor, source, nil)
 
-	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "m1",
 		SessionID:   "s1",
 		ChannelID:   "web-default",
@@ -282,7 +282,7 @@ func TestExecuteNaturalLanguageRespectsIncludeExcludeSelection(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if got := result.Metadata[resultSkillInjectedIDsKey]; got != "summary" {
 		t.Fatalf("skills injected ids = %q, want summary", got)
@@ -295,7 +295,7 @@ func TestExecuteNaturalLanguageRespectsIncludeExcludeSelection(t *testing.T) {
 	}
 }
 
-func TestExecuteNaturalLanguageInjectsSelectedTravelSkillFromControlCatalog(t *testing.T) {
+func TestExecuteAgentInjectsSelectedTravelSkillFromControlCatalog(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	source := &stubSkillSource{items: []controldomain.Capability{
 		{
@@ -312,7 +312,7 @@ func TestExecuteNaturalLanguageInjectsSelectedTravelSkillFromControlCatalog(t *t
 	}}
 	service := NewServiceWithSkills(processor, source, nil)
 
-	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "m-travel-skill",
 		SessionID:   "s-travel-skill",
 		ChannelID:   "web-default",
@@ -325,7 +325,7 @@ func TestExecuteNaturalLanguageInjectsSelectedTravelSkillFromControlCatalog(t *t
 		},
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if got := result.Metadata[resultSkillInjectedIDsKey]; got != "travel" {
 		t.Fatalf("skills injected ids = %q, want travel", got)
@@ -344,7 +344,7 @@ func TestExecuteNaturalLanguageInjectsSelectedTravelSkillFromControlCatalog(t *t
 	}
 }
 
-func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
+func TestExecuteAgentInjectsSelectedMemoryFiles(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "USER.md"), []byte("name: alter0"), 0o644); err != nil {
 		t.Fatalf("write USER.md: %v", err)
@@ -366,7 +366,7 @@ func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	service := NewServiceWithSkills(processor, nil, nil)
 
-	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "m-memory",
 		SessionID:   "s-memory",
 		ChannelID:   "web-default",
@@ -379,7 +379,7 @@ func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if got := result.Metadata[resultMemoryInjectedIDsKey]; got != "user_md,soul_md" {
 		t.Fatalf("memory injected ids = %q, want user_md,soul_md", got)
@@ -399,7 +399,7 @@ func TestExecuteNaturalLanguageInjectsSelectedMemoryFiles(t *testing.T) {
 	}
 }
 
-func TestExecuteNaturalLanguageAutoRecallsSelectedMemorySnippets(t *testing.T) {
+func TestExecuteAgentAutoRecallsSelectedMemorySnippets(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".alter0", "memory", "long-term"), 0o755); err != nil {
 		t.Fatalf("mkdir memory dir: %v", err)
@@ -425,7 +425,7 @@ func TestExecuteNaturalLanguageAutoRecallsSelectedMemorySnippets(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	service := NewServiceWithSkills(processor, nil, nil)
 
-	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "m-memory-recall",
 		SessionID:   "s-memory-recall",
 		ChannelID:   "web-default",
@@ -438,7 +438,7 @@ func TestExecuteNaturalLanguageAutoRecallsSelectedMemorySnippets(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if got := result.Metadata[resultMemoryRecallKey]; got != "1" {
 		t.Fatalf("memory recall count = %q, want 1", got)
@@ -455,7 +455,7 @@ func TestExecuteNaturalLanguageAutoRecallsSelectedMemorySnippets(t *testing.T) {
 	}
 }
 
-func TestExecuteNaturalLanguageInjectsConfiguredMemoryStoreFiles(t *testing.T) {
+func TestExecuteAgentInjectsConfiguredMemoryStoreFiles(t *testing.T) {
 	root := t.TempDir()
 	storageDir := t.TempDir()
 	dailyDir := filepath.Join(storageDir, "memory")
@@ -488,7 +488,7 @@ func TestExecuteNaturalLanguageInjectsConfiguredMemoryStoreFiles(t *testing.T) {
 		LongTermPath: longTermPath,
 	})
 
-	_, err = service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	_, err = service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "m-configured-memory",
 		SessionID:   "s-configured-memory",
 		ChannelID:   "web-default",
@@ -502,7 +502,7 @@ func TestExecuteNaturalLanguageInjectsConfiguredMemoryStoreFiles(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 
 	memoryContext := decodeMemoryContextFromMetadata(t, processor.lastMetadata)
@@ -522,7 +522,7 @@ func TestExecuteNaturalLanguageInjectsConfiguredMemoryStoreFiles(t *testing.T) {
 	}
 }
 
-func TestExecuteNaturalLanguageResolvesSkillConflicts(t *testing.T) {
+func TestExecuteAgentResolvesSkillConflicts(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	source := &stubSkillSource{items: []controldomain.Capability{
 		{
@@ -561,7 +561,7 @@ func TestExecuteNaturalLanguageResolvesSkillConflicts(t *testing.T) {
 	}}
 	service := NewServiceWithSkills(processor, source, nil)
 
-	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "m1",
 		SessionID:   "s1",
 		ChannelID:   "web-default",
@@ -571,7 +571,7 @@ func TestExecuteNaturalLanguageResolvesSkillConflicts(t *testing.T) {
 		TraceID:     "t1",
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if got := result.Metadata[resultSkillInjectedIDsKey]; got != "writer-core,reviewer" {
 		t.Fatalf("skills injected ids = %q, want writer-core,reviewer", got)
@@ -608,7 +608,7 @@ func TestExecuteNaturalLanguageResolvesSkillConflicts(t *testing.T) {
 	}
 }
 
-func TestExecuteNaturalLanguageInjectsMCPContextWithTransportMapping(t *testing.T) {
+func TestExecuteAgentInjectsMCPContextWithTransportMapping(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	source := &stubSkillSource{
 		items: []controldomain.Capability{},
@@ -644,7 +644,7 @@ func TestExecuteNaturalLanguageInjectsMCPContextWithTransportMapping(t *testing.
 	}
 	service := NewServiceWithSkills(processor, source, nil)
 
-	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "mcp-map-1",
 		SessionID:   "session-map",
 		ChannelID:   "web-default",
@@ -654,7 +654,7 @@ func TestExecuteNaturalLanguageInjectsMCPContextWithTransportMapping(t *testing.
 		TraceID:     "trace-map",
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if got := result.Metadata[resultMCPInjectedKey]; got != "2" {
 		t.Fatalf("mcp injected count = %q, want 2", got)
@@ -682,7 +682,7 @@ func TestExecuteNaturalLanguageInjectsMCPContextWithTransportMapping(t *testing.
 	}
 }
 
-func TestExecuteNaturalLanguageSupportsSessionAndRequestScopedMCP(t *testing.T) {
+func TestExecuteAgentSupportsSessionAndRequestScopedMCP(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	source := &stubSkillSource{
 		mcpItems: []controldomain.Capability{
@@ -712,7 +712,7 @@ func TestExecuteNaturalLanguageSupportsSessionAndRequestScopedMCP(t *testing.T) 
 	}
 	service := NewServiceWithSkills(processor, source, nil)
 
-	firstResult, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	firstResult, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "mcp-scope-1",
 		SessionID:   "session-scope",
 		ChannelID:   "web-default",
@@ -725,13 +725,13 @@ func TestExecuteNaturalLanguageSupportsSessionAndRequestScopedMCP(t *testing.T) 
 		},
 	})
 	if err != nil {
-		t.Fatalf("first ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("first ExecuteAgent() error = %v", err)
 	}
 	if got := firstResult.Metadata[resultMCPInjectedIDsKey]; got != "session-fs" {
 		t.Fatalf("first injected ids = %q, want session-fs", got)
 	}
 
-	secondResult, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	secondResult, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "mcp-scope-2",
 		SessionID:   "session-scope",
 		ChannelID:   "web-default",
@@ -744,13 +744,13 @@ func TestExecuteNaturalLanguageSupportsSessionAndRequestScopedMCP(t *testing.T) 
 		},
 	})
 	if err != nil {
-		t.Fatalf("second ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("second ExecuteAgent() error = %v", err)
 	}
 	if got := secondResult.Metadata[resultMCPInjectedIDsKey]; got != "request-github,session-fs" {
 		t.Fatalf("second injected ids = %q, want request-github,session-fs", got)
 	}
 
-	thirdResult, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	thirdResult, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "mcp-scope-3",
 		SessionID:   "another-session",
 		ChannelID:   "web-default",
@@ -760,14 +760,14 @@ func TestExecuteNaturalLanguageSupportsSessionAndRequestScopedMCP(t *testing.T) 
 		TraceID:     "trace-scope-3",
 	})
 	if err != nil {
-		t.Fatalf("third ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("third ExecuteAgent() error = %v", err)
 	}
 	if got := thirdResult.Metadata[resultMCPInjectedKey]; got != "0" {
 		t.Fatalf("third injected count = %q, want 0", got)
 	}
 }
 
-func TestExecuteNaturalLanguageEnforcesMCPWhitelistTimeoutIsolationAndAudit(t *testing.T) {
+func TestExecuteAgentEnforcesMCPWhitelistTimeoutIsolationAndAudit(t *testing.T) {
 	processor := &stubProcessor{output: "ok"}
 	source := &stubSkillSource{
 		mcpItems: []controldomain.Capability{
@@ -804,7 +804,7 @@ func TestExecuteNaturalLanguageEnforcesMCPWhitelistTimeoutIsolationAndAudit(t *t
 	logger := slog.New(slog.NewTextHandler(logBuffer, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	service := NewServiceWithSkills(processor, source, logger)
 
-	result, err := service.ExecuteNaturalLanguage(context.Background(), shareddomain.UnifiedMessage{
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
 		MessageID:   "mcp-sec-1",
 		SessionID:   "session-sec",
 		ChannelID:   "web-default",
@@ -817,7 +817,7 @@ func TestExecuteNaturalLanguageEnforcesMCPWhitelistTimeoutIsolationAndAudit(t *t
 		},
 	})
 	if err != nil {
-		t.Fatalf("ExecuteNaturalLanguage() error = %v", err)
+		t.Fatalf("ExecuteAgent() error = %v", err)
 	}
 	if got := result.Metadata[resultMCPInjectedIDsKey]; got != "safe-http" {
 		t.Fatalf("injected ids = %q, want safe-http", got)

@@ -25,21 +25,21 @@ func TestLongTermMemoryRecordAndScopedRetrieval(t *testing.T) {
 		longTermMemoryKeyMetadataKey:      "response style",
 		longTermMemoryValueMetadataKey:    "concise bullet answers",
 		longTermMemoryTagsMetadataKey:     "style, concise",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 	store.Record(longTermMessage("s-b", "u-2", "tenant-a", "remember my style", now.Add(30*time.Second), map[string]string{
 		longTermMemoryStrategyMetadataKey: "add",
 		longTermMemoryKindMetadataKey:     "preference",
 		longTermMemoryKeyMetadataKey:      "response style",
 		longTermMemoryValueMetadataKey:    "detailed narrative",
 		longTermMemoryTagsMetadataKey:     "style, detailed",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 	store.Record(longTermMessage("s-c", "u-1", "tenant-b", "remember my style", now.Add(time.Minute), map[string]string{
 		longTermMemoryStrategyMetadataKey: "add",
 		longTermMemoryKindMetadataKey:     "preference",
 		longTermMemoryKeyMetadataKey:      "response style",
 		longTermMemoryValueMetadataKey:    "formal tone",
 		longTermMemoryTagsMetadataKey:     "style, formal",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	query := longTermMessage("s-new", "u-1", "tenant-a", "Can you keep concise style?", now.Add(2*time.Minute), nil)
 	snapshot := store.Snapshot(query, query.Content, query.ReceivedAt)
@@ -73,7 +73,7 @@ func TestLongTermMemoryUpdateStrategiesAndAuditFields(t *testing.T) {
 		longTermMemoryValueMetadataKey:    "UTC+8",
 		longTermMemoryTagsMetadataKey:     "profile, timezone",
 	})
-	store.Record(addMessage, shareddomain.RouteNL, "")
+	store.Record(addMessage, shareddomain.RouteAgent, "")
 
 	overwriteAt := now.Add(time.Minute)
 	overwriteMessage := longTermMessage("session-overwrite", "u-1", "tenant-a", "update timezone", overwriteAt, map[string]string{
@@ -83,7 +83,7 @@ func TestLongTermMemoryUpdateStrategiesAndAuditFields(t *testing.T) {
 		longTermMemoryValueMetadataKey:    "UTC+1",
 		longTermMemoryTagsMetadataKey:     "profile, timezone, latest",
 	})
-	store.Record(overwriteMessage, shareddomain.RouteNL, "")
+	store.Record(overwriteMessage, shareddomain.RouteAgent, "")
 
 	scope := resolveLongTermMemoryScope(overwriteMessage, store.options)
 	entries := getScopeEntries(store, scope)
@@ -131,7 +131,7 @@ func TestLongTermMemoryUpdateStrategiesAndAuditFields(t *testing.T) {
 		longTermMemoryKindMetadataKey:     "fact",
 		longTermMemoryKeyMetadataKey:      "timezone",
 	})
-	store.Record(invalidateMessage, shareddomain.RouteNL, "")
+	store.Record(invalidateMessage, shareddomain.RouteAgent, "")
 
 	snapshot := store.Snapshot(invalidateMessage, "timezone", invalidateAt.Add(time.Second))
 	if len(snapshot.Hits) != 0 {
@@ -189,7 +189,7 @@ func TestLongTermMemoryImplicitPreferencePersistsAcrossSessions(t *testing.T) {
 	now := time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC)
 
 	writeMessage := longTermMessage("session-preference", "u-7", "tenant-x", "I prefer concise responses", now, nil)
-	store.Record(writeMessage, shareddomain.RouteNL, "")
+	store.Record(writeMessage, shareddomain.RouteAgent, "")
 
 	query := longTermMessage("session-new", "u-7", "tenant-x", "Can you keep concise format?", now.Add(time.Minute), nil)
 	snapshot := store.Snapshot(query, query.Content, query.ReceivedAt)
@@ -233,7 +233,7 @@ func TestLongTermMemoryTierConstraintsWithTTLAndLRUEviction(t *testing.T) {
 		longTermMemoryTierMetadataKey:     "L1",
 		longTermMemoryKeyMetadataKey:      "critical-note",
 		longTermMemoryValueMetadataKey:    "abcdefghijklmno",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	scope := resolveLongTermMemoryScope(longTermMessage("scope", "u-1", "tenant-a", "", now, nil), store.options)
 	entries := getScopeEntries(store, scope)
@@ -253,7 +253,7 @@ func TestLongTermMemoryTierConstraintsWithTTLAndLRUEviction(t *testing.T) {
 		longTermMemoryTierMetadataKey:     "L1",
 		longTermMemoryKeyMetadataKey:      "second-note",
 		longTermMemoryValueMetadataKey:    "second",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	entries = getScopeEntries(store, scope)
 	if len(entries) != 1 {
@@ -287,21 +287,21 @@ func TestLongTermMemoryHitChainAndBudgetTruncation(t *testing.T) {
 		longTermMemoryTierMetadataKey:     "L1",
 		longTermMemoryKeyMetadataKey:      "release-plan-hot",
 		longTermMemoryValueMetadataKey:    "priority rollout owner",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 	store.Record(longTermMessage("hit-l2", "u-1", "tenant-a", "remember l2", now.Add(10*time.Second), map[string]string{
 		longTermMemoryStrategyMetadataKey: "add",
 		longTermMemoryKindMetadataKey:     "fact",
 		longTermMemoryTierMetadataKey:     "L2",
 		longTermMemoryKeyMetadataKey:      "release-plan-warm",
 		longTermMemoryValueMetadataKey:    "weekly status context",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 	store.Record(longTermMessage("hit-l3", "u-1", "tenant-a", "remember l3", now.Add(20*time.Second), map[string]string{
 		longTermMemoryStrategyMetadataKey: "add",
 		longTermMemoryKindMetadataKey:     "fact",
 		longTermMemoryTierMetadataKey:     "L3",
 		longTermMemoryKeyMetadataKey:      "release-plan-archive",
 		longTermMemoryValueMetadataKey:    "legacy migration runbook",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	query := longTermMessage("query", "u-1", "tenant-a", "Need release plan context", now.Add(time.Minute), nil)
 	snapshot := store.Snapshot(query, query.Content, query.ReceivedAt)
@@ -363,14 +363,14 @@ func TestLongTermMemoryPromotionAndDemotionObservable(t *testing.T) {
 		longTermMemoryKindMetadataKey:     "fact",
 		longTermMemoryKeyMetadataKey:      "release-checklist",
 		longTermMemoryValueMetadataKey:    "canary and rollback",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 	store.Record(longTermMessage("important-seed", "u-1", "tenant-a", "important seed", now.Add(time.Second), map[string]string{
 		longTermMemoryStrategyMetadataKey:  "add",
 		longTermMemoryKindMetadataKey:      "fact",
 		longTermMemoryImportantMetadataKey: "true",
 		longTermMemoryKeyMetadataKey:       "critical-policy",
 		longTermMemoryValueMetadataKey:     "always verify before rollout",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	scope := resolveLongTermMemoryScope(longTermMessage("scope-promote", "u-1", "tenant-a", "", now, nil), store.options)
 	entries := getScopeEntries(store, scope)
@@ -434,7 +434,7 @@ func TestLongTermMemoryPersistenceAcrossRestart(t *testing.T) {
 		longTermMemoryKindMetadataKey:     "preference",
 		longTermMemoryKeyMetadataKey:      "response-style",
 		longTermMemoryValueMetadataKey:    "concise bullets",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected persistence file after write-through record: %v", err)
@@ -478,7 +478,7 @@ func TestLongTermMemoryWriteBackRequiresFlush(t *testing.T) {
 		longTermMemoryKindMetadataKey:     "fact",
 		longTermMemoryKeyMetadataKey:      "timezone",
 		longTermMemoryValueMetadataKey:    "UTC+8",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected no persisted file before write-back flush, got err=%v", err)
@@ -520,7 +520,7 @@ func TestLongTermMemoryMaintainsSearchIndexForReloadedRecall(t *testing.T) {
 		longTermMemoryKeyMetadataKey:      "preview-subdomain",
 		longTermMemoryValueMetadataKey:    "travel previews use travel-session.alter0.cn",
 		longTermMemoryTagsMetadataKey:     "preview,travel",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	indexData, err := os.ReadFile(indexPath)
 	if err != nil {
@@ -566,7 +566,7 @@ func TestLongTermMemoryFlushPersistsWriteBackIndex(t *testing.T) {
 		longTermMemoryKindMetadataKey:     "fact",
 		longTermMemoryKeyMetadataKey:      "timezone",
 		longTermMemoryValueMetadataKey:    "UTC+8",
-	}), shareddomain.RouteNL, "")
+	}), shareddomain.RouteAgent, "")
 
 	if _, err := os.Stat(indexPath); !os.IsNotExist(err) {
 		t.Fatalf("expected no index file before write-back flush, got err=%v", err)

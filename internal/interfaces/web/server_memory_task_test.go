@@ -65,7 +65,7 @@ func TestMemoryTaskCollectionHandlerFiltersByStatusTypeAndTime(t *testing.T) {
 	}
 }
 
-func TestMemoryTaskDetailAndRebuildSummaryEndpoints(t *testing.T) {
+func TestMemoryTaskDetailAndRebuildSummaryEndpointsDoNotWriteMemoryRefs(t *testing.T) {
 	now := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
 	task := newMemoryTask("task-detail", "release", taskdomain.TaskStatusSuccess, now)
 	taskSvc := &stubWebTaskService{
@@ -117,8 +117,8 @@ func TestMemoryTaskDetailAndRebuildSummaryEndpoints(t *testing.T) {
 	if detailBody.Meta.TimeoutAt.IsZero() {
 		t.Fatalf("expected timeout window in meta payload: %+v", detailBody.Meta)
 	}
-	if len(detailBody.SummaryRefs) == 0 {
-		t.Fatalf("expected summary refs in detail response")
+	if len(detailBody.SummaryRefs) != 0 {
+		t.Fatalf("expected no direct memory summary refs in detail response, got %+v", detailBody.SummaryRefs)
 	}
 
 	rebuildReq := httptest.NewRequest(http.MethodPost, "/api/memory/tasks/task-detail/rebuild-summary", nil)
@@ -138,8 +138,8 @@ func TestMemoryTaskDetailAndRebuildSummaryEndpoints(t *testing.T) {
 	if rebuildBody.TaskID != "task-detail" || rebuildBody.Status != "rebuilt" {
 		t.Fatalf("unexpected rebuild payload: %+v", rebuildBody)
 	}
-	if len(rebuildBody.SummaryRefs) == 0 {
-		t.Fatalf("expected rebuilt summary refs")
+	if len(rebuildBody.SummaryRefs) != 0 {
+		t.Fatalf("expected no direct memory summary refs after rebuild, got %+v", rebuildBody.SummaryRefs)
 	}
 }
 

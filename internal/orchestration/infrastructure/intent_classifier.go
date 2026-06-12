@@ -21,7 +21,7 @@ func NewSimpleIntentClassifier(lookup CommandLookup) *SimpleIntentClassifier {
 func (c *SimpleIntentClassifier) Classify(content string) orchdomain.Intent {
 	trimmed := strings.TrimSpace(content)
 	if trimmed == "" {
-		return orchdomain.Intent{Type: orchdomain.IntentTypeNL}
+		return orchdomain.Intent{Type: orchdomain.IntentTypeAgent}
 	}
 
 	tokens := strings.Fields(trimmed)
@@ -32,7 +32,7 @@ func (c *SimpleIntentClassifier) Classify(content string) orchdomain.Intent {
 	}
 	commandToken = strings.ToLower(commandToken)
 
-	if requiresSlash || c.lookup.Exists(commandToken) {
+	if c.lookup.Exists(commandToken) {
 		args := []string{}
 		if len(tokens) > 1 {
 			args = tokens[1:]
@@ -44,5 +44,5 @@ func (c *SimpleIntentClassifier) Classify(content string) orchdomain.Intent {
 		}
 	}
 
-	return orchdomain.Intent{Type: orchdomain.IntentTypeNL}
+	return orchdomain.Intent{Type: orchdomain.IntentTypeAgent}
 }

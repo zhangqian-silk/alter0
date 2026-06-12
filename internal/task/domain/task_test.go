@@ -197,7 +197,7 @@ func validTask() Task {
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		RequestContent:  "write tests",
-		Result:          TaskResult{Route: shareddomain.RouteNL, Output: "ok"},
+		Result:          TaskResult{Route: shareddomain.RouteAgent, Output: "ok"},
 		MessageLink:     TaskMessageLink{TaskID: "task-1", SessionID: "session-1"},
 	}
 }

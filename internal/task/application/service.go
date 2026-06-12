@@ -1610,7 +1610,7 @@ func resolveTaskType(task taskdomain.Task) string {
 	switch task.Result.Route {
 	case shareddomain.RouteCommand:
 		return "command"
-	case shareddomain.RouteNL:
+	case shareddomain.RouteAgent:
 		return "natural_language"
 	default:
 		return "task"

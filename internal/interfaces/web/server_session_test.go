@@ -217,7 +217,7 @@ func TestSessionMessageListHandlerSupportsTimeRange(t *testing.T) {
 					Content:   "answer",
 					Timestamp: time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC),
 					RouteResult: sessiondomain.RouteResult{
-						Route: shareddomain.RouteNL,
+						Route: shareddomain.RouteAgent,
 					},
 				},
 			},
@@ -529,6 +529,39 @@ func TestMaintenanceMemoryRunReportsUnavailableOrchestrator(t *testing.T) {
 	}
 }
 
+func TestMaintenanceMemoryRunUsesStructuredSummaryPrompt(t *testing.T) {
+	orchestrator := &stubOrchestrator{}
+	server := &Server{
+		orchestrator: orchestrator,
+		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	server.ensureMaintenanceService()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/memory/run", nil)
+	rec := httptest.NewRecorder()
+	server.maintenanceMemoryRunHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	content := orchestrator.last.Content
+	for _, required := range []string{
+		"Summarize daily memory into durable memory candidates",
+		"Do not copy raw transcript text",
+		"Return changed files and skipped candidates",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("expected maintenance prompt to contain %q, got %q", required, content)
+		}
+	}
+	if orchestrator.last.Metadata["alter0.skills.include"] != `["memory-maintenance"]` {
+		t.Fatalf("expected memory-maintenance skill, got %+v", orchestrator.last.Metadata)
+	}
+	if !strings.Contains(orchestrator.last.Metadata["alter0.memory.include"], "memory_daily_today") {
+		t.Fatalf("expected daily memory context, got %+v", orchestrator.last.Metadata)
+	}
+}
+
 func TestSessionCleanupHandlerReturnsTaskDeleteFailure(t *testing.T) {
 	history := &stubSessionHistory{
 		cleanupResult: sessionapp.CleanupInactiveSessionsResult{
@@ -631,7 +664,7 @@ func TestConversationRuntimeSessionCollectionHandlerFiltersByRoute(t *testing.T)
 				ChannelID:   "web-default",
 			},
 			RouteResult: sessiondomain.RouteResult{
-				Route: shareddomain.RouteNL,
+				Route: shareddomain.RouteAgent,
 			},
 		},
 		sessiondomain.MessageRecord{
@@ -787,7 +820,7 @@ func TestConversationRuntimeSessionItemHandlerReturnsMessagesAndAttachments(t *t
 				ChannelID:   "web-default",
 			},
 			RouteResult: sessiondomain.RouteResult{
-				Route:     shareddomain.RouteNL,
+				Route:     shareddomain.RouteAgent,
 				ErrorCode: "",
 				ProcessSteps: []shareddomain.ProcessStep{
 					{

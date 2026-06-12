@@ -8,9 +8,7 @@ import (
 	"strings"
 	"time"
 
-	execdomain "alter0/internal/execution/domain"
 	orchdomain "alter0/internal/orchestration/domain"
-	sessionapp "alter0/internal/session/application"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 	tasksummaryapp "alter0/internal/tasksummary/application"
@@ -26,11 +24,11 @@ const (
 )
 
 type ExecutionPort interface {
-	ExecuteNaturalLanguage(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error)
+	ExecuteAgent(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.ExecutionResult, error)
 }
 
 type streamExecutionPort interface {
-	ExecuteNaturalLanguageStream(
+	ExecuteAgentStream(
 		ctx context.Context,
 		msg shareddomain.UnifiedMessage,
 		onEvent func(shareddomain.StreamEvent) error,
@@ -45,8 +43,6 @@ type Service struct {
 	classifier orchdomain.IntentClassifier
 	registry   orchdomain.CommandRegistry
 	executor   ExecutionPort
-	memory     sessionMemory
-	history    sessionHistoryMemory
 	longTerm   longTermMemory
 	taskMemory taskSummaryMemory
 	mandatory  mandatoryContext
@@ -55,15 +51,6 @@ type Service struct {
 }
 
 type ServiceOption func(*Service)
-
-type sessionMemory interface {
-	Snapshot(sessionID string, input string, now time.Time) sessionMemorySnapshot
-	Record(msg shareddomain.UnifiedMessage, route shareddomain.Route, output string)
-}
-
-type sessionHistoryMemory interface {
-	ListMessages(query sessionapp.MessageQuery) sessionapp.MessagePage
-}
 
 type longTermMemory interface {
 	Snapshot(msg shareddomain.UnifiedMessage, query string, now time.Time) longTermMemorySnapshot
@@ -85,7 +72,6 @@ func NewService(
 		classifier: classifier,
 		registry:   registry,
 		executor:   executor,
-		memory:     newSessionMemoryStore(SessionMemoryOptions{}),
 		longTerm:   newLongTermMemoryStore(LongTermMemoryOptions{}),
 		taskMemory: tasksummaryapp.NewStore(tasksummaryapp.Options{}),
 		mandatory:  newMandatoryContextStore(MandatoryContextOptions{}),
@@ -110,9 +96,6 @@ func NewServiceWithOptions(
 		}
 		option(service)
 	}
-	if service.memory == nil {
-		service.memory = newSessionMemoryStore(SessionMemoryOptions{})
-	}
 	if service.longTerm == nil {
 		service.longTerm = newLongTermMemoryStore(LongTermMemoryOptions{})
 	}
@@ -123,24 +106,6 @@ func NewServiceWithOptions(
 		service.mandatory = newMandatoryContextStore(MandatoryContextOptions{})
 	}
 	return service
-}
-
-func WithSessionMemoryOptions(options SessionMemoryOptions) ServiceOption {
-	return func(service *Service) {
-		service.memory = newSessionMemoryStore(options)
-	}
-}
-
-func WithSessionMemory(memory sessionMemory) ServiceOption {
-	return func(service *Service) {
-		service.memory = memory
-	}
-}
-
-func WithSessionHistoryMemory(history sessionHistoryMemory) ServiceOption {
-	return func(service *Service) {
-		service.history = history
-	}
 }
 
 func WithLongTermMemoryOptions(options LongTermMemoryOptions) ServiceOption {
@@ -179,7 +144,7 @@ func (s *Service) Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (
 
 func (s *Service) Classify(content string) orchdomain.Intent {
 	if s == nil || s.classifier == nil {
-		return orchdomain.Intent{Type: orchdomain.IntentTypeNL}
+		return orchdomain.Intent{Type: orchdomain.IntentTypeAgent}
 	}
 	return s.classifier.Classify(content)
 }
@@ -211,9 +176,6 @@ func (s *Service) handle(
 	}
 
 	intent := s.classifier.Classify(msg.Content)
-	if shouldBypassCommandRouting(msg.Metadata) {
-		intent = orchdomain.Intent{Type: orchdomain.IntentTypeNL}
-	}
 	switch intent.Type {
 	case orchdomain.IntentTypeCommand:
 		result.Route = shareddomain.RouteCommand
@@ -252,13 +214,12 @@ func (s *Service) handle(
 			}
 		}
 		if !terminalSessionOnly {
-			s.memory.Record(msg, result.Route, result.Output)
 			s.longTerm.Record(msg, result.Route, result.Output)
 		}
 		s.onSuccess(msg, result.Route, startedAt)
 		return result, nil
-	case orchdomain.IntentTypeNL:
-		result.Route = shareddomain.RouteNL
+	case orchdomain.IntentTypeAgent:
+		result.Route = shareddomain.RouteAgent
 		s.telemetry.CountRoute(string(result.Route))
 		mandatorySnapshot := s.mandatory.Snapshot(msg.ReceivedAt)
 		execMessage := msg
@@ -270,14 +231,11 @@ func (s *Service) handle(
 				mergeStringMap(mandatorySnapshot.Metadata(), terminalSessionOnlyMetadata()),
 			)
 		} else {
-			snapshot := s.memory.Snapshot(msg.SessionID, msg.Content, msg.ReceivedAt)
-			snapshot = hydrateSessionMemoryFromHistory(snapshot, s.history, msg, resolvedSessionMemoryMaxTurns(s.memory))
 			longTermSnapshot := s.longTerm.Snapshot(msg, msg.Content, msg.ReceivedAt)
 			taskSnapshot := s.taskMemory.Snapshot(msg.Content, msg.ReceivedAt)
 			s.observeTaskSummarySnapshot(taskSnapshot)
-			snapshot, sessionConflicts := applyMandatoryContextToSessionMemory(snapshot, mandatorySnapshot)
 			longTermSnapshot, longTermConflicts := applyMandatoryContextToLongTermMemory(longTermSnapshot, mandatorySnapshot)
-			conflicts := append(sessionConflicts, longTermConflicts...)
+			conflicts := longTermConflicts
 			conflictMetadata = mandatoryContextConflictMetadata(conflicts)
 
 			if len(conflicts) > 0 && s.logger != nil {
@@ -291,21 +249,19 @@ func (s *Service) handle(
 				)
 			}
 
-			execMessage.Content = buildSessionMemoryPrompt(msg.Content, snapshot)
-			execMessage.Content = buildLongTermMemoryPrompt(execMessage.Content, longTermSnapshot)
+			execMessage.Content = buildLongTermMemoryPrompt(msg.Content, longTermSnapshot)
 			execMessage.Content = buildTaskSummaryPrompt(execMessage.Content, taskSnapshot)
 			execMessage.Content = buildMandatoryContextPrompt(execMessage.Content, mandatorySnapshot)
 			execMessage.Metadata = mergeStringMap(
 				msg.Metadata,
 				mergeStringMap(
 					mergeStringMap(
-						mergeStringMap(snapshot.Metadata(), longTermSnapshot.Metadata()),
+						longTermSnapshot.Metadata(),
 						taskSnapshot.Metadata(),
 					),
 					mergeStringMap(mandatorySnapshot.Metadata(), conflictMetadata),
 				),
 			)
-			result.Metadata = mergeStringMap(result.Metadata, snapshot.ResultMetadata())
 			result.Metadata = mergeStringMap(result.Metadata, longTermSnapshot.ResultMetadata())
 			result.Metadata = mergeStringMap(result.Metadata, taskSnapshot.ResultMetadata())
 			result.Metadata = mergeStringMap(result.Metadata, conflictMetadata)
@@ -314,9 +270,9 @@ func (s *Service) handle(
 		var err error
 		if onEvent != nil {
 			if streamExecutor, ok := s.executor.(streamExecutionPort); ok {
-				nlResult, err = streamExecutor.ExecuteNaturalLanguageStream(ctx, execMessage, onEvent)
+				nlResult, err = streamExecutor.ExecuteAgentStream(ctx, execMessage, onEvent)
 			} else {
-				nlResult, err = s.executor.ExecuteNaturalLanguage(ctx, execMessage)
+				nlResult, err = s.executor.ExecuteAgent(ctx, execMessage)
 				if err == nil && strings.TrimSpace(nlResult.Output) != "" {
 					if streamErr := onEvent(shareddomain.StreamEvent{
 						Type: shareddomain.StreamEventTypeOutput,
@@ -329,11 +285,11 @@ func (s *Service) handle(
 				}
 			}
 		} else {
-			nlResult, err = s.executor.ExecuteNaturalLanguage(ctx, execMessage)
+			nlResult, err = s.executor.ExecuteAgent(ctx, execMessage)
 		}
 		if err != nil {
 			s.onError(msg, result.Route, startedAt, err)
-			result.ErrorCode = "nl_execution_failed"
+			result.ErrorCode = "agent_execution_failed"
 			return result, err
 		}
 
@@ -345,7 +301,6 @@ func (s *Service) handle(
 		result.Metadata = mergeStringMap(result.Metadata, mandatorySnapshot.ResultMetadata())
 		result.Metadata = mergeStringMap(result.Metadata, nlResult.Metadata)
 		if !terminalSessionOnly {
-			s.memory.Record(msg, result.Route, nlResult.Output)
 			s.longTerm.Record(msg, result.Route, nlResult.Output)
 		}
 		s.onSuccess(msg, result.Route, startedAt)
@@ -368,16 +323,6 @@ func isTerminalSessionContextOnly(metadata map[string]string) bool {
 	return strings.EqualFold(
 		strings.TrimSpace(metadata[terminalTaskTypeMetadataKey]),
 		terminalTaskTypeValue,
-	)
-}
-
-func shouldBypassCommandRouting(metadata map[string]string) bool {
-	if len(metadata) == 0 {
-		return false
-	}
-	return strings.EqualFold(
-		strings.TrimSpace(metadata[execdomain.ExecutionEngineMetadataKey]),
-		execdomain.ExecutionEngineCodex,
 	)
 }
 

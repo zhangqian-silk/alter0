@@ -71,7 +71,7 @@ func (s *blockingTaskStreamOrchestrator) HandleStream(
 		return shareddomain.OrchestrationResult{
 			MessageID: msg.MessageID,
 			SessionID: msg.SessionID,
-			Route:     shareddomain.RouteNL,
+			Route:     shareddomain.RouteAgent,
 		}, ctx.Err()
 	}
 }
@@ -329,7 +329,7 @@ func TestMessageStreamHandlerReturnsQuickStreamBeforeAssessmentCompletes(t *test
 	server := &Server{
 		orchestrator: &stubWebOrchestrator{
 			result: shareddomain.OrchestrationResult{
-				Route:  shareddomain.RouteNL,
+				Route:  shareddomain.RouteAgent,
 				Output: "hello back",
 			},
 		},
@@ -504,7 +504,7 @@ func TestTaskServiceUnavailable(t *testing.T) {
 	server := &Server{
 		orchestrator: &stubWebOrchestrator{
 			result: shareddomain.OrchestrationResult{
-				Route:  shareddomain.RouteNL,
+				Route:  shareddomain.RouteAgent,
 				Output: "ok",
 			},
 		},

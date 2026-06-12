@@ -4,7 +4,7 @@ type Route string
 
 const (
 	RouteCommand Route = "command"
-	RouteNL      Route = "nl"
+	RouteAgent   Route = "agent"
 )
 
 type OrchestrationResult struct {

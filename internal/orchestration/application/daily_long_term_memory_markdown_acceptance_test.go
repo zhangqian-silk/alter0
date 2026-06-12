@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -28,21 +29,11 @@ func TestDailyAndLongTermMemoryMarkdownAcceptance(t *testing.T) {
 		},
 	}
 	service := NewServiceWithOptions(
-		&stubClassifier{intent: orchdomain.Intent{Type: orchdomain.IntentTypeNL}},
+		&stubClassifier{intent: orchdomain.Intent{Type: orchdomain.IntentTypeAgent}},
 		&stubRegistry{},
 		executor,
 		newSpyTelemetry(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		WithSessionMemoryOptions(SessionMemoryOptions{
-			MaxTurns:                 8,
-			TTL:                      24 * time.Hour,
-			MaxSnippets:              220,
-			CompressionTriggerTokens: 70,
-			CompressionSummaryTokens: 60,
-			CompressionRetainTurns:   2,
-			CompressionMaxFacts:      6,
-			DailyMemoryDir:           dailyDir,
-		}),
 		WithLongTermMemoryOptions(LongTermMemoryOptions{
 			MaxEntriesPerScope:   32,
 			MaxHits:              4,
@@ -71,14 +62,14 @@ func TestDailyAndLongTermMemoryMarkdownAcceptance(t *testing.T) {
 		longTermMemoryTenantMetadataKey: "tenant-r025",
 	})
 	if _, err := service.Handle(context.Background(), msg2); err != nil {
-		t.Fatalf("handle day1 compression writeback: %v", err)
+		t.Fatalf("handle day1 long-term pass-through: %v", err)
 	}
 
 	msg2b := acceptanceMessage("r025-day1-3", "session-day1", "user-r025", "slo_target: 99.95% incident_channel: #release-war-room"+strings.Repeat(" release guardrail", 8), day1.Add(2*time.Minute), map[string]string{
 		longTermMemoryTenantMetadataKey: "tenant-r025",
 	})
 	if _, err := service.Handle(context.Background(), msg2b); err != nil {
-		t.Fatalf("handle day1 compression accumulation: %v", err)
+		t.Fatalf("handle day1 long-term accumulation: %v", err)
 	}
 
 	msg3 := acceptanceMessage("r025-day2-1", "session-day2", "user-r025", "Please keep concise bullet style for this session", day2, map[string]string{
@@ -93,26 +84,18 @@ func TestDailyAndLongTermMemoryMarkdownAcceptance(t *testing.T) {
 	}
 
 	day1File := filepath.Join(dailyDir, "2026-03-03.md")
-	day1Raw, err := os.ReadFile(day1File)
-	if err != nil {
-		t.Fatalf("read day1 markdown memory file: %v", err)
-	}
-	day1Content := string(day1Raw)
-	if !strings.Contains(day1Content, "# Daily Memory 2026-03-03") {
-		t.Fatalf("expected day1 markdown heading, got %q", day1Content)
-	}
-	if !strings.Contains(day1Content, "## L2") {
-		t.Fatalf("expected day1 compressed tier persisted, got %q", day1Content)
+	if _, err := os.Stat(day1File); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected daily markdown to be agent-managed, got %v", err)
 	}
 
 	day2File := filepath.Join(dailyDir, "2026-03-04.md")
-	if _, err := os.Stat(day2File); err != nil {
-		t.Fatalf("expected day2 markdown memory file: %v", err)
+	if _, err := os.Stat(day2File); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected day2 markdown to be agent-managed, got %v", err)
 	}
 
 	candidateFile := filepath.Join(dailyDir, "long-term", "2026-03-03.md")
-	if _, err := os.Stat(candidateFile); err != nil {
-		t.Fatalf("expected day1 long-term candidate markdown file: %v", err)
+	if _, err := os.Stat(candidateFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected candidate markdown to be agent-managed, got %v", err)
 	}
 
 	longTermRaw, err := os.ReadFile(longTermPath)

@@ -119,6 +119,23 @@ func TestBuildCodexPromptIncludesTravelSkillDeliveryRules(t *testing.T) {
 	}
 }
 
+func markTravelSkill(t *testing.T, metadata map[string]string) {
+	t.Helper()
+	raw, err := json.Marshal(execdomain.SkillContext{
+		Protocol: execdomain.SkillContextProtocolVersion,
+		Skills: []execdomain.SkillSpec{
+			{
+				ID:   "travel",
+				Name: "travel",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal travel skill context: %v", err)
+	}
+	metadata[execdomain.SkillContextMetadataKey] = string(raw)
+}
+
 func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 	rootDir := t.TempDir()
 	activeHome := filepath.Join(t.TempDir(), "active-codex-home")

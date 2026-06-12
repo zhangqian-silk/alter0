@@ -12,12 +12,12 @@ func TestTelemetryMetricsHandlerExportsCountersAndAverages(t *testing.T) {
 	telemetry.CountGateway("web")
 	telemetry.CountGateway("web")
 	telemetry.CountGateway("cli")
-	telemetry.CountRoute("nl")
+	telemetry.CountRoute("agent")
 	telemetry.CountCommand("help")
-	telemetry.CountError("nl")
+	telemetry.CountError("agent")
 	telemetry.CountMemoryEvent("recall")
-	telemetry.ObserveDuration("nl", 2*time.Second)
-	telemetry.ObserveDuration("nl", 4*time.Second)
+	telemetry.ObserveDuration("agent", 2*time.Second)
+	telemetry.ObserveDuration("agent", 4*time.Second)
 	telemetry.CountQueueEvent("accepted")
 	telemetry.ObserveQueueWait(3 * time.Second)
 	telemetry.SetQueueDepth(5)
@@ -33,11 +33,11 @@ func TestTelemetryMetricsHandlerExportsCountersAndAverages(t *testing.T) {
 	for _, want := range []string{
 		`alter0_gateway_messages_total{channel_type="cli"} 1`,
 		`alter0_gateway_messages_total{channel_type="web"} 2`,
-		`alter0_route_requests_total{route="nl"} 1`,
+		`alter0_route_requests_total{route="agent"} 1`,
 		`alter0_command_requests_total{command="help"} 1`,
-		`alter0_route_errors_total{route="nl"} 1`,
+		`alter0_route_errors_total{route="agent"} 1`,
 		`alter0_memory_events_total{event="recall"} 1`,
-		`alter0_route_duration_seconds_avg{route="nl"} 3.000000`,
+		`alter0_route_duration_seconds_avg{route="agent"} 3.000000`,
 		`alter0_queue_events_total{event="accepted"} 1`,
 		`alter0_queue_wait_seconds_avg 3.000000`,
 		`alter0_queue_depth 5`,
