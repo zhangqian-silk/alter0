@@ -7,6 +7,14 @@ type UseRuntimeComposerViewportSyncProps = {
   composerShellRef: RefObject<HTMLElement | null>;
 };
 
+function hasFocusedEditableElement() {
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement) {
+    return true;
+  }
+  return activeElement instanceof HTMLElement && activeElement.isContentEditable;
+}
+
 export function useRuntimeComposerViewportSync({
   isMobileViewport,
   inputFocused,
@@ -18,6 +26,9 @@ export function useRuntimeComposerViewportSync({
       return;
     }
     const keepViewportAnchored = () => {
+      if (hasFocusedEditableElement()) {
+        return;
+      }
       if (window.scrollX !== 0 || window.scrollY !== 0) {
         window.scrollTo({ left: 0, top: 0, behavior: "auto" });
       }

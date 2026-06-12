@@ -248,7 +248,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 仅在输入框实际聚焦且软键盘占位达到阈值时追加键盘底部偏移。
 - 键盘收起或视口回弹后不保留额外底部空白。
 - `Chat / Terminal` 在页面恢复前台可见、浏览器重新激活当前标签页或系统恢复当前 WebView 时，必须立刻重算共享 `--mobile-viewport-height` 与 `--keyboard-offset`；第一帧不得沿用后台前遗留的旧视口高度、旧键盘偏移或旧底部遮挡量。
-- `Chat` 首次触摸输入框时需采用与 `Terminal` 相同的 `preventScroll` 聚焦策略，并在聚焦期间监听 `window.scroll + VisualViewport resize/scroll` 把页面锚定在 `scrollY = 0`；首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
+- `Chat` 首次触摸输入框时需采用与 `Terminal` 相同的 `preventScroll` 聚焦策略；输入框保持真实焦点期间，键盘动画里的 `window.scroll` 与 `VisualViewport resize/scroll` 只驱动 composer/遮挡高度同步，不得立即调用 `window.scrollTo` 抢回页面滚动，以免移动端浏览器取消输入焦点并收起软键盘。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
 - `Chat` 在移动端触摸发送按钮时，必须先 blur 当前主输入框，再继续原有发送链路；键盘收起期间 composer 继续按 `VisualViewport` 的真实回弹过程逐步释放 `--keyboard-offset`，不能在发送后继续维持聚焦态或把输入区悬停在空白带上。
 - `Chat` 的 fixed composer 在移动端必须把实际遮挡高度同步回工作区滚动面；`.conversation-chat-screen` 与空态欢迎区都需停在 composer 上沿，不能依赖静态底部 padding 估算占位，也不能出现底部输入框覆盖最后一段消息或说明文案。
 - `Chat` 在键盘收起和 composer 回弹到底边时，工作区滚动面也必须同步清理旧的遮挡高度；最后一屏消息、空态说明和阅读定位控件都不能在底边留下额外空白或残留占位。

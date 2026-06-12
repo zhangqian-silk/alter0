@@ -66,6 +66,10 @@ describe("useRuntimeComposerViewportSync", () => {
     document.documentElement.style.setProperty("--keyboard-offset", "0px");
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("keeps the resting inset equal to the visible composer height even when the keyboard offset is larger", () => {
     document.documentElement.style.setProperty("--keyboard-offset", "332px");
 
@@ -89,5 +93,42 @@ describe("useRuntimeComposerViewportSync", () => {
     const workspaceBody = document.querySelector("[data-testid='workspace-body']") as HTMLDivElement;
     expect(workspaceBody.style.getPropertyValue("--runtime-composer-rest-inset")).toBe("152px");
     expect(workspaceBody.style.getPropertyValue("--runtime-composer-inset")).toBe("312px");
+  });
+
+  it("does not force window scroll while the mobile composer input remains focused", () => {
+    const originalScrollX = Object.getOwnPropertyDescriptor(window, "scrollX");
+    const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    input.focus();
+    Object.defineProperty(window, "scrollX", {
+      configurable: true,
+      value: 0,
+    });
+    Object.defineProperty(window, "scrollY", {
+      configurable: true,
+      value: 48,
+    });
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+
+    try {
+      render(<Harness isMobileViewport inputFocused />);
+      window.dispatchEvent(new Event("scroll"));
+
+      expect(scrollTo).not.toHaveBeenCalled();
+    } finally {
+      if (originalScrollX) {
+        Object.defineProperty(window, "scrollX", originalScrollX);
+      }
+      if (originalScrollY) {
+        Object.defineProperty(window, "scrollY", originalScrollY);
+      }
+      input.remove();
+    }
   });
 });
