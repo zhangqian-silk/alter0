@@ -3760,7 +3760,7 @@ body::after {
 }
 
 .nav-session-rail .runtime-session-actions {
-  min-width: 60px;
+  min-width: 88px;
   gap: 2px;
 }
 
@@ -3776,6 +3776,10 @@ body::after {
 
 .nav-session-rail .runtime-session-card:hover .runtime-session-action,
 .nav-session-rail .runtime-session-card:focus-within .runtime-session-action {
+  opacity: 1;
+}
+
+.nav-session-rail .runtime-session-pin.is-pinned {
   opacity: 1;
 }
 
@@ -7828,6 +7832,14 @@ body::after {
   border-color: rgba(191, 219, 254, 0.96);
   background: rgba(239, 246, 255, 0.98);
   box-shadow: 0 14px 28px -24px rgba(37, 99, 235, 0.22);
+}
+
+.runtime-session-pin:hover,
+.runtime-session-pin.is-pinned {
+  color: #0f766e;
+  border-color: rgba(153, 246, 228, 0.96);
+  background: rgba(240, 253, 250, 0.98);
+  box-shadow: 0 14px 28px -24px rgba(15, 118, 110, 0.22);
 }
 
 .runtime-session-delete:hover {

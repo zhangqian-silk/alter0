@@ -37,6 +37,8 @@ const runtimeMock = {
       shortHash: "abcd1234",
       createdAt: Date.parse("2026-04-23T09:00:00Z"),
       active: true,
+      pinned: false,
+      pinning: false,
     },
   ],
   draft: "",
@@ -68,6 +70,7 @@ const runtimeMock = {
   createSession: vi.fn(),
   focusSession: vi.fn(),
   removeSession: vi.fn().mockResolvedValue(undefined),
+  setSessionPinned: vi.fn().mockResolvedValue(undefined),
   setDraft: vi.fn(),
   draftAttachments: [],
   addDraftAttachments: vi.fn().mockResolvedValue(undefined),
@@ -173,6 +176,8 @@ describe("ConversationWorkspace", () => {
         shortHash: "abcd1234",
         createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
+        pinned: false,
+        pinning: false,
       },
     ];
     runtimeMock.target = { type: "model", id: "raw-model", name: "Raw Model" };
@@ -190,6 +195,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.createSession.mockClear();
     runtimeMock.focusSession.mockClear();
     runtimeMock.removeSession.mockClear();
+    runtimeMock.setSessionPinned.mockClear();
     runtimeMock.addDraftAttachments.mockClear();
     runtimeMock.removeDraftAttachment.mockClear();
     runtimeMock.clearDraftAttachments.mockClear();
@@ -293,6 +299,35 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.removeSession).not.toHaveBeenCalled();
     expect(closeMobileSessionPane).toHaveBeenCalledTimes(1);
     expect(document.querySelector("[data-runtime-details-panel='conversation']")).toBeInTheDocument();
+  });
+
+  it("pins Chat sessions directly from the session row action", () => {
+    runtimeMock.sessionItems = [
+      {
+        id: "session-1",
+        title: "New",
+        meta: "now",
+        shortHash: "abcd1234",
+        createdAt: Date.parse("2026-04-23T09:00:00Z"),
+        active: true,
+        pinned: false,
+        pinning: false,
+      },
+    ];
+    const closeMobileSessionPane = vi.fn();
+    renderWorkspace({ isMobileViewport: false, closeMobileSessionPane });
+
+    const sessionPane = screen.getByTestId("conversation-session-pane");
+    closeMobileSessionPane.mockClear();
+    fireEvent.click(within(sessionPane).getByRole("button", {
+      name: "Pin session",
+      hidden: true,
+    }));
+
+    expect(runtimeMock.setSessionPinned).toHaveBeenCalledWith("session-1", true);
+    expect(runtimeMock.focusSession).not.toHaveBeenCalled();
+    expect(runtimeMock.removeSession).not.toHaveBeenCalled();
+    expect(closeMobileSessionPane).not.toHaveBeenCalled();
   });
 
   it("renders Chat jump controls and timeline blocks", () => {
@@ -412,6 +447,8 @@ describe("ConversationWorkspace", () => {
         shortHash: "zzzz1111",
         createdAt: Date.parse("2026-04-23T09:00:00Z"),
         active: true,
+        pinned: false,
+        pinning: false,
       },
     ];
 

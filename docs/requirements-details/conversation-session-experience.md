@@ -61,9 +61,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 本地 Session history 按会话类型拆分物理文件：`Chat` 的 `alter0-chat` 按北京时间 05:00 的归档日边界写入 `.alter0/sessions/_default/alter0-chat/<YYYY-MM-DD>.json` 或 `.md`；`Agent Runtime` 按目标 Agent 与会话身份写入 `.alter0/sessions/<agent_id>/<session_id>.json` 或 `.md`。缺少 Agent 来源的非 Chat 会话归入 `_default`；服务读取旧版 `.alter0/sessions.json` 或 `.alter0/sessions.md` 聚合文件时需立即重构为新的分文件布局，并删除旧聚合文件。
 - Chat/Agent Runtime 消息接口接受请求后，服务端先把本轮 `user` 消息写入 Session history，再进入同步或流式执行；assistant 回复在执行完成、失败或任务收口后追加写入。同一轮请求的浏览器关闭、刷新、SSE 断开或前端取消不会让用户已发送内容只留在浏览器缓存中。
 - Session history 维护会话级 `last_active_at` 与 `pinned`。`last_active_at` 在用户发送消息、assistant 完成或失败、流式收口、打开会话详情、Terminal 输入/详情读取和任务结果写回时刷新；没有显式活跃时间的历史会话回退使用最后消息时间。
-- 会话列表排序规则为置顶优先、最近活跃优先；Settings 的 Sessions 页面展示最后活跃时间并提供置顶/取消置顶操作。置顶状态持久化在 Session history metadata 中，不改变消息内容。
-- 系统维护任务默认每日清理超过 7 天不活跃的未置顶会话。清理会删除该会话的 Session history、运行时 registry、关联任务引用和 `.alter0/workspaces/sessions/<session_id>` 下的附件/工作区数据；置顶会话始终跳过自动清理，仍有关联 queued/running 任务的会话在任务进入终态前跳过清理。
-- 会话清理不提供复杂配置项。`Settings > Maintenance` 只提供当前状态、上次/下次运行、手动 `Clean up now`、失败重试，以及删除数量、置顶跳过数量、任务保护数量和扫描数量。清理后续资源删除失败时，本次维护状态必须记录为 `failed` 并暴露失败原因。
+- 会话列表排序规则为置顶优先、最近活跃优先；Chat 与 Terminal 运行页左侧会话条目提供同一套置顶/取消置顶图标按钮，Settings 的 Sessions 页面展示最后活跃时间并提供同一置顶/取消置顶操作。Chat 置顶状态持久化在 Session history metadata 中，Terminal 置顶状态持久化在 Terminal session store 中，均不改变消息或 turn 内容。
+- 系统维护任务默认每日清理超过 7 天不活跃的未置顶会话。清理会删除 Chat/Agent Session history、运行时 registry、关联任务引用和 `.alter0/workspaces/sessions/<session_id>` 下的附件/工作区数据，也会扫描 Terminal session store 并复用 Terminal 删除服务移除符合条件的 Terminal 状态与独立工作区；置顶会话始终跳过自动清理，仍有关联 queued/running 任务的会话在任务进入终态前跳过清理，Terminal 中仍处于 busy/starting 的会话也需跳过。
+- 会话清理不提供复杂配置项。`Settings > Maintenance` 只提供当前状态、上次/下次运行、手动 `Clean up now`、失败重试，以及删除数量、置顶跳过数量、保护跳过数量、扫描数量和 Terminal 专属清理明细。清理后续资源删除失败时，本次维护状态必须记录为 `failed` 并暴露失败原因。
 - 具备独立前端入口的 Agent 不进入通用 Agent 页面历史。
 - `Sessions` 系统页面可展示跨来源会话数据，但不作为 Chat/Agent 分栏依据。
 - 未发送文本草稿、附件草稿与当前浏览器中的临时空白会话允许继续本地保存；这些局部态不要求跨设备同步，但不能覆盖服务端已存在的会话摘要、配置与消息历史。
@@ -113,7 +113,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Agent 页面中的会
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
 - `Chat` 需维护独立的服务端会话 registry，记录 `session_id -> route / title / target / model / capabilities / status / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
-- `Chat / Terminal` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前运行页会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。列表项主体只展示标题，尾侧固定提供查看详情与删除两个独立按钮；查看详情会聚焦该会话并打开 `Details` 面板，删除按钮才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、短 hash、Agent 标签或额外摘要。运行页空列表和 Terminal 加载态优先展示一条 active `New` 占位会话；Terminal 占位会话不立即写入服务端，首次发送输入或添加附件后才创建真实 Terminal session 并替换占位项。三条运行页继续生成同一规则的 8 位短 hash，用于运行页 URL 恢复、预览域名映射与人工排障引用；左侧会话列表不展示短 hash。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表或 URL 展示值。
+- `Chat / Terminal` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前运行页会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。列表项主体只展示标题，尾侧固定提供置顶/取消置顶、查看详情与删除三个独立按钮；查看详情会聚焦该会话并打开 `Details` 面板，删除按钮才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、短 hash、Agent 标签或额外摘要。运行页空列表和 Terminal 加载态优先展示一条 active `New` 占位会话；Terminal 占位会话不立即写入服务端，首次发送输入或添加附件后才创建真实 Terminal session 并替换占位项。三条运行页继续生成同一规则的 8 位短 hash，用于运行页 URL 恢复、预览域名映射与人工排障引用；左侧会话列表不展示短 hash。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表或 URL 展示值。
 - `Chat` 的会话列表项与 workspace header 状态按钮共享同一会话状态语义：前端按当前 assistant 消息与任务态派生 `ready / busy / failed`；其中 `streaming / queued / running / in_progress` 与挂起任务映射为 `busy`，错误、失败、取消与显式 `message.error` 映射为 `failed`，其余稳定态映射为 `ready`。列表项只在 `busy` 时于标题旁显示 loading，`ready / failed` 不显示行内状态灯；workspace header 的状态按钮可见层只显示信号，状态名称只保留给读屏与悬浮语义。
 
 ## 流式响应

@@ -27,8 +27,11 @@ type stubWebTerminalService struct {
 	getOK       bool
 	inputResp   terminaldomain.Session
 	inputErr    error
+	pinResp     terminaldomain.Session
+	pinErr      error
 	deleteResp  terminaldomain.Session
 	deleteErr   error
+	deleteIDs   []string
 	turnsResp   []terminalapp.TurnSummary
 	turnsErr    error
 	stepResp    terminalapp.StepDetail
@@ -38,6 +41,7 @@ type stubWebTerminalService struct {
 	lastOwnerID string
 	lastID      string
 	lastInput   string
+	lastPinned  bool
 	inputReq    terminalapp.InputRequest
 }
 
@@ -94,9 +98,18 @@ func (s *stubWebTerminalService) InputWithAttachments(req terminalapp.InputReque
 	s.inputReq = req
 	return s.inputResp, s.inputErr
 }
+
+func (s *stubWebTerminalService) SetPinned(ownerID string, sessionID string, pinned bool) (terminaldomain.Session, error) {
+	s.lastOwnerID = ownerID
+	s.lastID = sessionID
+	s.lastPinned = pinned
+	return s.pinResp, s.pinErr
+}
+
 func (s *stubWebTerminalService) Delete(ownerID string, sessionID string) (terminaldomain.Session, error) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
+	s.deleteIDs = append(s.deleteIDs, sessionID)
 	return s.deleteResp, s.deleteErr
 }
 
@@ -317,6 +330,51 @@ func TestTerminalSessionItemHandlerRejectsRemovedCloseRoute(t *testing.T) {
 	}
 	if service.lastID != "" {
 		t.Fatalf("expected close route to bypass terminal service, got %q", service.lastID)
+	}
+}
+
+func TestTerminalSessionItemHandlerPinsSession(t *testing.T) {
+	service := &stubWebTerminalService{
+		pinResp: terminaldomain.Session{
+			ID:        "terminal-4",
+			OwnerID:   sharedTerminalClientID,
+			Title:     "terminal-4",
+			Status:    terminaldomain.SessionStatusReady,
+			Pinned:    true,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-4/pin", bytes.NewBufferString(`{"pinned":true}`))
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if service.lastOwnerID != sharedTerminalClientID {
+		t.Fatalf("expected shared owner, got %q", service.lastOwnerID)
+	}
+	if service.lastID != "terminal-4" {
+		t.Fatalf("expected session terminal-4, got %q", service.lastID)
+	}
+	if !service.lastPinned {
+		t.Fatalf("expected pinned true")
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	session, ok := payload["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session payload, got %v", payload)
+	}
+	if session["pinned"] != true {
+		t.Fatalf("expected pinned session payload, got %v", session["pinned"])
 	}
 }
 

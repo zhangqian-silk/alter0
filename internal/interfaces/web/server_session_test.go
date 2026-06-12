@@ -20,6 +20,7 @@ import (
 	shareddomain "alter0/internal/shared/domain"
 	taskapp "alter0/internal/task/application"
 	taskdomain "alter0/internal/task/domain"
+	terminaldomain "alter0/internal/terminal/domain"
 )
 
 type stubSessionHistory struct {
@@ -392,6 +393,74 @@ func TestSessionCleanupHandlerDeletesInactiveSessionsAndWorkspaces(t *testing.T)
 	}
 	if body.DeletedCount != 2 || body.SkippedPinnedCount != 1 {
 		t.Fatalf("unexpected cleanup body %+v", body)
+	}
+}
+
+func TestSessionCleanupHandlerDeletesInactiveTerminalSessions(t *testing.T) {
+	now := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
+	old := now.Add(-8 * 24 * time.Hour)
+	recent := now.Add(-2 * time.Hour)
+	history := &stubSessionHistory{}
+	terminals := &stubWebTerminalService{
+		listResp: []terminaldomain.Session{
+			{
+				ID:           "terminal-old",
+				OwnerID:      sharedTerminalClientID,
+				Status:       terminaldomain.SessionStatusReady,
+				CreatedAt:    old,
+				LastOutputAt: old,
+				UpdatedAt:    old,
+			},
+			{
+				ID:           "terminal-pinned",
+				OwnerID:      sharedTerminalClientID,
+				Status:       terminaldomain.SessionStatusReady,
+				Pinned:       true,
+				CreatedAt:    old,
+				LastOutputAt: old,
+				UpdatedAt:    old,
+			},
+			{
+				ID:           "terminal-busy",
+				OwnerID:      sharedTerminalClientID,
+				Status:       terminaldomain.SessionStatusBusy,
+				CreatedAt:    old,
+				LastOutputAt: old,
+				UpdatedAt:    old,
+			},
+			{
+				ID:           "terminal-recent",
+				OwnerID:      sharedTerminalClientID,
+				Status:       terminaldomain.SessionStatusReady,
+				CreatedAt:    old,
+				LastOutputAt: recent,
+				UpdatedAt:    recent,
+			},
+		},
+	}
+	server := &Server{
+		sessions:  history,
+		terminals: terminals,
+		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	server.ensureMaintenanceService()
+
+	body := server.maintenance.RunSessionCleanup(now)
+
+	if terminals.lastOwnerID != sharedTerminalClientID {
+		t.Fatalf("expected shared terminal owner, got %q", terminals.lastOwnerID)
+	}
+	if len(terminals.deleteIDs) != 1 || terminals.deleteIDs[0] != "terminal-old" {
+		t.Fatalf("expected only old terminal deleted, got %+v", terminals.deleteIDs)
+	}
+	if body.DeletedCount != 1 || body.SkippedPinnedCount != 1 || body.SkippedProtectedCount != 1 || body.ScannedCount != 4 {
+		t.Fatalf("expected combined terminal cleanup counts, got %+v", body)
+	}
+	if body.TerminalDeletedCount != 1 || body.TerminalSkippedPinnedCount != 1 || body.TerminalSkippedProtectedCount != 1 || body.TerminalScannedCount != 4 {
+		t.Fatalf("expected terminal cleanup counts, got %+v", body)
+	}
+	if history.lastCleanupOption.InactiveDuration != 7*24*time.Hour {
+		t.Fatalf("expected session cleanup still invoked with fixed threshold, got %+v", history.lastCleanupOption)
 	}
 }
 

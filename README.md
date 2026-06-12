@@ -98,7 +98,7 @@ memory/
   conversations/<conversation_id>/summary.md
 ```
 
-用户显式要求“记住”时，CLI Agent 可更新对应记忆文件；会话内压缩由 Claude Code 或 Codex 自身处理；跨会话长期记忆由系统维护任务每日定时启动同一 CLI Agent 并加载 `memory-maintenance` Skill 进行整理。记忆维护与会话清理作为 Scheduler 内置任务随服务启动注册，不能删除，可在 `Settings > Schedules` 停用或重新启用；维护状态、上次运行、下次运行、变更文件与失败重试入口在 `Settings > Maintenance` 展示。
+用户显式要求“记住”时，CLI Agent 可更新对应记忆文件；会话内压缩由 Claude Code 或 Codex 自身处理；跨会话长期记忆由系统维护任务每日定时启动同一 CLI Agent 并加载 `memory-maintenance` Skill 进行整理。记忆维护与会话清理作为 Scheduler 内置任务随服务启动注册，不能删除，可在 `Settings > Schedules` 停用或重新启用；维护状态、上次运行、下次运行、变更文件与失败重试入口在 `Settings > Maintenance` 展示。会话清理默认清理超过 7 天不活跃且未置顶的 Chat/Agent Session history 与 Terminal session store；Terminal 会话处于运行态或被任务保护时跳过，删除时同步移除 Terminal 状态与独立工作区。
 
 ## Repository Layout
 
@@ -128,7 +128,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Terminal / Settings` 三个稳定入口，主工作区按运行态或设置页渲染。`/chat` 是唯一对话入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；历史 `/agent-runtime` 会自动映射到 `/chat`，旧 Agent 会话会作为 Chat 会话继续展示和恢复。`/settings` 承接运行时、Skill、Memory、Maintenance、Workspaces 与 Schedules；历史 `/management` 会自动映射到 `/settings`。
 
-当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；会话条目尾侧提供 `Details` 与 `Delete` 两个独立图标按钮，查看详情会聚焦对应会话并打开详情面板，删除才进入会话删除链路。右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。工作台采用参考 Gemini 的扁平视觉基线：主工作区、Settings frame、管理分区、表格、详情面板和空态不再依赖外层圆角、卡片边框或厚阴影，视觉层级主要通过留白、轻量分割线、选中态底色和 Composer 胶囊建立；设计图保存在 `docs/design/workbench-flat-redesign.html` 与 `docs/design/workbench-flat-redesign-*.png`。Chat、Terminal 与 Settings 顶部标题使用同一套紧凑工作台标题栏节奏：运行页显示会话标题、状态信号与 `Details`，Settings 显示同规格标题标记与路由标题，并收进同规格主面板 frame，不再使用独立大标题块、标题副文案或页面出现动效；移动端 `Menu / New` 等边缘操作使用无边框图标按钮并保留可访问文本标签。Settings 正文作为 frame 内部滚动区承载紧凑分区：`Runtime` 管理 Model Provider 与 Codex Runtime，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Maintenance` 查看维护状态并执行手动维护，`Workspaces` 管理会话/任务工作区，`Schedules` 管理普通定时任务、内置维护任务启停与触发记录。旧管理子页面不再作为一级路由展示。
+当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；`Chat / Terminal` 会话条目尾侧统一提供置顶/取消置顶、`Details` 与 `Delete` 三个独立图标按钮，查看详情会聚焦对应会话并打开详情面板，删除才进入会话删除链路。右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。工作台采用参考 Gemini 的扁平视觉基线：主工作区、Settings frame、管理分区、表格、详情面板和空态不再依赖外层圆角、卡片边框或厚阴影，视觉层级主要通过留白、轻量分割线、选中态底色和 Composer 胶囊建立；设计图保存在 `docs/design/workbench-flat-redesign.html` 与 `docs/design/workbench-flat-redesign-*.png`。Chat、Terminal 与 Settings 顶部标题使用同一套紧凑工作台标题栏节奏：运行页显示会话标题、状态信号与 `Details`，Settings 显示同规格标题标记与路由标题，并收进同规格主面板 frame，不再使用独立大标题块、标题副文案或页面出现动效；移动端 `Menu / New` 等边缘操作使用无边框图标按钮并保留可访问文本标签。Settings 正文作为 frame 内部滚动区承载紧凑分区：`Runtime` 管理 Model Provider 与 Codex Runtime，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Maintenance` 查看维护状态并执行手动维护，`Workspaces` 管理会话/任务工作区，`Schedules` 管理普通定时任务、内置维护任务启停与触发记录。旧管理子页面不再作为一级路由展示。
 
 `Chat / Terminal` 的消息区采用轻量 IM 式消息流：用户消息右对齐并使用低对比紧凑气泡，助手消息左对齐为无边框正文阅读流，思考过程默认收敛为 `Thinking / 已思考` 内联披露入口，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情。Chat 发送后会立即创建本地 running 过程步骤，收到后端 `process` 事件后替换为真实执行步骤，避免流式静默阶段没有过程入口。最终回复统一使用稳定的运行页 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块，逐条消息时间不在正文区显示。直连 Codex 的流式消息只把 `final` 或旧版无频道内容进入 assistant 正文；`commentary` 收敛为结构化过程步骤并展示在 `Thinking / 已思考` 内联区域，其他非最终频道不进入最终回复或会话正文。长会话默认优先展示最新消息，顶部提供 `Load earlier messages / 加载更早消息`，滚到顶部也会按批次渐进加载更早历史；右侧阅读定位条支持连续 `上一条 / 下一条` 跳转。
 `/chat`、`/terminal`、`/settings` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 内可通过语言切换入口改为中文。登录页只携带当前 canonical path 作为稳定回跳入口，不携带 query。`Chat / Terminal` 使用统一 `session_id=<8位短hash>` 表达显式会话恢复，不把完整会话 id 暴露在 URL 与页面提示中；从主导航进入 `Chat` 会清理旧 `session_id` 并默认打开当前最新会话。
@@ -156,9 +156,9 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - 面向 Web 会话消息。
 - 默认绑定内置 `Alter0`（`main`），作为通用对话入口。
 - Web 登录后，`Chat` 的已发送会话历史落到服务端 Session history，并在同一 Web 登录态下跨设备共享。旧 `Agent Runtime` 会话只作为历史兼容数据存在，加载时会迁移到当前 Chat 会话结构并通过 `route=chat` 读取；旧聚合文件在读取时自动重构为当前分文件布局。未发送文本草稿、附件草稿与当前页局部选择继续按浏览器隔离。
-- Session history 维护 `last_active_at` 与 `pinned`：发送消息、执行完成、打开会话详情、Terminal 输入与任务写回都会刷新活跃时间。系统每日自动清理超过 7 天不活跃的未置顶会话；手动置顶的会话不会被自动清理，仍有关联 queued/running 任务的会话会被保护到任务进入终态后再参与清理。`Settings > Sessions` 可查看最后活跃时间并切换置顶，`Settings > Maintenance` 可手动执行清理并查看删除、跳过置顶、任务保护、扫描数量与失败原因。
+- Session history 维护 `last_active_at` 与 `pinned`：发送消息、执行完成、打开会话详情、Terminal 输入与任务写回都会刷新活跃时间。系统每日自动清理超过 7 天不活跃的未置顶会话；手动置顶的会话不会被自动清理，仍有关联 queued/running 任务的会话会被保护到任务进入终态后再参与清理。`Chat` 左侧会话列表可直接置顶/取消置顶当前历史会话，`Terminal` 左侧会话列表可直接置顶/取消置顶当前 Terminal 会话并写入 Terminal session store，`Settings > Sessions` 可查看最后活跃时间并切换置顶，`Settings > Maintenance` 可手动执行清理并查看删除、跳过置顶、任务保护、扫描数量与失败原因。
 - `Chat` 新会话先使用统一占位标题 `New`，早期多轮内可按更具体输入自动升级标题。旧 `/agent-runtime?session_id=<短hash>` 入口会映射到 `/chat?session_id=<短hash>` 并恢复对应历史会话。
-- `Chat` 使用 runtime workspace：会话列表由左侧主导航直接展示，主工作区固定为主消息工作区、底部 Composer 与固定 workspace header；会话条目右侧固定提供查看详情与删除两个独立按钮，查看详情会打开当前会话 `Details`，删除按钮才触发删除。header 统一只保留当前会话标题、状态按钮与 `Details` 入口。消息、过程步骤与最终输出都在同一轻量 IM 式消息流中推进。
+- `Chat` 使用 runtime workspace：会话列表由左侧主导航直接展示，主工作区固定为主消息工作区、底部 Composer 与固定 workspace header；会话条目右侧固定提供置顶/取消置顶、查看详情与删除三个独立图标按钮，查看详情会打开当前会话 `Details`，删除按钮才触发删除。Terminal 会话列表复用同一套尾侧按钮。header 统一只保留当前会话标题、状态按钮与 `Details` 入口。消息、过程步骤与最终输出都在同一轻量 IM 式消息流中推进。
 - `Chat` 直连 Codex 的流式输出按频道收口：`final` 或旧版无频道 `agent_message` 才写入 assistant 正文与会话历史；`commentary`、`analysis` 等过程频道不得拼接进最终回复，避免工作进度日志污染用户可读答案。
 - `Chat` 的 `Process` 阅读区在桌面与移动端都保持整列可读宽度：步骤标题与正文共享统一的缩放/换行约束，长中文句子、路径和命令说明优先在当前消息容器内换行，不允许在真机窄屏下塌缩成逐字竖排窄列；若历史或流式过程文本混入零宽断行字符，或被异常写成“每字一行”的病态段落，前端展示层需在渲染前做归一化修正。
 - `Chat` 的消息时间线在内容较少时仍需保持顶部收口：少量消息、短回复、折叠后的 `Thinking / 已思考` 披露行与状态标签继续贴近各自消息气泡排布，不得因为满高时间线轨道被拉伸而出现大块垂直留白。
@@ -186,7 +186,7 @@ Terminal 长输出复制通过剪贴板 API 或浏览器复制兜底完成，复
 - `/chat`、登录页和主工作区品牌文案对外统一展示为 `Alter0`，浏览器标题、登录标题、导航品牌位、会话栏标题与欢迎区 tag 不再混用小写服务名。
 - `Chat` 的会话操作、模型选择、Runtime Profile、交付契约、Tools / MCP 与 Skills 都收敛到工作台内部；运行页输入框工具栏的 `Session` 面板内置 `Codex` 直选项，选中后后续消息会直接走 `Codex Direct`；Agent Runtime 通过业务入口预选 Skill 组合，`Session` 面板展示本轮可注入的公有 Skill，`Details` 只保留当前会话元信息；窄屏下主导航仍走抽屉，小高度视口中导航分组、底部设置项与语言切换入口保持独立纵向滚动并全部可触达。
 - 窄屏主导航抽屉在点击路由项后会立即收起；切页后不保留覆盖在新页面上的菜单层，用户直接进入目标页内容区。
-- 左侧主导航内的 Session 列表保持工作台式紧凑结构：按最近时间分组，并与主导航 `menu` 复用同一套分组外壳、hover、激活态语言和桌面会话列宽；条目采用独立卡片，主体只保留标题且在可用宽度内单行截断，长标题只能在条目内部省略，新增会话插入或列表刚好跨过滚动阈值时也不改变 `Sessions / New` 区块的宽度或纵向位置，尾侧保留详情与删除两个轻量图标按钮，不再展示摘要、短 hash、Agent 标签、完整会话 id、状态灯或额外 footer 区块。
+- 左侧主导航内的 Session 列表保持工作台式紧凑结构：按最近时间分组，并与主导航 `menu` 复用同一套分组外壳、hover、激活态语言和桌面会话列宽；条目采用独立卡片，主体只保留标题且在可用宽度内单行截断，长标题只能在条目内部省略，新增会话插入或列表刚好跨过滚动阈值时也不改变 `Sessions / New` 区块的宽度或纵向位置，`Chat / Terminal` 尾侧统一提供置顶/取消置顶、详情与删除三个轻量图标按钮，不再展示摘要、短 hash、Agent 标签、完整会话 id、状态灯或额外 footer 区块。
 - Runtime 配置统一通过 workspace `Details` 面板切换，不再使用独立 bridge sheet；`Details` 默认先展示高密度摘要区，字段标签、复制按钮和多行内容按统一紧凑规格排列，并以顶层浮层方式覆盖在运行页上方，打开时不再推动消息区或对话框位置；浮层最大可视区域保持克制，内部 tab/按钮支持再次点击只收起当前配置内容且保留 `Details` 面板，点击浮层外区域或按 `Escape` 才关闭整个面板，移动端仍要求面板与输入区互不遮挡，切换时优先保证输入焦点、键盘占位和主动作可达。
 - `Agent` 选项卡片在会话设置中使用短摘要展示：优先显示 Agent description，并限制在简短可扫读的卡片文案内；完整 system prompt 不直接出现在选择面板里。
 - `Chat / Terminal` 继续使用同一规则生成 8 位短 hash 作为运行页 URL query、预览地址映射和排障记录引用；左侧会话列表不再展示短 hash，完整会话 id 与 `terminal_session_id` 只作为接口、持久化和工作区隔离标识。
@@ -654,7 +654,7 @@ curl -X POST http://127.0.0.1:18088/api/messages \
 4. 启动前会在当前 Session 工作区注入 `CLAUDE.md` 或 `AGENTS.md`、Skill 副本、Memory 摘要、MCP 配置、仓库/附件/产物路径和工作区边界；Codex Direct 的托管 `AGENTS.md` 同时约束用户可见产物必须先发布到会话预览或服务域名，不得把服务器本地路径作为用户验收入口。
 5. Skill 文件由 `docs/skills/<skill_id>/SKILL.md` 承载，业务能力通过 Skill 复用；用户可在会话级调整公有 Skill 选择。
 6. Memory Files 当前使用仓库级 `USER.md`、强约束 `SOUL.md`、Agent 私有 `docs/agents/<agent_id>/AGENTS.md`、启动参数解析后的长期记忆文件和天级记忆目录；默认长期记忆为 `.alter0/memory/long-term/MEMORY.md`，默认天级记忆为 `.alter0/memory/<YYYY-MM-DD>.md`。
-7. 用户显式要求记住时，当前 CLI agent 可写入对应 Markdown 记忆；会话归档生成 summary；系统维护任务每日加载 `memory-maintenance` Skill 做长期整理。系统维护任务作为 Scheduler 内置 Cron Job 注册，不可删除，可停用或重新启用。
+7. 用户显式要求记住时，当前 CLI agent 可写入对应 Markdown 记忆；会话归档生成 summary；系统维护任务每日加载 `memory-maintenance` Skill 做长期整理。系统维护任务作为 Scheduler 内置 Cron Job 注册，不可删除，可停用或重新启用；`system-session-cleanup` 每日清理超过 7 天不活跃且未置顶的 Chat/Agent Session history 与 Terminal session store，并跳过仍在运行或被任务保护的会话。
 8. Web `Profiles` 页面用于管理 Runtime Profile；`Chat` 是通用入口，`Agent` 页面作为预选 Skill 入口的通用运行页。
 
 ### Cron Jobs

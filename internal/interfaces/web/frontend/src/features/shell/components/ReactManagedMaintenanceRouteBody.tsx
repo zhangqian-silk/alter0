@@ -16,6 +16,10 @@ type MaintenanceRunRecord = {
   skipped_pinned_count?: number;
   skipped_protected_count?: number;
   scanned_count?: number;
+  terminal_deleted_count?: number;
+  terminal_skipped_pinned_count?: number;
+  terminal_skipped_protected_count?: number;
+  terminal_scanned_count?: number;
   changed_files?: string[];
   error?: string;
 };
@@ -46,10 +50,12 @@ type MaintenanceRouteCopy = {
   fieldSkippedPinned: string;
   fieldSkippedProtected: string;
   fieldScanned: string;
+  fieldTerminalCleanup: string;
   fieldChangedFiles: string;
   fieldError: string;
   copyValue: string;
   cleanupSummary: (deleted: number, pinned: number, protectedCount: number, scanned: number) => string;
+  terminalCleanupSummary: (deleted: number, pinned: number, protectedCount: number, scanned: number) => string;
 };
 
 const MAINTENANCE_COPY: Record<LegacyShellLanguage, MaintenanceRouteCopy> = {
@@ -75,10 +81,12 @@ const MAINTENANCE_COPY: Record<LegacyShellLanguage, MaintenanceRouteCopy> = {
     fieldSkippedPinned: "Pinned Skipped",
     fieldSkippedProtected: "Task Protected",
     fieldScanned: "Scanned",
+    fieldTerminalCleanup: "Terminal Cleanup",
     fieldChangedFiles: "Changed Files",
     fieldError: "Error",
     copyValue: "Copy value",
     cleanupSummary: (deleted, pinned, protectedCount, scanned) => `Deleted ${deleted} · pinned ${pinned} · protected ${protectedCount} · scanned ${scanned}`,
+    terminalCleanupSummary: (deleted, pinned, protectedCount, scanned) => `Terminal deleted ${deleted} · pinned ${pinned} · active ${protectedCount} · scanned ${scanned}`,
   },
   zh: {
     loading: "加载维护状态...",
@@ -102,10 +110,12 @@ const MAINTENANCE_COPY: Record<LegacyShellLanguage, MaintenanceRouteCopy> = {
     fieldSkippedPinned: "置顶跳过",
     fieldSkippedProtected: "任务保护",
     fieldScanned: "扫描数",
+    fieldTerminalCleanup: "Terminal 清理",
     fieldChangedFiles: "变更文件",
     fieldError: "错误",
     copyValue: "复制内容",
     cleanupSummary: (deleted, pinned, protectedCount, scanned) => `删除 ${deleted} · 置顶 ${pinned} · 保护 ${protectedCount} · 扫描 ${scanned}`,
+    terminalCleanupSummary: (deleted, pinned, protectedCount, scanned) => `Terminal 删除 ${deleted} · 置顶 ${pinned} · 活跃 ${protectedCount} · 扫描 ${scanned}`,
   },
 };
 
@@ -216,6 +226,15 @@ function MaintenanceRouteCard({
   const skippedPinnedCount = Number(item.skipped_pinned_count || 0);
   const skippedProtectedCount = Number(item.skipped_protected_count || 0);
   const scannedCount = Number(item.scanned_count || 0);
+  const terminalDeletedCount = Number(item.terminal_deleted_count || 0);
+  const terminalSkippedPinnedCount = Number(item.terminal_skipped_pinned_count || 0);
+  const terminalSkippedProtectedCount = Number(item.terminal_skipped_protected_count || 0);
+  const terminalScannedCount = Number(item.terminal_scanned_count || 0);
+  const hasTerminalCleanup =
+    terminalDeletedCount > 0 ||
+    terminalSkippedPinnedCount > 0 ||
+    terminalSkippedProtectedCount > 0 ||
+    terminalScannedCount > 0;
   const actionLabel = running
     ? copy.running
     : failed
@@ -258,6 +277,13 @@ function MaintenanceRouteCard({
           <RouteFieldRow label={copy.fieldSkippedProtected} value={skippedProtectedCount} copyLabel={copy.copyValue} />
           <RouteFieldRow label={copy.fieldScanned} value={scannedCount} copyLabel={copy.copyValue} />
           <RouteFieldRow label={copy.fieldChangedFiles} value={copy.cleanupSummary(deletedCount, skippedPinnedCount, skippedProtectedCount, scannedCount)} copyLabel={copy.copyValue} />
+          {hasTerminalCleanup ? (
+            <RouteFieldRow
+              label={copy.fieldTerminalCleanup}
+              value={copy.terminalCleanupSummary(terminalDeletedCount, terminalSkippedPinnedCount, terminalSkippedProtectedCount, terminalScannedCount)}
+              copyLabel={copy.copyValue}
+            />
+          ) : null}
         </>
       ) : null}
       {item.error ? <RouteFieldRow label={copy.fieldError} value={item.error} copyLabel={copy.copyValue} multiline /> : null}

@@ -193,6 +193,7 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 - `Close` 退出当前运行态，保留会话记录、历史、线程标识和工作区。
 - `Delete` 删除 Terminal 会话主记录、状态文件和独立工作区。
 - 删除成功后接口返回 `204 No Content`，前端立即移除会话，不依赖改写后的状态对象。
+- 系统 `system-session-cleanup` 维护任务会扫描 Terminal session store，清理超过 7 天不活跃、未置顶且非 busy/starting 的 Terminal 会话；清理动作复用 `Delete`，因此状态文件、输出记录和独立工作区与用户手动删除保持同一删除边界。
 
 ### 交互与渲染
 

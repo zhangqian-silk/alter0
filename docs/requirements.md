@@ -77,7 +77,7 @@
 - Web 侧边栏、历史折叠、页面滚动隔离、克制冷灰工作台阅读主题、PC 端平面化控件、移动端轻量白色导航抽屉、移动端软键盘跟随、设置底部面板、低功耗轮询与长文本宽度约束作为统一前端体验要求维护；移动端运行页顶部 `Menu / 标题 / New` 控件必须像发送按钮一样支持首触执行，不得在输入框聚焦或软键盘打开时退化为先收键盘、第二次才响应。移动端共享 runtime Composer 的键盘位移必须采用稳定底部偏移，不依赖 transform 合成层，避免输入框阴影在 iOS Safari 键盘动画中留下残影。
 - Web 前端需提供受显式开关控制的点击诊断能力，用于记录事件目标、顶层命中元素、遮罩层状态、`preventDefault` 状态、当前焦点与主线程长任务；默认不启用，不影响正常交互路径。
 - Terminal 长输出复制必须保持可用且不放大 DOM 体积：复制 payload 不得完整写入 `data-*` 属性，长输出轮询、草稿输入和复制操作不得触发整段 Markdown 反复解析或相同 `innerHTML` 反复写入造成明显卡顿；`Chat / Terminal` 最终输出不得依靠全局 `user-select !important` 补丁维持选择能力，应通过统一稳定的 markdown shell 保留浏览器原生长按选中与复制菜单。
-- 当前运行页的 Session 列表需直接展示在左侧主导航内，采用工作台式最近时间分组：`Chat / Terminal` 统一使用 `Sessions` 栏标题与 `New` 新建入口；移动端会话列表随左侧主导航抽屉展示，两条运行页顶部都只通过 `Menu` 打开左侧导航抽屉。列表条目主体只展示标题并在可用宽度内单行截断，尾侧固定提供查看详情与删除两个独立按钮：查看详情聚焦对应会话并打开 `Details`，删除按钮才进入删除链路。长标题不得撑开导航、分组、列表或列表项宽度；新增会话插入、列表刚好填满或跨过滚动阈值时，不得触发滚动锚点补偿、滚动槽宽度重算或重新分配 rail 头部高度，也不得造成 `Sessions / New` 区块在不同运行页之间跳动；处理中会话在标题旁显示 loading，其他状态不显示状态灯。
+- 当前运行页的 Session 列表需直接展示在左侧主导航内，采用工作台式最近时间分组：`Chat / Terminal` 统一使用 `Sessions` 栏标题与 `New` 新建入口；移动端会话列表随左侧主导航抽屉展示，两条运行页顶部都只通过 `Menu` 打开左侧导航抽屉。列表条目主体只展示标题并在可用宽度内单行截断，`Chat / Terminal` 尾侧统一提供置顶/取消置顶、查看详情与删除三个独立按钮：查看详情聚焦对应会话并打开 `Details`，删除按钮才进入删除链路；Chat 置顶更新 Session history 的 `pinned` 状态，Terminal 置顶更新 Terminal session store 的 `pinned` 状态。长标题不得撑开导航、分组、列表或列表项宽度；新增会话插入、列表刚好填满或跨过滚动阈值时，不得触发滚动锚点补偿、滚动槽宽度重算或重新分配 rail 头部高度，也不得造成 `Sessions / New` 区块在不同运行页之间跳动；处理中会话在标题旁显示 loading，其他状态不显示状态灯。
 - `Chat` 的已发送会话必须以服务端 Session history 为恢复源，并在同一 Web 登录态下跨设备共享；旧 `agent-runtime` 会话加载时迁移为 Chat 会话模型，详情恢复统一使用 `route=chat`。未发送草稿与当前浏览器局部 UI 状态可继续本地保存，但不得阻断服务端会话摘要、配置和消息历史的恢复。
 - Session history 必须维护 `last_active_at` 与 `pinned`。发送消息、assistant 收口、打开会话详情、Terminal 输入/输出和任务结果写回会刷新活跃时间；会话列表按置顶优先、最近活跃优先排序。系统默认清理超过 7 天不活跃且未置顶的会话，并同步移除 Session history、运行时 registry、会话附件/工作区和关联任务引用；仍有关联 queued/running 任务的会话在任务进入终态前跳过清理。
 - 本地 Session history 物理文件按会话拆分：新 Chat 会话使用自身 `session_id` 写入 `.alter0/sessions/_default/<session_id>.json` 或 `.md`；历史 `alter0-chat` 归档日文件与 `agent-runtime` 分文件布局在读取时合并到当前 Chat 会话模型；旧版 `.alter0/sessions.json` / `.alter0/sessions.md` 在读取时自动重构为新的分文件布局并移除旧聚合文件。
@@ -160,10 +160,10 @@
 - Chat 的会话图片资产需要随 Session 工作区落盘：用户上传图片的原图与预览图统一写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，前端持久化与消息请求默认复用 `asset_url / preview_url` 引用；其中 `preview_url` 只服务缩略位，消息回显与再次查看统一优先读取 `asset_url` 原图。assistant 最终回复里的外链 markdown 图片也应在会话返回与落库前改写到同一路径下的本地附件 URL。
 - 直连 Codex 的 Chat / Agent 会话会在各自工作区下额外维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Agent Runtime 使用 `.alter0/codex-runtime/thread.json` 保存 Codex CLI thread id，Chat 使用 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json` 保存北京时间 05:00 归档日对应的 Codex CLI thread id；Terminal 会话会在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与步骤视图索引。
-- Terminal API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
+- Terminal API 支持会话创建、列表、恢复、输入、置顶/取消置顶、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
 - Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/step 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
 - Terminal 恢复默认优先复用已持久化 Codex CLI 线程；若续写命中远端 compact 失败，则保留原会话历史、工作区和线程标识，下一次输入继续 resume 同一 Codex CLI 线程。
-- Terminal 会话删除统一从左侧会话列表触发，`Delete` 会同步清理状态文件和独立工作区；工作区头部不再提供单独的 `Close` 入口。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表所在的左侧导航抽屉都保持删除前的展开状态，便于继续清理其他会话；用户随后通过 `Menu` 或抽屉外部遮罩主动关闭时，抽屉必须正常收起。前端在后续列表刷新、轮询和 page-activation 补偿刷新中也不得把该会话重新补回，直到服务端列表稳定反映删除结果。
+- Terminal 会话删除统一从左侧会话列表触发，`Delete` 会同步清理状态文件和独立工作区；工作区头部不再提供单独的 `Close` 入口。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表所在的左侧导航抽屉都保持删除前的展开状态，便于继续清理其他会话；用户随后通过 `Menu` 或抽屉外部遮罩主动关闭时，抽屉必须正常收起。前端在后续列表刷新、轮询和 page-activation 补偿刷新中也不得把该会话重新补回，直到服务端列表稳定反映删除结果。系统 `system-session-cleanup` 维护任务会把超过 7 天不活跃、未置顶且非运行态的 Terminal 会话纳入同一清理链路，复用 `Delete` 删除状态文件和独立工作区。
 - Terminal 历史在同一 Web 登录态下跨设备共享，不按浏览器 client 标识隔离；不设置产品级会话数量上限或固定超时淘汰。
 - Terminal 移动端、输入稳定性、滚动导航、Process 折叠、一键复制、长输出阅读、轮询降频与缓存写入节奏作为 Terminal 子域体验要求维护。
 - Terminal 四键阅读定位条按当前视口中的可见 turn 集合计算目标：`上一条` 固定指向最上可见 turn；`下一条` 在单条 turn 可见时指向真实下一条、在多条 turn 同屏可见时指向最下可见 turn；最后一条 turn 单独可见时隐藏 `下一条`。
