@@ -40,6 +40,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 
 - Scheduler 到点触发后生成 `trigger_type=cron`、`channel_type=scheduler` 的 `UnifiedMessage`。
 - Cron 触发必须复用编排层，不允许绕过 Orchestration 直接调用执行器。
+- Scheduler 支持服务内置 Job。内置 Job 随服务启动注册、出现在 Cron Job 列表中、不能删除，但可以通过 `enabled=false` 取消后续自动触发；重新启用后继续按原内置计划运行。
 - Cron 触发记录需要保留 `job_id`、`job_name`、`fired_at` 与会话回链。
 
 ## 编排路由
@@ -71,10 +72,10 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 
 ### Cron Job 配置
 
-- Control 面提供 Cron Job 创建、更新、删除与列表查询。
+- Control 面提供普通 Cron Job 创建、更新、删除与列表查询；内置 Cron Job 只允许切换启停状态。
 - Cron Job 支持可视化周期字段、timezone、cron expression 与任务配置。
 - 可视化字段与 cron expression 必须保持一致；无法表达时需返回明确错误。
-- Cron Job 接口通过 `GET /api/control/cron/jobs`、`PUT /api/control/cron/jobs/{job_id}`、`DELETE /api/control/cron/jobs/{job_id}` 管理配置。
+- Cron Job 接口通过 `GET /api/control/cron/jobs`、`PUT /api/control/cron/jobs/{job_id}`、`DELETE /api/control/cron/jobs/{job_id}` 管理配置；内置 Job 的 `DELETE` 必须返回冲突，`PUT` 仅接受 `enabled` 切换。
 
 ### 触发归档
 

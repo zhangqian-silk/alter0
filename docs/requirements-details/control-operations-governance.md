@@ -60,8 +60,8 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 ### Cron、Maintenance 与 Codex Runtime
 
-- Cron Job 控制面接口用于配置与触发记录查看；调度执行归属 Runtime & Orchestration。
-- Maintenance 控制面展示系统内置维护任务，不提供复杂配置项。内置任务包括每日记忆维护和每日会话清理；前端提供状态、上次运行、下次运行、失败信息、手动运行和失败重试。记忆维护执行器不可用时必须返回失败状态，不得记录为空运行成功。
+- Cron Job 控制面接口用于配置普通定时任务、展示系统内置维护任务、切换任务启停和查看触发记录；调度执行归属 Runtime & Orchestration。系统内置维护任务返回 `builtin=true`，不能删除，只能通过 `enabled` 停用或重新启用。
+- Maintenance 控制面展示系统内置维护任务的运行状态，不提供复杂配置项。内置任务包括每日记忆维护和每日会话清理；前端提供状态、上次运行、下次运行、失败信息、手动运行和失败重试。记忆维护执行器不可用时必须返回失败状态，不得记录为空运行成功。
 - 会话清理固定使用超过 7 天不活跃的默认阈值，跳过置顶会话和仍有关联 queued/running 任务的会话；手动 `Clean up now` 与自动清理走同一后端服务，并返回扫描数量、删除数量、置顶跳过数量和任务保护数量。清理 Session history 后，关联任务、运行时 registry 或工作区删除失败时，本次维护状态必须标记为失败并返回错误信息。
 - Codex Runtime 控制面负责展示服务运行账户当前 Codex 身份、额度、profile、活动 model、思考深度与 LLM Provider 注册状态，并允许直接更新当前 Codex 配置中的 model 与思考深度。首屏加载时，运行时状态与 LLM Provider 状态必须并行读取，避免互不依赖的接口串行拖慢 Settings Runtime 分区。
 - Web Shell 由 `/settings` 单页承接运行时、Skill、Memory、Maintenance、Workspaces 与 Schedules 能力的读取、加载、空态与错误态渲染；历史 `/management` 自动映射到 `/settings`。这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Runtime / Skills / Memory / Maintenance / Workspaces / Schedules` 分区切换。桌面端分区切换作为左侧设置索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有设置分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Settings 作用域下的扁平 route surface：列表、表格、筛选表单、主从详情、空态与错误态共享白底、浅灰辅助层、必要分割线和紧凑字段行，不再默认使用外层卡片边框、厚圆角或重阴影表达层级。控制台页面中的描述、Cron 输入、Skill 说明、Codex 运行时说明与审计/配置说明类文本按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
@@ -84,6 +84,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `GET /api/maintenance` 查询内置维护任务状态。
 - `POST /api/maintenance/memory/run` 手动运行记忆维护。
 - `POST /api/maintenance/sessions/cleanup` 手动运行会话清理。
+- `GET /api/control/cron/jobs` 返回普通 Cron Job 与内置维护 Job；内置维护 Job 不允许 `DELETE`，允许通过 `PUT /api/control/cron/jobs/{job_id}` 的 `enabled` 字段停用或重新启用。
 - `POST /api/sessions/{session_id}/pin` 更新会话置顶状态，body 使用 `{"pinned": true|false}`。
 
 ## Model Provider

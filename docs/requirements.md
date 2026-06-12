@@ -9,7 +9,7 @@
 - Web 前端所有需要可见时间的设置视图、会话列表、详情面板与任务视图统一固定为上海时间（`Asia/Shanghai`）与 24 小时制；`Chat / Terminal` 的消息正文区不显示逐条消息或 turn 时间。
 - 自然语言任务默认通过 CLI Agent Runtime 执行：存在启用且可用的 Model Provider 时优先使用 `Claude Code + provider profile`，未配置、不可用或鉴权失败时兜底使用 `Codex Direct`。
 - 服务侧负责会话、工作区、Skill 仓库、Markdown 记忆文件、运行时注入与结果归档；会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理，跨会话长期记忆由定时任务加载 `memory-maintenance` Skill 整理。
-- 系统维护任务不提供复杂配置项：记忆维护每日自动运行；会话清理默认每日清理超过 7 天不活跃且未置顶、无 queued/running 任务关联的会话，置顶会话始终跳过自动清理。
+- 系统维护任务不提供复杂配置项：记忆维护与会话清理作为 Scheduler 内置任务每日自动运行，内置任务不可删除，但可在 Scheduler 控制面停用或重新启用；会话清理默认每日清理超过 7 天不活跃且未置顶、无 queued/running 任务关联的会话，置顶会话始终跳过自动清理。
 
 状态说明：
 
@@ -37,7 +37,7 @@
 - 编排层负责意图识别与路由：命令进入 `CommandRegistry` / `CommandHandler`，自然语言进入 `ExecutionPort` 后由 `RuntimeResolver` 选择 CLI Agent Runtime；Cron 触发复用同一编排链路；当消息显式指定 `alter0.execution.engine=codex` 时，斜线前缀输入视为 Codex 原生命令或提示词，直接进入 `Codex Direct`。
 - 命令能力稳定提供 `/help`、`/echo`、`/time` 与 `/now`。
 - 自然语言执行通过 CLI Agent Runtime 完成：启用且可用的 Model Provider 对应 `Claude Code + provider profile`，无可用 Provider 或 Claude Code 运行失败时进入 `Codex Direct`。
-- 调度领域支持 Cron Job 配置、可视化周期字段、触发记录、触发会话归档、runs 查询与来源回链。
+- 调度领域支持 Cron Job 配置、内置不可删除 Job、可视化周期字段、触发记录、触发会话归档、runs 查询与来源回链；内置 Job 允许切换 enabled 状态。
 - 存储默认采用 `.alter0` 本地文件，Control 配置与 Scheduler 状态以 JSON 为主，Memory 主存以 Markdown 为主。
 - 观测能力覆盖结构化日志、Prometheus metrics、`/healthz`、`/readyz` 与 trace/session/message 维度。
 
@@ -136,7 +136,7 @@
 - Product Skill 独立维护在 `docs/skills/<skill_id>/SKILL.md`，编码、旅行、前端设计、部署预览、文档协作、测试、评审与记忆整理都以 Skill 表达执行规则和交付要求。
 - 启动 CLI Agent 前，运行时按会话工作区生成 `AGENTS.md` 或 `CLAUDE.md`，同步选中 Skill 文件、Memory 文件、MCP 配置、会话事实、工作区边界、仓库路径与交付要求。
 - `coding`、`travel` 等业务领域作为 Skill 注入运行时；Agent Runtime 页面可按业务入口预选 Skill 组合，但执行层仍是同一个 CLI Agent Runtime。`travel` 需把行程安排沉淀为移动端 HTML 攻略、路线化内容和按行程密度生成的 Codex 手绘地图图片资产。
-- Memory Files 支持 `USER.md`、长期 `MEMORY.md`、`daily/<YYYY-MM-DD>.md`、`projects/<project>.md` 与 `conversations/<conversation_id>/summary.md`。用户可见记忆文件保持 Markdown 主存，不在正文中暴露 confidence、source、status、sensitivity 等附加元数据。
+- Memory Files 支持仓库级 `USER.md`、强约束 `SOUL.md`、Agent 私有 `docs/agents/<agent_id>/AGENTS.md`、启动参数解析后的长期 `MEMORY.md` 与天级 `<YYYY-MM-DD>.md`。执行注入、Web Memory、任务摘要与维护任务共享同一组已解析路径；用户可见记忆文件保持 Markdown 主存，不在正文中暴露 confidence、source、status、sensitivity 等附加元数据。
 - 记忆更新由三条路径触发：用户显式要求记住时由当前 CLI Agent 写入；会话结束或归档时生成 `ConversationSummary`；系统维护任务每日启动同一 CLI Agent 并加载 `memory-maintenance` Skill，把会话摘要、日记忆和长期记忆合并整理。
 - 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理；alter0 保存原始消息、运行日志、结果与摘要，用于恢复、审计、跨会话召回和定时记忆整理。
 - `Agent -> Memory` 页面提供长期记忆、天级记忆、项目记忆、会话摘要与任务历史的只读可视化入口，并支持摘要重建。

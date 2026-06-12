@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	schedulerdomain "alter0/internal/scheduler/domain"
 	sessionapp "alter0/internal/session/application"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
@@ -207,35 +209,58 @@ func (m *maintenanceService) activeTaskSessionIDs() []string {
 	return sessionIDs
 }
 
-func (s *Server) startMaintenanceScheduler(ctx context.Context) {
-	if s == nil {
+func (s *Server) registerMaintenanceSchedulerJobs() {
+	if s == nil || s.scheduler == nil {
 		return
 	}
 	s.ensureMaintenanceService()
-	go s.runDailyMaintenanceJob(ctx, defaultMemoryMaintenanceJobID, 5, 10)
-	go s.runDailyMaintenanceJob(ctx, defaultSessionCleanupJobID, 5, 20)
-}
-
-func (s *Server) runDailyMaintenanceJob(ctx context.Context, jobID string, hour int, minute int) {
-	for {
-		now := time.Now().UTC()
-		next := nextDailyMaintenanceRun(now, hour, minute)
-		timer := time.NewTimer(time.Until(next))
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
-		case <-timer.C:
-			if s.maintenance == nil {
-				s.ensureMaintenanceService()
-			}
-			switch jobID {
-			case defaultMemoryMaintenanceJobID:
-				_ = s.maintenance.RunMemoryMaintenance(ctx, time.Now().UTC())
-			case defaultSessionCleanupJobID:
-				_ = s.maintenance.RunSessionCleanup(time.Now().UTC())
-			}
+	s.scheduler.RegisterJobHandler(defaultMemoryMaintenanceJobID, func(ctx context.Context, _ schedulerdomain.Job, firedAt time.Time) error {
+		result := s.maintenance.RunMemoryMaintenance(ctx, firedAt.UTC())
+		if result.Status == "failed" {
+			return errors.New(result.Error)
 		}
+		return nil
+	})
+	s.scheduler.RegisterJobHandler(defaultSessionCleanupJobID, func(_ context.Context, _ schedulerdomain.Job, firedAt time.Time) error {
+		result := s.maintenance.RunSessionCleanup(firedAt.UTC())
+		if result.Status == "failed" {
+			return errors.New(result.Error)
+		}
+		return nil
+	})
+	if err := s.scheduler.RegisterBuiltinJobs([]schedulerdomain.Job{
+		{
+			ID:             defaultMemoryMaintenanceJobID,
+			Name:           "Memory Maintenance",
+			Enabled:        true,
+			Timezone:       "Asia/Shanghai",
+			ScheduleMode:   schedulerdomain.ScheduleModeDaily,
+			CronExpression: "10 5 * * *",
+			ChannelID:      "scheduler-default",
+			Metadata: map[string]string{
+				"alter0.maintenance.job": defaultMemoryMaintenanceJobID,
+			},
+			TaskConfig: schedulerdomain.TaskConfig{
+				Input: "Run system memory maintenance. Consolidate daily memory into long-term memory, remove duplicates, and report changed files.",
+			},
+		},
+		{
+			ID:             defaultSessionCleanupJobID,
+			Name:           "Session Cleanup",
+			Enabled:        true,
+			Timezone:       "Asia/Shanghai",
+			ScheduleMode:   schedulerdomain.ScheduleModeDaily,
+			CronExpression: "20 5 * * *",
+			ChannelID:      "scheduler-default",
+			Metadata: map[string]string{
+				"alter0.maintenance.job": defaultSessionCleanupJobID,
+			},
+			TaskConfig: schedulerdomain.TaskConfig{
+				Input: "Clean up inactive unpinned sessions and remove associated task/runtime/workspace data.",
+			},
+		},
+	}); err != nil && s.logger != nil {
+		s.logger.Error("failed to register maintenance scheduler jobs", slog.String("error", err.Error()))
 	}
 }
 

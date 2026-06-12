@@ -31,7 +31,7 @@
 - `internal/orchestration/domain` 承载 `Intent`、`Command` 等编排领域模型。
 - `internal/orchestration/application` 承载意图识别、命令路由、自然语言执行分发。
 - `internal/execution/domain` 定义执行端口和运行时上下文契约。
-- `internal/scheduler` 负责 Cron 配置、触发与回注编排。
+- `internal/scheduler` 负责普通 Cron 配置、服务内置 Job、触发与回注编排；内置 Job 可停用或重新启用，但不能删除。
 
 ### 调用链路
 
@@ -86,7 +86,7 @@ CLI / Web / Cron
 - `ConversationRuntimeProvider.tsx` 只接受 `chat` conversation route：读取本地活动会话、最近快照、服务端集合、单会话详情和用户手动 focus 时都会使用 Chat 会话模型；历史 `agent-runtime` snapshot 与短 hash query 在加载时迁移为 Chat 会话。Chat 的 `session_id` query 只作为显式恢复输入和用户手动 focus 的输出；当 `/chat` 没有显式 `session_id` 时，Provider 以服务端集合与本地最近快照合并后的第一条会话作为当前会话，不让 sessionStorage 中的旧活动会话覆盖最新入口。
 - `internal/interfaces/web/conversation_runtime_session_registry.go` 维护服务端 Conversation Runtime session registry，持久化在 `.alter0/conversation-runtime-sessions.json`：它记录 `session_id + route` 维度的最小恢复视图、最近配置和 `busy / ready / failed` 状态。加载阶段会把历史 `route=agent-runtime` 项迁移为 `route=chat` 并重写 registry 文件；`messageHandler / messageStreamHandler` 在请求开始、完成、失败时更新这份 registry；`conversationRuntimeSessionItemHandler` 还接受 `PATCH` 写入当前会话的 `model_provider_id / model_id / tool_ids / skill_ids / mcp_ids` 配置，slice 字段使用 nil 表示请求未传、非 nil 空 slice 表示用户显式清空。`conversationRuntimeSessionCollectionHandler / conversationRuntimeSessionItemHandler` 则优先读取 registry，再与 Session history 聚合结果合并。这样即使 SSE 因浏览器刷新或客户端断链中断，只要服务端已经接受了请求，运行页列表和单会话详情仍能先返回稳定的服务端视图，而不是直接丢会话、回退配置或返回 404。
 - `internal/session/application.Service` 在 Session summary 中输出 `last_active_at` 与 `pinned`。`SetSessionPinned` 持久化置顶 metadata，`TouchSession` 写入活跃时间 metadata，`CleanupInactiveSessions` 按固定阈值扫描会话并返回删除、置顶跳过和扫描统计；没有显式活跃时间的历史会话使用最后消息时间参与排序和清理判断。
-- `internal/interfaces/web/maintenance.go` 负责系统维护任务：服务启动时创建每日记忆维护与会话清理调度循环；`RunMemoryMaintenance` 通过编排入口发送系统消息并注入 `memory-maintenance` Skill；`RunSessionCleanup` 调用 Session application 清理超过 7 天不活跃且未置顶的会话，并同步删除任务关联、Conversation Runtime registry 与 Session workspace。
+- `internal/interfaces/web/maintenance.go` 负责系统维护任务：服务启动时把每日记忆维护与会话清理注册为 Scheduler 内置 Job，并为这两个 Job 注册内置 handler；`RunMemoryMaintenance` 通过编排入口发送系统消息并注入 `memory-maintenance` Skill；`RunSessionCleanup` 调用 Session application 清理超过 7 天不活跃且未置顶的会话，并同步删除任务关联、Conversation Runtime registry 与 Session workspace。Scheduler 负责内置维护任务的自动触发、启停和不可删除保护，Maintenance 接口负责状态与手动执行。
 - `ConversationRuntimeProvider.tsx` 的恢复判定同时识别两类未完成状态：本地或远端存在 `streaming / error / Thinking...` assistant，以及当前活动会话最后一条消息仍是 user。后者用于覆盖服务端已先持久化 user、但 assistant 结果尚未写入 Session history 的窗口期；恢复流程在要求稳定 assistant 时必须等到详情接口返回非占位 assistant、任务消息或失败态后才 upsert。
 - `internal/orchestration/application/SessionPersistenceService` 将会话落库拆为请求开始与结果收口两段：`Handle / HandleStream` 进入下游执行前先追加本轮 `user` 记录，执行完成后只追加 assistant 记录及 route、错误码、`process_steps`。Session history 因此不依赖浏览器连接生命周期，也不会因为 SSE 连接提前结束而丢失已发送用户消息。
 - `internal/interfaces/web/server.go` 的 `executionContextForMessage` 现在会对 `trigger_type=user + channel_type=web` 的会话消息统一使用 `context.WithoutCancel` 派生执行上下文；浏览器刷新或前端主动断开 SSE 只会结束当前 HTTP 连接，不再把 Chat 已接受请求连带取消。前端恢复链路继续依赖 Conversation Runtime registry 与 Session history 汇合视图补拉最终结果。
@@ -235,9 +235,10 @@ Natural language message
 - `internal/storage/infrastructure/localfile.SessionStore` 使用分文件布局持久化 Chat 历史：新 Chat 会话按 `session_id` 写入 `_default` 分组；历史 `alter0-chat` 归档日文件与旧 `agent-runtime` 分文件布局在读取时按消息身份去重合并到当前 Chat 会话模型。删除会话后保存全量快照会清理已不存在的会话文件。加载时扫描当前目录布局，并读取旧版 `.alter0/sessions.json` / `.alter0/sessions.md` 聚合文件；当多种布局同时存在时按消息身份去重合并，随后立即把合并结果重写为新的分文件布局并删除旧聚合文件，避免迁移中断造成历史缺失。
 - Web 上传的会话附件经 `internal/interfaces/web/server.go` 与 `session_attachment_store.go` 规范化后统一写入 `alter0.user_input.attachments`；图片附件额外保留兼容性的 `alter0.user_input.image_attachments`。`/api/sessions/{session_id}/attachments` 现在支持“原文件 + 可选预览”模型：图片仍落原图与预览图，普通文件只落原文件并让 `preview_url` 回退到 `asset_url`。Conversation runtime 消息接口随后只携带 `id + asset_url + preview_url` 引用，服务端再解析出工作区内的原图路径写入元数据；前端渲染层再按场景分流，缩略位读取 `preview_url`，回显与预览弹层读取 `asset_url`。assistant 最终回复中的 markdown 外链图片则由 `internal/orchestration/application/session_output_image_assets.go` 在 SessionPersistenceService 中做结果后处理：仅对可下载的 `http(s)` 图片做抓取，写入同一 Session 附件目录，并把 `result.Output / result.ProcessSteps[].Detail` 里的图片地址改写为 `/api/sessions/{session_id}/attachments/{asset_id}/original`。`/api/messages`、Terminal 输入与 Control Task follow-up 输入都会复用同一附件目录与交付 URL；已移除的 `/api/agent/messages*` 不再作为附件消费入口。`internal/execution/infrastructure/hybrid_nl_processor.go` 继续只把图片子集解码成 `llmdomain.Message.Parts`；显式 Codex Direct 则由 `internal/execution/infrastructure/codex_cli_processor.go` 从同一图片 metadata 读取 `workspace_path` 并生成 Codex CLI `-i <path>` 参数；Terminal 侧普通文件则不进入多模态图片 part，而是在执行前写入 Terminal 工作区并通过 prompt 注入稳定路径，交给 Codex 读盘。带图请求不进入异步 Task，也不会在模型链失败后静默回退到 Codex CLI，避免把视觉请求错误降级为纯文本执行。
 - Memory Files 注入需要携带路径、存在状态、可写性、内容摘要、召回片段和截断标记。
-- Markdown 主存结构固定为 `memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。
+- `cmd/alter0` 解析 `daily-memory-dir`、`long-term-memory-path` 与 `mandatory-context-file` 后，同时传入 `internal/execution/application.MemoryContextOptions`、Web Memory 聚合服务、任务摘要 Runtime Store 与系统维护链路；执行侧优先读取这些配置路径，再回退到仓库内兼容路径。
+- Markdown 主存结构以仓库级 `USER.md`、强约束 `SOUL.md`、Agent 私有 `docs/agents/<agent_id>/AGENTS.md`、已解析长期记忆文件和已解析天级记忆目录为准；默认长期记忆为 `.alter0/memory/long-term/MEMORY.md`，默认天级记忆为 `.alter0/memory/<YYYY-MM-DD>.md`。
 - 用户可见 Markdown 不写入 confidence、source、status、sensitivity 等机器元数据；检索索引可作为派生文件重建。
-- 用户显式记忆写入由当前 CLI agent 完成；会话归档由服务生成 `ConversationSummary`；长期整理由系统维护任务启动 CLI agent 并加载 `memory-maintenance` Skill 完成。该维护任务状态由 Web `maintenanceService` 记录，并通过 Settings 的 Maintenance 分区展示。
+- 用户显式记忆写入由当前 CLI agent 完成；会话归档由服务生成 `ConversationSummary`；长期整理由 Scheduler 内置维护任务启动 CLI agent 并加载 `memory-maintenance` Skill 完成。该维护任务的启停由 Settings 的 Schedules 分区管理，运行状态由 Web `maintenanceService` 记录，并通过 Settings 的 Maintenance 分区展示。
 - Agent Memory Web 聚合接口只读返回长期记忆、天级记忆、项目记忆、会话摘要与说明文档；任务摘要刷新走 Task summary 子域接口。
 
 ### 验证策略
@@ -317,7 +318,7 @@ Terminal input
 - `internal/control` 中的 Model Provider 配置负责生成 Claude Code provider profile 所需的 base URL、API Key、model、profile 名称与健康状态。
 - `internal/codex/domain` 负责 `auth.json` 快照、身份识别与额度状态模型；`internal/codex/application` 负责读取当前活动 `auth.json`、刷新 quota，以及通过 Codex app-server 的 `model/list`、`config/read`、`config/batchWrite` 读取真实运行时能力并更新 `model` / `model_reasoning_effort`。
 - `internal/interfaces/web/frontend` 中的 `ReactManagedCodexAccountsRouteBody` 作为兼容组件名承载 `Settings > Runtime` 页面：初始加载并行请求 `/api/control/codex/runtime` 与 `/api/control/llm/providers`，单一顶部面板展示当前 Codex 身份、邮箱、计划、认证模式、profile、hourly / weekly 剩余额度、reset 时间与 LLM Provider 注册提示；model / 思考深度作为同一面板内的一行 key-value 可编辑选择项，选择变更后直接调用 `/api/control/codex/runtime` 写回当前设置，并用返回的运行时状态更新同页视图。页面不展示 Account ID、User ID、保存名称、多账号管理动作、导入/登录操作、独立配置区、独立就绪侧栏、运行时诊断面板或由 auth/config 文件存在性推导的 Ready/Status 文案。
-- `internal/interfaces/web/maintenance.go` 与 `ReactManagedMaintenanceRouteBody.tsx` 共同承担内置维护任务控制面：后端暴露 `GET /api/maintenance`、`POST /api/maintenance/memory/run`、`POST /api/maintenance/sessions/cleanup`；前端只提供运行、重试和状态展示，不写入用户级调度配置。会话置顶通过 `POST /api/sessions/{session_id}/pin` 更新。
+- `internal/interfaces/web/maintenance.go` 与 `ReactManagedMaintenanceRouteBody.tsx` 共同承担内置维护任务状态与手动执行控制面：后端暴露 `GET /api/maintenance`、`POST /api/maintenance/memory/run`、`POST /api/maintenance/sessions/cleanup`；自动调度和启停由 Scheduler 内置 Job 承担，`ReactManagedControlRouteBody.tsx` 的 Cron Jobs 视图展示 `builtin=true` 的维护任务并通过 `PUT /api/control/cron/jobs/{job_id}` 切换 `enabled`。会话置顶通过 `POST /api/sessions/{session_id}/pin` 更新。
 - `cmd/alter0` 管理启动、supervisor、重启、内置配置和运行时 metadata。
 - `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本；Node 初始化同时覆盖 `internal/interfaces/web` 与 `internal/interfaces/web/frontend`。
 - `docs/deployment` 承载 Nginx 与部署权限说明。
@@ -346,7 +347,7 @@ Environment restart
 ### 技术约束
 
 - Control 面只能管理运行时配置，不绕过编排层直接执行业务请求。
-- Maintenance 控制面只管理系统内置维护任务的状态和手动触发；每日自动运行时间、7 天不活跃阈值、置顶保护和 queued/running 任务保护规则固定在服务端，不通过 Environment 或 Cron Job 暴露为用户配置。维护任务不可执行或后续资源清理失败时写入 `failed` 状态，不使用空运行成功作为兜底。
+- Maintenance 控制面只管理系统内置维护任务的状态和手动触发；每日自动运行时间、7 天不活跃阈值、置顶保护和 queued/running 任务保护规则固定在服务端，不通过 Environment 或普通 Cron Job 暴露为用户配置。两个维护任务作为 Scheduler 内置 Job 出现在 Cron Jobs 列表中，不能删除，只能停用或重新启用。维护任务不可执行或后续资源清理失败时写入 `failed` 状态，不使用空运行成功作为兜底。
 - Skill 与 MCP 专用接口需要复用统一 Capability 数据结构；Capability 审计记录生命周期动作，供控制面按类型查询。
 - `cmd/alter0/builtin_skills.go` 负责注册内置 Skill，并在启动阶段校验所有 file-backed 内置 Skill 文件存在；当前内置集合包含 `deploy-test-service`、`frontend-design`、`artifact-preview`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review` 与 `brainstorming`。标准 skill 使用源码目录下的 `docs/skills/<skill_id>/SKILL.md`；plugin-style 的 `code-simplifier` 与 `code-review` 继续保留目录内 `.claude-plugin/plugin.json` 元数据，并分别以 `agents/code-simplifier.md`、`commands/code-review.md` 作为 alter0 的 file-backed 注入入口。`artifact-preview` 的内置 guide 与 file-backed skill 共同要求静态用户可见产物先发布到 `https://<service>-<short_hash>.alter0.cn`，避免把服务端路径、本地 URL 或工作区内部路径暴露为用户可访问链接。
 - Runtime Context 物化器负责在 CLI agent 准备阶段复制 file-backed Skill：按当前服务进程工作目录向上查找可读的 skill 文件，定位 `docs/skills/<skill_id>/` 根目录，把整个目录复制到当前会话工作区。Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，并将注入上下文中的 `file_path` 改写为工作区内副本。
@@ -368,8 +369,8 @@ Environment restart
 
 ### 验证策略
 
-- Control 测试覆盖 Channel、Capability、Skill、MCP、Runtime Profile、Environment、Codex Runtime、Maintenance 配置持久化、Capability 审计和 Environment audit。
-- Web 接口测试覆盖会话置顶、7 天不活跃清理、置顶跳过、queued/running 任务保护、workspace 删除、维护执行器不可用、资源清理失败和维护状态响应；前端组件测试覆盖 Maintenance 状态、手动清理、Sessions 最后活跃时间和置顶操作。
+- Control 测试覆盖 Channel、Capability、Skill、MCP、Runtime Profile、Environment、Codex Runtime、Scheduler 内置 Job 保护、Capability 审计和 Environment audit。
+- Web 接口测试覆盖会话置顶、7 天不活跃清理、置顶跳过、queued/running 任务保护、workspace 删除、维护执行器不可用、资源清理失败、维护状态响应和内置维护 Job 不可删除/可停用；前端组件测试覆盖 Maintenance 状态、手动清理、Cron 内置任务启停、Sessions 最后活跃时间和置顶操作。
 - Provider 测试覆盖创建、更新、缺失密钥恢复、默认项收敛、Claude Code profile 生成和 OpenRouter 字段。
 - Runtime supervisor 测试覆盖候选版本构建、readyz 切换、失败回滚和 metadata 展示。
 - 文档治理变更至少运行 Markdown 引用与空白检查；代码变更按 TDD 运行对应包或全量测试。

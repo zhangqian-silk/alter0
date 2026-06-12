@@ -85,6 +85,7 @@ type CronJobRouteRecord = {
   id?: string;
   name?: string;
   enabled?: boolean;
+  builtin?: boolean;
   schedule_mode?: string;
   timezone?: string;
   cron_expression?: string;
@@ -132,6 +133,12 @@ type ControlRouteCopy = {
   fieldInterval: string;
   fieldPrompt: string;
   fieldRetryLimit: string;
+  fieldOrigin: string;
+  builtinJob: string;
+  customJob: string;
+  enableJob: string;
+  disableJob: string;
+  actionFailed: (message: string) => string;
   emptyChannels: string;
   emptySkills: string;
   emptyMCP: string;
@@ -172,6 +179,12 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     fieldInterval: "Interval",
     fieldPrompt: "Prompt",
     fieldRetryLimit: "Retry Limit",
+    fieldOrigin: "Origin",
+    builtinJob: "Built-in",
+    customJob: "Custom",
+    enableJob: "Enable job",
+    disableJob: "Disable job",
+    actionFailed: (message) => `Action failed: ${message}`,
     emptyChannels: "No Channels available.",
     emptySkills: "No Skills available.",
     emptyMCP: "No MCP available.",
@@ -210,6 +223,12 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     fieldInterval: "间隔",
     fieldPrompt: "任务输入",
     fieldRetryLimit: "重试次数",
+    fieldOrigin: "来源",
+    builtinJob: "内置",
+    customJob: "自定义",
+    enableJob: "启用任务",
+    disableJob: "停用任务",
+    actionFailed: (message) => `操作失败：${message}`,
     emptyChannels: "暂无可用通道。",
     emptySkills: "暂无可用技能。",
     emptyMCP: "暂无 MCP 配置。",
@@ -625,6 +644,10 @@ const ROUTE_CONFIG: Record<ReactManagedControlRoute, RouteConfig> = {
     enabled: (item) => Boolean((item as CronJobRouteRecord).enabled),
     fields: (item, copy) => [
       { label: copy.fieldID, value: (item as CronJobRouteRecord).id, copyable: true, mono: true },
+      {
+        label: copy.fieldOrigin,
+        value: (item as CronJobRouteRecord).builtin ? copy.builtinJob : copy.customJob,
+      },
       { label: copy.fieldScheduleMode, value: (item as CronJobRouteRecord).schedule_mode },
       { label: copy.fieldTimezone, value: (item as CronJobRouteRecord).timezone },
       { label: copy.fieldCronExpression, value: (item as CronJobRouteRecord).cron_expression, mono: true },
@@ -657,6 +680,8 @@ export function ReactManagedControlRouteBody({
     items: [],
     error: "",
   });
+  const [actionBusyID, setActionBusyID] = useState("");
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     let disposed = false;
@@ -666,6 +691,8 @@ export function ReactManagedControlRouteBody({
       items: [],
       error: "",
     });
+    setActionBusyID("");
+    setActionError("");
 
     void createAPIClient()
       .get<ControlRouteResponse>(routeConfig.path)
@@ -712,23 +739,81 @@ export function ReactManagedControlRouteBody({
     disabled: copy.statusDisabled,
   };
 
+  async function toggleCronJobEnabled(item: RouteRecord) {
+    if (route !== "cron-jobs") {
+      return;
+    }
+    const cronJob = item as CronJobRouteRecord;
+    const id = normalizeText(cronJob.id);
+    if (id === "-") {
+      return;
+    }
+    const enabled = !Boolean(cronJob.enabled);
+    setActionError("");
+    setActionBusyID(id);
+    try {
+      const updated = await createAPIClient().put<CronJobRouteRecord>(
+        `/api/control/cron/jobs/${encodeURIComponent(id)}`,
+        { enabled },
+      );
+      setState((current) => ({
+        ...current,
+        items: current.items.map((candidate) =>
+          routeConfig.key(candidate) === id ? (updated as RouteRecord) : candidate,
+        ),
+      }));
+    } catch (error) {
+      setActionError(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
+    } finally {
+      setActionBusyID("");
+    }
+  }
+
+  function renderCronJobActions(item: RouteRecord) {
+    if (route !== "cron-jobs") {
+      return null;
+    }
+    const cronJob = item as CronJobRouteRecord;
+    if (!cronJob.builtin) {
+      return null;
+    }
+    const id = normalizeText(cronJob.id);
+    const enabled = Boolean(cronJob.enabled);
+    const label = enabled ? copy.disableJob : copy.enableJob;
+    return (
+      <button
+        className="route-card-action"
+        type="button"
+        disabled={actionBusyID === id}
+        aria-label={label}
+        onClick={() => void toggleCronJobEnabled(item)}
+      >
+        {label}
+      </button>
+    );
+  }
+
   return (
-    <section className="control-route-grid" data-control-route-grid={route}>
-      {state.items.map((item) => (
-        <RouteCard
-          key={`${route}-${routeConfig.key(item)}`}
-          title={routeConfig.title(item)}
-          type={routeConfig.type(item)}
-          enabled={routeConfig.enabled(item)}
-          statusEnabledLabel={statusLabels.enabled}
-          statusDisabledLabel={statusLabels.disabled}
-        >
-          {routeConfig.fields(item, copy).map((field) => (
-            <RouteFieldRow key={`${field.label}-${normalizeText(field.value)}`} copyLabel={copy.copyValue} {...field} />
-          ))}
-        </RouteCard>
-      ))}
-    </section>
+    <>
+      {actionError ? <p className="route-error">{actionError}</p> : null}
+      <section className="control-route-grid" data-control-route-grid={route}>
+        {state.items.map((item) => (
+          <RouteCard
+            key={`${route}-${routeConfig.key(item)}`}
+            title={routeConfig.title(item)}
+            type={routeConfig.type(item)}
+            enabled={routeConfig.enabled(item)}
+            statusEnabledLabel={statusLabels.enabled}
+            statusDisabledLabel={statusLabels.disabled}
+            actions={renderCronJobActions(item)}
+          >
+            {routeConfig.fields(item, copy).map((field) => (
+              <RouteFieldRow key={`${field.label}-${normalizeText(field.value)}`} copyLabel={copy.copyValue} {...field} />
+            ))}
+          </RouteCard>
+        ))}
+      </section>
+    </>
   );
 }
 

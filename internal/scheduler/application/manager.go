@@ -23,6 +23,8 @@ type Store interface {
 	Save(ctx context.Context, jobs []schedulerdomain.Job) error
 }
 
+type JobHandler func(ctx context.Context, job schedulerdomain.Job, firedAt time.Time) error
+
 type Manager struct {
 	orchestrator Orchestrator
 	telemetry    sharedapp.Telemetry
@@ -30,11 +32,12 @@ type Manager struct {
 	logger       *slog.Logger
 	store        Store
 
-	mu      sync.Mutex
-	baseCtx context.Context
-	started bool
-	jobs    map[string]schedulerdomain.Job
-	runners map[string]context.CancelFunc
+	mu       sync.Mutex
+	baseCtx  context.Context
+	started  bool
+	jobs     map[string]schedulerdomain.Job
+	runners  map[string]context.CancelFunc
+	handlers map[string]JobHandler
 }
 
 func NewManager(
@@ -88,6 +91,7 @@ func newManager(
 		store:        store,
 		jobs:         map[string]schedulerdomain.Job{},
 		runners:      map[string]context.CancelFunc{},
+		handlers:     map[string]JobHandler{},
 	}
 }
 
@@ -119,6 +123,9 @@ func (m *Manager) Upsert(job schedulerdomain.Job) error {
 	defer m.mu.Unlock()
 
 	previous, existed := m.jobs[normalized.ID]
+	if existed && previous.Builtin {
+		return fmt.Errorf("builtin scheduler job %q can only be enabled or disabled", normalized.ID)
+	}
 	m.jobs[normalized.ID] = normalized
 	m.stopRunnerLocked(normalized.ID)
 	if m.started && normalized.Enabled {
@@ -139,6 +146,69 @@ func (m *Manager) Upsert(job schedulerdomain.Job) error {
 	return nil
 }
 
+func (m *Manager) RegisterBuiltinJobs(jobs []schedulerdomain.Job) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, job := range jobs {
+		job.Builtin = true
+		normalized, err := job.Normalize()
+		if err != nil {
+			return err
+		}
+		if existing, ok := m.jobs[normalized.ID]; ok {
+			normalized.Enabled = existing.Enabled
+		}
+		m.jobs[normalized.ID] = normalized
+		m.stopRunnerLocked(normalized.ID)
+		if m.started && normalized.Enabled {
+			m.startRunnerLocked(normalized)
+		}
+	}
+	return m.storeLocked()
+}
+
+func (m *Manager) RegisterJobHandler(jobID string, handler JobHandler) {
+	key := normalize(jobID)
+	if key == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if handler == nil {
+		delete(m.handlers, key)
+		return
+	}
+	m.handlers[key] = handler
+}
+
+func (m *Manager) SetEnabled(id string, enabled bool) (schedulerdomain.Job, bool, error) {
+	key := normalize(id)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	previous, ok := m.jobs[key]
+	if !ok {
+		return schedulerdomain.Job{}, false, nil
+	}
+	updated := previous
+	updated.Enabled = enabled
+	m.jobs[key] = updated
+	m.stopRunnerLocked(key)
+	if m.started && updated.Enabled {
+		m.startRunnerLocked(updated)
+	}
+	if err := m.storeLocked(); err != nil {
+		m.stopRunnerLocked(key)
+		m.jobs[key] = previous
+		if m.started && previous.Enabled {
+			m.startRunnerLocked(previous)
+		}
+		return schedulerdomain.Job{}, true, err
+	}
+	return updated, true, nil
+}
+
 func (m *Manager) Delete(id string) bool {
 	key := normalize(id)
 	m.mu.Lock()
@@ -146,6 +216,9 @@ func (m *Manager) Delete(id string) bool {
 
 	previous, ok := m.jobs[key]
 	if !ok {
+		return false
+	}
+	if previous.Builtin {
 		return false
 	}
 	delete(m.jobs, key)
@@ -225,6 +298,17 @@ func (m *Manager) stopRunnerLocked(jobID string) {
 }
 
 func (m *Manager) triggerJob(ctx context.Context, job schedulerdomain.Job, firedAt time.Time) {
+	if handler := m.jobHandler(job.ID); handler != nil {
+		if err := handler(ctx, job, firedAt); err != nil && m.logger != nil {
+			m.logger.Error("builtin scheduler job failed",
+				slog.String("job_id", job.ID),
+				slog.String("job_name", job.Name),
+				slog.String("error", err.Error()),
+			)
+		}
+		return
+	}
+
 	channelID := strings.TrimSpace(job.ChannelID)
 	if channelID == "" {
 		channelID = "scheduler-default"
@@ -252,29 +336,42 @@ func (m *Manager) triggerJob(ctx context.Context, job schedulerdomain.Job, fired
 		ReceivedAt:    firedAt,
 	}
 
-	m.telemetry.CountGateway(string(msg.ChannelType))
+	if m.telemetry != nil {
+		m.telemetry.CountGateway(string(msg.ChannelType))
+	}
 	result, err := m.orchestrator.Handle(ctx, msg)
 	if err != nil {
-		m.logger.Error("cron job failed",
+		if m.logger != nil {
+			m.logger.Error("cron job failed",
+				slog.String("job_id", job.ID),
+				slog.String("job_name", job.Name),
+				slog.String("trace_id", msg.TraceID),
+				slog.String("session_id", msg.SessionID),
+				slog.String("message_id", msg.MessageID),
+				slog.String("error", err.Error()),
+				slog.String("error_code", result.ErrorCode),
+			)
+		}
+		return
+	}
+
+	if m.logger != nil {
+		m.logger.Info("cron job handled",
 			slog.String("job_id", job.ID),
 			slog.String("job_name", job.Name),
 			slog.String("trace_id", msg.TraceID),
 			slog.String("session_id", msg.SessionID),
 			slog.String("message_id", msg.MessageID),
-			slog.String("error", err.Error()),
-			slog.String("error_code", result.ErrorCode),
+			slog.String("route", string(result.Route)),
 		)
-		return
 	}
+}
 
-	m.logger.Info("cron job handled",
-		slog.String("job_id", job.ID),
-		slog.String("job_name", job.Name),
-		slog.String("trace_id", msg.TraceID),
-		slog.String("session_id", msg.SessionID),
-		slog.String("message_id", msg.MessageID),
-		slog.String("route", string(result.Route)),
-	)
+func (m *Manager) jobHandler(jobID string) JobHandler {
+	key := normalize(jobID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.handlers[key]
 }
 
 func (m *Manager) newCronSessionID(job schedulerdomain.Job, firedAt time.Time) string {
