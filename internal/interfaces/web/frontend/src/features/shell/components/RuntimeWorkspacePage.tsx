@@ -29,6 +29,23 @@ function RuntimeSessionDeleteIcon() {
   );
 }
 
+function RuntimeSessionPinIcon({ pinned }: { pinned: boolean }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
+      <path
+        d="M8.25 3.75h5.5l-1.35 4.1 2.35 2.45v1.45H11.1L10 16.25l-1.1-4.5H5.25V10.3L7.6 7.85 6.25 3.75h2"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.55"
+        fill={pinned ? "currentColor" : "none"}
+        fillOpacity={pinned ? "0.14" : undefined}
+      />
+      <path d="M10 11.75v4.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.55" />
+    </svg>
+  );
+}
+
 function swallowSessionActionGesture(
   event: MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>,
 ) {
@@ -65,6 +82,15 @@ export type RuntimeWorkspaceSessionItem = {
   viewDetailsAriaLabel?: string;
   viewDetailsClassName?: string;
   viewDetailsProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "aria-label" | "onClick">;
+  pinned?: boolean;
+  pinning?: boolean;
+  onPinnedChange?: (pinned: boolean) => void;
+  pinLabel?: string;
+  unpinLabel?: string;
+  pinAriaLabel?: string;
+  unpinAriaLabel?: string;
+  pinClassName?: string;
+  pinProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "aria-label" | "aria-pressed" | "disabled" | "onClick">;
   onDelete?: () => void;
   deleteLabel?: string;
   deleteAriaLabel?: string;
@@ -185,8 +211,37 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
                 </span>
               </span>
             </button>
-            {item.onViewDetails || item.onDelete ? (
+            {item.onPinnedChange || item.onViewDetails || item.onDelete ? (
               <span className="runtime-session-actions">
+                {item.onPinnedChange ? (
+                  <button
+                    className={item.pinClassName || [
+                      "runtime-session-action",
+                      "runtime-session-pin",
+                      item.pinned ? "is-pinned" : undefined,
+                    ].filter(Boolean).join(" ")}
+                    type="button"
+                    aria-label={
+                      item.pinned
+                        ? item.unpinAriaLabel || item.unpinLabel
+                        : item.pinAriaLabel || item.pinLabel
+                    }
+                    aria-pressed={item.pinned ? "true" : "false"}
+                    disabled={item.pinning}
+                    onMouseDown={swallowSessionActionGesture}
+                    onTouchStart={swallowSessionActionGesture}
+                    onClick={(event) => {
+                      swallowSessionActionGesture(event);
+                      item.onPinnedChange?.(!item.pinned);
+                    }}
+                    {...item.pinProps}
+                  >
+                    <span className="runtime-session-action-icon runtime-session-pin-icon" aria-hidden="true">
+                      <RuntimeSessionPinIcon pinned={Boolean(item.pinned)} />
+                    </span>
+                    <span className="sr-only">{item.pinned ? item.unpinLabel : item.pinLabel}</span>
+                  </button>
+                ) : null}
                 {item.onViewDetails ? (
                   <button
                     className={item.viewDetailsClassName || "runtime-session-action runtime-session-details"}

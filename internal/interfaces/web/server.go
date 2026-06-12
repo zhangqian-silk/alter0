@@ -183,6 +183,7 @@ type terminalService interface {
 	ListEntries(ownerID string, sessionID string, cursor int, limit int) (terminalapp.EntryPage, error)
 	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
 	InputWithAttachments(req terminalapp.InputRequest) (terminaldomain.Session, error)
+	SetPinned(ownerID string, sessionID string, pinned bool) (terminaldomain.Session, error)
 	Delete(ownerID string, sessionID string) (terminaldomain.Session, error)
 }
 
@@ -314,6 +315,7 @@ type conversationRuntimeSessionResponse struct {
 	ToolIDs         []string                             `json:"tool_ids,omitempty"`
 	SkillIDs        []string                             `json:"skill_ids,omitempty"`
 	MCPIDs          []string                             `json:"mcp_ids,omitempty"`
+	Pinned          bool                                 `json:"pinned,omitempty"`
 	Messages        []conversationRuntimeMessageResponse `json:"messages,omitempty"`
 }
 
@@ -1851,6 +1853,7 @@ func (s *Server) conversationRuntimeSessionCollectionHandler(w http.ResponseWrit
 			return
 		}
 		if ok {
+			detail.Pinned = summary.Pinned
 			itemsByID[detail.ID] = s.mergeConversationRuntimeSessionWithRegistry(route, detail)
 		}
 	}
@@ -2283,6 +2286,7 @@ func (s *Server) mergeConversationRuntimeSessionWithRegistry(route conversationR
 	if merged.Status == "" {
 		merged.Status = session.Status
 	}
+	merged.Pinned = session.Pinned
 	return merged
 }
 
@@ -2383,8 +2387,19 @@ func buildConversationRuntimeSession(
 		ToolIDs:         toolIDs,
 		SkillIDs:        skillIDs,
 		MCPIDs:          mcpIDs,
+		Pinned:          conversationRuntimeSessionPinned(records),
 		Messages:        messages,
 	}, true
+}
+
+func conversationRuntimeSessionPinned(records []sessiondomain.MessageRecord) bool {
+	for _, record := range records {
+		switch strings.ToLower(strings.TrimSpace(record.Metadata["alter0.session.pinned"])) {
+		case "true", "1", "yes", "on":
+			return true
+		}
+	}
+	return false
 }
 
 func deriveConversationRuntimeSessionStatus(records []sessiondomain.MessageRecord) string {

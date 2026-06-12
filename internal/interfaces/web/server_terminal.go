@@ -27,6 +27,10 @@ type terminalSessionInputRequest struct {
 	SkillIDs    []string                   `json:"skill_ids,omitempty"`
 }
 
+type terminalSessionPinRequest struct {
+	Pinned *bool `json:"pinned"`
+}
+
 type terminalSessionRecoverRequest struct {
 	ID                string    `json:"id"`
 	TerminalSessionID string    `json:"terminal_session_id,omitempty"`
@@ -172,6 +176,31 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	switch parts[1] {
+	case "pin":
+		if len(parts) != 2 {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		defer r.Body.Close()
+		var req terminalSessionPinRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+			return
+		}
+		if req.Pinned == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pinned is required"})
+			return
+		}
+		session, err := s.terminals.SetPinned(ownerID, sessionID, *req.Pinned)
+		if err != nil {
+			s.writeTerminalError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
 	case "turns":
 		if len(parts) == 2 {
 			if r.Method != http.MethodGet {

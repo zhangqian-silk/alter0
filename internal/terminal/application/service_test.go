@@ -988,6 +988,53 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 	}
 }
 
+func TestServiceSetPinnedPersistsAndSortsPinnedSessionsFirst(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: t.TempDir()})
+	older, err := service.Recover(RecoverRequest{
+		OwnerID:   "owner-pin",
+		SessionID: "terminal-older",
+		CreatedAt: now.Add(-20 * time.Minute),
+		UpdatedAt: now.Add(-20 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("recover older session: %v", err)
+	}
+	if _, err := service.Recover(RecoverRequest{
+		OwnerID:   "owner-pin",
+		SessionID: "terminal-newer",
+		CreatedAt: now.Add(-5 * time.Minute),
+		UpdatedAt: now.Add(-5 * time.Minute),
+	}); err != nil {
+		t.Fatalf("recover newer session: %v", err)
+	}
+
+	pinned, err := service.SetPinned("owner-pin", older.ID, true)
+	if err != nil {
+		t.Fatalf("set pinned: %v", err)
+	}
+	if !pinned.Pinned {
+		t.Fatalf("expected pinned snapshot")
+	}
+
+	items := service.List("owner-pin")
+	if len(items) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(items))
+	}
+	if items[0].ID != older.ID || !items[0].Pinned {
+		t.Fatalf("expected pinned older session first, got %+v", items)
+	}
+
+	reloaded := NewService(context.Background(), nil, nil, Options{WorkingDir: service.options.WorkingDir})
+	restored, ok := reloaded.Get("owner-pin", older.ID)
+	if !ok {
+		t.Fatalf("expected persisted pinned session to restore")
+	}
+	if !restored.Pinned {
+		t.Fatalf("expected restored pinned session")
+	}
+}
+
 func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *testing.T) {
 	session := &runtimeSession{
 		summary: terminaldomain.Session{

@@ -643,6 +643,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-runtime-view='terminal']")).toHaveClass("runtime-workspace-view");
     expect(document.querySelector("[data-runtime-workspace-page='true']")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-select")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-session-pin")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-details")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-delete")).toBeInTheDocument();
     expect(document.querySelector(".runtime-session-card")).not.toHaveClass("route-card");
@@ -847,6 +848,76 @@ describe("ReactManagedTerminalRouteBody", () => {
       String(request) === "/api/terminal/sessions/terminal-new-1/input"
       && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
     expect(view.container.querySelector("[data-runtime-session-select='terminal-new-placeholder']")).not.toBeInTheDocument();
+  });
+
+  it("pins terminal sessions through the shared session action button set", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [{
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            pinned: false,
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+          }],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            pinned: false,
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1/pin" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            pinned: true,
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    const pinButton = await screen.findByRole("button", { name: "Pin session", hidden: true });
+    fireEvent.click(pinButton);
+
+    await screen.findByRole("button", { name: "Unpin session", hidden: true });
+    expect(vi.mocked(fetch).mock.calls.some(([request, init]) =>
+      String(request) === "/api/terminal/sessions/terminal-1/pin"
+      && String(init?.method || "GET").toUpperCase() === "POST"
+      && init?.body === JSON.stringify({ pinned: true })
+    )).toBe(true);
   });
 
   it("keeps terminal status copy inside the shared composer form instead of adding an outer note row", async () => {

@@ -132,11 +132,18 @@ describe("RuntimeWorkspacePage", () => {
     expect(setRuntimeSessionRail).toHaveBeenLastCalledWith(null);
   });
 
-  it("keeps session details and delete as separate right-side actions", () => {
+  it("keeps session pin, details, and delete as separate right-side actions", () => {
     const controller = buildController();
+    const onPinnedChange = vi.fn();
     const onViewDetails = vi.fn();
     const onDelete = vi.fn();
     Object.assign(controller.sessionList.groups[0].items[1], {
+      pinned: true,
+      pinLabel: "Pin",
+      unpinLabel: "Unpin",
+      pinAriaLabel: "Pin session",
+      unpinAriaLabel: "Unpin session",
+      onPinnedChange,
       onViewDetails,
       viewDetailsLabel: "Details",
       viewDetailsAriaLabel: "View session details",
@@ -146,6 +153,12 @@ describe("RuntimeWorkspacePage", () => {
     });
 
     renderRuntimeWorkspacePage(vi.fn(), controller);
+
+    fireEvent.click(screen.getByRole("button", { name: "Unpin session", hidden: true }));
+
+    expect(onPinnedChange).toHaveBeenCalledWith(false);
+    expect(onViewDetails).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "View session details", hidden: true }));
 

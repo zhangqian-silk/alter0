@@ -336,6 +336,9 @@ func (s *Service) List(ownerID string) []terminaldomain.Session {
 		items = append(items, snapshot)
 	}
 	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Pinned != items[j].Pinned {
+			return items[i].Pinned
+		}
 		leftAt := terminalSessionSortAt(items[i])
 		rightAt := terminalSessionSortAt(items[j])
 		if leftAt.Equal(rightAt) {
@@ -365,6 +368,28 @@ func (s *Service) Get(ownerID string, sessionID string) (terminaldomain.Session,
 		return terminaldomain.Session{}, false
 	}
 	return item.snapshot(), true
+}
+
+func (s *Service) SetPinned(ownerID string, sessionID string, pinned bool) (terminaldomain.Session, error) {
+	item, err := s.getOwnedSession(ownerID, sessionID)
+	if err != nil {
+		if !errors.Is(err, ErrSessionNotFound) {
+			return terminaldomain.Session{}, err
+		}
+		item, err = s.restorePersistedOwnedSession(ownerID, sessionID)
+		if err != nil {
+			return terminaldomain.Session{}, err
+		}
+	}
+
+	item.mu.Lock()
+	item.summary.Pinned = pinned
+	snapshot := item.summary
+	item.mu.Unlock()
+
+	s.persistSession(item)
+	snapshot.Status = terminaldomain.NormalizeSessionStatus(snapshot.Status)
+	return snapshot, nil
 }
 
 func (s *Service) ListTurns(ownerID string, sessionID string) ([]TurnSummary, error) {

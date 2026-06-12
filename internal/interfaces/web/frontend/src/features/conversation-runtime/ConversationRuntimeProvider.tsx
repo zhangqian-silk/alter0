@@ -105,6 +105,7 @@ type ChatSession = {
   titleAuto: boolean;
   titleScore: number;
   createdAt: number;
+  pinned: boolean;
   target: ChatTarget;
   modelProviderID: string;
   modelID: string;
@@ -205,6 +206,7 @@ type RuntimeSessionPayload = {
   title_auto?: boolean;
   title_score?: number;
   created_at?: string | number;
+  pinned?: boolean;
   target_type?: string;
   target_id?: string;
   target_name?: string;
@@ -268,6 +270,8 @@ type ConversationRuntimeContextValue = {
     shortHash: string;
     createdAt: number;
     active: boolean;
+    pinned: boolean;
+    pinning: boolean;
   }>;
   draft: string;
   target: ChatTarget;
@@ -285,6 +289,7 @@ type ConversationRuntimeContextValue = {
   createSession: () => void;
   focusSession: (sessionID: string) => void;
   removeSession: (sessionID: string) => Promise<void>;
+  setSessionPinned: (sessionID: string, pinned: boolean) => Promise<void>;
   setDraft: (value: string) => void;
   addDraftAttachments: (attachments: ComposerAttachment[]) => Promise<void>;
   removeDraftAttachment: (attachmentID: string) => void;
@@ -617,6 +622,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     titleAuto: record.titleAuto !== false,
     titleScore: Number.isFinite(Number(record.titleScore)) ? Number(record.titleScore) : 0,
     createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : Date.now(),
+    pinned: record.pinned === true,
     target: normalizeChatTarget({
       type: normalizeText(record.targetType) === "agent" ? "agent" : "model",
       id: normalizeText(record.targetID),
@@ -680,6 +686,7 @@ function serializeStoredSession(session: ChatSession): Record<string, unknown> {
     titleAuto: session.titleAuto,
     titleScore: session.titleScore,
     createdAt: session.createdAt,
+    pinned: session.pinned,
     targetType: session.target.type,
     targetID: session.target.id,
     targetName: session.target.name,
@@ -889,6 +896,7 @@ function normalizeRuntimeSession(
     titleAuto: item.title_auto !== false,
     titleScore: Number.isFinite(Number(item.title_score)) ? Number(item.title_score) : previous?.titleScore || 0,
     createdAt: normalizeDateValue(item.created_at),
+    pinned: typeof item.pinned === "boolean" ? item.pinned : previous?.pinned || false,
     target: normalizeChatTarget({
       type: normalizeText(item.target_type) === "agent" ? "agent" : "model",
       id: normalizeText(item.target_id),
@@ -1131,6 +1139,7 @@ export function ConversationRuntimeProvider({
   const [inspectorTab, setInspectorTab] = useState<"model" | "capabilities" | "skills">("model");
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
+  const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   const pollTimerRef = useRef<number>(0);
   const sessionsByRouteRef = useRef(sessionsByRoute);
@@ -1191,6 +1200,7 @@ export function ConversationRuntimeProvider({
       titleAuto: true,
       titleScore: 0,
       createdAt: Date.now(),
+      pinned: false,
       target: targetValue,
       modelProviderID: "",
       modelID: "",
@@ -1321,6 +1331,24 @@ export function ConversationRuntimeProvider({
     persistComposerAttachmentDrafts(nextAttachmentDrafts);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
   }, [activeSessionByRoute, apiClient, route, sessionsByRoute]);
+
+  const setSessionPinned = useCallback(async (sessionID: string, pinned: boolean) => {
+    const normalizedSessionID = normalizeText(sessionID);
+    if (!normalizedSessionID) {
+      return;
+    }
+    setPinningSessionIDs((current) => ({ ...current, [normalizedSessionID]: true }));
+    try {
+      await apiClient.post(`/api/sessions/${encodeURIComponent(normalizedSessionID)}/pin`, { pinned });
+      patchSession(route, normalizedSessionID, (session) => ({
+        ...session,
+        pinned,
+      }));
+    } catch {
+    } finally {
+      setPinningSessionIDs((current) => ({ ...current, [normalizedSessionID]: false }));
+    }
+  }, [apiClient, patchSession, route]);
 
   const sendMessageFallback = async (
     routeKey: ConversationRoute,
@@ -2075,6 +2103,8 @@ export function ConversationRuntimeProvider({
       shortHash: hashSessionIDShort(session.id),
       createdAt: session.createdAt,
       active: session.id === activeSessionID,
+      pinned: session.pinned,
+      pinning: Boolean(pinningSessionIDs[session.id]),
     })),
     target: currentTarget,
     lockedTarget: Boolean(activeSession?.messages.length),
@@ -2127,6 +2157,7 @@ export function ConversationRuntimeProvider({
     },
     focusSession,
     removeSession,
+    setSessionPinned,
     toggleInspector: (tab) => {
       if (!tab) {
         setInspectorOpen((current) => {
@@ -2228,6 +2259,7 @@ export function ConversationRuntimeProvider({
     activeSession,
     language,
     activeSessionID,
+    pinningSessionIDs,
     currentTarget,
     selection.providerID,
     selection.modelID,
@@ -2239,6 +2271,7 @@ export function ConversationRuntimeProvider({
     activeSessionByRoute,
     persistRuntimeSessionConfig,
     removeSession,
+    setSessionPinned,
   ]);
 
   const composerValue = useMemo<ConversationRuntimeComposerContextValue>(() => ({

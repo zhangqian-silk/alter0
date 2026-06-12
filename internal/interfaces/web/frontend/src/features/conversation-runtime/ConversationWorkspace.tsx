@@ -208,6 +208,10 @@ function useConversationWorkspaceController(
   const viewSessionDetailsAriaLabel = language === "zh" ? "查看会话详情" : "View session details";
   const deleteSessionLabel = language === "zh" ? "删除" : "Delete";
   const deleteSessionAriaLabel = language === "zh" ? "删除会话" : "Delete session";
+  const pinSessionLabel = language === "zh" ? "置顶" : "Pin";
+  const unpinSessionLabel = language === "zh" ? "取消置顶" : "Unpin";
+  const pinSessionAriaLabel = language === "zh" ? "置顶会话" : "Pin session";
+  const unpinSessionAriaLabel = language === "zh" ? "取消置顶会话" : "Unpin session";
   const groupedSessionItems = useMemo(
     () => groupSessionListItems(runtime.sessionItems, {
       language,
@@ -252,6 +256,9 @@ function useConversationWorkspaceController(
     workbench.closeMobileSessionPane();
     return runtime.removeSession(sessionID);
   }, [runtime, workbench]);
+  const handlePinnedChange = useCallback((sessionID: string, pinned: boolean) => {
+    void runtime.setSessionPinned(sessionID, pinned);
+  }, [runtime]);
   const sessionListGroups = useMemo(
     () => groupedSessionItems.map((group) => ({
       ...group,
@@ -270,6 +277,13 @@ function useConversationWorkspaceController(
         onViewDetails: () => handleViewSessionDetails(item.id),
         viewDetailsLabel: viewSessionDetailsLabel,
         viewDetailsAriaLabel: viewSessionDetailsAriaLabel,
+        pinned: item.pinned,
+        pinning: item.pinning,
+        onPinnedChange: (pinned) => handlePinnedChange(item.id, pinned),
+        pinLabel: pinSessionLabel,
+        unpinLabel: unpinSessionLabel,
+        pinAriaLabel: pinSessionAriaLabel,
+        unpinAriaLabel: unpinSessionAriaLabel,
         onDelete: () => void handleRemoveSession(item.id),
         deleteLabel: deleteSessionLabel,
         deleteAriaLabel: deleteSessionAriaLabel,
@@ -288,11 +302,16 @@ function useConversationWorkspaceController(
       deleteSessionLabel,
       groupedSessionItems,
       handleFocusSession,
+      handlePinnedChange,
       handleRemoveSession,
       handleViewSessionDetails,
       idleSessionBadgeLabel,
       language,
+      pinSessionAriaLabel,
+      pinSessionLabel,
       sessionStatusByID,
+      unpinSessionAriaLabel,
+      unpinSessionLabel,
       viewSessionDetailsAriaLabel,
       viewSessionDetailsLabel,
     ],

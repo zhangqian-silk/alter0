@@ -126,9 +126,14 @@ function SkillSelectionHarness() {
 function SessionListHarness() {
   const runtime = useConversationRuntimeWorkspace();
   return (
-    <output data-testid="sessions">
-      {runtime.sessionItems.map((session) => `${session.title}:${session.shortHash}`).join("|")}
-    </output>
+    <div>
+      <button type="button" onClick={() => void runtime.setSessionPinned("alter0-chat", false)}>
+        unpin active
+      </button>
+      <output data-testid="sessions">
+        {runtime.sessionItems.map((session) => `${session.title}:${session.shortHash}:${session.pinned ? "pinned" : "unpinned"}`).join("|")}
+      </output>
+    </div>
   );
 }
 
@@ -276,6 +281,53 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("New"));
     expect(apiClientMock.get).toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=chat");
     expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/conversation-runtime/sessions?route=agent-runtime");
+  });
+
+  it("updates Chat session pin state through the session history pin endpoint", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/conversation-runtime/sessions?route=chat":
+          return {
+            items: [
+              {
+                id: "alter0-chat",
+                title: "Pinned session",
+                created_at: "2026-04-23T03:30:00Z",
+                target_type: "model",
+                target_id: "raw-model",
+                target_name: "Raw Model",
+                pinned: true,
+              },
+            ],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.post.mockResolvedValueOnce({ session_id: "alter0-chat", pinned: false });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SessionListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent("Pinned session"));
+    expect(screen.getByTestId("sessions")).toHaveTextContent("pinned");
+
+    fireEvent.click(screen.getByRole("button", { name: "unpin active" }));
+
+    await waitFor(() => {
+      expect(apiClientMock.post).toHaveBeenCalledWith(
+        "/api/sessions/alter0-chat/pin",
+        { pinned: false },
+      );
+    });
+    expect(screen.getByTestId("sessions")).toHaveTextContent("unpinned");
   });
 
   it("selects all public skills by default for a new blank Chat session", async () => {

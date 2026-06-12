@@ -69,6 +69,7 @@ type TerminalSession = {
   shell?: string;
   working_dir?: string;
   status?: string;
+  pinned?: boolean;
   created_at?: string | number;
   last_output_at?: string | number;
   updated_at?: string | number;
@@ -145,6 +146,10 @@ type TerminalCopy = {
   exited: string;
   failed: string;
   interrupted: string;
+  pin: string;
+  unpin: string;
+  pinSession: string;
+  unpinSession: string;
   delete: string;
   deleteConfirm: string;
   inputPlaceholder: string;
@@ -197,6 +202,10 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     exited: "Exited",
     failed: "Failed",
     interrupted: "Interrupted",
+    pin: "Pin",
+    unpin: "Unpin",
+    pinSession: "Pin session",
+    unpinSession: "Unpin session",
     delete: "Delete",
     deleteConfirm: "Delete this terminal session?",
     inputPlaceholder: "Type command or prompt...",
@@ -247,6 +256,10 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     exited: "已退出",
     failed: "失败",
     interrupted: "已中断",
+    pin: "置顶",
+    unpin: "取消置顶",
+    pinSession: "置顶会话",
+    unpinSession: "取消置顶会话",
     delete: "删除",
     deleteConfirm: "确认删除这个终端会话？",
     inputPlaceholder: "输入命令或继续追问...",
@@ -588,6 +601,9 @@ export function resolveTerminalPollPlan(options: {
 
 function sortSessions(items: TerminalSession[]): TerminalSession[] {
   return [...items].sort((left, right) => {
+    if (Boolean(left.pinned) !== Boolean(right.pinned)) {
+      return left.pinned ? -1 : 1;
+    }
     const leftAt = Math.max(
       parseTimestamp(left.last_output_at),
       parseTimestamp(left.updated_at),
@@ -728,6 +744,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingSessionID, setDeletingSessionID] = useState("");
+  const [pinningSessionID, setPinningSessionID] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [inputValue, setInputValue] = useState("");
@@ -1329,6 +1346,27 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     }
   };
 
+  const setSessionPinned = async (sessionID: string, pinned: boolean) => {
+    setPinningSessionID(sessionID);
+    try {
+      const payload = await apiClient.post<TerminalSessionResponse>(
+        `/api/terminal/sessions/${encodeURIComponent(sessionID)}/pin`,
+        { pinned },
+      );
+      setSessions((current) =>
+        sortSessions(
+          current.map((session) =>
+            session.id === sessionID
+              ? mergeSessionSnapshot(session, payload.session || { id: sessionID, pinned })
+              : session,
+          ),
+        ),
+      );
+    } finally {
+      setPinningSessionID("");
+    }
+  };
+
   const handleComposerAttachmentPicker = () => {
     composerFileInputRef.current?.click();
   };
@@ -1721,6 +1759,14 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
                 activeLabel: copy.current,
                 idleLabel: copy.sessionLabel,
                 onSelect: () => void selectSession(session.id),
+                pinned: Boolean(session.pinned),
+                pinning: pinningSessionID === session.id,
+                onPinnedChange: (pinned) => void setSessionPinned(session.id, pinned),
+                pinLabel: copy.pin,
+                unpinLabel: copy.unpin,
+                pinAriaLabel: copy.pinSession,
+                unpinAriaLabel: copy.unpinSession,
+                pinProps: { "data-runtime-pin-session": session.id },
                 onViewDetails: () => void viewSessionDetails(session.id),
                 viewDetailsLabel: copy.details,
                 viewDetailsAriaLabel: copy.details,

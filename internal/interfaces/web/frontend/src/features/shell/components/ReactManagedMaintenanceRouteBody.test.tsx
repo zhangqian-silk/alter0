@@ -49,6 +49,10 @@ describe("ReactManagedMaintenanceRouteBody", () => {
           skipped_pinned_count: 1,
           skipped_protected_count: 3,
           scanned_count: 5,
+          terminal_deleted_count: 1,
+          terminal_skipped_pinned_count: 2,
+          terminal_skipped_protected_count: 1,
+          terminal_scanned_count: 4,
           finished_at: "2026-04-14T03:10:00Z",
           next_run_at: "2026-04-15T05:20:00Z",
         }),
@@ -73,5 +77,6 @@ describe("ReactManagedMaintenanceRouteBody", () => {
       );
     });
     expect(screen.getByText("Deleted 2 · pinned 1 · protected 3 · scanned 5")).toBeInTheDocument();
+    expect(screen.getByText("Terminal deleted 1 · pinned 2 · active 1 · scanned 4")).toBeInTheDocument();
   });
 });
