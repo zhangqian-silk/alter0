@@ -2253,6 +2253,68 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
   });
 
+  it("merges a paged active-session refresh into existing terminal turns", async () => {
+    let sessionLoads = 0;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [{
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+          }],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        sessionLoads += 1;
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns_paging: {
+              has_more_before: true,
+              oldest_turn_id: sessionLoads > 1 ? "turn-2" : "turn-1",
+              newest_turn_id: "turn-2",
+            },
+            turns: sessionLoads > 1
+              ? [{ id: "turn-2", prompt: "newer", status: "completed", final_output: "newer updated", steps: [] }]
+              : [
+                  { id: "turn-1", prompt: "older", status: "completed", final_output: "older output", steps: [] },
+                  { id: "turn-2", prompt: "newer", status: "completed", final_output: "newer output", steps: [] },
+                ],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => expect(screen.getByText("older output")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("newer output")).toBeInTheDocument());
+
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+
+    await waitFor(() => expect(screen.getByText("newer updated")).toBeInTheDocument());
+    expect(screen.getByText("older output")).toBeInTheDocument();
+  });
+
   it("marks the terminal composer input as plain text so mobile autofill bars stay off", async () => {
     renderTerminalRouteBody({
       isMobileViewport: true,

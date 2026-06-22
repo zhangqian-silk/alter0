@@ -17,6 +17,9 @@ import (
 const terminalClientIDHeader = "X-Alter0-Terminal-Client"
 const sharedTerminalClientID = "shared"
 const chatTerminalClientID = "chat"
+const defaultTerminalTurnDetailLimit = 20
+const maxTerminalTurnDetailLimit = 160
+const maxTerminalTurnDetailBytes = 256 * 1024
 
 type terminalSessionCreateRequest struct {
 	Title string `json:"title,omitempty"`
@@ -53,6 +56,18 @@ type terminalStepEnvelope struct {
 	Step any `json:"step"`
 }
 
+type terminalTurnPagingEnvelope struct {
+	Limit            int    `json:"limit"`
+	Total            int    `json:"total"`
+	ByteLimit        int    `json:"byte_limit"`
+	ApproxBytes      int    `json:"approx_bytes"`
+	HasMoreBefore    bool   `json:"has_more_before"`
+	HasMoreAfter     bool   `json:"has_more_after,omitempty"`
+	OldestTurnID     string `json:"oldest_turn_id,omitempty"`
+	NewestTurnID     string `json:"newest_turn_id,omitempty"`
+	NextBeforeTurnID string `json:"next_before_turn_id,omitempty"`
+}
+
 func (s *Server) terminalSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
 	if s.terminals == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "terminal service unavailable"})
@@ -85,7 +100,7 @@ func (s *Server) terminalSessionCollectionHandler(w http.ResponseWriter, r *http
 			s.writeTerminalError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
+		writeJSON(w, http.StatusCreated, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -130,7 +145,7 @@ func (s *Server) terminalSessionRecoverHandler(w http.ResponseWriter, r *http.Re
 		s.writeTerminalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
+	writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 }
 
 func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +187,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		s.touchSessionActivity(sessionID)
-		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 		return
 	}
 
@@ -201,7 +216,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			s.writeTerminalError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 	case "turns":
 		if len(parts) == 2 {
 			if r.Method != http.MethodGet {
@@ -275,13 +290,13 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		s.touchSessionActivity(sessionID)
-		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session)})
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})
 	}
 }
 
-func (s *Server) buildTerminalSessionDetail(ownerID string, session any) any {
+func (s *Server) buildTerminalSessionDetail(ownerID string, session any, r *http.Request) any {
 	if s.terminals == nil {
 		return session
 	}
@@ -299,9 +314,81 @@ func (s *Server) buildTerminalSessionDetail(ownerID string, session any) any {
 	}
 	turns, err := s.terminals.ListTurns(ownerID, sessionID)
 	if err == nil {
-		sessionMap["turns"] = turns
+		items, paging := pageTerminalTurns(turns, r)
+		sessionMap["turns"] = items
+		sessionMap["turns_paging"] = paging
 	}
 	return sessionMap
+}
+
+func pageTerminalTurns(turns []terminalapp.TurnSummary, r *http.Request) ([]terminalapp.TurnSummary, terminalTurnPagingEnvelope) {
+	limit := defaultTerminalTurnDetailLimit
+	beforeTurnID := ""
+	if r != nil {
+		query := r.URL.Query()
+		beforeTurnID = strings.TrimSpace(query.Get("turn_before"))
+		if rawLimit := strings.TrimSpace(query.Get("turn_limit")); rawLimit != "" {
+			if parsed, err := strconv.Atoi(rawLimit); err == nil && parsed > 0 {
+				limit = parsed
+			}
+		}
+	}
+	if limit > maxTerminalTurnDetailLimit {
+		limit = maxTerminalTurnDetailLimit
+	}
+	total := len(turns)
+	end := total
+	if beforeTurnID != "" {
+		for index, turn := range turns {
+			if strings.TrimSpace(turn.ID) == beforeTurnID {
+				end = index
+				break
+			}
+		}
+	}
+	if end < 0 {
+		end = 0
+	}
+	if end > total {
+		end = total
+	}
+	candidateStart := end - limit
+	if candidateStart < 0 {
+		candidateStart = 0
+	}
+	start := end
+	approxBytes := 0
+	for index := end - 1; index >= candidateStart; index-- {
+		turnBytes := approximateTerminalTurnBytes(turns[index])
+		if start < end && approxBytes+turnBytes > maxTerminalTurnDetailBytes {
+			break
+		}
+		approxBytes += turnBytes
+		start = index
+	}
+	items := append([]terminalapp.TurnSummary{}, turns[start:end]...)
+	paging := terminalTurnPagingEnvelope{
+		Limit:         limit,
+		Total:         total,
+		ByteLimit:     maxTerminalTurnDetailBytes,
+		ApproxBytes:   approxBytes,
+		HasMoreBefore: start > 0,
+		HasMoreAfter:  end < total,
+	}
+	if len(items) > 0 {
+		paging.OldestTurnID = items[0].ID
+		paging.NewestTurnID = items[len(items)-1].ID
+		paging.NextBeforeTurnID = items[0].ID
+	}
+	return items, paging
+}
+
+func approximateTerminalTurnBytes(turn terminalapp.TurnSummary) int {
+	raw, err := json.Marshal(turn)
+	if err != nil {
+		return len(turn.ID) + len(turn.Prompt) + len(turn.FinalOutput)
+	}
+	return len(raw)
 }
 
 func (s *Server) resolveTerminalSkillContext(skillIDs *[]string) *execdomain.SkillContext {

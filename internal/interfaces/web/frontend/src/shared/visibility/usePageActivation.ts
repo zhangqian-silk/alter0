@@ -41,9 +41,13 @@ export function usePageActivation(options: UsePageActivationOptions) {
     };
 
     window.addEventListener("focus", triggerActive);
+    window.addEventListener("pageshow", triggerActive);
+    window.addEventListener("online", triggerActive);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("focus", triggerActive);
+      window.removeEventListener("pageshow", triggerActive);
+      window.removeEventListener("online", triggerActive);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [options.debounceMs]);
