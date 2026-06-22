@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,51 @@ import (
 	taskdomain "alter0/internal/task/domain"
 	tasksummaryapp "alter0/internal/tasksummary/application"
 )
+
+type stubWebTaskService struct {
+	listPage taskapp.TaskPage
+	items    map[string]taskdomain.Task
+	logs     map[string]taskapp.TaskLogPage
+}
+
+func (s *stubWebTaskService) List(taskapp.ListQuery) taskapp.TaskPage {
+	return s.listPage
+}
+
+func (s *stubWebTaskService) Get(taskID string) (taskdomain.Task, bool) {
+	if s.items == nil {
+		return taskdomain.Task{}, false
+	}
+	item, ok := s.items[taskID]
+	return item, ok
+}
+
+func (s *stubWebTaskService) ListBySession(string) []taskdomain.Task {
+	return []taskdomain.Task{}
+}
+
+func (s *stubWebTaskService) ListLogs(taskID string, _ int, _ int) (taskapp.TaskLogPage, error) {
+	if s.logs == nil {
+		return taskapp.TaskLogPage{}, errors.New("logs unavailable")
+	}
+	page, ok := s.logs[taskID]
+	if !ok {
+		return taskapp.TaskLogPage{}, errors.New("logs unavailable")
+	}
+	return page, nil
+}
+
+func (s *stubWebTaskService) ListArtifacts(taskID string) ([]taskdomain.TaskArtifact, error) {
+	item, ok := s.Get(taskID)
+	if !ok {
+		return nil, taskapp.ErrTaskNotFound
+	}
+	return item.Artifacts, nil
+}
+
+func (s *stubWebTaskService) DeleteBySession(string) error {
+	return nil
+}
 
 func TestMemoryTaskCollectionHandlerFiltersByStatusTypeAndTime(t *testing.T) {
 	now := time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
@@ -56,9 +102,6 @@ func TestMemoryTaskCollectionHandlerFiltersByStatusTypeAndTime(t *testing.T) {
 	}
 	if body.Items[0].TaskID != "task-1" {
 		t.Fatalf("expected task-1, got %+v", body.Items[0])
-	}
-	if body.Items[0].LastHeartbeatAt.IsZero() || body.Items[0].TimeoutAt.IsZero() {
-		t.Fatalf("expected heartbeat fields in summary item, got %+v", body.Items[0])
 	}
 	if body.Pagination.Total != 1 || body.Pagination.HasNext {
 		t.Fatalf("unexpected pagination: %+v", body.Pagination)
@@ -110,12 +153,6 @@ func TestMemoryTaskDetailAndRebuildSummaryEndpointsDoNotWriteMemoryRefs(t *testi
 	}
 	if detailBody.Meta.TaskID != "task-detail" {
 		t.Fatalf("unexpected meta payload: %+v", detailBody.Meta)
-	}
-	if detailBody.Meta.LastHeartbeatAt.IsZero() {
-		t.Fatalf("expected heartbeat timestamp in meta payload: %+v", detailBody.Meta)
-	}
-	if detailBody.Meta.TimeoutAt.IsZero() {
-		t.Fatalf("expected timeout window in meta payload: %+v", detailBody.Meta)
 	}
 	if len(detailBody.SummaryRefs) != 0 {
 		t.Fatalf("expected no direct memory summary refs in detail response, got %+v", detailBody.SummaryRefs)
@@ -184,13 +221,8 @@ func newMemoryTask(taskID string, taskType string, status taskdomain.TaskStatus,
 		MessageID:       "message-" + taskID,
 		TaskType:        taskType,
 		Status:          status,
-		Progress:        100,
-		MaxRetries:      1,
-		TimeoutMS:       90000,
 		CreatedAt:       finishedAt.Add(-time.Minute),
 		UpdatedAt:       finishedAt,
-		LastHeartbeatAt: finishedAt.Add(-10 * time.Second),
-		TimeoutAt:       finishedAt.Add(2 * time.Minute),
 		FinishedAt:      finishedAt,
 		RequestContent:  "handle " + taskID,
 		Summary:         "summary " + taskID,

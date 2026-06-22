@@ -36,8 +36,6 @@ type TaskSummaryItem = {
   status?: string;
   updated_at?: string;
   finished_at?: string;
-  last_heartbeat_at?: string;
-  timeout_at?: string;
   tags?: string[];
 };
 
@@ -57,12 +55,8 @@ type TaskDetailPayload = {
     session_id?: string;
     source_message_id?: string;
     status?: string;
-    progress?: number;
-    retry_count?: number;
     updated_at?: string;
     finished_at?: string;
-    last_heartbeat_at?: string;
-    timeout_at?: string;
   };
   summary_refs?: Array<{
     tier?: string;
@@ -142,10 +136,7 @@ type Copy = {
   date: string;
   session: string;
   sourceMessage: string;
-  progress: string;
-  retryCount: string;
   finished: string;
-  lastHeartbeat: string;
   refs: string;
   loadFailed: (message: string) => string;
 };
@@ -192,10 +183,7 @@ const COPY: Record<LegacyShellLanguage, Copy> = {
     date: "Date",
     session: "Session",
     sourceMessage: "Source Message",
-    progress: "Progress",
-    retryCount: "Retry Count",
     finished: "Finished",
-    lastHeartbeat: "Last Heartbeat",
     refs: "Summary Refs",
     loadFailed: (message) => `Load failed: ${message}`,
   },
@@ -240,10 +228,7 @@ const COPY: Record<LegacyShellLanguage, Copy> = {
     date: "日期",
     session: "会话",
     sourceMessage: "源消息",
-    progress: "进度",
-    retryCount: "重试次数",
     finished: "完成时间",
-    lastHeartbeat: "最近心跳",
     refs: "摘要引用",
     loadFailed: (message) => `加载失败：${message}`,
   },
@@ -361,8 +346,6 @@ export function ReactManagedMemoryRouteBody({
                   onChange={(event) => setTaskDraftFilters((current) => ({ ...current, status: event.target.value }))}
                 >
                   <option value="">-</option>
-                  <option value="queued">queued</option>
-                  <option value="running">running</option>
                   <option value="success">success</option>
                   <option value="failed">failed</option>
                   <option value="canceled">canceled</option>
@@ -736,11 +719,8 @@ function TaskDetailView({
         <RouteFieldRow label={copy.taskType} value={meta?.task_type} copyLabel="Copy value" />
         <RouteFieldRow label={copy.session} value={meta?.session_id} copyLabel="Copy value" copyable={true} mono={true} />
         <RouteFieldRow label={copy.sourceMessage} value={meta?.source_message_id} copyLabel="Copy value" copyable={true} mono={true} />
-        <RouteFieldRow label={copy.progress} value={meta?.progress} copyLabel="Copy value" />
-        <RouteFieldRow label={copy.retryCount} value={meta?.retry_count} copyLabel="Copy value" />
         <RouteFieldRow label={copy.updated} value={formatDateTime(meta?.updated_at)} copyLabel="Copy value" />
         <RouteFieldRow label={copy.finished} value={formatDateTime(meta?.finished_at)} copyLabel="Copy value" />
-        <RouteFieldRow label={copy.lastHeartbeat} value={formatDateTime(meta?.last_heartbeat_at || meta?.timeout_at)} copyLabel="Copy value" />
       </div>
       <div className="task-detail-section">
         <h5>{copy.refs}</h5>

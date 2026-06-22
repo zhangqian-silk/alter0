@@ -455,6 +455,30 @@ func TestExecuteAgentAutoRecallsSelectedMemorySnippets(t *testing.T) {
 	}
 }
 
+func TestMemoryAutoRecallLimitsSnippetLineLength(t *testing.T) {
+	longLine := "response_style: " + strings.Repeat("x", memoryAutoRecallLineMaxChars+40)
+	snippet := buildMemoryRecallSnippet([]string{
+		"# Memory",
+		longLine,
+		"- deployment_target: linux cloud server",
+	}, 1)
+
+	for _, line := range strings.Split(snippet, "\n") {
+		if !strings.HasPrefix(line, "L2:") {
+			continue
+		}
+		value := strings.TrimPrefix(line, "L2: ")
+		if len([]rune(value)) > memoryAutoRecallLineMaxChars+3 {
+			t.Fatalf("expected recalled line to be truncated, got %d runes", len([]rune(value)))
+		}
+		if !strings.HasSuffix(value, "...") {
+			t.Fatalf("expected truncated line suffix, got %q", value)
+		}
+		return
+	}
+	t.Fatalf("expected L2 in snippet, got %q", snippet)
+}
+
 func TestExecuteAgentInjectsConfiguredMemoryStoreFiles(t *testing.T) {
 	root := t.TempDir()
 	storageDir := t.TempDir()

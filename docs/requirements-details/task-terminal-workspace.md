@@ -1,110 +1,32 @@
-# Task, Terminal & Workspace Requirements
+# Terminal & Workspace Requirements
 
-> Last update: 2026-06-09
+> Last update: 2026-06-22
 
 ## 领域边界
 
-Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流、产物交付、会话式终端代理和执行工作区隔离。它接收 Runtime、Conversation、Skill 的执行请求，并提供可追踪、可恢复、可回放的运行态。
+Terminal & Workspace 负责会话式终端代理、执行工作区隔离、Terminal 会话恢复，以及 Memory 页对既有任务摘要数据的只读观测与维护。当前 Web 对话不再分流到后台 Task，也不再提供通用 Task 或 Control Task HTTP 接口。
 
 ## 核心对象
 
 | 对象 | 职责 |
 | --- | --- |
-| `Task` | 后台任务主数据、状态、来源与执行配置 |
-| `TaskSummary` | 可注入 Memory 的任务摘要 |
-| `TaskLog` | 可流式读取和回补的任务日志 |
-| `ArtifactRef` | Web 可访问产物引用 |
+| `TaskSummary` | Memory 可读取的既有任务摘要 |
+| `TaskLog` | Memory 详情中可回看的历史日志 |
+| `ArtifactRef` | Memory 详情中展示的历史产物引用元数据 |
 | `TerminalSession` | Terminal 会话身份、标题、状态、工作区和 Codex 线程 |
 | `TerminalTurn` / `TerminalStep` | Terminal 执行轮次与步骤明细 |
-| `Workspace` | Chat、Task、Terminal 的默认执行目录 |
+| `Workspace` | Chat 与 Terminal 的默认执行目录 |
 | `RuntimeWorkspace` | CLI Runtime 的上下文注入目录、运行时 home 与线程/会话状态 |
-| `RuntimeHeartbeat` | 长任务存活心跳与超时续租窗口 |
-
-## 异步任务
-
-### 分流
-
-- 高复杂度、长耗时或产物型请求可转为后台 Task。
-- 请求被接受后先返回任务卡片，包含任务目标、任务 ID、简要计划与详情入口。
-- 异步任务使用独立后台执行池，不占用主会话同步交流的串行执行槽位。
-
-### 并发与心跳
-
-- 异步任务模块限制后台并发数量，当前稳定上限为最多 5 个任务并发执行。
-- Codex CLI 长任务执行期间每 1 分钟记录一次心跳。
-- 心跳用于续租任务超时窗口，避免仍健康运行的长任务被固定短超时误杀。
-- 列表卡片与详情展示最近心跳和当前窗口截止时间。
-
-### 会话映射
-
-- Task 必须记录 `session_id`、`source_message_id`、`channel_type`、`channel_id`、`trigger_type`、`correlation_id`。
-- Cron 触发任务补充 `job_id`、`job_name`、`fired_at`。
-- 删除会话时同步清理关联任务记录与任务产物，避免孤儿数据。
-
-## 任务观测
-
-### 任务视图
-
-- Control 页面提供 `Tasks` 入口。
-- 列表支持状态、类型、时间、会话、触发类型、通道、来源消息与结果消息等筛选。
-- 桌面端默认采用左侧任务列表 + 右侧详情面板的主从布局；任务列表保持紧凑摘要，右侧详情区展示基础信息、来源字段、运行状态、心跳、日志、产物、控制动作和会话回链。
-
-### 日志
-
-- 任务日志支持 SSE 流式观测。
-- 日志流支持游标断点续读与回补查询。
-- 普通任务与 Control 任务日志均支持游标查询；Control 任务详情页可通过日志流接口持续观察后台执行。
-- Control 任务详情页在页面隐藏或标签页进入后台时必须主动断开日志 SSE；页面重新可见或重新获得焦点后，先补拉任务详情与日志页，再按最新 cursor 重建日志流。
-- 高频日志到达时，前端按浏览器逐帧节奏合并刷新，避免每条日志事件都同步整块重绘。
-- 日志不可用时需给出重建或不可恢复提示。
-
-### 控制动作
-
-- Task 支持 `retry` 与 `cancel`。
-- Control 任务详情在可交互 Terminal 任务上支持追加输入，追加输入以 follow-up Task 形式进入后台执行，并保留原任务、锚点任务和 Terminal 会话元数据。
-- Task 详情抽屉中的 follow-up terminal 输入支持最多 5 张图片附件、缩略图预览、移除和仅图片发送；附件需作为统一消息元数据随 follow-up Task 一起进入后台执行。
-- 任务详情与会话详情支持双向跳转。
-- 任务完成后向聊天区回写精简摘要；完整输出保留在任务详情、日志与产物中。
-
-## 产物交付
-
-- Web 会话不直接向用户返回本地文件路径。
-- 文件、页面、截图、构建结果等交付物必须通过 `ArtifactRef`、下载接口或预览接口访问。
-- 产物列表响应不得泄露本地 `file://` 或宿主绝对路径；下载接口以附件形式交付，预览接口只开放支持安全预览的内容类型。
-- 产物引用需保留任务、会话与来源消息回链。
-- 删除会话或任务时，相关产物按留存策略清理。
 
 ## 任务记忆视图
 
-- `Skill -> Memory` 的任务历史面板复用 Task 领域数据，支持按状态、类型、时间与分页查询任务摘要。
-- 任务历史列表默认以高密度表格展示，任务详情通过侧栏读取摘要、来源字段、状态、时间戳、日志入口和产物入口。
+- `Settings -> Memory` 的任务历史面板复用既有任务摘要数据，支持按状态、类型、时间与分页查询任务摘要。
+- 任务历史列表默认以高密度表格展示，任务详情通过侧栏读取摘要、来源字段、状态、时间戳、日志和产物元数据。
 - 任务日志下钻支持游标分页读取，缺失日志时返回稳定错误并保留任务详情可读。
 - 任务摘要缺失或需要刷新时，支持对单个任务触发摘要重建。
 - Memory 任务视图只提供历史观测和摘要维护，不承担任务执行、重试或取消控制。
 
 ## 接口边界
-
-### Task
-
-- `POST /api/tasks` 创建异步任务。
-- `GET /api/tasks` 查询任务列表。
-- `GET /api/tasks/{task_id}` 查询任务详情。
-- `POST /api/tasks/{task_id}/cancel` 取消任务。
-- `POST /api/tasks/{task_id}/retry` 重试任务。
-- `GET /api/tasks/{task_id}/logs` 游标读取任务日志。
-- `GET /api/tasks/{task_id}/artifacts` 查询任务产物。
-- `GET /api/tasks/{task_id}/artifacts/{artifact_id}/download` 下载任务产物。
-- `GET /api/tasks/{task_id}/artifacts/{artifact_id}/preview` 预览支持的任务产物。
-- `GET /api/sessions/{session_id}/tasks` 查询会话关联任务，支持 `message_id` 与 `latest` 过滤。
-
-### Control Task
-
-- `GET /api/control/tasks` 查询 Control 任务列表，支持来源、状态、时间和分页过滤。
-- `GET /api/control/tasks/{task_id}` 查询 Control 任务详情。
-- `GET /api/control/tasks/{task_id}/logs` 游标读取 Control 任务日志。
-- `GET /api/control/tasks/{task_id}/logs/stream` 流式读取 Control 任务日志。
-- `POST /api/control/tasks/{task_id}/retry` 重试 Control 任务。
-- `POST /api/control/tasks/{task_id}/terminal/input` 为交互式任务追加输入并创建 follow-up Task；请求体除 `input` 外还接受 `attachments[]` 图片载荷，允许仅发送图片。
 
 ### Memory Task
 
@@ -140,7 +62,6 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 
 - Chat：`.alter0/workspaces/sessions/<session_id>`。
 - Skill 仓库类执行：`.alter0/workspaces/sessions/<session_id>/repo`。
-- Async Task：`.alter0/workspaces/sessions/<session_id>/tasks/<task_id>`。
 - Terminal：`.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
 - Claude Code 运行时：当前 Session 工作区下的 `.alter0/claude-runtime/`，包含 `CLAUDE.md`、Skill 副本、Memory 注入摘要、provider profile 环境和会话状态。
 - Codex Direct 运行时：当前 Session 工作区下的 `.alter0/codex-runtime/`，包含 `AGENTS.md`、独立 `codex-home/`、Skill 副本、Memory 注入摘要、MCP 配置和 thread id。
@@ -258,13 +179,12 @@ Task, Terminal & Workspace 负责后台异步任务、任务观测、日志流�
 ## 依赖与边界
 
 - Conversation 负责普通 Chat 消息体验，Terminal 负责独立终端会话。
-- CLI Runtime 进入当前会话工作区，Task 承接后台化执行。
+- CLI Runtime 进入当前会话工作区，Memory 只读取既有任务摘要数据。
 
 ## 验收口径
 
-- 复杂请求可转为 Task，任务卡片、日志、心跳、产物和会话回链完整。
 - Web 不暴露本地文件路径。
-- 删除会话清理对应任务和工作区。
+- 删除会话清理对应工作区和关联历史任务记录。
 - Terminal 会话跨设备可见，退出后继续发送可恢复。
 - Terminal `Delete` 同步清理状态文件与独立工作区。
 - 移动端 Terminal 输入、滚动和软键盘场景无回顶、无残留底部空白。

@@ -86,9 +86,6 @@ func TestTaskStorePersistsTaskLayoutRoundTrip(t *testing.T) {
 	if len(item.Artifacts) != 1 || item.Artifacts[0].ArtifactID != "task-1-result" {
 		t.Fatalf("unexpected artifacts: %+v", item.Artifacts)
 	}
-	if item.Artifacts[0].DownloadURL == "" {
-		t.Fatalf("expected artifact download url, got %+v", item.Artifacts[0])
-	}
 	if item.Artifacts[0].URI != "" {
 		t.Fatalf("expected persisted artifact uri hidden, got %+v", item.Artifacts[0])
 	}
@@ -125,12 +122,9 @@ func TestTaskStoreReadArtifactFromSnapshot(t *testing.T) {
 		t.Fatalf("save failed: %v", err)
 	}
 
-	artifact, raw, err := store.ReadArtifact(context.Background(), "task-artifact-read", "artifact-a")
+	_, raw, err := store.ReadArtifact(context.Background(), "task-artifact-read", "artifact-a")
 	if err != nil {
 		t.Fatalf("read artifact failed: %v", err)
-	}
-	if artifact.DownloadURL == "" {
-		t.Fatalf("expected download_url in artifact metadata, got %+v", artifact)
 	}
 	if got := string(raw); got != "artifact content" {
 		t.Fatalf("expected artifact content, got %q", got)
@@ -183,47 +177,6 @@ func TestTaskStoreAppendsLogsWithoutDuplication(t *testing.T) {
 	}
 	if len(loaded) != 1 || len(loaded[0].Logs) != 2 {
 		t.Fatalf("expected 2 logs after load, got %+v", loaded)
-	}
-}
-
-func TestTaskStoreMigratesLegacyTaskFile(t *testing.T) {
-	dir := t.TempDir()
-	legacyPath := filepath.Join(dir, "tasks.md")
-	base := time.Date(2026, 3, 4, 8, 0, 0, 0, time.UTC)
-	payload, err := marshalPayload(FormatMarkdown, "alter0 async task state", taskState{Tasks: []taskdomain.Task{
-		{
-			ID:              "task-legacy",
-			SessionID:       "session-legacy",
-			SourceMessageID: "message-legacy",
-			MessageID:       "message-legacy",
-			Status:          taskdomain.TaskStatusSuccess,
-			Progress:        100,
-			MaxRetries:      1,
-			TimeoutMS:       60000,
-			CreatedAt:       base,
-			UpdatedAt:       base,
-			FinishedAt:      base,
-			RequestContent:  "legacy payload",
-		},
-	}})
-	if err != nil {
-		t.Fatalf("marshal legacy payload: %v", err)
-	}
-	if err := os.WriteFile(legacyPath, payload, 0o644); err != nil {
-		t.Fatalf("write legacy task file: %v", err)
-	}
-
-	store := NewTaskStore(dir, FormatMarkdown)
-	items, err := store.Load(context.Background())
-	if err != nil {
-		t.Fatalf("load from legacy file failed: %v", err)
-	}
-	if len(items) != 1 || items[0].ID != "task-legacy" {
-		t.Fatalf("unexpected migrated tasks: %+v", items)
-	}
-	assertFileExists(t, filepath.Join(dir, "tasks", "index.json"))
-	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
-		t.Fatalf("expected legacy file removed after migration")
 	}
 }
 

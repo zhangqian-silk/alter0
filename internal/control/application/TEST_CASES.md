@@ -2,7 +2,6 @@
 
 ## 覆盖范围
 
-- Environment 默认定义、配置更新与审计记录。
 - Channel CRUD。
 - Capability 生命周期、审计、Skill/MCP 统一存储。
 

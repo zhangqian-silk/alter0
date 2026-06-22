@@ -75,22 +75,6 @@ type stubSessionTaskService struct {
 	items                []taskdomain.Task
 }
 
-func (s *stubSessionTaskService) AssessComplexity(shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
-	return taskapp.ComplexityAssessment{}
-}
-
-func (s *stubSessionTaskService) AssessComplexityWithContext(context.Context, shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
-	return taskapp.ComplexityAssessment{}
-}
-
-func (s *stubSessionTaskService) ShouldRunAsync(shareddomain.UnifiedMessage) bool {
-	return false
-}
-
-func (s *stubSessionTaskService) Submit(shareddomain.UnifiedMessage) (taskdomain.Task, error) {
-	return taskdomain.Task{}, nil
-}
-
 func (s *stubSessionTaskService) List(query taskapp.ListQuery) taskapp.TaskPage {
 	items := make([]taskdomain.Task, 0, len(s.items))
 	for _, item := range s.items {
@@ -126,18 +110,6 @@ func (s *stubSessionTaskService) ListLogs(string, int, int) (taskapp.TaskLogPage
 
 func (s *stubSessionTaskService) ListArtifacts(string) ([]taskdomain.TaskArtifact, error) {
 	return []taskdomain.TaskArtifact{}, nil
-}
-
-func (s *stubSessionTaskService) ReadArtifact(context.Context, string, string) (taskdomain.TaskArtifact, []byte, error) {
-	return taskdomain.TaskArtifact{}, nil, nil
-}
-
-func (s *stubSessionTaskService) Cancel(string) (taskdomain.Task, error) {
-	return taskdomain.Task{}, nil
-}
-
-func (s *stubSessionTaskService) Retry(string) (taskdomain.Task, error) {
-	return taskdomain.Task{}, nil
 }
 
 func (s *stubSessionTaskService) DeleteBySession(sessionID string) error {
@@ -415,13 +387,7 @@ func TestSessionCleanupHandlerDeletesInactiveSessionsAndWorkspaces(t *testing.T)
 	}
 	server.ensureMaintenanceService()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/sessions/cleanup", nil)
-	rec := httptest.NewRecorder()
-	server.maintenanceSessionCleanupHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
-	}
+	body := server.maintenance.RunSessionCleanup(time.Now().UTC())
 	if history.lastCleanupOption.InactiveDuration != 7*24*time.Hour {
 		t.Fatalf("expected fixed 7 day inactive cleanup, got %+v", history.lastCleanupOption)
 	}
@@ -429,10 +395,6 @@ func TestSessionCleanupHandlerDeletesInactiveSessionsAndWorkspaces(t *testing.T)
 		if _, err := os.Stat(filepath.Join(baseDir, ".alter0", "workspaces", "sessions", sessionID)); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("expected workspace %s removed, got %v", sessionID, err)
 		}
-	}
-	var body maintenanceRunResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
 	}
 	if body.DeletedCount != 2 || body.SkippedPinnedCount != 1 {
 		t.Fatalf("unexpected cleanup body %+v", body)
@@ -513,17 +475,7 @@ func TestMaintenanceMemoryRunReportsUnavailableOrchestrator(t *testing.T) {
 	}
 	server.ensureMaintenanceService()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/memory/run", nil)
-	rec := httptest.NewRecorder()
-	server.maintenanceMemoryRunHandler(rec, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusInternalServerError, rec.Code, rec.Body.String())
-	}
-	var body maintenanceRunResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
+	body := server.maintenance.RunMemoryMaintenance(context.Background(), time.Now().UTC())
 	if body.Status != "failed" || !strings.Contains(body.Error, "memory maintenance unavailable") {
 		t.Fatalf("expected unavailable memory maintenance failure, got %+v", body)
 	}
@@ -537,12 +489,9 @@ func TestMaintenanceMemoryRunUsesStructuredSummaryPrompt(t *testing.T) {
 	}
 	server.ensureMaintenanceService()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/memory/run", nil)
-	rec := httptest.NewRecorder()
-	server.maintenanceMemoryRunHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	body := server.maintenance.RunMemoryMaintenance(context.Background(), time.Now().UTC())
+	if body.Status != "success" {
+		t.Fatalf("expected successful memory maintenance, got %+v", body)
 	}
 	content := orchestrator.last.Content
 	for _, required := range []string{
@@ -579,17 +528,7 @@ func TestSessionCleanupHandlerReturnsTaskDeleteFailure(t *testing.T) {
 	}
 	server.ensureMaintenanceService()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/sessions/cleanup", nil)
-	rec := httptest.NewRecorder()
-	server.maintenanceSessionCleanupHandler(rec, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusInternalServerError, rec.Code, rec.Body.String())
-	}
-	var body maintenanceRunResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
+	body := server.maintenance.RunSessionCleanup(time.Now().UTC())
 	if body.Status != "failed" || !strings.Contains(body.Error, "task delete failed") {
 		t.Fatalf("expected task delete failure, got %+v", body)
 	}
@@ -611,12 +550,9 @@ func TestSessionCleanupHandlerProtectsSessionsWithActiveTasks(t *testing.T) {
 	}
 	server.ensureMaintenanceService()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/sessions/cleanup", nil)
-	rec := httptest.NewRecorder()
-	server.maintenanceSessionCleanupHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	body := server.maintenance.RunSessionCleanup(time.Now().UTC())
+	if body.Status != "success" {
+		t.Fatalf("expected successful cleanup, got %+v", body)
 	}
 	protected := map[string]bool{}
 	for _, sessionID := range history.lastCleanupOption.ProtectedSessionIDs {

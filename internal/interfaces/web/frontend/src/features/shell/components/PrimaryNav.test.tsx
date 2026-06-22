@@ -64,7 +64,7 @@ describe("PrimaryNav", () => {
     expect(screen.queryByRole("button", { name: "Codex Accounts" })).not.toBeInTheDocument();
   });
 
-  it("keeps settings visible as the single management entry", () => {
+  it("keeps settings visible as the single settings entry", () => {
     const onNavigate = vi.fn();
 
     render(
@@ -78,12 +78,12 @@ describe("PrimaryNav", () => {
       />,
     );
 
-    const management = screen.getByRole("button", { name: "Settings" });
+    const settings = screen.getByRole("button", { name: "Settings" });
 
-    expect(management).toBeInTheDocument();
-    expect(management).toHaveClass("active");
+    expect(settings).toBeInTheDocument();
+    expect(settings).toHaveClass("active");
 
-    fireEvent.click(management);
+    fireEvent.click(settings);
 
     expect(onNavigate).toHaveBeenCalledWith("settings");
   });

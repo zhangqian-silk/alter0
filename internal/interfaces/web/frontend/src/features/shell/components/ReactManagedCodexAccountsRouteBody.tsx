@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { createAPIClient } from "../../../shared/api/client";
 import { formatDateTimeMinute } from "../../../shared/time/format";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
@@ -111,6 +112,21 @@ type RuntimeCopy = {
   quotaRemaining: string;
   quotaResets: string;
   codexDefault: string;
+  serviceControls: string;
+  serviceControlsSubtitle: string;
+  restartService: string;
+  restartConfirmTitle: string;
+  restartConfirmBody: string;
+  updateBeforeRestart: string;
+  updateBeforeRestartHint: string;
+  cancel: string;
+  confirmRestart: string;
+  discardConfirmTitle: string;
+  discardConfirmBody: string;
+  discardAndRestart: string;
+  back: string;
+  restarting: string;
+  restartAccepted: string;
   loadFailed: (message: string) => string;
   actionFailed: (message: string) => string;
 };
@@ -137,6 +153,21 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     quotaRemaining: "Remaining",
     quotaResets: "Resets",
     codexDefault: "Codex default",
+    serviceControls: "Service controls",
+    serviceControlsSubtitle: "Restart the running service when runtime settings or deployment state need to be reapplied.",
+    restartService: "Restart service",
+    restartConfirmTitle: "Restart service?",
+    restartConfirmBody: "The service will restart and active browser streams may reconnect.",
+    updateBeforeRestart: "Update from remote master before restarting",
+    updateBeforeRestartHint: "Fetch and fast-forward when the working tree has no tracked changes, rebuild, then restart.",
+    cancel: "Cancel",
+    confirmRestart: "Restart",
+    discardConfirmTitle: "Discard local tracked changes?",
+    discardConfirmBody: "Updating from remote master will discard tracked local changes before rebuilding. Untracked files are kept.",
+    discardAndRestart: "Discard and restart",
+    back: "Back",
+    restarting: "Restarting...",
+    restartAccepted: "Restart accepted. The service will come back online shortly.",
     loadFailed: (message) => `Load failed: ${message}`,
     actionFailed: (message) => `Action failed: ${message}`,
   },
@@ -161,6 +192,21 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     quotaRemaining: "剩余",
     quotaResets: "重置",
     codexDefault: "Codex 默认值",
+    serviceControls: "服务控制",
+    serviceControlsSubtitle: "当运行时设置或部署状态需要重新加载时，重启当前服务。",
+    restartService: "重启服务",
+    restartConfirmTitle: "确认重启服务？",
+    restartConfirmBody: "服务将重新启动，进行中的浏览器流式连接可能需要重新连接。",
+    updateBeforeRestart: "重启前从远端 master 更新",
+    updateBeforeRestartHint: "仅在没有已跟踪本地改动时拉取并快进、重新构建，然后重启。",
+    cancel: "取消",
+    confirmRestart: "确认重启",
+    discardConfirmTitle: "丢弃本地已跟踪改动？",
+    discardConfirmBody: "从远端 master 更新会先丢弃已跟踪的本地改动再重新构建；未跟踪文件会保留。",
+    discardAndRestart: "丢弃并重启",
+    back: "返回",
+    restarting: "重启中...",
+    restartAccepted: "已接受重启请求，服务稍后会重新上线。",
     loadFailed: (message) => `加载失败：${message}`,
     actionFailed: (message) => `操作失败：${message}`,
   },
@@ -180,10 +226,29 @@ export function ReactManagedCodexAccountsRouteBody({
   const [selectedReasoning, setSelectedReasoning] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [statusKind, setStatusKind] = useState<"success" | "error" | "">("");
+  const [restartDialog, setRestartDialog] = useState<{ open: boolean; syncRemoteMaster: boolean; confirmDiscard: boolean }>({
+    open: false,
+    syncRemoteMaster: false,
+    confirmDiscard: false,
+  });
+  const [restartBusy, setRestartBusy] = useState(false);
 
   useEffect(() => {
     void reloadRuntime();
   }, []);
+
+  useEffect(() => {
+    if (!restartDialog.open) {
+      return;
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !restartBusy) {
+        setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false });
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [restartBusy, restartDialog.open]);
 
   async function reloadRuntime(nextMessage = "", nextKind: "success" | "error" | "" = "") {
     setRequestState({ status: "loading", error: "" });
@@ -246,6 +311,24 @@ export function ReactManagedCodexAccountsRouteBody({
     }
   }
 
+  async function requestRuntimeRestart(syncRemoteMaster: boolean, confirmDiscardTrackedChanges = false) {
+    setRestartBusy(true);
+    try {
+      await apiClient.post("/api/control/runtime/restart", {
+        sync_remote_master: syncRemoteMaster,
+        confirm_discard_tracked_changes: confirmDiscardTrackedChanges,
+      });
+      setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false });
+      setStatusKind("success");
+      setStatusMessage(copy.restartAccepted);
+    } catch (error: unknown) {
+      setStatusKind("error");
+      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
+    } finally {
+      setRestartBusy(false);
+    }
+  }
+
   if (requestState.status === "loading") {
     return <RuntimeLoadingView copy={copy} />;
   }
@@ -259,6 +342,80 @@ export function ReactManagedCodexAccountsRouteBody({
   const runtimeProfile = normalizeText(runtime?.profile) || copy.codexDefault;
   const runtimeIdentity = runtimeIdentityDetails(runtime);
   const providerCount = providers.length;
+  const showingDiscardConfirm = restartDialog.syncRemoteMaster && restartDialog.confirmDiscard;
+  const restartModal =
+    restartDialog.open && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="runtime-restart-overlay"
+            onMouseDown={(event) => {
+              if (!restartBusy && event.currentTarget === event.target) {
+                setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false });
+              }
+            }}
+          >
+            <section
+              className="runtime-restart-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="runtime-restart-title"
+            >
+              <header className="modal-header">
+                <h3 id="runtime-restart-title">{showingDiscardConfirm ? copy.discardConfirmTitle : copy.restartConfirmTitle}</h3>
+              </header>
+              <div className="modal-body">
+                <p>{showingDiscardConfirm ? copy.discardConfirmBody : copy.restartConfirmBody}</p>
+                {showingDiscardConfirm ? null : (
+                  <label className="codex-runtime-restart-option">
+                    <input
+                      type="checkbox"
+                      checked={restartDialog.syncRemoteMaster}
+                      onChange={(event) =>
+                        setRestartDialog((current) => ({
+                          ...current,
+                          syncRemoteMaster: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>
+                      <strong>{copy.updateBeforeRestart}</strong>
+                      <small>{copy.updateBeforeRestartHint}</small>
+                    </span>
+                  </label>
+                )}
+              </div>
+              <footer className="modal-footer">
+                <button
+                  type="button"
+                  data-variant="secondary"
+                  disabled={restartBusy}
+                  onClick={() =>
+                    showingDiscardConfirm
+                      ? setRestartDialog((current) => ({ ...current, confirmDiscard: false }))
+                      : setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false })
+                  }
+                >
+                  {showingDiscardConfirm ? copy.back : copy.cancel}
+                </button>
+                <button
+                  type="button"
+                  disabled={restartBusy}
+                  onClick={() => {
+                    if (restartDialog.syncRemoteMaster && !restartDialog.confirmDiscard) {
+                      setRestartDialog((current) => ({ ...current, confirmDiscard: true }));
+                      return;
+                    }
+                    void requestRuntimeRestart(restartDialog.syncRemoteMaster, restartDialog.syncRemoteMaster && restartDialog.confirmDiscard);
+                  }}
+                >
+                  {restartBusy ? copy.restarting : showingDiscardConfirm ? copy.discardAndRestart : copy.confirmRestart}
+                </button>
+              </footer>
+            </section>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <section className="codex-runtime-view">
@@ -267,6 +424,22 @@ export function ReactManagedCodexAccountsRouteBody({
           {statusMessage}
         </p>
       ) : null}
+
+      <section className="codex-runtime-service-controls route-surface">
+        <div className="codex-runtime-title-block">
+          <h4>{copy.serviceControls}</h4>
+          <p>{copy.serviceControlsSubtitle}</p>
+        </div>
+        <div className="codex-runtime-service-actions">
+          <button
+            className="route-card-action codex-runtime-service-primary-action"
+            type="button"
+            onClick={() => setRestartDialog({ open: true, syncRemoteMaster: false, confirmDiscard: false })}
+          >
+            {copy.restartService}
+          </button>
+        </div>
+      </section>
 
       <section className="codex-runtime-status-band route-surface">
         <div className="codex-runtime-status-band-head">
@@ -348,6 +521,7 @@ export function ReactManagedCodexAccountsRouteBody({
           <span>{providerCount > 0 ? copy.providersReadyHint : copy.providersMissingHint}</span>
         </div>
       </section>
+      {restartModal}
     </section>
   );
 }
@@ -363,9 +537,9 @@ function RuntimeLoadingView({ copy }: { copy: RuntimeCopy }) {
           </div>
         </div>
         <div className="codex-runtime-skeleton-stack codex-runtime-skeleton-ledger" aria-hidden="true">
-          <span className="task-skeleton-line codex-runtime-skeleton-field" />
-          <span className="task-skeleton-line codex-runtime-skeleton-field" />
-          <span className="task-skeleton-line codex-runtime-skeleton-block" />
+          <span className="runtime-skeleton-line codex-runtime-skeleton-field" />
+          <span className="runtime-skeleton-line codex-runtime-skeleton-field" />
+          <span className="runtime-skeleton-line codex-runtime-skeleton-block" />
         </div>
       </section>
     </section>

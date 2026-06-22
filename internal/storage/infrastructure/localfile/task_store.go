@@ -24,10 +24,6 @@ const (
 	taskArtifactFilesDir    = "files"
 )
 
-type taskState struct {
-	Tasks []taskdomain.Task `json:"tasks"`
-}
-
 type taskIndexState struct {
 	Items []taskIndexItem `json:"items"`
 }
@@ -53,17 +49,15 @@ type TaskStoreOptions struct {
 type TaskStore struct {
 	tasksDir     string
 	indexPath    string
-	legacyPath   string
-	format       Format
 	logRetention time.Duration
 	mu           sync.Mutex
 }
 
-func NewTaskStore(baseDir string, format Format) *TaskStore {
-	return NewTaskStoreWithOptions(baseDir, format, TaskStoreOptions{})
+func NewTaskStore(baseDir string, _ Format) *TaskStore {
+	return NewTaskStoreWithOptions(baseDir, FormatJSON, TaskStoreOptions{})
 }
 
-func NewTaskStoreWithOptions(baseDir string, format Format, options TaskStoreOptions) *TaskStore {
+func NewTaskStoreWithOptions(baseDir string, _ Format, options TaskStoreOptions) *TaskStore {
 	tasksDir := filepath.Join(baseDir, "tasks")
 	retention := options.LogRetention
 	if retention <= 0 {
@@ -72,8 +66,6 @@ func NewTaskStoreWithOptions(baseDir string, format Format, options TaskStoreOpt
 	return &TaskStore{
 		tasksDir:     tasksDir,
 		indexPath:    filepath.Join(tasksDir, "index.json"),
-		legacyPath:   filepath.Join(baseDir, "tasks."+extension(format)),
-		format:       format,
 		logRetention: retention,
 	}
 }
@@ -84,23 +76,14 @@ func (s *TaskStore) Load(_ context.Context) ([]taskdomain.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if indexExists, err := fileExists(s.indexPath); err != nil {
-		return nil, err
-	} else if indexExists {
-		return s.loadFromTaskLayout()
-	}
-
-	items, found, err := s.loadLegacyTaskState()
+	indexExists, err := fileExists(s.indexPath)
 	if err != nil {
 		return nil, err
 	}
-	if !found {
+	if !indexExists {
 		return []taskdomain.Task{}, nil
 	}
-	if err := s.saveTaskLayout(items); err != nil {
-		return nil, err
-	}
-	return items, nil
+	return s.loadFromTaskLayout()
 }
 
 func (s *TaskStore) Save(_ context.Context, tasks []taskdomain.Task) error {
@@ -178,29 +161,6 @@ func (s *TaskStore) loadTaskEntry(index taskIndexItem) (taskdomain.Task, error) 
 	return cloneTask(item), nil
 }
 
-func (s *TaskStore) loadLegacyTaskState() ([]taskdomain.Task, bool, error) {
-	raw, ok, err := readIfExists(s.legacyPath)
-	if err != nil {
-		return nil, false, err
-	}
-	if !ok {
-		return []taskdomain.Task{}, false, nil
-	}
-	state := taskState{}
-	if err := unmarshalPayload(s.format, raw, &state); err != nil {
-		return nil, false, err
-	}
-	if len(state.Tasks) == 0 {
-		return []taskdomain.Task{}, true, nil
-	}
-	items := make([]taskdomain.Task, 0, len(state.Tasks))
-	for _, item := range state.Tasks {
-		item.Logs = applyTaskLogRetention(item.Logs, s.logRetention, time.Now().UTC())
-		items = append(items, cloneTask(item))
-	}
-	return items, true, nil
-}
-
 func (s *TaskStore) saveTaskLayout(tasks []taskdomain.Task) error {
 	items := make([]taskdomain.Task, 0, len(tasks))
 	for _, item := range tasks {
@@ -266,7 +226,6 @@ func (s *TaskStore) saveTaskLayout(tasks []taskdomain.Task) error {
 	if err := cleanupRemovedTaskDirs(s.tasksDir, keptTaskDirs); err != nil {
 		return err
 	}
-	_ = os.Remove(s.legacyPath)
 	return nil
 }
 
@@ -365,7 +324,8 @@ func (s *TaskStore) snapshotTaskArtifacts(taskDir string, taskID string, items [
 
 		artifact.ArtifactID = artifactID
 		artifact.Size = int64(len(content))
-		artifact.DownloadURL, artifact.PreviewURL = buildArtifactDeliveryURLs(taskKey, artifactID, artifact.ContentType)
+		artifact.DownloadURL = ""
+		artifact.PreviewURL = ""
 		artifact.URI = ""
 		artifact.Content = ""
 		normalized = append(normalized, artifact)
@@ -477,32 +437,6 @@ func isSafeArtifactID(value string) bool {
 		return false
 	}
 	return filepath.Clean(id) == id
-}
-
-func buildArtifactDeliveryURLs(taskID string, artifactID string, contentType string) (string, string) {
-	taskKey := url.PathEscape(strings.TrimSpace(taskID))
-	artifactKey := url.PathEscape(strings.TrimSpace(artifactID))
-	downloadURL := "/api/tasks/" + taskKey + "/artifacts/" + artifactKey + "/download"
-	if !supportsArtifactPreview(contentType) {
-		return downloadURL, ""
-	}
-	return downloadURL, "/api/tasks/" + taskKey + "/artifacts/" + artifactKey + "/preview"
-}
-
-func supportsArtifactPreview(contentType string) bool {
-	lower := strings.ToLower(strings.TrimSpace(contentType))
-	if lower == "" {
-		return false
-	}
-	if strings.HasPrefix(lower, "text/") || strings.HasPrefix(lower, "image/") {
-		return true
-	}
-	switch lower {
-	case "application/json", "application/xml", "application/yaml", "application/x-yaml", "application/javascript", "application/pdf", "application/xhtml+xml":
-		return true
-	default:
-		return false
-	}
 }
 
 func findStoredArtifact(items []taskdomain.TaskArtifact, artifactID string) (taskdomain.TaskArtifact, bool) {

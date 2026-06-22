@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -78,23 +77,7 @@ func main() {
 	webBindLocalhostOnly := flag.Bool("web-bind-localhost-only", true, "force web server to bind loopback only")
 	webLoginPasswordDefault := strings.TrimSpace(os.Getenv("ALTER0_WEB_LOGIN_PASSWORD"))
 	webLoginPassword := flag.String("web-login-password", webLoginPasswordDefault, "required web login password for the shared gateway")
-	workerPoolSize := flag.Int("worker-pool-size", 4, "global worker pool size")
-	maxQueueSize := flag.Int("max-queue-size", 128, "max waiting queue size")
-	queueTimeout := flag.Duration("queue-timeout", 5*time.Second, "max queue wait time")
 	codexCommand := flag.String("codex-command", strings.TrimSpace(os.Getenv("ALTER0_CODEX_COMMAND")), "Codex CLI executable path or command name")
-	asyncTaskWorkers := flag.Int("async-task-workers", 5, "background async task worker count (max 5)")
-	taskTerminalShell := flag.String("task-terminal-shell", "", "terminal Codex CLI executable path or command name")
-	taskTerminalShellArgs := flag.String("task-terminal-shell-args", "", "terminal Codex CLI extra arguments")
-	asyncTaskTimeout := flag.Duration("async-task-timeout", 90*time.Second, "background async task timeout")
-	asyncTaskMaxRetries := flag.Int("async-task-max-retries", 1, "background async task max retries")
-	asyncTaskTriggerThreshold := flag.Duration("async-task-trigger-threshold", 5*time.Minute, "estimated duration threshold to route request into async task")
-	asyncLongContentThreshold := flag.Int("async-long-content-threshold", 240, "request content length threshold to trigger async task")
-	dailyMemoryDir := flag.String("daily-memory-dir", filepath.Join(defaultStorageProfile.Dir, "memory"), "day-level markdown memory directory")
-	longTermMemoryPath := flag.String("long-term-memory-path", filepath.Join(defaultStorageProfile.Dir, "memory", "long-term", "MEMORY.md"), "tiered long-term memory persistence file path")
-	longTermMemoryWritePolicy := flag.String("long-term-memory-write-policy", "write_through", "tiered long-term memory write policy: write_through/write_back")
-	longTermMemoryWriteBackFlush := flag.Duration("long-term-memory-writeback-flush", 2*time.Second, "write-back flush interval for long-term memory persistence")
-	longTermMemoryTokenBudget := flag.Int("long-term-memory-token-budget", 220, "long-term memory injection token budget")
-	mandatoryContextFile := flag.String("mandatory-context-file", "SOUL.md", "mandatory context file path")
 	flag.Parse()
 	if *relaunchHelper {
 		if err := runRelaunchHelper(*relaunchParentPID, *relaunchExecPath, *relaunchWorkingDir, *relaunchArgs); err != nil {
@@ -146,67 +129,29 @@ func main() {
 		os.Exit(2)
 	}
 
-	listenAddr = control.ResolveEnvironmentString("web_addr", listenAddr)
 	if strings.TrimSpace(listenAddr) == "" {
 		listenAddr = defaultWebAddr
 	}
-	resolvedWebBindLocalhostOnly := resolveEnvironmentBool(control, "web_bind_localhost_only", *webBindLocalhostOnly)
+	resolvedWebBindLocalhostOnly := *webBindLocalhostOnly
 	if resolvedWebBindLocalhostOnly {
 		listenAddr = forceLoopbackListenAddr(listenAddr)
 	}
-	if err := validateRequiredWebLoginPassword(*runtimeChild, control.ResolveEnvironmentString("web_login_password", strings.TrimSpace(*webLoginPassword))); err != nil {
+	if err := validateRequiredWebLoginPassword(*runtimeChild, strings.TrimSpace(*webLoginPassword)); err != nil {
 		logger.Error("invalid web login configuration", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
 	resolvedWebLoginPassword := resolveRuntimeChildWebLoginPassword(
 		*runtimeChild,
-		control.ResolveEnvironmentString("web_login_password", strings.TrimSpace(*webLoginPassword)),
+		strings.TrimSpace(*webLoginPassword),
 	)
 	ensureChildProcessWebLoginPassword(resolvedWebLoginPassword)
 
-	resolvedWorkerPoolSize := control.ResolveEnvironmentInt("worker_pool_size", *workerPoolSize)
-	resolvedMaxQueueSize := control.ResolveEnvironmentInt("max_queue_size", *maxQueueSize)
-	resolvedQueueTimeout := control.ResolveEnvironmentDuration("queue_timeout", *queueTimeout)
 	resolvedCodexCommand := resolveConfiguredCodexCommand(strings.TrimSpace(*codexCommand))
 	ensureDefaultCodexWorkspaceMode()
-	resolvedAsyncTaskWorkers := control.ResolveEnvironmentInt("async_task_workers", *asyncTaskWorkers)
-	resolvedTaskTerminalShell := strings.TrimSpace(control.ResolveEnvironmentString("task_terminal_shell", strings.TrimSpace(*taskTerminalShell)))
-	if resolvedTaskTerminalShell == "" {
-		resolvedTaskTerminalShell = resolvedCodexCommand
-	}
-	resolvedTaskTerminalShellArgs := strings.TrimSpace(control.ResolveEnvironmentString("task_terminal_shell_args", strings.TrimSpace(*taskTerminalShellArgs)))
-	resolvedAsyncTaskTimeout := control.ResolveEnvironmentDuration("async_task_timeout", *asyncTaskTimeout)
-	resolvedAsyncTaskMaxRetries := control.ResolveEnvironmentInt("async_task_max_retries", *asyncTaskMaxRetries)
-	resolvedAsyncTaskTriggerThreshold := control.ResolveEnvironmentDuration("async_task_trigger_threshold", *asyncTaskTriggerThreshold)
-	resolvedAsyncLongContentThreshold := control.ResolveEnvironmentInt("async_long_content_threshold", *asyncLongContentThreshold)
-	resolvedDailyMemoryDir := control.ResolveEnvironmentString("daily_memory_dir", strings.TrimSpace(*dailyMemoryDir))
-	resolvedLongTermMemoryPath := control.ResolveEnvironmentString("long_term_memory_path", strings.TrimSpace(*longTermMemoryPath))
-	resolvedLongTermMemoryWritePolicy := control.ResolveEnvironmentString("long_term_memory_write_policy", strings.TrimSpace(*longTermMemoryWritePolicy))
-	resolvedLongTermMemoryWriteBackFlush := control.ResolveEnvironmentDuration("long_term_memory_writeback_flush", *longTermMemoryWriteBackFlush)
-	resolvedLongTermMemoryTokenBudget := control.ResolveEnvironmentInt("long_term_memory_token_budget", *longTermMemoryTokenBudget)
-	resolvedMandatoryContextFile := control.ResolveEnvironmentString("mandatory_context_file", strings.TrimSpace(*mandatoryContextFile))
-
-	control.SetEnvironmentRuntime(map[string]string{
-		"web_addr":                         listenAddr,
-		"web_bind_localhost_only":          strconv.FormatBool(resolvedWebBindLocalhostOnly),
-		"web_login_password":               resolvedWebLoginPassword,
-		"worker_pool_size":                 strconv.Itoa(resolvedWorkerPoolSize),
-		"max_queue_size":                   strconv.Itoa(resolvedMaxQueueSize),
-		"queue_timeout":                    resolvedQueueTimeout.String(),
-		"async_task_workers":               strconv.Itoa(resolvedAsyncTaskWorkers),
-		"task_terminal_shell":              resolvedTaskTerminalShell,
-		"task_terminal_shell_args":         resolvedTaskTerminalShellArgs,
-		"async_task_timeout":               resolvedAsyncTaskTimeout.String(),
-		"async_task_max_retries":           strconv.Itoa(resolvedAsyncTaskMaxRetries),
-		"async_task_trigger_threshold":     resolvedAsyncTaskTriggerThreshold.String(),
-		"async_long_content_threshold":     strconv.Itoa(resolvedAsyncLongContentThreshold),
-		"daily_memory_dir":                 resolvedDailyMemoryDir,
-		"long_term_memory_path":            resolvedLongTermMemoryPath,
-		"long_term_memory_write_policy":    resolvedLongTermMemoryWritePolicy,
-		"long_term_memory_writeback_flush": resolvedLongTermMemoryWriteBackFlush.String(),
-		"long_term_memory_token_budget":    strconv.Itoa(resolvedLongTermMemoryTokenBudget),
-		"mandatory_context_file":           resolvedMandatoryContextFile,
-	})
+	resolvedTaskTerminalShell := resolvedCodexCommand
+	resolvedDailyMemoryDir := filepath.Join(defaultStorageProfile.Dir, "memory")
+	resolvedLongTermMemoryPath := filepath.Join(defaultStorageProfile.Dir, "memory", "long-term", "MEMORY.md")
+	resolvedMandatoryContextFile := "SOUL.md"
 
 	sessionHistory, err := newSessionHistory(rootCtx, sessionStore)
 	if err != nil {
@@ -269,10 +214,7 @@ func main() {
 		telemetry,
 		logger,
 		orchapp.WithLongTermMemoryOptions(orchapp.LongTermMemoryOptions{
-			InjectionTokenBudget: resolvedLongTermMemoryTokenBudget,
-			PersistencePath:      resolvedLongTermMemoryPath,
-			WritePolicy:          orchapp.LongTermMemoryWritePolicy(strings.ToLower(strings.TrimSpace(resolvedLongTermMemoryWritePolicy))),
-			WriteBackFlush:       resolvedLongTermMemoryWriteBackFlush,
+			PersistencePath: resolvedLongTermMemoryPath,
 		}),
 		orchapp.WithMandatoryContextOptions(orchapp.MandatoryContextOptions{
 			FilePath: resolvedMandatoryContextFile,
@@ -280,30 +222,9 @@ func main() {
 		orchapp.WithTaskSummaryMemory(taskSummaryMemory),
 	)
 	persistentOrchestrator := orchapp.NewSessionPersistenceService(baseOrchestrator, sessionHistory, idGen, logger, mustGetwd())
-	orchestrator := orchapp.NewConcurrentService(
-		rootCtx,
-		persistentOrchestrator,
-		telemetry,
-		logger,
-		orchapp.ConcurrencyOptions{
-			WorkerCount:    resolvedWorkerPoolSize,
-			MaxQueueSize:   resolvedMaxQueueSize,
-			QueueTimeout:   resolvedQueueTimeout,
-			OverloadPolicy: orchapp.OverloadPolicyRejectNew,
-		},
-	)
-	taskService, err := newTaskService(rootCtx, persistentOrchestrator, sessionHistory, idGen, logger, taskStore, taskapp.Options{
-		WorkerCount:           resolvedAsyncTaskWorkers,
-		Timeout:               resolvedAsyncTaskTimeout,
-		MaxRetries:            resolvedAsyncTaskMaxRetries,
-		AsyncTriggerThreshold: resolvedAsyncTaskTriggerThreshold,
-		LongContentThreshold:  resolvedAsyncLongContentThreshold,
-		SummaryMemory:         taskSummaryRecorder,
-		ComplexityPredictor: taskapp.NewOpenAIComplexityPredictor(
-			llmService,
-			taskapp.NewCodexQuickComplexityPredictorWithCommand(resolvedCodexCommand),
-			logger,
-		),
+	orchestrator := persistentOrchestrator
+	taskService, err := newTaskService(rootCtx, taskStore, taskapp.Options{
+		SummaryMemory: taskSummaryRecorder,
 	})
 	if err != nil {
 		logger.Error("failed to initialize task service", slog.String("error", err.Error()))
@@ -311,7 +232,7 @@ func main() {
 	}
 	terminalService := terminalapp.NewService(rootCtx, idGen, logger, terminalapp.Options{
 		Shell:         resolvedTaskTerminalShell,
-		ShellArgsLine: resolvedTaskTerminalShellArgs,
+		ShellArgsLine: "",
 	})
 
 	scheduler, err := newSchedulerManager(rootCtx, orchestrator, telemetry, idGen, logger, schedulerStore)
@@ -557,18 +478,6 @@ func mustUpsertSkill(control *controlapp.Service, skill controldomain.Skill) {
 	}
 }
 
-func resolveEnvironmentBool(control *controlapp.Service, key string, fallback bool) bool {
-	resolved := strings.TrimSpace(control.ResolveEnvironmentString(key, strconv.FormatBool(fallback)))
-	if resolved == "" {
-		return fallback
-	}
-	value, err := strconv.ParseBool(resolved)
-	if err != nil {
-		return fallback
-	}
-	return value
-}
-
 func forceLoopbackListenAddr(raw string) string {
 	addr := strings.TrimSpace(raw)
 	if addr == "" {
@@ -666,14 +575,10 @@ func newSessionHistory(ctx context.Context, store sessionapp.Store) (*sessionapp
 
 func newTaskService(
 	ctx context.Context,
-	orchestrator taskapp.Orchestrator,
-	recorder *sessionapp.Service,
-	idGen sharedapp.IDGenerator,
-	logger *slog.Logger,
 	store taskapp.Store,
 	options taskapp.Options,
 ) (*taskapp.Service, error) {
-	return taskapp.NewService(ctx, orchestrator, recorder, idGen, logger, store, options)
+	return taskapp.NewService(ctx, store, options)
 }
 
 func newCodexAccountService(logger *slog.Logger, command string) *codexapp.Service {

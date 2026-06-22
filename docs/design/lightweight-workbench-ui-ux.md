@@ -95,7 +95,7 @@ Schedules:
 Desktop presents scheduled jobs as operational cards with schedule mode, timezone, prompt preview, and retry policy. Mobile keeps schedule cards single-column with status and next action visible.
 
 Compatibility subpages:
-Sessions, Tasks, Channels, Skills, MCP, Models, Environments, and Codex Runtime remain supported as settings entries. They share the same narrow settings rail, responsive card grid, form fields, tables, empty states, and status chip rules.
+Runtime, Skills, Memory, and Schedules remain supported as settings entries. They share the same narrow settings rail, responsive card grid, form fields, tables, empty states, and status chip rules.
 
 ## Login
 

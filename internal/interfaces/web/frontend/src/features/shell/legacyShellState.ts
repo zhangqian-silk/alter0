@@ -8,17 +8,11 @@ export const LEGACY_SHELL_MOBILE_BREAKPOINT_PX = MOBILE_VIEWPORT_BREAKPOINT_PX;
 
 const LEGACY_CHAT_ROUTES = new Set(["chat"]);
 const LEGACY_SHELL_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);
-const LEGACY_ROUTE_ALIASES: Record<string, string> = {
-  management: "settings",
-};
 
 export function parseLegacyShellPathRoute(pathname: string = window.location.pathname): string {
   const normalized = pathname.replace(/^\/?/, "").replace(/\/+$/, "").trim().toLowerCase();
   if (!normalized) {
     return LEGACY_SHELL_DEFAULT_ROUTE;
-  }
-  if (LEGACY_ROUTE_ALIASES[normalized]) {
-    return LEGACY_ROUTE_ALIASES[normalized];
   }
   return LEGACY_SHELL_ROUTES.has(normalized) ? normalized : LEGACY_SHELL_DEFAULT_ROUTE;
 }

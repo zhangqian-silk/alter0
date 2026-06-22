@@ -2,8 +2,6 @@ package localfile
 
 import (
 	"context"
-	"encoding/json"
-	"path/filepath"
 	"testing"
 
 	controldomain "alter0/internal/control/domain"
@@ -23,24 +21,12 @@ func TestControlStoreJSONRoundTrip(t *testing.T) {
 		[]controldomain.CapabilityAudit{
 			{CapabilityID: "summary", CapabilityType: controldomain.CapabilityTypeSkill, Action: controldomain.CapabilityLifecycleUpdate, Version: "v1.0.0", Scope: controldomain.CapabilityScopeGlobal},
 		},
-		map[string]string{
-			"worker_pool_size": "8",
-		},
-		[]controldomain.EnvironmentAudit{
-			{
-				Operator: "tester",
-				Changes: []controldomain.EnvironmentAuditChange{
-					{Key: "worker_pool_size", OldValue: "4", NewValue: "8", ApplyMode: controldomain.EnvironmentApplyModeRestart},
-				},
-				RequiresRestart: true,
-			},
-		},
 	)
 	if err != nil {
 		t.Fatalf("save failed: %v", err)
 	}
 
-	channels, capabilities, audits, environments, environmentAudits, err := store.Load(context.Background())
+	channels, capabilities, audits, err := store.Load(context.Background())
 	if err != nil {
 		t.Fatalf("load failed: %v", err)
 	}
@@ -52,12 +38,6 @@ func TestControlStoreJSONRoundTrip(t *testing.T) {
 	}
 	if len(audits) != 1 || audits[0].CapabilityID != "summary" {
 		t.Fatalf("unexpected audits: %+v", audits)
-	}
-	if environments["worker_pool_size"] != "8" {
-		t.Fatalf("unexpected environments: %+v", environments)
-	}
-	if len(environmentAudits) != 1 || environmentAudits[0].Operator != "tester" {
-		t.Fatalf("unexpected environment audits: %+v", environmentAudits)
 	}
 }
 
@@ -71,14 +51,12 @@ func TestControlStoreMarkdownRoundTrip(t *testing.T) {
 			{ID: "sample-skill", Name: "Sample Skill", Type: controldomain.CapabilityTypeSkill, Enabled: true, Scope: controldomain.CapabilityScopeGlobal, Version: "v1.0.0"},
 		},
 		[]controldomain.CapabilityAudit{},
-		map[string]string{},
-		[]controldomain.EnvironmentAudit{},
 	)
 	if err != nil {
 		t.Fatalf("save failed: %v", err)
 	}
 
-	channels, capabilities, audits, environments, environmentAudits, err := store.Load(context.Background())
+	channels, capabilities, audits, err := store.Load(context.Background())
 	if err != nil {
 		t.Fatalf("load failed: %v", err)
 	}
@@ -90,48 +68,5 @@ func TestControlStoreMarkdownRoundTrip(t *testing.T) {
 	}
 	if len(audits) != 0 {
 		t.Fatalf("unexpected audits: %+v", audits)
-	}
-	if len(environments) != 0 {
-		t.Fatalf("unexpected environments: %+v", environments)
-	}
-	if len(environmentAudits) != 0 {
-		t.Fatalf("unexpected environment audits: %+v", environmentAudits)
-	}
-}
-
-func TestControlStoreLoadLegacySkills(t *testing.T) {
-	baseDir := t.TempDir()
-	store := NewControlStore(baseDir, FormatJSON)
-	legacy := map[string]any{
-		"channels": []map[string]any{
-			{"id": "web-default", "type": "web", "enabled": true},
-		},
-		"skills": []map[string]any{
-			{"id": "summary", "name": "Summary", "enabled": true},
-		},
-	}
-	raw, err := json.Marshal(legacy)
-	if err != nil {
-		t.Fatalf("marshal legacy failed: %v", err)
-	}
-	if err := writeFile(filepath.Join(baseDir, "control.json"), append(raw, '\n')); err != nil {
-		t.Fatalf("write legacy failed: %v", err)
-	}
-
-	_, capabilities, _, _, _, err := store.Load(context.Background())
-	if err != nil {
-		t.Fatalf("load failed: %v", err)
-	}
-	if len(capabilities) != 1 {
-		t.Fatalf("expected 1 capability, got %d", len(capabilities))
-	}
-	if capabilities[0].Type != controldomain.CapabilityTypeSkill {
-		t.Fatalf("expected migrated type skill, got %s", capabilities[0].Type)
-	}
-	if capabilities[0].Scope != controldomain.CapabilityScopeGlobal {
-		t.Fatalf("expected migrated scope global, got %s", capabilities[0].Scope)
-	}
-	if capabilities[0].Version != controldomain.DefaultCapabilityVersion {
-		t.Fatalf("expected migrated default version, got %s", capabilities[0].Version)
 	}
 }

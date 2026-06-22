@@ -24,7 +24,7 @@ describe("ReactManagedRouteBody", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders settings as the single management route and switches compact sections without changing paths", async () => {
+  it("renders settings as the single settings route and switches compact sections without changing paths", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(
@@ -58,17 +58,17 @@ describe("ReactManagedRouteBody", () => {
       );
 
     expect(isReactManagedRouteBody("settings")).toBe(true);
-    expect(isReactManagedRouteBody("management")).toBe(true);
+    expect(isReactManagedRouteBody("overview")).toBe(false);
     expect(isReactManagedRouteBody("memory")).toBe(false);
 
     window.history.replaceState({}, "", "/settings");
     const { container } = render(<ReactManagedRouteBody route="settings" language="en" />);
 
-    expect(container.querySelector(".management-route-body")).toHaveAttribute("data-management-route", "runtime");
-    expect(container.querySelectorAll("[data-management-route-group]")).toHaveLength(1);
+    expect(container.querySelector(".settings-route-body")).toHaveAttribute("data-settings-route", "runtime");
+    expect(container.querySelectorAll("[data-settings-route-group]")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Runtime" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("button", { name: "Runtime" }).querySelector(".management-route-tab-icon")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Runtime" }).querySelector(".management-route-tab-shortcut")).toHaveTextContent("RU");
+    expect(screen.getByRole("button", { name: "Runtime" }).querySelector(".settings-route-tab-icon")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Runtime" }).querySelector(".settings-route-tab-shortcut")).toHaveTextContent("RU");
 
     fireEvent.click(screen.getByRole("button", { name: "Memory" }));
 
@@ -76,9 +76,9 @@ describe("ReactManagedRouteBody", () => {
       expect(screen.getByRole("tab", { name: "Task History" })).toBeInTheDocument();
     });
     expect(window.location.pathname).toBe("/settings");
-    expect(container.querySelector(".management-route-body")).toHaveAttribute("data-management-route", "memory");
+    expect(container.querySelector(".settings-route-body")).toHaveAttribute("data-settings-route", "memory");
     expect(screen.getByRole("button", { name: "Memory" })).toHaveAttribute("aria-current", "page");
-    expect(container.querySelector(".management-route-content")).toHaveAttribute("data-management-route-content", "memory");
+    expect(container.querySelector(".settings-route-content")).toHaveAttribute("data-settings-route-content", "memory");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/memory/context",
@@ -90,7 +90,7 @@ describe("ReactManagedRouteBody", () => {
     );
   });
 
-  it("keeps the original service restart and update flow reachable from settings", async () => {
+  it("keeps the service restart flow reachable from runtime settings", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/control/llm/providers") {
@@ -109,64 +109,29 @@ describe("ReactManagedRouteBody", () => {
           reasoning_modes: [{ id: "high", name: "High", enabled: true }],
         }));
       }
-      if (url === "/api/control/environments") {
-        return Promise.resolve(jsonResponse({
-          items: [
-            {
-              definition: {
-                key: "web_addr",
-                name: "Web Listen Address",
-                module: "Web & Queue",
-                description: "Controls the HTTP listen address.",
-                type: "string",
-                apply_mode: "restart",
-                default_value: "127.0.0.1:18088",
-                hot_reload: false,
-                sensitive: false,
-                validation: { required: true },
-              },
-              value: "127.0.0.1:18088",
-              effective_value: "127.0.0.1:18088",
-              value_source: "runtime",
-              pending_restart: false,
-              masked: false,
-            },
-          ],
-        }));
-      }
-      if (url === "/api/control/environments/audits") {
-        return Promise.resolve(jsonResponse({ items: [] }));
-      }
-      if (url === "/api/control/runtime") {
-        return Promise.resolve(jsonResponse({
-          started_at: "2026-04-11T05:13:37Z",
-          commit_hash: "14f7f84b602f0000000000000000000000000000",
-        }));
-      }
       return Promise.resolve(jsonResponse({ items: [] }));
     }));
 
     window.history.replaceState({}, "", "/settings");
-    const { container } = render(<ReactManagedRouteBody route="settings" language="en" />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Environments" }));
+    render(<ReactManagedRouteBody route="settings" language="en" />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Restart Service" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Restart service" })).toBeInTheDocument();
     });
 
-    expect(container.querySelector(".management-route-body")).toHaveAttribute("data-management-route", "environments");
-    expect(container.querySelector(".management-route-content")).toHaveAttribute("data-management-route-content", "environments");
-    expect(screen.getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Live Configuration Control" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Restart service" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Restart Service" }));
+    expect(screen.getByRole("dialog", { name: "Restart service?" })).toBeInTheDocument();
+    const updateCheckbox = screen.getByRole("checkbox");
+    expect(updateCheckbox).not.toBeChecked();
 
-    expect(screen.getByRole("dialog", { name: "Restart the service now?" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Sync remote master changes before restart")).toBeChecked();
+    fireEvent.click(updateCheckbox);
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+
+    expect(screen.getByRole("dialog", { name: "Discard local tracked changes?" })).toBeInTheDocument();
   });
 
-  it("does not treat old management subpages as react-managed route bodies", () => {
+  it("does not treat old settings subpages as react-managed route bodies", () => {
     expect(isReactManagedRouteBody("tasks")).toBe(false);
     expect(isReactManagedRouteBody("skill")).toBe(false);
     expect(isReactManagedRouteBody("codex-accounts")).toBe(false);
@@ -175,11 +140,10 @@ describe("ReactManagedRouteBody", () => {
   it("tracks the full set of routes now owned by React", () => {
     expect(getReactManagedRouteBodyRoutes()).toEqual([
       "settings",
-      "management",
       "terminal",
     ]);
     expect(isReactManagedRouteBody("settings")).toBe(true);
-    expect(isReactManagedRouteBody("management")).toBe(true);
+    expect(isReactManagedRouteBody("overview")).toBe(false);
     expect(isReactManagedRouteBody("skill")).toBe(false);
     expect(isReactManagedRouteBody("memory")).toBe(false);
     expect(isReactManagedRouteBody("products")).toBe(false);

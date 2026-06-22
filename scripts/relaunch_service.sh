@@ -92,7 +92,11 @@ if command -v git >/dev/null 2>&1; then
     exit 10
   fi
   git checkout "$BRANCH"
-  git reset --hard "$REMOTE/$BRANCH"
+  if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+    echo "tracked working tree changes exist; refusing to reset" >&2
+    exit 11
+  fi
+  git merge --ff-only "$REMOTE/$BRANCH"
 fi
 
 "$REPO_DIR/scripts/build_alter0_service.sh"

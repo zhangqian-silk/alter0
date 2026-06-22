@@ -1199,41 +1199,6 @@ test.describe("Chat composer", () => {
     expect((localeBox?.y ?? 0) + (localeBox?.height ?? 0)).toBeLessThanOrEqual((after.bottom ?? 0) + 1);
   });
 
-  test("shows detailed explanations for environment variables", async ({ page }) => {
-    const { appShellPage } = await openChatWorkspace(page);
-
-    await appShellPage.routeMenuItem("environments").click();
-
-    const webAddrCard = page.locator(".environment-item").filter({ hasText: "web_addr" }).first();
-    const llmTemperatureCard = page.locator(".environment-item").filter({ hasText: "llm_temperature" }).first();
-
-    await expect(webAddrCard).toContainText("控制 HTTP 服务监听的 host:port");
-    await expect(webAddrCard).toContainText("浏览器和反向代理都会连接到这里");
-    await expect(llmTemperatureCard).toContainText("控制模型采样温度");
-    await expect(llmTemperatureCard).toContainText("值越低，输出越稳定和保守");
-  });
-
-  test("keeps environment details collapsed until expanded", async ({ page }) => {
-    const { appShellPage } = await openChatWorkspace(page);
-
-    await appShellPage.routeMenuItem("environments").click();
-
-    const webAddrCard = page.locator(".environment-item").filter({ hasText: "web_addr" }).first();
-    const details = webAddrCard.locator("details.environment-details");
-    const summary = details.locator("summary");
-    const valueTypeRow = details.locator(".route-field-row").filter({ hasText: "Value Type" });
-    const effectiveRow = details.locator(".route-field-row").filter({ hasText: "Effective" });
-
-    await expect(details).not.toHaveAttribute("open", "");
-    await expect(valueTypeRow).toBeHidden();
-
-    await summary.click();
-
-    await expect(details).toHaveAttribute("open", "");
-    await expect(valueTypeRow).toBeVisible();
-    await expect(effectiveRow).toBeVisible();
-  });
-
   test("prompts before leaving with unsent content", async ({ page }) => {
     const { appShellPage, composer } = await openChatWorkspaceWithDraft(page, "unsent draft");
     await expectComposerState(composer, { draft: "dirty" });

@@ -24,7 +24,6 @@ type sessionState struct {
 }
 
 type SessionStore struct {
-	legacyPath  string
 	sessionsDir string
 	format      Format
 	mu          sync.Mutex
@@ -32,7 +31,6 @@ type SessionStore struct {
 
 func NewSessionStore(baseDir string, format Format) *SessionStore {
 	return &SessionStore{
-		legacyPath:  filepath.Join(baseDir, "sessions."+extension(format)),
 		sessionsDir: filepath.Join(baseDir, "sessions"),
 		format:      format,
 	}
@@ -49,17 +47,6 @@ func (s *SessionStore) Load(_ context.Context) ([]sessiondomain.MessageRecord, e
 		return nil, err
 	}
 	if layoutFound {
-		legacyItems, legacyFound, err := s.loadLegacyAggregate()
-		if err != nil {
-			return nil, err
-		}
-		if legacyFound {
-			merged := mergeSessionRecords(layoutItems, legacyItems)
-			if err := s.saveSessionLayoutLocked(merged); err != nil {
-				return nil, err
-			}
-			return merged, nil
-		}
 		if layoutNeedsRewrite {
 			if err := s.saveSessionLayoutLocked(layoutItems); err != nil {
 				return nil, err
@@ -68,16 +55,7 @@ func (s *SessionStore) Load(_ context.Context) ([]sessiondomain.MessageRecord, e
 		return layoutItems, nil
 	}
 
-	legacyItems, legacyFound, err := s.loadLegacyAggregate()
-	if err != nil {
-		return nil, err
-	}
-	if legacyFound {
-		if err := s.saveSessionLayoutLocked(legacyItems); err != nil {
-			return nil, err
-		}
-	}
-	return legacyItems, nil
+	return []sessiondomain.MessageRecord{}, nil
 }
 
 func (s *SessionStore) Save(_ context.Context, records []sessiondomain.MessageRecord) error {
@@ -104,7 +82,6 @@ func (s *SessionStore) saveSessionLayoutLocked(records []sessiondomain.MessageRe
 	if err := s.cleanupRemovedSessionFiles(kept); err != nil {
 		return err
 	}
-	_ = os.Remove(s.legacyPath)
 	return nil
 }
 
@@ -113,30 +90,6 @@ type groupedSessionRecords struct {
 	sessionID  string
 	archiveDay string
 	records    []sessiondomain.MessageRecord
-}
-
-func (s *SessionStore) loadLegacyAggregate() ([]sessiondomain.MessageRecord, bool, error) {
-	raw, ok, err := readIfExists(s.legacyPath)
-	if err != nil {
-		return nil, false, err
-	}
-	if !ok {
-		return []sessiondomain.MessageRecord{}, false, nil
-	}
-
-	state := sessionState{}
-	if err := unmarshalPayload(s.format, raw, &state); err != nil {
-		return nil, true, err
-	}
-	if len(state.Messages) == 0 {
-		return []sessiondomain.MessageRecord{}, true, nil
-	}
-
-	items := make([]sessiondomain.MessageRecord, 0, len(state.Messages))
-	for _, item := range state.Messages {
-		items = append(items, item)
-	}
-	return items, true, nil
 }
 
 func (s *SessionStore) loadSessionLayout() ([]sessiondomain.MessageRecord, bool, bool, error) {
@@ -328,40 +281,6 @@ func isPreviousCanonicalChatSessionFile(path string, records []sessiondomain.Mes
 		}
 	}
 	return false
-}
-
-func mergeSessionRecords(primary []sessiondomain.MessageRecord, fallback []sessiondomain.MessageRecord) []sessiondomain.MessageRecord {
-	if len(primary) == 0 {
-		return append([]sessiondomain.MessageRecord(nil), fallback...)
-	}
-	if len(fallback) == 0 {
-		return append([]sessiondomain.MessageRecord(nil), primary...)
-	}
-	merged := make([]sessiondomain.MessageRecord, 0, len(primary)+len(fallback))
-	seen := map[string]struct{}{}
-	appendUnique := func(records []sessiondomain.MessageRecord) {
-		for _, record := range records {
-			key := sessionRecordStorageKey(record)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			merged = append(merged, record)
-		}
-	}
-	appendUnique(primary)
-	appendUnique(fallback)
-	return merged
-}
-
-func sessionRecordStorageKey(record sessiondomain.MessageRecord) string {
-	parts := []string{
-		strings.ToLower(strings.TrimSpace(record.SessionID)),
-		strings.TrimSpace(record.MessageID),
-		string(record.Role),
-		record.Timestamp.UTC().Format("2006-01-02T15:04:05.000000000Z07:00"),
-	}
-	return strings.Join(parts, "\x00")
 }
 
 func sanitizeSessionStoreSegment(value string) string {
