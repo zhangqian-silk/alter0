@@ -28,6 +28,7 @@ import { normalizeText, RouteMarkdownContent } from "./RouteBodyPrimitives";
 import { renderMessageMarkdownToHTML } from "./MessageMarkdown";
 import { ScrollJumpStrip } from "./ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
+import { terminalStepToRuntimeTraceEvent } from "./runtimeTraceEvents";
 
 type TerminalStatus = "ready" | "busy" | "exited" | "failed" | "interrupted";
 
@@ -318,7 +319,6 @@ type TerminalPollPlan = {
   refreshActiveSession: boolean;
 };
 
-const TERMINAL_DEFAULT_SKILL_EXCLUDE_IDS = new Set(["memory"]);
 const TERMINAL_NARRATIVE_BLOCK_TYPES = new Set(["text", "message", "reasoning", "plan", "log"]);
 
 function resolveLanguage(): "en" | "zh" {
@@ -409,9 +409,7 @@ function normalizeTerminalSkills(values: unknown): TerminalSkillSelection[] {
 }
 
 function resolveDefaultTerminalSkillIDs(skills: TerminalSkillSelection[]): string[] {
-  return skills
-    .map((skill) => skill.id)
-    .filter((id) => !TERMINAL_DEFAULT_SKILL_EXCLUDE_IDS.has(id));
+  return skills.map((skill) => skill.id);
 }
 
 function serializeTerminalComposerAttachment(attachment: ComposerAttachment) {
@@ -1668,6 +1666,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     </div>
   ) : null;
   const terminalTimelineItems = useMemo(() => buildTerminalTimelineItems({
+    sessionID: activeSession?.id,
     turns,
     expandedTurns,
     expandedSteps,
@@ -1686,6 +1685,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     toggleStep,
     toggleTurn,
     turns,
+    activeSession?.id,
   ]);
 
   return {
@@ -1952,6 +1952,7 @@ export function ReactManagedTerminalRouteBody() {
 }
 
 function buildTerminalTimelineItems({
+  sessionID,
   turns,
   expandedTurns,
   expandedSteps,
@@ -1962,6 +1963,7 @@ function buildTerminalTimelineItems({
   onToggleStep,
   onPreviewAttachment,
 }: {
+  sessionID?: string;
   turns: TerminalTurn[];
   expandedTurns: Record<string, boolean>;
   expandedSteps: Record<string, boolean>;
@@ -2028,17 +2030,32 @@ function buildTerminalTimelineItems({
     }
 
     if (hasProcess) {
-      const processSteps: RuntimeTimelineProcessStep[] = steps.map((step) => {
+      const processSteps: RuntimeTimelineProcessStep[] = steps.map((step, index) => {
         const key = stepKey(turn.id, step.id);
         const detail = stepDetails[key];
         const error = stepErrors[key];
         const expanded = Boolean(expandedSteps[key]);
+        const runtimeEvent = terminalStepToRuntimeTraceEvent(step, {
+          sessionID,
+          turnID: turn.id,
+          seq: index,
+          provider: {
+            engine: "codex",
+            adapter: "codex_cli_json",
+            event_type: step.type,
+            item_id: step.id,
+          },
+        });
         const fallbackContent = String(step.preview || "").trim();
-        const stepType = normalizeText(step.type || "").toLowerCase();
+        const stepType = normalizeText(step.type || runtimeEvent.kind || "").toLowerCase();
         return {
           id: step.id,
           itemClassName: "terminal-step-item",
-          itemProps: { "data-terminal-step-item": step.id },
+          itemProps: {
+            "data-terminal-step-item": step.id,
+            "data-runtime-event-kind": runtimeEvent.kind,
+            "data-runtime-event-source": runtimeEvent.source,
+          },
           toggleClassName: "terminal-step-toggle",
           toggleProps: {
             "data-terminal-step-toggle": step.id,

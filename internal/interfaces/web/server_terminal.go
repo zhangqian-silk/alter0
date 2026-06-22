@@ -16,6 +16,7 @@ import (
 
 const terminalClientIDHeader = "X-Alter0-Terminal-Client"
 const sharedTerminalClientID = "shared"
+const chatTerminalClientID = "chat"
 
 type terminalSessionCreateRequest struct {
 	Title string `json:"title,omitempty"`
@@ -24,7 +25,7 @@ type terminalSessionCreateRequest struct {
 type terminalSessionInputRequest struct {
 	Input       string                     `json:"input"`
 	Attachments []messageAttachmentRequest `json:"attachments,omitempty"`
-	SkillIDs    []string                   `json:"skill_ids,omitempty"`
+	SkillIDs    *[]string                  `json:"skill_ids,omitempty"`
 }
 
 type terminalSessionPinRequest struct {
@@ -303,19 +304,31 @@ func (s *Server) buildTerminalSessionDetail(ownerID string, session any) any {
 	return sessionMap
 }
 
-func (s *Server) resolveTerminalSkillContext(skillIDs []string) *execdomain.SkillContext {
-	include := normalizeTerminalSkillIDSet(skillIDs)
-	if len(include) == 0 || s.control == nil {
+func (s *Server) resolveTerminalSkillContext(skillIDs *[]string) *execdomain.SkillContext {
+	if s.control == nil {
 		return nil
 	}
-	skills := make([]execdomain.SkillSpec, 0, len(include))
+	selectedOnly := skillIDs != nil
+	include := map[string]struct{}{}
+	if selectedOnly {
+		include = normalizeTerminalSkillIDSet(*skillIDs)
+		if len(include) == 0 {
+			return nil
+		}
+	}
+	skills := make([]execdomain.SkillSpec, 0)
 	for _, capability := range s.control.ListCapabilitiesByType(controldomain.CapabilityTypeSkill) {
 		if !capability.Enabled || !isPublicTerminalSkillCapability(capability) {
 			continue
 		}
 		id := strings.TrimSpace(capability.ID)
-		if _, ok := include[id]; !ok {
+		if id == "" {
 			continue
+		}
+		if selectedOnly {
+			if _, ok := include[id]; !ok {
+				continue
+			}
 		}
 		skills = append(skills, terminalSkillSpecFromCapability(capability))
 	}
@@ -461,5 +474,16 @@ func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
 }
 
 func resolveTerminalClientID(r *http.Request) string {
+	if r == nil {
+		return sharedTerminalClientID
+	}
+	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope"))) {
+	case chatTerminalClientID:
+		return chatTerminalClientID
+	}
+	switch strings.ToLower(strings.TrimSpace(r.Header.Get(terminalClientIDHeader))) {
+	case chatTerminalClientID:
+		return chatTerminalClientID
+	}
 	return sharedTerminalClientID
 }

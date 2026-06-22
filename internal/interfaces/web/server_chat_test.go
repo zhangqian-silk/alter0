@@ -292,11 +292,13 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 	runtimeMarkers := []string{
 		`const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";`,
 		`const MAX_COMPOSER_CHARS = 10000;`,
+		`const NEW_CHAT_DRAFT_KEY = "__chat_new__";`,
 		"function loadComposerDrafts()",
 		"function persistComposerDrafts(drafts: ComposerDraftMap)",
 		"const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());",
-		"const nextDrafts = { ...composerDrafts, [session.id]: value.slice(0, MAX_COMPOSER_CHARS) };",
-		"persistComposerDrafts(nextDrafts);",
+		"const activeDraftKey = activeSessionID || NEW_CHAT_DRAFT_KEY;",
+		"const nextDrafts = { ...composerDrafts, [activeDraftKey]: value.slice(0, MAX_COMPOSER_CHARS) };",
+		"const nextDrafts = { ...composerDrafts, [session.id]: \"\", [NEW_CHAT_DRAFT_KEY]: \"\" };",
 	}
 	for _, marker := range runtimeMarkers {
 		if !strings.Contains(runtimeSource, marker) {
@@ -339,20 +341,35 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 	}
 }
 
-func TestChatScriptRecoversInterruptedStreams(t *testing.T) {
+func TestChatScriptUsesTerminalSessionInput(t *testing.T) {
 	script := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx")
 	markers := []string{
-		`status: "streaming",`,
-		`error: sawDone ? "" : "stream interrupted",`,
-		`taskPending: Boolean(body?.task_id && !isTerminalTaskStatus(normalizeText(body?.task_status))),`,
-		`taskResultDelivered: Boolean(record.task_result_delivered),`,
+		`const TERMINAL_SESSION_COLLECTION_ENDPOINT = "/api/terminal/sessions";`,
+		"chatTerminalSessionEndpoint(`${encodeURIComponent(session.id)}/input`)",
+		`skill_ids: activeSkillIDs,`,
+		`await apiClient.post<`,
 		`message.taskID && message.taskPending && !message.taskResultDelivered`,
 		`taskPending: !isTerminalTaskStatus(status),`,
 		`taskResultDelivered: isTerminalTaskStatus(status),`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
-			t.Fatalf("expected interrupted stream recovery marker %q", marker)
+			t.Fatalf("expected Terminal input marker %q", marker)
+		}
+	}
+	removedMarkers := []string{
+		`sendMessageJSON`,
+		`MESSAGE_ENDPOINT`,
+		`/api/messages`,
+		`conversation-runtime/sessions`,
+		`sendMessageStream`,
+		`parseSSEBlock`,
+		`/api/messages/stream`,
+		`stream interrupted`,
+	}
+	for _, marker := range removedMarkers {
+		if strings.Contains(script, marker) {
+			t.Fatalf("did not expect removed stream marker %q", marker)
 		}
 	}
 }

@@ -155,6 +155,61 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	}
 }
 
+func TestTerminalSessionHandlersUseChatScopeOwner(t *testing.T) {
+	service := &stubWebTerminalService{
+		createResp: terminaldomain.Session{
+			ID:        "terminal-chat",
+			OwnerID:   "chat",
+			Title:     "terminal-chat",
+			Status:    terminaldomain.SessionStatusReady,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+		inputResp: terminaldomain.Session{
+			ID:        "terminal-chat",
+			OwnerID:   "chat",
+			Title:     "terminal-chat",
+			Status:    terminaldomain.SessionStatusBusy,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	server := &Server{terminals: service}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions?scope=chat", bytes.NewBufferString(`{}`))
+	createRec := httptest.NewRecorder()
+	server.terminalSessionCollectionHandler(createRec, createReq)
+
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create status 201, got %d", createRec.Code)
+	}
+	if service.createReq.OwnerID != "chat" {
+		t.Fatalf("expected chat-scoped create owner, got %q", service.createReq.OwnerID)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions?scope=chat", nil)
+	listRec := httptest.NewRecorder()
+	server.terminalSessionCollectionHandler(listRec, listReq)
+
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d", listRec.Code)
+	}
+	if service.lastOwnerID != "chat" {
+		t.Fatalf("expected chat-scoped list owner, got %q", service.lastOwnerID)
+	}
+
+	inputReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-chat/input?scope=chat", bytes.NewBufferString(`{"input":"hello"}`))
+	inputRec := httptest.NewRecorder()
+	server.terminalSessionItemHandler(inputRec, inputReq)
+
+	if inputRec.Code != http.StatusOK {
+		t.Fatalf("expected input status 200, got %d", inputRec.Code)
+	}
+	if service.lastOwnerID != "chat" {
+		t.Fatalf("expected chat-scoped input owner, got %q", service.lastOwnerID)
+	}
+}
+
 func TestTerminalSessionItemHandlerWritesInput(t *testing.T) {
 	service := &stubWebTerminalService{
 		inputResp: terminaldomain.Session{
@@ -280,6 +335,130 @@ func TestTerminalSessionItemHandlerPassesSelectedSkills(t *testing.T) {
 	}
 	if service.inputReq.SkillContext.Skills[0].Guide != "Use concise structured summaries." {
 		t.Fatalf("expected skill guide, got %+v", service.inputReq.SkillContext.Skills[0])
+	}
+}
+
+func TestTerminalSessionItemHandlerDefaultsMissingSkillIDsToAllPublicSkills(t *testing.T) {
+	service := &stubWebTerminalService{
+		inputResp: terminaldomain.Session{
+			ID:        "terminal-2",
+			OwnerID:   sharedTerminalClientID,
+			Title:     "terminal-2",
+			Status:    terminaldomain.SessionStatusBusy,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertCapability(controldomain.Capability{
+		ID:      "summary",
+		Name:    "Summary",
+		Type:    controldomain.CapabilityTypeSkill,
+		Enabled: true,
+		Scope:   controldomain.CapabilityScopeGlobal,
+		Version: controldomain.DefaultCapabilityVersion,
+		Metadata: map[string]string{
+			"skill.description": "Summarize terminal work.",
+		},
+	}); err != nil {
+		t.Fatalf("upsert summary skill failed: %v", err)
+	}
+	if err := control.UpsertCapability(controldomain.Capability{
+		ID:      "memory",
+		Name:    "Memory",
+		Type:    controldomain.CapabilityTypeSkill,
+		Enabled: true,
+		Scope:   controldomain.CapabilityScopeGlobal,
+		Version: controldomain.DefaultCapabilityVersion,
+	}); err != nil {
+		t.Fatalf("upsert memory skill failed: %v", err)
+	}
+	if err := control.UpsertCapability(controldomain.Capability{
+		ID:      "disabled",
+		Name:    "Disabled",
+		Type:    controldomain.CapabilityTypeSkill,
+		Enabled: false,
+		Scope:   controldomain.CapabilityScopeGlobal,
+		Version: controldomain.DefaultCapabilityVersion,
+	}); err != nil {
+		t.Fatalf("upsert disabled skill failed: %v", err)
+	}
+	if err := control.UpsertCapability(controldomain.Capability{
+		ID:      "private",
+		Name:    "Private",
+		Type:    controldomain.CapabilityTypeSkill,
+		Enabled: true,
+		Scope:   controldomain.CapabilityScopeGlobal,
+		Version: controldomain.DefaultCapabilityVersion,
+		Metadata: map[string]string{
+			"skill.visibility": "private",
+		},
+	}); err != nil {
+		t.Fatalf("upsert private skill failed: %v", err)
+	}
+	server := &Server{terminals: service, control: control}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"input":"summarize"}`))
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if service.inputReq.SkillContext == nil {
+		t.Fatalf("expected default skill context")
+	}
+	got := make(map[string]bool)
+	for _, skill := range service.inputReq.SkillContext.Skills {
+		got[skill.ID] = true
+	}
+	for _, id := range []string{"summary", "memory"} {
+		if !got[id] {
+			t.Fatalf("expected default skill %q in %+v", id, service.inputReq.SkillContext.Skills)
+		}
+	}
+	for _, id := range []string{"disabled", "private"} {
+		if got[id] {
+			t.Fatalf("did not expect default skill %q in %+v", id, service.inputReq.SkillContext.Skills)
+		}
+	}
+}
+
+func TestTerminalSessionItemHandlerTreatsExplicitEmptySkillIDsAsNoSkills(t *testing.T) {
+	service := &stubWebTerminalService{
+		inputResp: terminaldomain.Session{
+			ID:        "terminal-2",
+			OwnerID:   sharedTerminalClientID,
+			Title:     "terminal-2",
+			Status:    terminaldomain.SessionStatusBusy,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	control := controlapp.NewService()
+	if err := control.UpsertCapability(controldomain.Capability{
+		ID:      "summary",
+		Name:    "Summary",
+		Type:    controldomain.CapabilityTypeSkill,
+		Enabled: true,
+		Scope:   controldomain.CapabilityScopeGlobal,
+		Version: controldomain.DefaultCapabilityVersion,
+	}); err != nil {
+		t.Fatalf("upsert summary skill failed: %v", err)
+	}
+	server := &Server{terminals: service, control: control}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"input":"summarize","skill_ids":[]}`))
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if service.inputReq.SkillContext != nil {
+		t.Fatalf("expected explicit empty skill_ids to disable skills, got %+v", service.inputReq.SkillContext)
 	}
 }
 

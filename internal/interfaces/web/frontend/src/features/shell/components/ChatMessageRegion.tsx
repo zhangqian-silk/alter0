@@ -7,6 +7,14 @@ import {
 } from "./RuntimeTimeline";
 import { MessageMarkdownHTML } from "./MessageMarkdownShell";
 import { renderMessageMarkdownToHTML } from "./MessageMarkdown";
+import {
+  DEFAULT_RUNTIME_EVENT_FILTER,
+  processStepToRuntimeTraceEvent,
+  runtimeTraceEventVisibleByFilter,
+  type RuntimeBlock,
+  type RuntimeEventFilterID,
+  type RuntimeTraceEvent,
+} from "./runtimeTraceEvents";
 
 export type ChatMessageSnapshot = {
   id: string;
@@ -55,9 +63,10 @@ type MessageCopy = {
 };
 
 const TIMELINE_ITEM_CACHE_LIMIT = 384;
+const LEGACY_LOCAL_PROCESS_STEP_ID = "local-stream-start";
 const timelineItemCache = new Map<string, { signature: string; item: RuntimeTimelineItem }>();
 const messageSignatureCache = new WeakMap<ChatMessageSnapshot, string>();
-const callbackCacheIDs = new WeakMap<NonNullable<BuildChatTimelineItemsOptions["onToggleProcess"]>, number>();
+const callbackCacheIDs = new WeakMap<Function, number>();
 let nextCallbackCacheID = 1;
 
 const MESSAGE_COPY: Record<LegacyShellLanguage, MessageCopy> = {
@@ -96,17 +105,31 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
   messages,
   language,
   onToggleProcess,
+  expandedProcessSteps,
+  onToggleProcessStep,
+  runtimeEventFilter,
 }: {
   sessionId: string;
   messages: ChatMessageSnapshot[];
   language: LegacyShellLanguage;
   onToggleProcess?: (messageID: string) => void;
+  expandedProcessSteps?: Record<string, boolean>;
+  onToggleProcessStep?: (messageID: string, stepID: string) => void;
+  runtimeEventFilter?: RuntimeEventFilterID[];
 }) {
   return (
     <RuntimeTimeline
       className="message-list"
       timelineProps={{ "data-message-session-id": sessionId }}
-      items={buildChatTimelineItems({ cacheScope: sessionId, messages, language, onToggleProcess })}
+      items={buildChatTimelineItems({
+        cacheScope: sessionId,
+        messages,
+        language,
+        onToggleProcess,
+        expandedProcessSteps,
+        onToggleProcessStep,
+        runtimeEventFilter,
+      })}
     />
   );
 });
@@ -116,17 +139,35 @@ export function buildChatTimelineItems({
   messages,
   language,
   onToggleProcess,
+  expandedProcessSteps,
+  onToggleProcessStep,
+  runtimeEventFilter,
 }: BuildChatTimelineItemsOptions) {
   const callbackCacheID = resolveCallbackCacheID(onToggleProcess);
+  const stepCallbackCacheID = resolveCallbackCacheID(onToggleProcessStep);
   const copy = MESSAGE_COPY[language];
+  const filter = runtimeEventFilter || DEFAULT_RUNTIME_EVENT_FILTER;
+  const expandedStepMap = expandedProcessSteps || {};
   return messages.map((message) => {
-    const cacheKey = `${cacheScope}\u0000${language}\u0000${callbackCacheID}\u0000${message.id}`;
-    const signature = resolveChatTimelineItemSignature(message);
+    const cacheKey = `${cacheScope}\u0000${language}\u0000${callbackCacheID}\u0000${stepCallbackCacheID}\u0000${message.id}`;
+    const signature = [
+      resolveChatTimelineItemSignature(message),
+      filter.join(","),
+      resolveExpandedProcessStepSignature(message.id, expandedStepMap),
+    ].join("\u0000");
     const cached = timelineItemCache.get(cacheKey);
     if (cached?.signature === signature) {
       return cached.item;
     }
-    const item = buildChatTimelineItem(message, language, copy, onToggleProcess);
+    const item = buildChatTimelineItem(
+      message,
+      language,
+      copy,
+      onToggleProcess,
+      expandedStepMap,
+      onToggleProcessStep,
+      filter,
+    );
     timelineItemCache.set(cacheKey, { signature, item });
     trimTimelineItemCache();
     return item;
@@ -138,9 +179,12 @@ type BuildChatTimelineItemsOptions = {
   messages: ChatMessageSnapshot[];
   language: LegacyShellLanguage;
   onToggleProcess?: (messageID: string) => void;
+  expandedProcessSteps?: Record<string, boolean>;
+  onToggleProcessStep?: (messageID: string, stepID: string) => void;
+  runtimeEventFilter?: RuntimeEventFilterID[];
 };
 
-function resolveCallbackCacheID(callback: BuildChatTimelineItemsOptions["onToggleProcess"]) {
+function resolveCallbackCacheID(callback?: Function) {
   if (!callback) {
     return "none";
   }
@@ -162,6 +206,18 @@ function trimTimelineItemCache() {
     }
     timelineItemCache.delete(oldest);
   }
+}
+
+function chatProcessStepKey(messageID: string, stepID: string) {
+  return `${messageID}:${stepID}`;
+}
+
+function resolveExpandedProcessStepSignature(messageID: string, expandedProcessSteps: Record<string, boolean>) {
+  const prefix = `${messageID}:`;
+  return Object.keys(expandedProcessSteps)
+    .filter((key) => key.startsWith(prefix) && expandedProcessSteps[key])
+    .sort()
+    .join(",");
 }
 
 function resolveChatTimelineItemSignature(message: ChatMessageSnapshot) {
@@ -208,6 +264,9 @@ function buildChatTimelineItem(
   language: LegacyShellLanguage,
   copy: MessageCopy,
   onToggleProcess?: (messageID: string) => void,
+  expandedProcessSteps: Record<string, boolean> = {},
+  onToggleProcessStep?: (messageID: string, stepID: string) => void,
+  runtimeEventFilter: RuntimeEventFilterID[] = DEFAULT_RUNTIME_EVENT_FILTER,
 ): RuntimeTimelineItem {
   const footer = message.role === "assistant" && shouldShowAssistantStatus(message) ? (
     <div className="msg-meta">
@@ -248,18 +307,19 @@ function buildChatTimelineItem(
     };
   }
 
-  const parsed = resolveExecutionContent(message, language);
+  const parsed = resolveExecutionContent(message, language, runtimeEventFilter);
   if (!parsed.steps.length) {
+    const markdown = parsed.hadProcess ? parsed.answer.trim() : (parsed.answer.trim() || message.text);
     return {
       id: message.id,
       className: "msg assistant terminal-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
       articleProps: { "data-message-id": message.id },
       bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
-      blocks: message.text.trim() ? [
+      blocks: markdown.trim() ? [
         {
           type: "markdown-shell" as const,
-          markdown: message.text,
-          copyValue: message.status === "streaming" ? undefined : message.text.trim(),
+          markdown,
+          copyValue: message.status === "streaming" ? undefined : markdown.trim(),
           copyLabel: copy.copyValue,
           wrapperClassName: [
             "terminal-final-output",
@@ -276,9 +336,15 @@ function buildChatTimelineItem(
     };
   }
 
+  const legacyLocalPlaceholderOnly =
+    message.status.trim().toLowerCase() === "streaming"
+    && parsed.steps.length === 1
+    && parsed.steps[0]?.id === LEGACY_LOCAL_PROCESS_STEP_ID;
   const collapsed =
     typeof message.processCollapsed === "boolean"
       ? message.processCollapsed
+      : legacyLocalPlaceholderOnly
+        ? true
       : Boolean(parsed.answer.trim()) && message.status !== "streaming";
 
   return {
@@ -289,9 +355,9 @@ function buildChatTimelineItem(
     blocks: [
       {
         type: "process",
-        shellClassName: `runtime-thinking-shell terminal-process-shell conversation-process-shell ${collapsed ? "is-collapsed" : ""}`,
+        shellClassName: `runtime-thinking-shell terminal-process-shell ${collapsed ? "is-collapsed" : ""}`,
         shellProps: { "data-conversation-process-shell": message.id },
-        toggleClassName: "runtime-thinking-toggle terminal-process-toggle conversation-process-toggle",
+        toggleClassName: "runtime-thinking-toggle terminal-process-toggle",
         toggleProps: { "data-conversation-process-toggle": message.id },
         title: (
           <>
@@ -304,21 +370,43 @@ function buildChatTimelineItem(
         ),
         expanded: !collapsed,
         onToggle: () => onToggleProcess?.(message.id),
-        bodyClassName: "terminal-process-body conversation-process-body",
-        emptyState: <div className="terminal-process-empty conversation-process-empty">{copy.processEmpty}</div>,
-        steps: parsed.steps.map((step, index) => ({
-          id: step.id || `${step.title}-${index}`,
-          itemClassName: "conversation-process-step",
-          toggleable: false,
-          title: step.title || `${copy.processLabel} ${index + 1}`,
-          titleClassName: "conversation-process-step-title",
-          meta: <span className="conversation-process-step-index">{index + 1}</span>,
-          expanded: true,
-          onToggle: () => undefined,
-          toggleClassName: "conversation-process-step-head",
-          bodyClassName: "conversation-process-step-body",
-          detail: step.detail ? <MessageMarkdownHTML html={renderMessageMarkdownToHTML(step.detail)} /> : null,
-        })),
+        bodyClassName: "terminal-process-body",
+        emptyState: <div className="terminal-process-empty">{copy.processEmpty}</div>,
+        steps: parsed.steps.map((step, index) => {
+          const stepID = step.id || `${step.title}-${index}`;
+          const expanded = Boolean(expandedProcessSteps[chatProcessStepKey(message.id, stepID)]);
+          return {
+            id: stepID,
+            itemClassName: "terminal-step-item",
+            itemProps: {
+              "data-terminal-step-item": stepID,
+              "data-conversation-process-step": stepID,
+              ...(isRuntimeTraceEvent(step) ? {
+                "data-runtime-event-kind": step.kind,
+                "data-runtime-event-source": step.source,
+              } : {}),
+            },
+            title: step.title || `${copy.processLabel} ${index + 1}`,
+            titleClassName: "terminal-step-title",
+            expanded,
+            onToggle: () => onToggleProcessStep?.(message.id, stepID),
+            toggleClassName: "terminal-step-toggle",
+            toggleProps: {
+              "data-terminal-step-toggle": stepID,
+              "data-conversation-process-step-toggle": stepID,
+            },
+            bodyClassName: "terminal-step-body",
+            detail: (
+              <div className="terminal-step-detail">
+                {isRuntimeTraceEvent(step)
+                  ? runtimeEventDetail(step)
+                  : step.detail
+                    ? <MessageMarkdownHTML html={renderMessageMarkdownToHTML(step.detail)} />
+                    : null}
+              </div>
+            ),
+          };
+        }),
       },
       ...(parsed.answer.trim() ? [
         {
@@ -362,28 +450,93 @@ function shouldShowAssistantStatus(message: ChatMessageSnapshot) {
   if (message.error) {
     return true;
   }
-  const normalized = message.status.trim().toLowerCase();
-  return normalized !== "" && normalized !== "done" && normalized !== "success";
+  return false;
 }
 
 function resolveExecutionContent(
   message: ChatMessageSnapshot,
   language: LegacyShellLanguage,
+  runtimeEventFilter: RuntimeEventFilterID[] = DEFAULT_RUNTIME_EVENT_FILTER,
 ) {
   if (message.processSteps.length) {
+    const steps = message.processSteps
+      .map((step, index) => processStepToRuntimeTraceEvent(step, {
+        turnID: message.id,
+        seq: index + 1,
+        provider: {
+          engine: "codex",
+          adapter: "codex_cli_json",
+          event_type: "item.completed",
+          item_type: "agent_message",
+          channel: !step.kind || step.kind === "analysis" || step.kind === "commentary" ? "commentary" : undefined,
+        },
+      }))
+      .filter((event) => runtimeTraceEventVisibleByFilter(event, runtimeEventFilter));
     return {
-      steps: message.processSteps,
+      steps,
       answer: message.text.trim(),
+      hadProcess: true,
     };
   }
-  return parseExecutionText(message.text, language);
+  const parsed = parseExecutionText(message.text, language);
+  if (!parsed.steps.length) {
+    return parsed;
+  }
+  return {
+    ...parsed,
+    hadProcess: true,
+    steps: parsed.steps
+      .map((step, index) => processStepToRuntimeTraceEvent(step, {
+        turnID: message.id,
+        seq: index + 1,
+        provider: {
+          engine: "alter0",
+          adapter: "alter0",
+          event_type: "legacy_text_marker",
+        },
+      }))
+      .filter((event) => runtimeTraceEventVisibleByFilter(event, runtimeEventFilter)),
+  };
+}
+
+function isRuntimeTraceEvent(value: unknown): value is RuntimeTraceEvent {
+  return Boolean(value && typeof value === "object" && "blocks" in value && "kind" in value);
+}
+
+function runtimeEventDetail(event: RuntimeTraceEvent) {
+  const markdown = event.blocks
+    .map(runtimeBlockMarkdown)
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+  return markdown ? <MessageMarkdownHTML html={renderMessageMarkdownToHTML(markdown)} /> : null;
+}
+
+function runtimeBlockMarkdown(block: RuntimeBlock): string {
+  switch (block.type) {
+    case "text":
+    case "markdown":
+    case "thinking":
+      return block.text;
+    case "tool_output":
+      return typeof block.text === "string" ? block.text : "";
+    case "terminal":
+      return [block.command, block.output].filter(Boolean).join("\n\n");
+    case "code":
+    case "diff":
+      return block.content;
+    case "error":
+      return block.message;
+    default:
+      return "";
+  }
 }
 
 function parseExecutionText(value: string, language: LegacyShellLanguage) {
   const copy = MESSAGE_COPY[language];
   const normalized = value.replace(/\r\n?/g, "\n");
   if (!normalized.trim()) {
-    return { steps: [] as ChatMessageProcessStepSnapshot[], answer: "" };
+    return { steps: [] as ChatMessageProcessStepSnapshot[], answer: "", hadProcess: false };
   }
 
   const lines = normalized.split("\n");
@@ -433,7 +586,7 @@ function parseExecutionText(value: string, language: LegacyShellLanguage) {
       }
       const detail = detailLines.join("\n").trim();
       if (currentStep) {
-        currentStep.detail = detail;
+        currentStep.detail = [currentStep.detail, detail].filter(Boolean).join("\n\n");
       } else {
         currentStep = {
           id: "",
@@ -446,6 +599,11 @@ function parseExecutionText(value: string, language: LegacyShellLanguage) {
       }
       continue;
     }
+    if (currentStep) {
+      currentStep.detail = [currentStep.detail, line].filter(Boolean).join("\n");
+      index += 1;
+      continue;
+    }
     answerLines.push(line);
     index += 1;
   }
@@ -454,5 +612,6 @@ function parseExecutionText(value: string, language: LegacyShellLanguage) {
   return {
     steps,
     answer: answerLines.join("\n").trim(),
+    hadProcess: steps.length > 0,
   };
 }

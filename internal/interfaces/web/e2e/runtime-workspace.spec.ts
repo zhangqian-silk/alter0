@@ -36,14 +36,10 @@ async function mockConversationRuntimeSessions(
     throw new Error("mockConversationRuntimeSessions requires at least one session");
   }
 
-  await page.context().route("**/api/conversation-runtime/sessions**", async (route) => {
+  await page.context().route("**/api/terminal/sessions**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.searchParams.get("route") !== options.route) {
-      await route.fallback();
-      return;
-    }
 
-    if (url.pathname.endsWith("/api/conversation-runtime/sessions")) {
+    if (url.pathname.endsWith("/api/terminal/sessions")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",

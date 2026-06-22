@@ -1,6 +1,6 @@
 # Runtime & Orchestration Requirements
 
-> Last update: 2026-06-06
+> Last update: 2026-06-14
 
 ## 领域边界
 
@@ -17,6 +17,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 | `ExecutionPort` | 隔离 Agent 执行契约，并把请求交给 Runtime Resolver |
 | `RuntimeResolver` | 根据 Provider、显式执行引擎、健康状态和入口上下文选择 CLI Runtime |
 | `CLIRuntime` | 表示 Claude Code 或 Codex Direct 的一次执行 |
+| `RuntimeTraceEvent` | 表示 provider、adapter 或 alter0 确定产生的运行过程事件 |
 | `Channel` | 表示 CLI、Web、Scheduler 等输入通道 |
 | `SchedulerJob` | 表示可配置定时任务及其触发计划 |
 | `TraceContext` | 贯穿 trace、session、message、correlation 维度 |
@@ -32,7 +33,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 ### Web
 
 - Web 消息入口必须转换为 `UnifiedMessage`，并携带 Web channel 信息。
-- 普通 JSON 消息和 SSE 流式消息复用同一编排语义。
+- Web Chat JSON 消息与后台 Task 触发复用同一编排语义。
 - Web 消息入口除文本内容外，还需接收图片附件数组，并把附件以稳定元数据键写入 `UnifiedMessage.Metadata`，供执行链路继续解析。
 - Web 登录、会话历史、移动端体验等入口侧规则由 Conversation & Session Experience 领域维护。
 
@@ -67,6 +68,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 - Codex Direct 运行时启动前需要注入 `AGENTS.md`、独立 `CODEX_HOME/config.toml`、Skill、Memory、MCP 和工作区事实。
 - 运行时执行结果统一回写 `OrchestrationResult`、Session history、Task 或 Cron run。
 - 执行错误需保留可诊断错误编码，供 Web、Task 与 Skill 收口使用。
+- 运行时过程事件统一归一为 `RuntimeTraceEvent`。事件必须保留 `source`、provider 引用、角色、类型、生命周期、状态、结构化 blocks 与可选 action；`source=provider` 表示底层 SDK/CLI 明确提供，`source=adapter` 表示工程 adapter 从稳定协议字段转换，`source=alter0` 表示 alter0 本地确定性生成。系统不得根据自然语言正文、标题、关键词或语言模式推断事件类型。
 
 ## 调度能力
 
@@ -114,7 +116,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 
 ## 依赖与边界
 
-- Conversation 领域消费 Runtime 的消息与流式结果，不拥有编排路由规则。
+- Conversation 领域消费 Runtime 的消息结果与结构化过程，不拥有编排路由规则。
 - Skill & Memory 领域提供 Skill 与 Memory 注入上下文，不直接改写通道模型。
 - Task 领域可承接复杂度分流后的后台执行，但触发源仍来自统一消息。
 - 业务入口通过统一 CLI Runtime 接入执行链，不绕过 Orchestration。

@@ -526,7 +526,7 @@ func TestServiceRecoverRestoresCodexThreadForFollowUpInput(t *testing.T) {
 	}
 }
 
-func TestServiceRecoverSharesSessionAcrossOwnerInputs(t *testing.T) {
+func TestServiceRecoverRejectsSessionOwnedByAnotherOwner(t *testing.T) {
 	service := newTestService("success")
 
 	session, err := service.Create(CreateRequest{
@@ -550,28 +550,18 @@ func TestServiceRecoverSharesSessionAcrossOwnerInputs(t *testing.T) {
 		LastOutputAt:      snapshot.LastOutputAt,
 		UpdatedAt:         snapshot.UpdatedAt,
 	})
-	if err != nil {
-		t.Fatalf("recover ownership transfer: %v", err)
-	}
-	if recovered.OwnerID != sharedTerminalOwnerID {
-		t.Fatalf("expected shared owner, got %q", recovered.OwnerID)
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("expected ownership mismatch to be rejected, got session=%+v err=%v", recovered, err)
 	}
 	if _, ok := service.Get("owner-original", session.ID); !ok {
-		t.Fatalf("expected original owner alias to keep access to shared session")
+		t.Fatalf("expected original owner to keep access")
 	}
-	if _, err := service.Input("owner-rebound", session.ID, "follow-up after transfer"); err != nil {
-		t.Fatalf("input after ownership transfer: %v", err)
-	}
-	resumedSnapshot, entries := waitForSessionEntries(t, service, "owner-rebound", session.ID, 4)
-	if resumedSnapshot.TerminalSessionID != snapshot.TerminalSessionID {
-		t.Fatalf("expected thread id to stay stable, got %q", resumedSnapshot.TerminalSessionID)
-	}
-	if got := entries[3].Text; got != "mock:follow-up after transfer" {
-		t.Fatalf("expected resumed reply after transfer, got %q", got)
+	if _, ok := service.Get("owner-rebound", session.ID); ok {
+		t.Fatalf("expected rebound owner to be unable to access original session")
 	}
 }
 
-func TestServiceRecoverSharesEmptySessionAcrossOwnerInputs(t *testing.T) {
+func TestServiceRecoverRejectsEmptySessionOwnedByAnotherOwner(t *testing.T) {
 	service := newTestService("success")
 
 	session, err := service.Create(CreateRequest{
@@ -590,25 +580,12 @@ func TestServiceRecoverSharesEmptySessionAcrossOwnerInputs(t *testing.T) {
 		CreatedAt:         session.CreatedAt,
 		UpdatedAt:         session.UpdatedAt,
 	})
-	if err != nil {
-		t.Fatalf("recover empty session ownership transfer: %v", err)
-	}
-	if recovered.OwnerID != sharedTerminalOwnerID {
-		t.Fatalf("expected shared owner for empty session, got %q", recovered.OwnerID)
-	}
-	if _, err := service.Input("owner-rebound", session.ID, "first prompt after transfer"); err != nil {
-		t.Fatalf("first input after empty session transfer: %v", err)
-	}
-	snapshot, entries := waitForSessionEntries(t, service, "owner-rebound", session.ID, 2)
-	if snapshot.Title != "empty-session" {
-		t.Fatalf("expected transferred empty session title, got %q", snapshot.Title)
-	}
-	if got := entries[1].Text; got != "mock:first prompt after transfer" {
-		t.Fatalf("expected first reply after transfer, got %q", got)
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("expected empty session ownership mismatch to be rejected, got session=%+v err=%v", recovered, err)
 	}
 }
 
-func TestServiceRecoverIgnoresTerminalIdentityMismatchInSharedMode(t *testing.T) {
+func TestServiceRecoverRejectsTerminalIdentityMismatchForAnotherOwner(t *testing.T) {
 	service := newTestService("success")
 
 	session, err := service.Create(CreateRequest{
@@ -628,11 +605,8 @@ func TestServiceRecoverIgnoresTerminalIdentityMismatchInSharedMode(t *testing.T)
 		SessionID:         session.ID,
 		TerminalSessionID: snapshot.TerminalSessionID + "-other",
 	})
-	if err != nil {
-		t.Fatalf("expected shared recover to succeed, got %v", err)
-	}
-	if recovered.OwnerID != sharedTerminalOwnerID {
-		t.Fatalf("expected shared owner after recover, got %q", recovered.OwnerID)
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("expected terminal identity mismatch owner to be rejected, got session=%+v err=%v", recovered, err)
 	}
 }
 
@@ -995,12 +969,48 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 		},
 	}
 
-	items := service.List("owner-a")
+	items := service.List(sharedTerminalOwnerID)
 	if len(items) != 2 {
 		t.Fatalf("expected 2 sessions, got %d", len(items))
 	}
 	if items[0].ID != "terminal-output-newer" {
 		t.Fatalf("expected last output ordering, got first session %q", items[0].ID)
+	}
+}
+
+func TestServiceListSeparatesSessionsByOwner(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	service := &Service{
+		sessions: map[string]*runtimeSession{
+			"terminal-chat": {
+				summary: terminaldomain.Session{
+					ID:        "terminal-chat",
+					OwnerID:   "chat",
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			},
+			"terminal-shared": {
+				summary: terminaldomain.Session{
+					ID:        "terminal-shared",
+					OwnerID:   sharedTerminalOwnerID,
+					CreatedAt: now.Add(time.Minute),
+					UpdatedAt: now.Add(time.Minute),
+				},
+			},
+		},
+	}
+
+	chatItems := service.List("chat")
+	if len(chatItems) != 1 || chatItems[0].ID != "terminal-chat" {
+		t.Fatalf("expected only chat-owned sessions, got %+v", chatItems)
+	}
+	sharedItems := service.List("")
+	if len(sharedItems) != 1 || sharedItems[0].ID != "terminal-shared" {
+		t.Fatalf("expected only shared sessions, got %+v", sharedItems)
+	}
+	if _, ok := service.Get(sharedTerminalOwnerID, "terminal-chat"); ok {
+		t.Fatalf("expected shared owner to be unable to read chat session")
 	}
 }
 

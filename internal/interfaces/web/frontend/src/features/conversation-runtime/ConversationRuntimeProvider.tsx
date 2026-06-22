@@ -20,29 +20,35 @@ import {
   isComposerImageAttachment,
   type ComposerAttachment,
 } from "./composerImageAttachments";
+import {
+  DEFAULT_RUNTIME_EVENT_FILTER,
+  RUNTIME_EVENT_FILTER_OPTIONS,
+  type RuntimeEventFilterID,
+} from "../shell/components/runtimeTraceEvents";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
+const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
-const STREAM_ENDPOINT = "/api/messages/stream";
-const FALLBACK_ENDPOINT = "/api/messages";
-const RUNTIME_SESSION_COLLECTION_ENDPOINT = "/api/conversation-runtime/sessions";
+const TERMINAL_SESSION_COLLECTION_ENDPOINT = "/api/terminal/sessions";
+const CHAT_TERMINAL_SESSION_SCOPE_QUERY = "scope=chat";
+const NEW_CHAT_DRAFT_KEY = "__chat_new__";
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_TASK_POLL_INTERVAL_MS = 3000;
-const STREAM_DELTA_FLUSH_INTERVAL_MS = 50;
-const LOCAL_STREAM_PROCESS_STEP_ID = "local-stream-start";
-const EXECUTION_ENGINE_METADATA_KEY = "alter0.execution.engine";
-const EXECUTION_ENGINE_CODEX = "codex";
-const LLM_PROVIDER_METADATA_KEY = "alter0.llm.provider_id";
-const LLM_MODEL_METADATA_KEY = "alter0.llm.model";
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
+
+function chatTerminalSessionEndpoint(path: string = ""): string {
+  const normalizedPath = path.trim().replace(/^\/+/, "");
+  const suffix = normalizedPath ? `/${normalizedPath}` : "";
+  return `${TERMINAL_SESSION_COLLECTION_ENDPOINT}${suffix}?${CHAT_TERMINAL_SESSION_SCOPE_QUERY}`;
+}
 
 type ChatTaskPollPlan = {
   enabled: boolean;
@@ -111,6 +117,7 @@ type ChatSession = {
   modelID: string;
   toolIDs: string[];
   skillIDs: string[];
+  skillIDsExplicit?: boolean;
   mcpIDs: string[];
   messages: ChatMessage[];
   messagesLoaded?: boolean;
@@ -199,59 +206,47 @@ type SessionAttachmentUploadResponse = {
   }>;
 };
 
-type RuntimeSessionPayload = {
+type TerminalSessionPayload = {
   id?: string;
   status?: string;
   title?: string;
-  title_auto?: boolean;
-  title_score?: number;
-  created_at?: string | number;
   pinned?: boolean;
-  target_type?: string;
-  target_id?: string;
-  target_name?: string;
+  created_at?: string | number;
+  updated_at?: string | number;
+  last_output_at?: string | number;
   model_provider_id?: string;
   model_id?: string;
   tool_ids?: string[];
   skill_ids?: string[];
   mcp_ids?: string[];
-  messages?: RuntimeMessagePayload[];
+  turns?: TerminalTurnPayload[];
 };
 
-type RuntimeSessionConfigPatch = {
-  title: string;
-  model_provider_id: string;
-  model_id: string;
-  tool_ids: string[];
-  skill_ids: string[];
-  mcp_ids: string[];
-};
-
-type RuntimeMessagePayload = {
+type TerminalTurnPayload = {
   id?: string;
-  role?: string;
-  text?: string;
-  attachments?: Array<{
-    id?: string;
-    name?: string;
-    content_type?: string;
-    asset_url?: string;
-    preview_url?: string;
-  }>;
-  route?: string;
-  source?: string;
-  error?: boolean;
+  prompt?: string;
+  attachments?: TerminalAttachmentPayload[];
   status?: string;
-  at?: string | number;
-  process_steps?: Array<{
-    id?: string;
-    kind?: string;
-    title?: string;
-    detail?: string;
-    status?: string;
-  }>;
-  task_id?: string;
-  task_status?: string;
+  started_at?: string | number;
+  finished_at?: string | number;
+  final_output?: string;
+  steps?: TerminalStepPayload[];
+};
+
+type TerminalAttachmentPayload = {
+  id?: string;
+  name?: string;
+  content_type?: string;
+  asset_url?: string;
+  preview_url?: string;
+};
+
+type TerminalStepPayload = {
+  id?: string;
+  type?: string;
+  title?: string;
+  status?: string;
+  preview?: string;
 };
 
 type ConversationRuntimeContextValue = {
@@ -274,6 +269,7 @@ type ConversationRuntimeContextValue = {
     pinned: boolean;
     pinning: boolean;
   }>;
+  busy: boolean;
   draft: string;
   target: ChatTarget;
   lockedTarget: boolean;
@@ -285,6 +281,7 @@ type ConversationRuntimeContextValue = {
   draftAttachments: ComposerAttachment[];
   capabilities: RuntimeSelection[];
   skills: RuntimeSelection[];
+  runtimeEventFilter: RuntimeEventFilterID[];
   toolCount: number;
   skillCount: number;
   createSession: () => void;
@@ -301,6 +298,7 @@ type ConversationRuntimeContextValue = {
   selectModel: (providerID: string, modelID: string) => void;
   toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => void;
   toggleSkill: (id: string, checked: boolean) => void;
+  toggleRuntimeEventFilter: (id: RuntimeEventFilterID, checked: boolean) => void;
   toggleProcess: (messageID: string) => void;
 };
 
@@ -320,6 +318,7 @@ type ConversationRuntimeComposerContextValue = Pick<
   "route"
   | "draft"
   | "draftAttachments"
+  | "busy"
   | "selectedModelSupportsVision"
   | "setDraft"
   | "addDraftAttachments"
@@ -337,13 +336,6 @@ type ProviderProps = {
   children: ReactNode;
 };
 
-type StreamResult = {
-  ok: boolean;
-  canFallback: boolean;
-  canRecover: boolean;
-  error: string;
-};
-
 type RuntimeRecoveryRequirement = {
   requireMessages?: boolean;
   requireStableAssistant?: boolean;
@@ -351,6 +343,33 @@ type RuntimeRecoveryRequirement = {
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeRuntimeEventFilter(value: unknown): RuntimeEventFilterID[] {
+  const allowed = new Set(RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id));
+  const items = Array.isArray(value) ? value : [];
+  const normalized = items.filter((item): item is RuntimeEventFilterID =>
+    typeof item === "string" && allowed.has(item as RuntimeEventFilterID),
+  );
+  return normalized.length > 0 ? normalized : [...DEFAULT_RUNTIME_EVENT_FILTER];
+}
+
+function loadRuntimeEventFilter(): RuntimeEventFilterID[] {
+  if (typeof window === "undefined") {
+    return [...DEFAULT_RUNTIME_EVENT_FILTER];
+  }
+  try {
+    return normalizeRuntimeEventFilter(JSON.parse(window.localStorage.getItem(RUNTIME_EVENT_FILTER_STORAGE_KEY) || "null"));
+  } catch {
+    return [...DEFAULT_RUNTIME_EVENT_FILTER];
+  }
+}
+
+function persistRuntimeEventFilter(filter: RuntimeEventFilterID[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(RUNTIME_EVENT_FILTER_STORAGE_KEY, JSON.stringify(normalizeRuntimeEventFilter(filter)));
 }
 
 function normalizeConversationRoute(_route: string): ConversationRoute {
@@ -378,6 +397,16 @@ function effectiveChatSkillIDs(selectedIDs: string[] | undefined, availableSkill
   }
   const available = new Set(availableSkillIDs);
   return normalized.filter((item) => available.has(item));
+}
+
+function effectiveSessionSkillIDs(session: ChatSession | null | undefined, availableSkillIDs: string[] | null): string[] {
+  if (!session) {
+    return availableSkillIDs === null ? [] : [...availableSkillIDs];
+  }
+  if (session.skillIDsExplicit === false && availableSkillIDs !== null) {
+    return [...availableSkillIDs];
+  }
+  return effectiveChatSkillIDs(session.skillIDs, availableSkillIDs);
 }
 
 function makeID(prefix: string): string {
@@ -414,10 +443,6 @@ function normalizeRouteSessions(routeKey: ConversationRoute, sessions: ChatSessi
     merged.set(session.id, session);
   });
   return Array.from(merged.values()).sort(compareSessions);
-}
-
-function isCodexRuntimeSelection(providerID: string, modelID: string): boolean {
-  return normalizeText(providerID) === CODEX_RUNTIME_PROVIDER_ID && normalizeText(modelID) === CODEX_RUNTIME_MODEL_ID;
 }
 
 function codexRuntimeProvider(): ChatProvider {
@@ -481,20 +506,6 @@ function isStreamingPlaceholderText(text: string): boolean {
   return normalized === "" || normalized === "thinking...";
 }
 
-function createLocalStreamProcessStep(): ChatProcessStep {
-  return {
-    id: LOCAL_STREAM_PROCESS_STEP_ID,
-    kind: "analysis",
-    title: "Thinking",
-    detail: "",
-    status: "running",
-  };
-}
-
-function removeLocalStreamProcessStep(steps: ChatProcessStep[]): ChatProcessStep[] {
-  return steps.filter((step) => step.id !== LOCAL_STREAM_PROCESS_STEP_ID);
-}
-
 function isRecoverableAssistantMessage(message: ChatMessage): boolean {
   if (message.role !== "assistant") {
     return false;
@@ -524,6 +535,13 @@ function hasRecoverableRuntimeState(session: ChatSession | null | undefined): bo
     return false;
   }
   return hasRecoverableAssistantState(session.messages) || hasUnansweredLatestUserMessage(session.messages);
+}
+
+function shouldPollTerminalBackedSession(session: ChatSession): boolean {
+  if (session.serverBacked !== true) {
+    return false;
+  }
+  return isConversationBusyStatus(session.status) || hasRecoverableRuntimeState(session);
 }
 
 function hasPersistedAssistantState(messages: ChatMessage[]): boolean {
@@ -645,6 +663,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     modelID: normalizeText(record.modelID),
     toolIDs: normalizeSelectionIDs(record.toolIDs),
     skillIDs: normalizeSelectionIDs(record.skillIDs),
+    skillIDsExplicit: record.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(record.mcpIDs),
     messages: Array.isArray(record.messages)
       ? record.messages.map(normalizeStoredMessage).filter((message): message is ChatMessage => message !== null)
@@ -707,6 +726,7 @@ function serializeStoredSession(session: ChatSession): Record<string, unknown> {
     modelID: session.modelID,
     toolIDs: session.toolIDs,
     skillIDs: session.skillIDs,
+    skillIDsExplicit: session.skillIDsExplicit === true,
     mcpIDs: session.mcpIDs,
     messages: session.messages.map(serializeStoredMessage),
     messagesLoaded: session.messagesLoaded,
@@ -838,54 +858,110 @@ function normalizeDateValue(value: unknown): number {
   return Date.now();
 }
 
-function normalizeRuntimeMessage(item: RuntimeMessagePayload): ChatMessage | null {
+function normalizeTerminalAttachment(item: TerminalAttachmentPayload): ComposerAttachment | null {
   const id = normalizeText(item.id);
-  if (!id) {
+  const contentType = normalizeText(item.content_type);
+  const assetURL = normalizeText(item.asset_url);
+  const previewURL = normalizeText(item.preview_url);
+  if (!id || !contentType || !assetURL) {
     return null;
   }
-  const role = normalizeText(item.role) === "assistant" ? "assistant" : "user";
+  const kind = contentType.startsWith("image/") ? "image" as const : "file" as const;
   return {
     id,
-    role,
-    text: typeof item.text === "string" ? item.text : "",
-    attachments: Array.isArray(item.attachments)
-      ? item.attachments
-        .map((attachment) => {
-          const attachmentID = normalizeText(attachment.id);
-          const contentType = normalizeText(attachment.content_type);
-          const assetURL = normalizeText(attachment.asset_url);
-          const previewURL = normalizeText(attachment.preview_url);
-          if (!attachmentID || !contentType || !assetURL) {
-            return null;
-          }
-          return {
-            id: attachmentID,
-            kind: contentType.startsWith("image/") ? "image" as const : "file" as const,
-            name: normalizeText(attachment.name) || (contentType.startsWith("image/") ? "image" : "file"),
-            contentType,
-            size: 0,
-            assetURL,
-            previewURL: contentType.startsWith("image/") ? previewURL || assetURL : undefined,
-          };
-        })
-        .filter((attachment): attachment is ComposerAttachment => attachment !== null)
-      : [],
-    route: normalizeText(item.route),
-    source: normalizeText(item.source),
-    error: item.error === true,
-    status: normalizeText(item.status) || (role === "assistant" ? "done" : ""),
-    at: normalizeDateValue(item.at),
-    processSteps: normalizeProcessSteps(item.process_steps),
-    taskID: normalizeText(item.task_id),
-    taskStatus: normalizeText(item.task_status),
-    taskPending: false,
-    taskResultDelivered: false,
-    taskResultFor: "",
+    kind,
+    name: normalizeText(item.name) || (kind === "image" ? "image" : "file"),
+    contentType,
+    size: 0,
+    assetURL,
+    previewURL: kind === "image" ? previewURL || assetURL : undefined,
   };
 }
 
-function normalizeRuntimeSession(
-  item: RuntimeSessionPayload,
+function normalizeTerminalProcessSteps(values: unknown): ChatProcessStep[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return values
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const step = item as TerminalStepPayload;
+      const title = normalizeText(step.title) || normalizeText(step.type);
+      const detail = normalizeText(step.preview);
+      if (!title && !detail) {
+        return null;
+      }
+      return {
+        id: normalizeText(step.id) || title,
+        kind: normalizeText(step.type),
+        title,
+        detail,
+        status: normalizeText(step.status),
+      };
+    })
+    .filter((item): item is ChatProcessStep => item !== null);
+}
+
+function normalizeTerminalTurnMessages(turn: TerminalTurnPayload): ChatMessage[] {
+  const id = normalizeText(turn.id);
+  if (!id) {
+    return [];
+  }
+  const at = normalizeDateValue(turn.started_at);
+  const prompt = typeof turn.prompt === "string" ? turn.prompt : "";
+  const attachments = Array.isArray(turn.attachments)
+    ? turn.attachments.map(normalizeTerminalAttachment).filter((item): item is ComposerAttachment => item !== null)
+    : [];
+  const messages: ChatMessage[] = [];
+  if (prompt || attachments.length > 0) {
+    messages.push({
+      id: `${id}:prompt`,
+      role: "user",
+      text: prompt,
+      attachments,
+      route: "",
+      source: "",
+      error: false,
+      status: "",
+      at,
+      processSteps: [],
+      taskID: "",
+      taskStatus: "",
+      taskPending: false,
+      taskResultDelivered: false,
+      taskResultFor: "",
+    });
+  }
+  const status = normalizeTaskStatus(turn.status || "");
+  const finalOutput = typeof turn.final_output === "string" ? turn.final_output : "";
+  const processSteps = normalizeTerminalProcessSteps(turn.steps);
+  if (finalOutput || processSteps.length > 0 || status === "running" || status === "queued") {
+    messages.push({
+      id: `${id}:response`,
+      role: "assistant",
+      text: finalOutput,
+      attachments: [],
+      route: "terminal",
+      source: "terminal",
+      error: status === "failed" || status === "canceled",
+      status: status === "success" ? "done" : status || "done",
+      at: normalizeDateValue(turn.finished_at || turn.started_at),
+      processSteps,
+      processCollapsed: finalOutput ? undefined : false,
+      taskID: "",
+      taskStatus: status,
+      taskPending: status === "running" || status === "queued",
+      taskResultDelivered: false,
+      taskResultFor: "",
+    });
+  }
+  return messages;
+}
+
+function normalizeTerminalSession(
+  item: TerminalSessionPayload,
   previous?: ChatSession | null,
   sourceRoute: ConversationRoute = "chat",
 ): ChatSession | null {
@@ -893,35 +969,35 @@ function normalizeRuntimeSession(
   if (!id) {
     return null;
   }
-  const parsedMessages = Array.isArray(item.messages)
-    ? item.messages.map(normalizeRuntimeMessage).filter((message): message is ChatMessage => message !== null)
+  const parsedMessages = Array.isArray(item.turns)
+    ? item.turns.flatMap(normalizeTerminalTurnMessages)
     : null;
   const messages = parsedMessages
     ? (previous?.messages.length && !shouldUseParsedMessages(previous.messages, parsedMessages)
       ? previous.messages
       : parsedMessages)
     : previous?.messages || [];
+  const hasExplicitSkillIDs = Array.isArray(item.skill_ids);
   return {
     id,
     sourceRoute: previous?.sourceRoute || sourceRoute,
-    status: normalizeText(item.status) || previous?.status || "",
+    status: normalizeText(item.status) || previous?.status || "ready",
     title: normalizeText(item.title) || previous?.title || "New",
-    titleAuto: item.title_auto !== false,
-    titleScore: Number.isFinite(Number(item.title_score)) ? Number(item.title_score) : previous?.titleScore || 0,
+    titleAuto: previous?.titleAuto ?? true,
+    titleScore: previous?.titleScore || 0,
     createdAt: normalizeDateValue(item.created_at),
     pinned: typeof item.pinned === "boolean" ? item.pinned : previous?.pinned || false,
-    target: normalizeChatTarget({
-      type: "model",
-      id: normalizeText(item.target_id),
-      name: normalizeText(item.target_name),
-    }),
+    target: previous?.target || defaultChatTarget(),
     modelProviderID: normalizeText(item.model_provider_id) || previous?.modelProviderID || "",
     modelID: normalizeText(item.model_id) || previous?.modelID || "",
     toolIDs: normalizeSelectionIDs(item.tool_ids || previous?.toolIDs || []),
-    skillIDs: normalizeSelectionIDs(item.skill_ids || previous?.skillIDs || []),
+    skillIDs: hasExplicitSkillIDs
+      ? normalizeSelectionIDs(item.skill_ids)
+      : normalizeSelectionIDs(previous?.skillIDs || []),
+    skillIDsExplicit: hasExplicitSkillIDs ? true : previous?.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(item.mcp_ids || previous?.mcpIDs || []),
     messages,
-    messagesLoaded: Array.isArray(item.messages),
+    messagesLoaded: Array.isArray(item.turns),
     serverBacked: true,
   };
 }
@@ -1033,43 +1109,16 @@ function resolveModelSelection(session: ChatSession | null, providers: ChatProvi
   };
 }
 
-function buildMessageMetadata(
-  session: ChatSession | null,
-  selection: { providerID: string; modelID: string },
-  skillIDs: string[] = session?.skillIDs || [],
-): Record<string, string> {
-  const metadata: Record<string, string> = {
-    "alter0.skills.include": JSON.stringify(skillIDs),
-    "alter0.mcp.request.enable": JSON.stringify(session?.mcpIDs || []),
-  };
-  if (isCodexRuntimeSelection(selection.providerID, selection.modelID)) {
-    metadata[EXECUTION_ENGINE_METADATA_KEY] = EXECUTION_ENGINE_CODEX;
-    return metadata;
-  }
-  metadata[LLM_PROVIDER_METADATA_KEY] = selection.providerID;
-  metadata[LLM_MODEL_METADATA_KEY] = selection.modelID;
-  return metadata;
-}
-
 function normalizeTaskStatus(status: string): string {
   return normalizeText(status).toLowerCase() || "queued";
 }
 
-function isTerminalTaskStatus(status: string): boolean {
-  return ["success", "failed", "canceled"].includes(normalizeTaskStatus(status));
+function isConversationBusyStatus(status: string): boolean {
+  return ["streaming", "queued", "running", "in_progress", "inprogress", "busy"].includes(normalizeTaskStatus(status));
 }
 
-function readResponsePayload(response: Response): Promise<unknown> {
-  return response.text().then((text) => {
-    if (!text) {
-      return {};
-    }
-    try {
-      return JSON.parse(text);
-    } catch {
-      return {};
-    }
-  });
+function isTerminalTaskStatus(status: string): boolean {
+  return ["success", "failed", "canceled"].includes(normalizeTaskStatus(status));
 }
 
 function serializeMessageAttachment(attachment: ComposerAttachment) {
@@ -1089,32 +1138,6 @@ function serializeMessageAttachment(attachment: ComposerAttachment) {
     data_url: attachment.dataURL,
     preview_data_url: isComposerImageAttachment(attachment) ? attachment.previewDataURL : undefined,
   };
-}
-
-function parseSSEBlock(block: string) {
-  const lines = block.split("\n");
-  let event = "message";
-  const dataLines: string[] = [];
-  lines.forEach((line) => {
-    if (!line || line.startsWith(":")) {
-      return;
-    }
-    if (line.startsWith("event:")) {
-      event = line.slice(6).trim();
-      return;
-    }
-    if (line.startsWith("data:")) {
-      dataLines.push(line.slice(5).trimStart());
-    }
-  });
-  if (!dataLines.length) {
-    return null;
-  }
-  try {
-    return { event, data: JSON.parse(dataLines.join("\n")) as Record<string, unknown> };
-  } catch {
-    return null;
-  }
 }
 
 function isCompactViewport(): boolean {
@@ -1148,6 +1171,7 @@ export function ConversationRuntimeProvider({
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"model" | "capabilities" | "skills">("model");
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
+  const [runtimeEventFilter, setRuntimeEventFilter] = useState<RuntimeEventFilterID[]>(() => loadRuntimeEventFilter());
   const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
@@ -1162,15 +1186,16 @@ export function ConversationRuntimeProvider({
   const activeSessionReference = activeSessionByRoute[route];
   const activeSessionID = resolveSessionIDReference(activeSessions, activeSessionReference) || activeSessionReference;
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
-  const activeDraftAttachments = activeSessionID ? composerAttachmentDrafts[activeSessionID] || [] : [];
+  const activeDraftKey = activeSessionID || NEW_CHAT_DRAFT_KEY;
+  const activeDraftAttachments = composerAttachmentDrafts[activeDraftKey] || [];
   const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
   const availableSkillIDs = useMemo(
     () => skillCatalogLoaded ? defaultChatSkillIDs(skills) : null,
     [skillCatalogLoaded, skills],
   );
   const activeSkillIDs = useMemo(
-    () => effectiveChatSkillIDs(activeSession?.skillIDs, availableSkillIDs),
-    [activeSession?.skillIDs, availableSkillIDs],
+    () => effectiveSessionSkillIDs(activeSession, availableSkillIDs),
+    [activeSession, availableSkillIDs],
   );
   useEffect(() => {
     latestComposerDraftsRef.current = composerDrafts;
@@ -1190,47 +1215,6 @@ export function ConversationRuntimeProvider({
     window.clearTimeout(composerDraftPersistTimerRef.current);
     persistComposerDrafts(latestComposerDraftsRef.current);
   }, []);
-
-  const ensureSession = useCallback((
-    target?: Partial<ChatTarget> | null,
-    preferredActiveState: ActiveSessionState = activeSessionByRoute,
-    currentSessions: SessionsState = sessionsByRoute,
-  ) => {
-    const targetValue = normalizeChatTarget(target || defaultChatTarget());
-    const routeSessions = normalizeRouteSessions(route, currentSessions[route]);
-    const existing = routeSessions.find((session) => session.id === preferredActiveState[route]) || null;
-    if (existing) {
-      return existing;
-    }
-    const created: ChatSession = {
-      id: makeID("session"),
-      sourceRoute: route,
-      status: "ready",
-      title: "New",
-      titleAuto: true,
-      titleScore: 0,
-      createdAt: Date.now(),
-      pinned: false,
-      target: targetValue,
-      modelProviderID: "",
-      modelID: "",
-      toolIDs: [],
-      skillIDs: defaultChatSkillIDs(skills),
-      mcpIDs: [],
-      messages: [],
-      messagesLoaded: true,
-      serverBacked: false,
-    };
-    const nextSessionsByRoute: SessionsState = {
-      ...currentSessions,
-      [route]: [created, ...currentSessions[route]],
-    };
-    const nextActiveState = { ...preferredActiveState, [route]: created.id };
-    setSessionsByRoute(nextSessionsByRoute);
-    setActiveSessionByRoute(nextActiveState);
-    writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-    return created;
-  }, [activeSessionByRoute, route, sessionsByRoute, skills]);
 
   const patchSession = useCallback((
     routeKey: ConversationRoute,
@@ -1280,7 +1264,7 @@ export function ConversationRuntimeProvider({
       ...session,
       status: message.role === "assistant" && message.error
         ? "failed"
-        : message.role === "assistant" && (message.taskPending || normalizeTaskStatus(message.status) === "running")
+        : message.role === "assistant" && (message.taskPending || isConversationBusyStatus(message.status))
           ? "busy"
           : session.status,
       title: session.titleAuto && message.role === "user"
@@ -1301,7 +1285,9 @@ export function ConversationRuntimeProvider({
       ...session,
       status: normalizeText(patch.status) === "error"
         ? "failed"
-        : patch.taskPending || normalizeTaskStatus(patch.taskStatus || patch.status || "") === "running"
+        : normalizeText(patch.status) === "interrupted"
+          ? "interrupted"
+          : patch.taskPending || isConversationBusyStatus(patch.taskStatus || patch.status || "")
           ? "busy"
           : normalizeText(patch.status) === "done"
             ? "ready"
@@ -1322,7 +1308,7 @@ export function ConversationRuntimeProvider({
 
   const removeSession = useCallback(async (sessionID: string) => {
     try {
-      await apiClient.delete(`/api/sessions/${encodeURIComponent(sessionID)}`);
+      await apiClient.delete(chatTerminalSessionEndpoint(encodeURIComponent(sessionID)));
     } catch {
     }
     const nextSessionsByRoute: SessionsState = {
@@ -1362,7 +1348,11 @@ export function ConversationRuntimeProvider({
     };
     setPinningSessionIDs((current) => ({ ...current, [normalizedSessionID]: true }));
     try {
-      await apiClient.post(`/api/sessions/${encodeURIComponent(normalizedSessionID)}/pin`, { pinned });
+      const payload = await apiClient.post<{ session?: TerminalSessionPayload }>(
+        chatTerminalSessionEndpoint(`${encodeURIComponent(normalizedSessionID)}/pin`),
+        { pinned },
+      );
+      void payload;
       applyPinnedState();
     } catch {
       applyPinnedState();
@@ -1371,54 +1361,13 @@ export function ConversationRuntimeProvider({
     }
   }, [apiClient, patchSession, route]);
 
-  const sendMessageFallback = async (
-    routeKey: ConversationRoute,
-    sessionID: string,
-    assistantMessageID: string,
-    content: string,
-    attachments: ComposerAttachment[],
-  ) => {
-    const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
-    const selection = resolveModelSelection(session, runtimeProviders(providers));
-    const body = await apiClient.post<{
-      result?: {
-        output?: string;
-        route?: string;
-        metadata?: Record<string, string>;
-        process_steps?: Array<Record<string, unknown>>;
-      };
-      task_id?: string;
-      task_status?: string;
-    }>(FALLBACK_ENDPOINT, {
-      session_id: sessionID,
-      channel_id: "web-default",
-      content,
-      attachments: attachments.map(serializeMessageAttachment),
-      metadata: buildMessageMetadata(session, selection, effectiveChatSkillIDs(session?.skillIDs, availableSkillIDs)),
-    });
-    setAssistantMessage(routeKey, sessionID, assistantMessageID, {
-      text: normalizeText(body?.result?.output) || "No response",
-      route: normalizeText(body?.result?.route),
-      source: normalizeText(body?.result?.metadata?.["alter0.execution.source"]),
-      processSteps: normalizeProcessSteps(body?.result?.process_steps),
-      taskID: normalizeText(body?.task_id),
-      taskStatus: normalizeText(body?.task_status),
-      taskPending: Boolean(body?.task_id && !isTerminalTaskStatus(normalizeText(body?.task_status))),
-      status: normalizeText(body?.task_status) || "done",
-      error: false,
-    });
-    if (body?.task_id) {
-      setPendingTasksVersion((value) => value + 1);
-    }
-  };
-
   const hydrateRuntimeSessionResponse = (
     routeKey: ConversationRoute,
     sourceRoute: ConversationRoute,
     sessionID: string,
-    payload: { session?: RuntimeSessionPayload },
+    payload: { session?: TerminalSessionPayload },
   ): ChatSession | null => {
-    return normalizeRuntimeSession(
+    return normalizeTerminalSession(
       payload.session || {},
       sessionsByRouteRef.current[routeKey].find((item) => item.id === sessionID) || null,
       sourceRoute,
@@ -1441,36 +1390,41 @@ export function ConversationRuntimeProvider({
     });
   }, []);
 
-  const buildRuntimeSessionConfigPatch = (session: ChatSession): RuntimeSessionConfigPatch => ({
-    title: session.title,
-    model_provider_id: session.modelProviderID,
-    model_id: session.modelID,
-    tool_ids: normalizeSelectionIDs(session.toolIDs),
-    skill_ids: normalizeSelectionIDs(session.skillIDs),
-    mcp_ids: normalizeSelectionIDs(session.mcpIDs),
-  });
-
-  const persistRuntimeSessionConfig = useCallback(async (routeKey: ConversationRoute, session: ChatSession) => {
-    try {
-      const payload = await apiClient.patch<{ session?: RuntimeSessionPayload }>(
-        `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(session.id)}?route=${encodeURIComponent(routeKey)}`,
-        buildRuntimeSessionConfigPatch(session),
-      );
-      const hydrated = normalizeRuntimeSession(
-        payload.session || {},
-        sessionsByRouteRef.current[routeKey].find((item) => item.id === session.id) || session,
-        routeKey,
-      );
-      if (hydrated) {
-        upsertRuntimeSession(routeKey, hydrated);
-      }
-    } catch {
+  const createTerminalRuntimeSession = useCallback(async (routeKey: ConversationRoute, title: string = ""): Promise<ChatSession | null> => {
+    const payload = await apiClient.post<{ session?: TerminalSessionPayload }>(
+      chatTerminalSessionEndpoint(),
+      normalizeText(title) ? { title: normalizeText(title).slice(0, 80) } : {},
+    );
+    const nextSession = normalizeTerminalSession(payload.session || {}, null, routeKey);
+    if (!nextSession) {
+      return null;
     }
+    upsertRuntimeSession(routeKey, nextSession);
+    setActiveSessionByRoute((current) => {
+      const nextActiveState = { ...current, [routeKey]: nextSession.id };
+      writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+      return nextActiveState;
+    });
+    writeWorkbenchRouteSessionID(routeKey, nextSession.id);
+    return nextSession;
   }, [apiClient, upsertRuntimeSession]);
 
+  const persistRuntimeSessionConfig = useCallback(async (routeKey: ConversationRoute, session: ChatSession) => {
+    void routeKey;
+    patchSession(route, session.id, (currentSession) => ({
+      ...currentSession,
+      modelProviderID: session.modelProviderID,
+      modelID: session.modelID,
+      toolIDs: normalizeSelectionIDs(session.toolIDs),
+      skillIDs: normalizeSelectionIDs(session.skillIDs),
+      skillIDsExplicit: session.skillIDsExplicit === true,
+      mcpIDs: normalizeSelectionIDs(session.mcpIDs),
+    }));
+  }, [patchSession, route]);
+
   const hydrateRuntimeSession = async (routeKey: ConversationRoute, sessionID: string): Promise<ChatSession | null> => {
-    const payload = await apiClient.get<{ session?: RuntimeSessionPayload }>(
-      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}/${encodeURIComponent(sessionID)}?route=${encodeURIComponent(routeKey)}`,
+    const payload = await apiClient.get<{ session?: TerminalSessionPayload }>(
+      chatTerminalSessionEndpoint(encodeURIComponent(sessionID)),
     );
     return hydrateRuntimeSessionResponse(routeKey, routeKey, sessionID, payload);
   };
@@ -1537,256 +1491,56 @@ export function ConversationRuntimeProvider({
     return false;
   };
 
-  const recoverInterruptedStream = async (
-    routeKey: ConversationRoute,
-    sessionID: string,
-  ): Promise<boolean> => {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const hydrated = await hydrateRuntimeSession(routeKey, sessionID);
-        const recovered = hydrated?.messages.some((message) => {
-          const text = normalizeText(message.text);
-          if (message.role !== "assistant") {
-            return false;
-          }
-          if (message.taskID) {
-            return true;
-          }
-          return message.status !== "streaming" && text !== "" && text.toLowerCase() !== "thinking...";
-        });
-        if (recovered) {
-          upsertRuntimeSession(routeKey, hydrated);
-          return true;
-        }
-      } catch {
-      }
-      if (attempt < 2) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-      }
-    }
-    return false;
-  };
-
-  const sendMessageStream = async (
-    routeKey: ConversationRoute,
-    sessionID: string,
-    assistantMessageID: string,
-    content: string,
-    attachments: ComposerAttachment[],
-  ): Promise<StreamResult> => {
-    const session = sessionsByRoute[routeKey].find((item) => item.id === sessionID) || null;
-    const selection = resolveModelSelection(session, runtimeProviders(providers));
-    let sawEvent = false;
-    let sawDone = false;
-    let output = "";
-    let routeHint = "";
-    let deltaFlushTimer = 0;
-    const response = await fetch(STREAM_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Accept: "text/event-stream",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        session_id: sessionID,
-        channel_id: "web-default",
-        content,
-        attachments: attachments.map(serializeMessageAttachment),
-        metadata: buildMessageMetadata(session, selection, effectiveChatSkillIDs(session?.skillIDs, availableSkillIDs)),
-      }),
-    });
-    if (!response.ok || !response.body) {
-      const failure = await readResponsePayload(response);
-      return {
-        ok: false,
-        canFallback: true,
-        canRecover: false,
-        error: normalizeText((failure as { error?: string } | null)?.error) || `HTTP ${response.status}`,
-      };
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let buffer = "";
-    const clearDeltaFlushTimer = () => {
-      if (!deltaFlushTimer) {
-        return;
-      }
-      window.clearTimeout(deltaFlushTimer);
-      deltaFlushTimer = 0;
-    };
-    const flushAssistantDelta = () => {
-      clearDeltaFlushTimer();
-      setAssistantMessage(routeKey, sessionID, assistantMessageID, {
-        text: output,
-        route: routeHint,
-        status: "streaming",
-      });
-    };
-    const scheduleAssistantDeltaFlush = () => {
-      if (deltaFlushTimer) {
-        return;
-      }
-      deltaFlushTimer = window.setTimeout(flushAssistantDelta, STREAM_DELTA_FLUSH_INTERVAL_MS);
-    };
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-        if (done) {
-          buffer += "\n\n";
-        }
-        let splitIndex = buffer.indexOf("\n\n");
-        while (splitIndex >= 0) {
-          const parsed = parseSSEBlock(buffer.slice(0, splitIndex).replace(/\r/g, ""));
-          buffer = buffer.slice(splitIndex + 2);
-          if (parsed) {
-            sawEvent = true;
-            if (sawDone && parsed.event !== "done") {
-              splitIndex = buffer.indexOf("\n\n");
-              continue;
-            }
-            if (parsed.event === "process") {
-              patchSession(routeKey, sessionID, (currentSession) => {
-                const nextMessages = currentSession.messages.map((message) =>
-                  message.id === assistantMessageID
-	                    ? {
-	                        ...message,
-	                        processSteps: normalizeProcessSteps([
-	                          ...removeLocalStreamProcessStep(message.processSteps),
-	                          parsed.data.process_step as Record<string, unknown>,
-	                        ]),
-	                        status: "streaming",
-	                      }
-                    : message,
-                );
-                return { ...currentSession, messages: nextMessages };
-              });
-            }
-            if (parsed.event === "delta") {
-              const delta = typeof parsed.data.delta === "string" ? parsed.data.delta : "";
-              const nextRouteHint = normalizeText(parsed.data.route);
-              if (nextRouteHint) {
-                routeHint = nextRouteHint;
-              }
-              if (delta) {
-                output += delta;
-                scheduleAssistantDeltaFlush();
-              }
-            }
-            if (parsed.event === "done") {
-              clearDeltaFlushTimer();
-              const result = (parsed.data.result as Record<string, unknown>) || {};
-              const taskID = normalizeText(parsed.data.task_id);
-              const taskStatus = normalizeText(parsed.data.task_status) || "done";
-              setAssistantMessage(routeKey, sessionID, assistantMessageID, {
-                text: normalizeText(result.output) || output || "No response",
-                route: normalizeText(result.route) || routeHint,
-                source: normalizeText((result.metadata as Record<string, string> | undefined)?.["alter0.execution.source"]),
-                processSteps: normalizeProcessSteps(result.process_steps),
-                taskID,
-                taskStatus,
-                taskPending: Boolean(taskID),
-                status: taskID ? taskStatus : "done",
-                error: false,
-              });
-              if (taskID) {
-                setPendingTasksVersion((value) => value + 1);
-              }
-              sawDone = true;
-            }
-            if (parsed.event === "error") {
-              clearDeltaFlushTimer();
-              setAssistantMessage(routeKey, sessionID, assistantMessageID, {
-                text: normalizeText(parsed.data.error) || "Request failed",
-                status: "error",
-                error: true,
-              });
-              return {
-                ok: false,
-                canFallback: false,
-                canRecover: false,
-                error: normalizeText(parsed.data.error) || "request failed",
-              };
-            }
-          }
-          splitIndex = buffer.indexOf("\n\n");
-        }
-        if (done) {
-          break;
-        }
-      }
-    } catch (error) {
-      if (output) {
-        flushAssistantDelta();
-      } else {
-        clearDeltaFlushTimer();
-      }
-      return {
-        ok: false,
-        canFallback: !sawEvent,
-        canRecover: sawEvent,
-        error: error instanceof Error ? error.message : "stream interrupted",
-      };
-    }
-    if (!sawDone && output) {
-      flushAssistantDelta();
-    } else {
-      clearDeltaFlushTimer();
-    }
-    return {
-      ok: sawDone,
-      canFallback: !sawEvent,
-      canRecover: sawEvent && !sawDone,
-      error: sawDone ? "" : "stream interrupted",
-    };
-  };
-
-  const sendPrompt = async (prompt: string = activeSessionID ? composerDrafts[activeSessionID] || "" : "") => {
+  const sendPrompt = async (prompt: string = composerDrafts[activeDraftKey] || "") => {
     const content = prompt.trim().slice(0, MAX_COMPOSER_CHARS);
-    const attachments = activeDraftAttachments;
+    let attachments = activeDraftAttachments;
     if (!content && attachments.length === 0) {
       return;
     }
-    const session = ensureSession(defaultChatTarget());
-    const userMessage = createMessage("user", content, { at: Date.now(), attachments });
-	    const assistantMessage = createMessage("assistant", "", {
-	      status: "streaming",
-	      at: Date.now(),
-	      processSteps: [createLocalStreamProcessStep()],
-	    });
-    appendMessage(route, session.id, userMessage);
-    appendMessage(route, session.id, assistantMessage);
-    const nextDrafts = { ...composerDrafts, [session.id]: "" };
-    const nextAttachmentDrafts = { ...composerAttachmentDrafts, [session.id]: [] };
-    setComposerDrafts(nextDrafts);
-    setComposerAttachmentDrafts(nextAttachmentDrafts);
-    persistComposerDrafts(nextDrafts);
-    persistComposerAttachmentDrafts(nextAttachmentDrafts);
+    if (activeSession && shouldPollTerminalBackedSession(activeSession)) {
+      return;
+    }
+    const session = activeSession?.serverBacked
+      ? activeSession
+      : await createTerminalRuntimeSession(route, content);
+    if (!session) {
+      return;
+    }
+    patchSession(route, session.id, (currentSession) => ({ ...currentSession, status: "busy" }));
     try {
-      const streamResult = await sendMessageStream(route, session.id, assistantMessage.id, content, attachments);
-      if (!streamResult.ok && streamResult.canRecover) {
-        const recovered = await recoverInterruptedStream(route, session.id);
-        if (recovered) {
-          return;
-        }
+      attachments = await uploadDraftAttachments(session.id, attachments);
+      const payload = await apiClient.post<{ session?: TerminalSessionPayload }>(
+        chatTerminalSessionEndpoint(`${encodeURIComponent(session.id)}/input`),
+        {
+          input: content,
+          attachments: attachments.map(serializeMessageAttachment),
+          skill_ids: activeSkillIDs,
+        },
+      );
+      const hydrated = normalizeTerminalSession(payload.session || {}, session, route);
+      if (hydrated) {
+        upsertRuntimeSession(route, hydrated);
+      } else {
+        await recoverRuntimeSession(route, session.id, { requireMessages: true }, 1);
       }
-      if (!streamResult.ok && streamResult.canFallback) {
-        await sendMessageFallback(route, session.id, assistantMessage.id, content, attachments);
-      }
-      if (!streamResult.ok && !streamResult.canFallback) {
-        setAssistantMessage(route, session.id, assistantMessage.id, {
-          text: streamResult.error || "Request failed",
-          status: "error",
-          error: true,
-        });
-      }
+      const nextDrafts = { ...composerDrafts, [session.id]: "", [NEW_CHAT_DRAFT_KEY]: "" };
+      const nextAttachmentDrafts = { ...composerAttachmentDrafts, [session.id]: [], [NEW_CHAT_DRAFT_KEY]: [] };
+      setComposerDrafts(nextDrafts);
+      setComposerAttachmentDrafts(nextAttachmentDrafts);
+      persistComposerDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(nextAttachmentDrafts);
     } catch (error) {
-      setAssistantMessage(route, session.id, assistantMessage.id, {
-        text: error instanceof Error ? error.message : "Request failed",
-        status: "error",
-        error: true,
-      });
+      patchSession(route, session.id, (currentSession) => ({
+        ...currentSession,
+        status: "failed",
+        messages: [
+          ...currentSession.messages,
+          createMessage("assistant", error instanceof Error ? error.message : "Request failed", {
+            status: "error",
+            error: true,
+          }),
+        ],
+      }));
     }
   };
 
@@ -1840,11 +1594,9 @@ export function ConversationRuntimeProvider({
   };
 
   const loadRuntimeSessions = async (routeKey: ConversationRoute) => {
-    const payload = await apiClient.get<{ items?: RuntimeSessionPayload[] }>(
-      `${RUNTIME_SESSION_COLLECTION_ENDPOINT}?route=${encodeURIComponent(routeKey)}`,
-    );
+    const payload = await apiClient.get<{ items?: TerminalSessionPayload[] }>(chatTerminalSessionEndpoint());
     const remoteSessions = (Array.isArray(payload.items) ? payload.items : [])
-      .map((item) => normalizeRuntimeSession(item, undefined, routeKey))
+      .map((item) => normalizeTerminalSession(item, undefined, routeKey))
       .filter((session): session is ChatSession => session !== null);
     const normalizedRemoteSessions = normalizeRouteSessions(routeKey, remoteSessions);
     const nextSessions = normalizeRouteSessions(
@@ -2043,16 +1795,15 @@ export function ConversationRuntimeProvider({
   }, [activeSession, apiClient, route]);
 
   useEffect(() => {
-    if (!sessionsLoadedByRoute[route] || !skillCatalogLoaded || sessionsByRoute[route].length > 0) {
-      return;
-    }
-    ensureSession(defaultChatTarget());
-    // Keep an active session available for the current runtime route.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, sessionsByRoute, sessionsLoadedByRoute, skillCatalogLoaded]);
-
-  useEffect(() => {
     window.clearTimeout(pollTimerRef.current);
+    const recoverableSessions = Object.entries(sessionsByRoute).flatMap(([routeKey, sessions]) =>
+      sessions
+        .filter(shouldPollTerminalBackedSession)
+        .map((session) => ({
+          route: routeKey as ConversationRoute,
+          sessionID: session.id,
+        })),
+    );
     const pending = Object.entries(sessionsByRoute).flatMap(([routeKey, sessions]) =>
       sessions.flatMap((session) =>
         session.messages
@@ -2065,17 +1816,26 @@ export function ConversationRuntimeProvider({
           })),
       ),
     );
-    if (!pending.length) {
+    if (!pending.length && !recoverableSessions.length) {
       return;
     }
     const pollPlan = resolveChatTaskPollPlan({
-      pendingCount: pending.length,
+      pendingCount: pending.length + recoverableSessions.length,
       pageHidden,
     });
     if (!pollPlan.enabled) {
       return;
     }
     pollTimerRef.current = window.setTimeout(async () => {
+      for (const item of recoverableSessions) {
+        try {
+          const hydrated = await hydrateRuntimeSession(item.route, item.sessionID);
+          if (hydrated) {
+            upsertRuntimeSession(item.route, hydrated);
+          }
+        } catch {
+        }
+      }
       for (const item of pending) {
         try {
           const task = await apiClient.get<ChatTaskResponse>(`/api/tasks/${encodeURIComponent(item.taskID)}`);
@@ -2101,12 +1861,13 @@ export function ConversationRuntimeProvider({
       setPendingTasksVersion((value) => value + 1);
     }, pollPlan.interval);
     return () => window.clearTimeout(pollTimerRef.current);
-  }, [apiClient, pageHidden, pendingTasksVersion, sessionsByRoute]);
+  }, [apiClient, pageHidden, pendingTasksVersion, sessionsByRoute, upsertRuntimeSession]);
 
   const selection = resolveModelSelection(activeSession, availableProviders);
   const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
   const selectedModel = enabledModels(selectedProvider).find((model) => normalizeText(model.id) === selection.modelID) || null;
   const currentTarget = activeSession?.target || defaultChatTarget();
+  const activeSessionBusy = activeSession ? shouldPollTerminalBackedSession(activeSession) : false;
 
   const workspaceValue = useMemo<ConversationRuntimeWorkspaceContextValue>(() => ({
     route,
@@ -2116,6 +1877,7 @@ export function ConversationRuntimeProvider({
     inspectorTabOpen,
     sessions: activeSessions,
     activeSession,
+    busy: activeSessionBusy,
     sessionItems: activeSessions.map((session) => ({
       id: session.id,
       title: session.title,
@@ -2172,15 +1934,11 @@ export function ConversationRuntimeProvider({
         }))
         .filter((item) => item.id),
     ].filter((item): item is RuntimeSelection => Boolean(item?.id)),
+    runtimeEventFilter,
     toolCount: (activeSession?.toolIDs.length || 0) + (activeSession?.mcpIDs.length || 0),
     skillCount: activeSkillIDs.length,
     createSession: () => {
-      const existingBlankDraft = activeSessions.find(isBlankDraftSession) || null;
-      if (existingBlankDraft) {
-        focusSession(existingBlankDraft.id);
-        return;
-      }
-      ensureSession(null, { ...activeSessionByRoute, [route]: "" });
+      void createTerminalRuntimeSession(route);
     },
     focusSession,
     removeSession,
@@ -2207,7 +1965,10 @@ export function ConversationRuntimeProvider({
     },
     closeInspector: () => setInspectorOpen(false),
     selectModel: (providerID: string, modelID: string) => {
-      const session = activeSession || ensureSession();
+      const session = activeSession;
+      if (!session) {
+        return;
+      }
       const nextSession = {
         ...session,
         modelProviderID: normalizeText(providerID),
@@ -2221,7 +1982,10 @@ export function ConversationRuntimeProvider({
       void persistRuntimeSessionConfig(route, nextSession);
     },
     toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => {
-      const session = activeSession || ensureSession();
+      const session = activeSession;
+      if (!session) {
+        return;
+      }
       const value = normalizeText(id);
       if (!value) {
         return;
@@ -2241,7 +2005,10 @@ export function ConversationRuntimeProvider({
       void persistRuntimeSessionConfig(route, nextSession);
     },
     toggleSkill: (id: string, checked: boolean) => {
-      const session = activeSession || ensureSession();
+      const session = activeSession;
+      if (!session) {
+        return;
+      }
       const value = normalizeText(id);
       if (!value) {
         return;
@@ -2251,17 +2018,33 @@ export function ConversationRuntimeProvider({
       }
       const mutate = (items: string[]) =>
         checked
-          ? normalizeSelectionIDs([...effectiveChatSkillIDs(items, availableSkillIDs), value])
-          : effectiveChatSkillIDs(items, availableSkillIDs).filter((item) => item !== value);
+          ? normalizeSelectionIDs([...effectiveSessionSkillIDs(session, availableSkillIDs), value])
+          : effectiveSessionSkillIDs(session, availableSkillIDs).filter((item) => item !== value);
       const nextSession = {
         ...session,
         skillIDs: mutate(session.skillIDs),
+        skillIDsExplicit: true,
       };
       patchSession(route, session.id, (currentSession) => ({
         ...currentSession,
         skillIDs: mutate(currentSession.skillIDs),
+        skillIDsExplicit: true,
       }));
       void persistRuntimeSessionConfig(route, nextSession);
+    },
+    toggleRuntimeEventFilter: (id: RuntimeEventFilterID, checked: boolean) => {
+      const value = normalizeText(id) as RuntimeEventFilterID;
+      const allowed = new Set(RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id));
+      if (!allowed.has(value)) {
+        return;
+      }
+      setRuntimeEventFilter((current) => {
+        const next = checked
+          ? normalizeRuntimeEventFilter([...current, value])
+          : normalizeRuntimeEventFilter(current.filter((item) => item !== value));
+        persistRuntimeEventFilter(next);
+        return next;
+      });
     },
     toggleProcess: (messageID: string) => {
       if (!activeSession) {
@@ -2288,6 +2071,7 @@ export function ConversationRuntimeProvider({
     activeSessionID,
     pinningSessionIDs,
     currentTarget,
+    activeSessionBusy,
     selection.providerID,
     selection.modelID,
     selectedModel?.name,
@@ -2295,8 +2079,13 @@ export function ConversationRuntimeProvider({
     availableProviders,
     mcps,
     skills,
+    runtimeEventFilter,
     activeSessionByRoute,
+    activeSkillIDs,
+    availableSkillIDs,
+    createTerminalRuntimeSession,
     focusSession,
+    patchSession,
     persistRuntimeSessionConfig,
     removeSession,
     setSessionPinned,
@@ -2304,12 +2093,12 @@ export function ConversationRuntimeProvider({
 
   const composerValue = useMemo<ConversationRuntimeComposerContextValue>(() => ({
     route,
-    draft: activeSessionID ? composerDrafts[activeSessionID] || "" : "",
+    draft: composerDrafts[activeDraftKey] || "",
     draftAttachments: activeDraftAttachments,
+    busy: activeSessionBusy,
     selectedModelSupportsVision: selectedModel ? selectedModel.supports_vision !== false : true,
     setDraft: (value: string) => {
-      const session = ensureSession();
-      const nextDrafts = { ...composerDrafts, [session.id]: value.slice(0, MAX_COMPOSER_CHARS) };
+      const nextDrafts = { ...composerDrafts, [activeDraftKey]: value.slice(0, MAX_COMPOSER_CHARS) };
       setComposerDrafts(nextDrafts);
     },
     addDraftAttachments: async (attachments: ComposerAttachment[]) => {
@@ -2317,15 +2106,20 @@ export function ConversationRuntimeProvider({
       if (normalized.length === 0) {
         return;
       }
-      const session = ensureSession();
+      const session = activeSession?.serverBacked
+        ? activeSession
+        : await createTerminalRuntimeSession(route);
+      if (!session) {
+        return;
+      }
       const uploaded = await uploadDraftAttachments(session.id, normalized);
-      const existing = composerAttachmentDrafts[session.id] || [];
+      const existing = composerAttachmentDrafts[session.id] || composerAttachmentDrafts[activeDraftKey] || [];
       const deduped = new Map<string, ComposerAttachment>();
       [...existing, ...uploaded].forEach((item) => {
         deduped.set(item.id, item);
       });
       const nextAttachments = Array.from(deduped.values()).slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS);
-      const nextDrafts = { ...composerAttachmentDrafts, [session.id]: nextAttachments };
+      const nextDrafts = { ...composerAttachmentDrafts, [session.id]: nextAttachments, [NEW_CHAT_DRAFT_KEY]: [] };
       setComposerAttachmentDrafts(nextDrafts);
       persistComposerAttachmentDrafts(nextDrafts);
     },
@@ -2351,13 +2145,14 @@ export function ConversationRuntimeProvider({
     sendPrompt,
   }), [
     route,
-    activeSessionID,
+    activeDraftKey,
     composerDrafts,
     activeDraftAttachments,
+    activeSessionBusy,
     selectedModel,
-    ensureSession,
     composerAttachmentDrafts,
     activeSession,
+    createTerminalRuntimeSession,
     sendPrompt,
   ]);
 

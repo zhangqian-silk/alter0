@@ -144,7 +144,7 @@ memory/
 ## 依赖与边界
 
 - Runtime & Orchestration 负责把 Agent 请求送入 Runtime Resolver，并把执行结果回写会话。
-- Conversation 负责消息持久化、SSE、历史恢复和最终回复展示。
+- Conversation 负责消息持久化、历史恢复、结构化过程和最终回复展示。
 - Task 负责后台执行、日志、产物和任务摘要。
 - Control 负责 Skill、MCP、Model Provider、Codex Runtime 与 Cron 配置生命周期。
 
