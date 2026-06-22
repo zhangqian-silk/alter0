@@ -267,6 +267,10 @@ describe("shell layout stylesheet", () => {
     expect(mobileThinkingBlock).not.toContain("backdrop-filter:");
     expect(mobileThinkingBlock).toContain("max-height: none;");
     expect(mobileThinkingBlock).toContain("overflow: visible;");
+
+    expect(stylesheet).not.toMatch(
+      /\[data-runtime-view="conversation"\] \.runtime-thinking-shell \.terminal-process-body:not\(\[hidden\]\)/,
+    );
   });
 
   it("keeps terminal runtime thinking expanded inline on mobile", () => {

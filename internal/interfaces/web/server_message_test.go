@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	shareddomain "alter0/internal/shared/domain"
 	"alter0/internal/shared/infrastructure/observability"
@@ -21,7 +19,6 @@ type stubWebOrchestrator struct {
 	result      shareddomain.OrchestrationResult
 	err         error
 	lastMessage shareddomain.UnifiedMessage
-	delay       time.Duration
 	lastCtxErr  error
 	handleCount int
 }
@@ -30,50 +27,6 @@ func (s *stubWebOrchestrator) Handle(ctx context.Context, msg shareddomain.Unifi
 	s.lastMessage = msg
 	s.lastCtxErr = ctx.Err()
 	s.handleCount++
-	if s.delay > 0 {
-		time.Sleep(s.delay)
-	}
-	return s.result, s.err
-}
-
-type stubWebStreamOrchestrator struct {
-	stubWebOrchestrator
-	events       []string
-	streamEvents []shareddomain.StreamEvent
-	deltaCalls   int
-	callbackErr  error
-}
-
-func (s *stubWebStreamOrchestrator) HandleStream(
-	ctx context.Context,
-	msg shareddomain.UnifiedMessage,
-	onEvent func(shareddomain.StreamEvent) error,
-) (shareddomain.OrchestrationResult, error) {
-	s.lastMessage = msg
-	s.lastCtxErr = ctx.Err()
-	s.handleCount++
-	if len(s.streamEvents) > 0 {
-		for _, item := range s.streamEvents {
-			if item.Type == shareddomain.StreamEventTypeOutput {
-				s.deltaCalls++
-			}
-			if err := onEvent(item); err != nil {
-				s.callbackErr = err
-				return shareddomain.OrchestrationResult{}, err
-			}
-		}
-		return s.result, s.err
-	}
-	for _, item := range s.events {
-		s.deltaCalls++
-		if err := onEvent(shareddomain.StreamEvent{
-			Type: shareddomain.StreamEventTypeOutput,
-			Text: item,
-		}); err != nil {
-			s.callbackErr = err
-			return shareddomain.OrchestrationResult{}, err
-		}
-	}
 	return s.result, s.err
 }
 
@@ -202,131 +155,24 @@ func TestMessageHandlerCarriesImageAttachmentsInMetadata(t *testing.T) {
 	}
 }
 
-func TestMessageStreamHandlerEmitsStartDeltaDone(t *testing.T) {
-	output := strings.Repeat("stream-", 10)
+func TestMessageHandlerIgnoresCanceledRequestContextForWebConversation(t *testing.T) {
 	orchestrator := &stubWebOrchestrator{
 		result: shareddomain.OrchestrationResult{
 			MessageID: "message-generated",
 			SessionID: "session-fixed",
 			Route:     shareddomain.RouteAgent,
-			Output:    output,
+			Output:    "chat-ok",
 		},
 	}
 	server := newMessageTestServer(orchestrator)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/messages/stream", strings.NewReader(`{"session_id":"session-fixed","content":"hello"}`))
-	rec := httptest.NewRecorder()
-	server.messageStreamHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
-	}
-	if contentType := rec.Header().Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
-		t.Fatalf("expected text/event-stream, got %q", contentType)
-	}
-
-	body := rec.Body.String()
-	if !strings.Contains(body, "event: start\n") {
-		t.Fatalf("expected start event, got body: %s", body)
-	}
-	if strings.Count(body, "event: delta\n") < 2 {
-		t.Fatalf("expected multiple delta events, got body: %s", body)
-	}
-	if !strings.Contains(body, "event: done\n") {
-		t.Fatalf("expected done event, got body: %s", body)
-	}
-	if !strings.Contains(body, `"output":"`+output+`"`) {
-		t.Fatalf("expected full output in done payload, got body: %s", body)
-	}
-}
-
-func TestMessageStreamHandlerEmitsError(t *testing.T) {
-	orchestrator := &stubWebOrchestrator{
-		result: shareddomain.OrchestrationResult{
-			MessageID: "message-generated",
-			SessionID: "session-fixed",
-			Route:     shareddomain.RouteAgent,
-			ErrorCode: "agent_execution_failed",
-		},
-		err: errors.New("processor failed"),
-	}
-	server := newMessageTestServer(orchestrator)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/messages/stream", strings.NewReader(`{"session_id":"session-fixed","content":"hello"}`))
-	rec := httptest.NewRecorder()
-	server.messageStreamHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
-	}
-
-	body := rec.Body.String()
-	if !strings.Contains(body, "event: start\n") {
-		t.Fatalf("expected start event before failure, got body: %s", body)
-	}
-	if !strings.Contains(body, "event: error\n") {
-		t.Fatalf("expected error event, got body: %s", body)
-	}
-	if strings.Contains(body, "event: done\n") {
-		t.Fatalf("did not expect done event on error, got body: %s", body)
-	}
-	if !strings.Contains(body, `"error":"processor failed"`) {
-		t.Fatalf("expected error message in payload, got body: %s", body)
-	}
-}
-
-func TestMessageStreamHandlerEmitsKeepAliveWhileWaiting(t *testing.T) {
-	previousInterval := sseHeartbeatInterval
-	sseHeartbeatInterval = 10 * time.Millisecond
-	defer func() {
-		sseHeartbeatInterval = previousInterval
-	}()
-
-	orchestrator := &stubWebOrchestrator{
-		result: shareddomain.OrchestrationResult{
-			MessageID: "message-generated",
-			SessionID: "session-fixed",
-			Route:     shareddomain.RouteAgent,
-			Output:    "slow-response",
-		},
-		delay: 35 * time.Millisecond,
-	}
-	server := newMessageTestServer(orchestrator)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/messages/stream", strings.NewReader(`{"session_id":"session-fixed","content":"hello"}`))
-	rec := httptest.NewRecorder()
-	server.messageStreamHandler(rec, req)
-
-	body := rec.Body.String()
-	if !strings.Contains(body, ": keep-alive\n\n") {
-		t.Fatalf("expected keep-alive comment in stream body, got: %s", body)
-	}
-	if !strings.Contains(body, "event: done\n") {
-		t.Fatalf("expected done event after keep-alive, got body: %s", body)
-	}
-}
-
-func TestMessageStreamHandlerIgnoresCanceledRequestContextForWebConversation(t *testing.T) {
-	orchestrator := &stubWebStreamOrchestrator{
-		stubWebOrchestrator: stubWebOrchestrator{
-			result: shareddomain.OrchestrationResult{
-				MessageID: "message-generated",
-				SessionID: "session-fixed",
-				Route:     shareddomain.RouteAgent,
-				Output:    "chat-ok",
-			},
-		},
-		events: []string{"part-1", "part-2"},
-	}
-	server := newMessageTestServer(orchestrator)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/messages/stream", strings.NewReader(`{"session_id":"session-fixed","content":"hello"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/messages", strings.NewReader(`{"session_id":"session-fixed","content":"hello"}`))
 	canceledCtx, cancel := context.WithCancel(req.Context())
 	cancel()
 	req = req.WithContext(canceledCtx)
 	rec := httptest.NewRecorder()
 
-	server.messageStreamHandler(rec, req)
+	server.messageHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())

@@ -1687,6 +1687,18 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(toggle.querySelector(".terminal-step-toggle-icon")).toHaveTextContent(">");
   });
 
+  it("renders terminal steps with runtime event metadata", async () => {
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-step-item='step-1']")).toBeInTheDocument();
+    });
+
+    const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
+    expect(step).toHaveAttribute("data-runtime-event-kind", "shell_command");
+    expect(step).toHaveAttribute("data-runtime-event-source", "adapter");
+  });
+
   it("renders a dedicated terminal step toggle icon so the step title stays in the readable content column", async () => {
     renderTerminalRouteBody();
 
@@ -2301,11 +2313,10 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(within(configPanel).getByLabelText("Preview Publish")).toBeChecked();
     expect(within(configPanel).getByLabelText("Frontend Design")).toBeChecked();
     expect(within(configPanel).getByLabelText("Summary")).toBeChecked();
-    expect(within(configPanel).getByLabelText("Memory")).not.toBeChecked();
+    expect(within(configPanel).getByLabelText("Memory")).toBeChecked();
     expect(within(configPanel).getByText("Summary")).toBeInTheDocument();
     expect(within(configPanel).queryByText("Private")).not.toBeInTheDocument();
 
-    fireEvent.click(within(configPanel).getByLabelText("Memory"));
     fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
       target: { value: "summarize this workspace" },
     });

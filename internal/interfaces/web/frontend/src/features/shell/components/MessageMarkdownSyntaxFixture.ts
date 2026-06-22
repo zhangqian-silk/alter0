@@ -77,7 +77,7 @@ export const conversationMarkdownSyntaxFixture = {
     "| 类型 | 内容 |",
     "| --- | --- |",
     "| 链接 | [长链接](https://example.com/docs/very/long/path?query=markdown-table-demo) |",
-    "| API | `/api/conversation-runtime/sessions?session_id=abcd1234&markdown_demo=1` |",
+    "| API | `/api/terminal/sessions/abcd1234` |",
     "| 查询参数 | `session_id=abcd1234&markdown_demo=1` |",
     "",
     "混合内容表格：",

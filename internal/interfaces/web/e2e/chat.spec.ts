@@ -44,13 +44,10 @@ async function mockRuntimeSession(
   if (!sessionID) {
     throw new Error("mockRuntimeSession requires a session id");
   }
-  await page.context().route("**/api/conversation-runtime/sessions**", async (route) => {
+  await page.context().route("**/api/terminal/sessions**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.searchParams.get("route") !== options.route) {
-      await route.fallback();
-      return;
-    }
-    if (url.pathname.endsWith("/api/conversation-runtime/sessions")) {
+    void options;
+    if (url.pathname.endsWith("/api/terminal/sessions")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -60,7 +57,7 @@ async function mockRuntimeSession(
       });
       return;
     }
-    if (url.pathname.endsWith(`/api/conversation-runtime/sessions/${sessionID}`)) {
+    if (url.pathname.endsWith(`/api/terminal/sessions/${sessionID}`)) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -87,13 +84,9 @@ async function mockChatRuntimeSessions(
   page: Parameters<typeof loginIfNeeded>[0],
   sessions: Array<Record<string, unknown>>,
 ): Promise<void> {
-  await page.context().route("**/api/conversation-runtime/sessions**", async (route) => {
+  await page.context().route("**/api/terminal/sessions**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.searchParams.get("route") !== "chat") {
-      await route.fallback();
-      return;
-    }
-    if (url.pathname.endsWith("/api/conversation-runtime/sessions")) {
+    if (url.pathname.endsWith("/api/terminal/sessions")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -102,7 +95,7 @@ async function mockChatRuntimeSessions(
       return;
     }
     const session = sessions.find((item) => url.pathname.endsWith(
-      `/api/conversation-runtime/sessions/${encodeURIComponent(String(item.id || ""))}`,
+      `/api/terminal/sessions/${encodeURIComponent(String(item.id || ""))}`,
     ));
     if (session) {
       await route.fulfill({
@@ -1409,7 +1402,7 @@ test.describe("Chat composer", () => {
     })).toBe(true);
   });
 
-  test("keeps streamed partial output visible when the stream is interrupted", async ({ page }) => {
+  test("renders structured process steps from chat message results", async ({ page }) => {
     await page.addInitScript(() => {
       const originalFetch = window.fetch.bind(window);
       window.fetch = async (input, init) => {
@@ -1418,88 +1411,32 @@ test.describe("Chat composer", () => {
           : input instanceof Request
             ? input.url
             : String(input || "");
-        if (!url.includes("/api/messages/stream")) {
-          return originalFetch(input, init);
+        if (new URL(url, window.location.href).pathname.endsWith("/input")) {
+          return new Response(JSON.stringify({
+            session: {
+              id: "alter0-chat",
+              title: "检查仓库状态",
+              status: "ready",
+              created_at: "2026-06-18T00:00:00Z",
+              turns: [{
+                id: "turn-process",
+                prompt: "帮我检查仓库状态",
+                status: "success",
+                final_output: "任务已完成",
+                steps: [
+                  { id: "step-1", type: "action", title: "读取运行状态", preview: "检查仓库状态、当前分支和工作区清洁度。", status: "completed" },
+                  { id: "step-2", type: "action", title: "定位 Thinking 样式", preview: "确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。", status: "completed" },
+                  { id: "step-3", type: "action", title: "调整展开方式", preview: "将过程详情保持在当前消息内联展开，不再脱离消息流。", status: "completed" },
+                  { id: "step-4", type: "action", title: "回归验证", preview: "补充样式断言并确认最终回复仍独立展示。", status: "completed" }
+                ]
+              }]
+            },
+          }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          });
         }
-        const encoder = new TextEncoder();
-        const body = new ReadableStream({
-          start(controller) {
-            controller.enqueue(encoder.encode(`event: start
-data: {"message_id":"message-stream","session_id":"session-stream","channel_id":"web-default","trace_id":"trace-stream"}
-
-`));
-            controller.enqueue(encoder.encode(`event: delta
-data: {"delta":"Partial answer from stream"}
-
-`));
-            controller.close();
-          }
-        });
-        return new Response(body, {
-          status: 200,
-          headers: {
-            "Content-Type": "text/event-stream"
-          }
-        });
-      };
-    });
-
-    const { composer } = await openChatWorkspace(page);
-    await composer.input().fill("继续输出");
-    await composer.submitButton().click();
-
-    const assistantMessage = page.locator(".msg.assistant").last();
-    await expect(assistantMessage.locator(".msg-bubble")).toContainText("Partial answer from stream");
-    await expect(assistantMessage.locator(".msg-bubble")).not.toContainText("Stream failed");
-    await expect(assistantMessage.locator(".status-pill")).toContainText("Failed");
-  });
-
-  test("shows structured process steps before the skill stream is done", async ({ page }) => {
-    await page.addInitScript(() => {
-      const originalFetch = window.fetch.bind(window);
-      window.fetch = async (input, init) => {
-        const url = typeof input === "string"
-          ? input
-          : input instanceof Request
-            ? input.url
-            : String(input || "");
-        if (!url.includes("/api/messages/stream")) {
-          return originalFetch(input, init);
-        }
-        const encoder = new TextEncoder();
-        const body = new ReadableStream({
-          start(controller) {
-            controller.enqueue(encoder.encode(`event: start
-data: {"message_id":"message-process-live","session_id":"session-process-live","channel_id":"web-default","trace_id":"trace-process-live"}
-
-`));
-            controller.enqueue(encoder.encode(`event: process
-data: {"process_step":{"id":"step-1","kind":"action","title":"codex_exec","status":"running"}}
-
-`));
-            controller.enqueue(encoder.encode(`event: process
-data: {"process_step":{"id":"step-2","kind":"analysis","title":"读取样式约束","detail":"检查 Thinking 披露入口在移动端的布局规则。","status":"running"}}
-
-`));
-            controller.enqueue(encoder.encode(`event: process
-data: {"process_step":{"id":"step-3","kind":"analysis","title":"准备回归验证","detail":"确认多步骤过程能在同一消息内连续展示。","status":"running"}}
-
-`));
-            window.setTimeout(() => {
-              controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"agent","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"codex_exec","detail":"检查仓库状态","status":"completed"},{"id":"step-2","kind":"analysis","title":"读取样式约束","detail":"检查 Thinking 披露入口在移动端的布局规则。","status":"completed"},{"id":"step-3","kind":"analysis","title":"准备回归验证","detail":"确认多步骤过程能在同一消息内连续展示。","status":"completed"}]}}
-
-`));
-              controller.close();
-            }, 300);
-          }
-        });
-        return new Response(body, {
-          status: 200,
-          headers: {
-            "Content-Type": "text/event-stream"
-          }
-        });
+        return originalFetch(input, init);
       };
     });
 
@@ -1509,119 +1446,19 @@ data: {"result":{"route":"agent","output":"任务已完成","process_steps":[{"i
 
     const assistantMessage = page.locator(".msg.assistant").last();
     await expect(assistantMessage.locator(".conversation-process-shell")).toBeVisible();
-    await expect(assistantMessage.locator(".conversation-process-step-title")).toContainText("codex_exec");
-    await expect(assistantMessage.locator(".conversation-process-step-title")).toContainText("读取样式约束");
-    await expect(assistantMessage.locator(".assistant-message-body")).toHaveCount(0);
-
-    await expect(assistantMessage.locator(".assistant-message-body")).toContainText("任务已完成");
-    await expect(assistantMessage.locator(".conversation-process-toggle")).toContainText("3 steps");
-  });
-
-  test("shows explicit load failures after a chat stream aborts", async ({ page }) => {
-    const seededAt = Date.now();
-    await page.addInitScript(() => {
-      const originalFetch = window.fetch.bind(window);
-      window.fetch = async (input, init) => {
-        const url = typeof input === "string"
-          ? input
-          : input instanceof Request
-            ? input.url
-            : String(input || "");
-        if (url.includes("/api/messages/stream")) {
-          const encoder = new TextEncoder();
-          let sentStart = false;
-          const body = new ReadableStream({
-            pull(controller) {
-              if (!sentStart) {
-                sentStart = true;
-                controller.enqueue(encoder.encode(`event: start
-data: {"message_id":"message-stream-refresh","session_id":"session-refresh-recover","channel_id":"web-default","trace_id":"trace-refresh"}
-
-`));
-                return;
-              }
-              controller.error(new TypeError("Load failed"));
-            }
-          });
-          return new Response(body, {
-            status: 200,
-            headers: {
-              "Content-Type": "text/event-stream"
-            }
-          });
-        }
-        return originalFetch(input, init);
-      };
-    });
-
-    const { composer } = await openChatWorkspace(page);
-    await composer.input().fill("帮我确认仓库状态");
-    await composer.submitButton().click();
-
-    const failedMessage = page.locator(".msg.assistant").last();
-    await expect(failedMessage.locator(".msg-bubble")).toContainText("Load failed");
-    await expect(failedMessage.locator(".status-pill")).toContainText("Failed");
-  });
-
-  test("renders structured process steps from chat stream results", async ({ page }) => {
-    const seededAt = Date.now();
-    await page.addInitScript(() => {
-      const originalFetch = window.fetch.bind(window);
-      window.fetch = async (input, init) => {
-        const url = typeof input === "string"
-          ? input
-          : input instanceof Request
-            ? input.url
-            : String(input || "");
-        if (url.includes("/api/messages/stream")) {
-          const encoder = new TextEncoder();
-          const body = new ReadableStream({
-            start(controller) {
-              controller.enqueue(encoder.encode(`event: start
-data: {"message_id":"message-stream-steps","session_id":"session-skill-steps","channel_id":"web-default","trace_id":"trace-steps"}
-
-`));
-              controller.enqueue(encoder.encode(`event: delta
-data: {"delta":"[process] action: codex_exec\\n"}
-
-`));
-              controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"agent","output":"任务已完成","process_steps":[{"id":"step-1","kind":"action","title":"读取运行状态","detail":"检查仓库状态、当前分支和工作区清洁度。","status":"completed"},{"id":"step-2","kind":"action","title":"定位 Thinking 样式","detail":"确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。","status":"completed"},{"id":"step-3","kind":"action","title":"调整展开方式","detail":"将过程详情保持在当前消息内联展开，不再脱离消息流。","status":"completed"},{"id":"step-4","kind":"action","title":"回归验证","detail":"补充样式断言并确认最终回复仍独立展示。","status":"completed"}]}}
-
-`));
-              controller.close();
-            }
-          });
-          return new Response(body, {
-            status: 200,
-            headers: {
-              "Content-Type": "text/event-stream"
-            }
-          });
-        }
-        return originalFetch(input, init);
-      };
-    });
-
-    const { composer } = await openChatWorkspace(page);
-    await composer.input().fill("帮我检查仓库状态");
-    await composer.submitButton().click();
-
-    const streamedMessage = page.locator(".msg.assistant").last();
-    await expect(streamedMessage.locator(".conversation-process-shell")).toBeVisible();
-    await streamedMessage.locator(".conversation-process-body").evaluate((node) => {
+    await assistantMessage.locator(".conversation-process-body").evaluate((node) => {
       if (node instanceof HTMLElement) {
         node.hidden = false;
         node.removeAttribute("hidden");
       }
     });
-    await expect(streamedMessage.locator(".conversation-process-toggle")).toContainText("Thinking");
-    await expect(streamedMessage.locator(".conversation-process-toggle")).toContainText("4 steps");
-    await expect(streamedMessage.locator(".conversation-process-step")).toHaveCount(4);
-    await expect(streamedMessage.locator(".conversation-process-step-body").first()).toContainText("检查仓库状态");
-    await expect(streamedMessage.locator(".conversation-process-step-body").nth(2)).toContainText("当前消息内联展开");
-    await expect(streamedMessage.locator(".conversation-process-answer-shell")).toContainText("任务已完成");
-    await expect(streamedMessage.locator(".conversation-process-answer-shell")).not.toContainText("[process] action:");
+    await expect(assistantMessage.locator(".conversation-process-toggle")).toContainText("Thinking");
+    await expect(assistantMessage.locator(".conversation-process-toggle")).toContainText("4 steps");
+    await expect(assistantMessage.locator(".conversation-process-step")).toHaveCount(4);
+    await expect(assistantMessage.locator(".conversation-process-step-body").first()).toContainText("检查仓库状态");
+    await expect(assistantMessage.locator(".conversation-process-step-body").nth(2)).toContainText("当前消息内联展开");
+    await expect(assistantMessage.locator(".conversation-process-answer-shell")).toContainText("任务已完成");
+    await expect(assistantMessage.locator(".conversation-process-answer-shell")).not.toContainText("[process] action:");
   });
 
   test("keeps structured skill process detail readable on mobile", async ({ page }) => {
@@ -1634,30 +1471,31 @@ data: {"result":{"route":"agent","output":"任务已完成","process_steps":[{"i
           : input instanceof Request
             ? input.url
             : String(input || "");
-	        if (url.includes("/api/messages/stream")) {
-          const encoder = new TextEncoder();
-          const body = new ReadableStream({
-            start(controller) {
-              controller.enqueue(encoder.encode(`event: start
-data: {"message_id":"message-stream-steps-mobile","session_id":"session-skill-steps-mobile","channel_id":"web-default","trace_id":"trace-steps-mobile"}
-
-`));
-              controller.enqueue(encoder.encode(`event: delta
-data: {"delta":"[process] action: codex_exec\\n"}
-
-`));
-              controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"agent","output":"任务已完成","process_steps":[{"id":"mobile-step-1","kind":"action","title":"确认目标工作区","detail":"需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。","status":"completed"},{"id":"mobile-step-2","kind":"action","title":"读取前端契约","detail":"检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。","status":"completed"},{"id":"mobile-step-3","kind":"action","title":"调整移动端展开","detail":"移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。","status":"completed"},{"id":"mobile-step-4","kind":"action","title":"同步静态产物","detail":"重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。","status":"completed"},{"id":"mobile-step-5","kind":"action","title":"部署预览服务","detail":"通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。","status":"completed"},{"id":"mobile-step-6","kind":"action","title":"补充测试数据","detail":"增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。","status":"completed"}]}}
-
-`));
-              controller.close();
-            }
-          });
-          return new Response(body, {
+        if (new URL(url, window.location.href).pathname.endsWith("/input")) {
+          return new Response(JSON.stringify({
+            session: {
+              id: "alter0-chat",
+              title: "检查仓库同步情况",
+              status: "ready",
+              created_at: "2026-06-18T00:00:00Z",
+              turns: [{
+                id: "turn-mobile-process",
+                prompt: "帮我检查仓库同步情况",
+                status: "success",
+                final_output: "任务已完成",
+                steps: [
+                  { id: "mobile-step-1", type: "action", title: "确认目标工作区", preview: "需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。", status: "completed" },
+                  { id: "mobile-step-2", type: "action", title: "读取前端契约", preview: "检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。", status: "completed" },
+                  { id: "mobile-step-3", type: "action", title: "调整移动端展开", preview: "移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。", status: "completed" },
+                  { id: "mobile-step-4", type: "action", title: "同步静态产物", preview: "重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。", status: "completed" },
+                  { id: "mobile-step-5", type: "action", title: "部署预览服务", preview: "通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。", status: "completed" },
+                  { id: "mobile-step-6", type: "action", title: "补充测试数据", preview: "增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。", status: "completed" }
+                ]
+              }]
+            },
+          }), {
             status: 200,
-            headers: {
-              "Content-Type": "text/event-stream"
-            }
+            headers: { "Content-Type": "application/json" }
           });
         }
         return originalFetch(input, init);
@@ -1725,30 +1563,26 @@ data: {"result":{"route":"agent","output":"任务已完成","process_steps":[{"i
           : input instanceof Request
             ? input.url
             : String(input || "");
-	        if (url.includes("/api/messages/stream")) {
-          const encoder = new TextEncoder();
-          const body = new ReadableStream({
-            start(controller) {
-              controller.enqueue(encoder.encode(`event: start
-data: {"message_id":"message-stream-sparse-mobile","session_id":"session-skill-sparse-mobile","channel_id":"web-default","trace_id":"trace-sparse-mobile"}
-
-`));
-              controller.enqueue(encoder.encode(`event: delta
-data: {"delta":"[process] action: codex_exec\\n"}
-
-`));
-              controller.enqueue(encoder.encode(`event: done
-data: {"result":{"route":"agent","output":"Node 更偏应用层与生态速度，Go 更偏并发效率与部署稳定性。","process_steps":[{"kind":"action","title":"codex_exec","detail":"整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。","status":"completed"}]}}
-
-`));
-              controller.close();
-            }
-          });
-          return new Response(body, {
+        if (new URL(url, window.location.href).pathname.endsWith("/input")) {
+          return new Response(JSON.stringify({
+            session: {
+              id: "alter0-chat",
+              title: "Node 和 Go 的差异",
+              status: "ready",
+              created_at: "2026-06-18T00:00:00Z",
+              turns: [{
+                id: "turn-node-go",
+                prompt: "详细介绍下 node 和 go 的差异",
+                status: "success",
+                final_output: "Node 更偏应用层与生态速度，Go 更偏并发效率与部署稳定性。",
+                steps: [
+                  { type: "action", title: "codex_exec", preview: "整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。", status: "completed" }
+                ]
+              }]
+            },
+          }), {
             status: 200,
-            headers: {
-              "Content-Type": "text/event-stream"
-            }
+            headers: { "Content-Type": "application/json" }
           });
         }
         return originalFetch(input, init);

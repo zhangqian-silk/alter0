@@ -10,6 +10,7 @@ import {
 } from "../shell/components/codexSlashCommands";
 import { conversationMarkdownSyntaxFixture } from "../shell/components/MessageMarkdownSyntaxFixture";
 import { normalizeText } from "../shell/components/RouteBodyPrimitives";
+import { RUNTIME_EVENT_FILTER_OPTIONS } from "../shell/components/runtimeTraceEvents";
 import { RuntimeComposer } from "../shell/components/RuntimeComposer";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
 import { ScrollJumpStrip } from "../shell/components/ScrollJumpStrip";
@@ -166,6 +167,7 @@ function useConversationWorkspaceController(
     sessionID: "",
     visibleCount: INITIAL_VISIBLE_CHAT_MESSAGES,
   });
+  const [expandedProcessSteps, setExpandedProcessSteps] = useState<Record<string, boolean>>({});
   const activeMessages = runtime.activeSession?.messages || [];
   const activeSessionID = runtime.activeSession?.id || "";
   const showMarkdownSyntaxDemo = shouldShowConversationMarkdownSyntaxDemo(runtime.route);
@@ -183,6 +185,16 @@ function useConversationWorkspaceController(
   const toggleProcess = useCallback((messageID: string) => {
     toggleProcessRef.current(messageID);
   }, []);
+  const toggleProcessStep = useCallback((messageID: string, stepID: string) => {
+    const key = `${messageID}:${stepID}`;
+    setExpandedProcessSteps((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  }, []);
+  useEffect(() => {
+    setExpandedProcessSteps({});
+  }, [timelineSessionID]);
   const visibleMessageCount = timelineWindow.sessionID === timelineSessionID
     ? timelineWindow.visibleCount
     : INITIAL_VISIBLE_CHAT_MESSAGES;
@@ -353,8 +365,11 @@ function useConversationWorkspaceController(
       messages: visibleMessages,
       language,
       onToggleProcess: toggleProcess,
+      expandedProcessSteps,
+      onToggleProcessStep: toggleProcessStep,
+      runtimeEventFilter: runtime.runtimeEventFilter,
     }),
-    [language, timelineSessionID, toggleProcess, visibleMessages],
+    [expandedProcessSteps, language, runtime.runtimeEventFilter, timelineSessionID, toggleProcess, toggleProcessStep, visibleMessages],
   );
   const loadEarlierMessages = useCallback(() => {
     if (!timelineSessionID || hiddenMessageCount <= 0) {
@@ -665,6 +680,7 @@ function ConversationComposerSection({
   const composerPlaceholder = language === "zh" ? "输入消息，继续推进当前工作区..." : "Type a message to continue this workspace...";
   const composerSend = language === "zh" ? "发送" : "Send";
   const composerMetaLabel = composerAttachmentError || undefined;
+  const composerBusy = composerRuntime.busy;
   const composerAddAttachmentLabel = language === "zh" ? "添加附件" : "Add attachment";
   const composerClosePreviewLabel = language === "zh" ? "关闭预览" : "Close preview";
   const composerPreviewPrefix = language === "zh" ? "预览" : "Preview";
@@ -732,6 +748,9 @@ function ConversationComposerSection({
   };
 
   const submitDraft = () => {
+    if (composerBusy) {
+      return;
+    }
     if (composerRuntime.draftAttachments.some(isComposerImageAttachment) && !composerRuntime.selectedModelSupportsVision) {
       setComposerAttachmentError(composerVisionUnsupported);
       return;
@@ -774,10 +793,16 @@ function ConversationComposerSection({
   };
 
   const handleComposerAttachmentPicker = useCallback(() => {
+    if (composerBusy) {
+      return;
+    }
     composerFileInputRef.current?.click();
-  }, []);
+  }, [composerBusy]);
 
   const handleComposerAttachmentSelection = useCallback(async (files: FileList | File[] | null) => {
+    if (composerBusy) {
+      return;
+    }
     if (!files || files.length === 0) {
       return;
     }
@@ -796,7 +821,7 @@ function ConversationComposerSection({
         composerFileInputRef.current.value = "";
       }
     }
-  }, [composerImageLimitError, composerRuntime]);
+  }, [composerBusy, composerImageLimitError, composerRuntime]);
 
   const handleComposerInputPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
     const imageFiles = getPastedComposerImageFiles(event.clipboardData);
@@ -826,6 +851,26 @@ function ConversationComposerSection({
     { key: "capabilities" as const, label: copy.runtimeToolsShort },
     { key: "skills" as const, label: copy.runtimeSkillsShort },
   ];
+  const runtimeEventDisclosureSection = (
+    <section className="conversation-inspector-section">
+      <strong>{language === "zh" ? "过程披露" : "Process disclosure"}</strong>
+      <div className="conversation-check-list">
+        {RUNTIME_EVENT_FILTER_OPTIONS.map((option) => (
+          <label key={option.id} className="conversation-check-item">
+            <input
+              type="checkbox"
+              checked={runtime.runtimeEventFilter.includes(option.id)}
+              onChange={(event) => runtime.toggleRuntimeEventFilter(option.id, event.target.checked)}
+            />
+            <span>
+              <strong>{option.label[language]}</strong>
+              <small>{option.description[language]}</small>
+            </span>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
   const conversationComposerPanel = runtime.inspectorOpen && runtime.inspectorTabOpen ? (
     <div
       className="conversation-inspector runtime-composer-config-panel"
@@ -877,6 +922,7 @@ function ConversationComposerSection({
               </div>
             </section>
           ))}
+          {runtimeEventDisclosureSection}
         </div>
       ) : null}
 
@@ -912,6 +958,7 @@ function ConversationComposerSection({
               ))}
             </div>
           </section>
+          {runtimeEventDisclosureSection}
         </div>
       ) : null}
 
@@ -1004,6 +1051,7 @@ function ConversationComposerSection({
         maxLength: 10000,
         onPaste: handleComposerInputPaste,
         placeholder: composerPlaceholder,
+        disabled: composerBusy,
       }}
       inputAssistContent={codexSlashCommandAssist}
       onInputChange={composerRuntime.setDraft}
@@ -1027,8 +1075,10 @@ function ConversationComposerSection({
       }}
       metaContent={composerMetaLabel}
       addAttachmentLabel={composerAddAttachmentLabel}
+      addAttachmentButtonProps={{ disabled: composerBusy }}
       onAddAttachment={handleComposerAttachmentPicker}
       submitButtonProps={{
+        disabled: composerBusy,
         onPointerDownCapture: handleSubmitPointerDownCapture,
         onTouchStartCapture: handleSubmitTouchStartCapture,
       }}

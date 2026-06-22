@@ -18,16 +18,21 @@ func TestMobileNewChatEntryReachable(t *testing.T) {
 	}
 }
 
-func TestConversationRuntimeCreatesAndDeletesSessionsInReactState(t *testing.T) {
+func TestConversationRuntimeCreatesAndDeletesTerminalBackedSessions(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx") +
 		readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
 	markers := []string{
-		"const created: ChatSession = {",
+		`const TERMINAL_SESSION_COLLECTION_ENDPOINT = "/api/terminal/sessions";`,
+		"const createTerminalRuntimeSession = useCallback(async (routeKey: ConversationRoute, title: string = \"\"): Promise<ChatSession | null> => {",
+		"chatTerminalSessionEndpoint(),",
+		"upsertRuntimeSession(routeKey, nextSession);",
 		"const nextSessionsByRoute: SessionsState = {",
-		"const nextActiveState = { ...preferredActiveState, [route]: created.id };",
+		"setActiveSessionByRoute((current) => {",
+		"const nextActiveState = { ...current, [routeKey]: nextSession.id };",
 		"createSession: () => {",
-		"ensureSession(null, { ...activeSessionByRoute, [route]: \"\" });",
+		"void createTerminalRuntimeSession(route);",
 		"const removeSession = useCallback(async (sessionID: string) => {",
+		"await apiClient.delete(chatTerminalSessionEndpoint(encodeURIComponent(sessionID)));",
 		"const handleCreateSession = useCallback(() => {",
 		"runtime.createSession();",
 		"const handleRemoveSession = useCallback((sessionID: string) => {",

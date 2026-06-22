@@ -66,8 +66,10 @@ const runtimeMock = {
     visibility?: "public" | "private";
     locked?: boolean;
   }>,
+  runtimeEventFilter: ["important_text"] as Array<"important_text" | "plan" | "reasoning" | "tools" | "commands" | "system">,
   toolCount: 0,
   skillCount: 0,
+  busy: false,
   createSession: vi.fn(),
   focusSession: vi.fn(),
   removeSession: vi.fn().mockResolvedValue(undefined),
@@ -83,6 +85,7 @@ const runtimeMock = {
   selectModel: vi.fn(),
   toggleCapability: vi.fn(),
   toggleSkill: vi.fn(),
+  toggleRuntimeEventFilter: vi.fn(),
   toggleProcess: vi.fn(),
 };
 
@@ -190,8 +193,10 @@ describe("ConversationWorkspace", () => {
     runtimeMock.providers = [];
     runtimeMock.capabilities = [];
     runtimeMock.skills = [];
+    runtimeMock.runtimeEventFilter = ["important_text"];
     runtimeMock.toolCount = 0;
     runtimeMock.skillCount = 0;
+    runtimeMock.busy = false;
     runtimeMock.draft = "";
     runtimeMock.draftAttachments = [];
     runtimeMock.createSession.mockClear();
@@ -206,6 +211,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.closeInspector.mockClear();
     runtimeMock.selectModel.mockClear();
     runtimeMock.toggleSkill.mockClear();
+    runtimeMock.toggleRuntimeEventFilter.mockClear();
     buildChatTimelineItemsMock.mockClear();
   });
 
@@ -227,6 +233,30 @@ describe("ConversationWorkspace", () => {
       ],
     }));
     expect(document.querySelector(".conversation-empty-state")).not.toBeInTheDocument();
+  });
+
+  it("passes the selected runtime event disclosure filter to the chat timeline", () => {
+    runtimeMock.runtimeEventFilter = ["important_text", "reasoning"];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(buildChatTimelineItemsMock).toHaveBeenCalledWith(expect.objectContaining({
+      runtimeEventFilter: ["important_text", "reasoning"],
+    }));
+  });
+
+  it("renders process disclosure checkboxes in the model inspector", () => {
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "model";
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(screen.getByRole("checkbox", { name: /Important text/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Reasoning/i })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Reasoning/i }));
+
+    expect(runtimeMock.toggleRuntimeEventFilter).toHaveBeenCalledWith("reasoning", true);
   });
 
   it("uses the markdown syntax demo query as an explicit non-persistent timeline preview", () => {
@@ -284,6 +314,20 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the Chat composer while the active Terminal-backed session is busy", () => {
+    runtimeMock.busy = true;
+    runtimeMock.activeSession = {
+      ...runtimeMock.activeSession,
+      status: "busy",
+    };
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(screen.getByRole("textbox", { name: /Type a message/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add attachment" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
 
   it("opens Chat session details from the session row without deleting the session", () => {

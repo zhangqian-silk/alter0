@@ -259,15 +259,7 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 	if existing, ok := s.sessions[sessionID]; ok {
 		snapshot := existing.snapshot()
 		if snapshot.OwnerID != ownerID {
-			existing.mu.Lock()
-			existing.summary.OwnerID = ownerID
-			if workspaceDir, workspaceErr := resolveSessionWorkspacePath(s.options.WorkingDir, sessionID); workspaceErr == nil {
-				existing.summary.WorkingDir = workspaceDir
-			}
-			existing.summary.UpdatedAt = time.Now().UTC()
-			snapshot = existing.summary
-			existing.mu.Unlock()
-			s.persistSession(existing)
+			return terminaldomain.Session{}, ErrSessionNotFound
 		}
 		return snapshot, nil
 	}
@@ -1704,7 +1696,11 @@ func (s *Service) getOwnedSession(ownerID string, sessionID string) (*runtimeSes
 	return item, nil
 }
 
-func normalizeTerminalOwnerID(_ string) string {
+func normalizeTerminalOwnerID(ownerID string) string {
+	ownerID = strings.TrimSpace(ownerID)
+	if ownerID != "" {
+		return ownerID
+	}
 	return sharedTerminalOwnerID
 }
 

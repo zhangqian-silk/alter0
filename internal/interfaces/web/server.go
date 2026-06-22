@@ -76,8 +76,6 @@ const (
 	conversationRuntimeCodexModelID               = "codex"
 )
 
-var sseHeartbeatInterval = 15 * time.Second
-
 var workbenchPagePaths = map[string]struct{}{
 	"/chat":       {},
 	"/terminal":   {},
@@ -87,14 +85,6 @@ var workbenchPagePaths = map[string]struct{}{
 
 type Orchestrator interface {
 	Handle(ctx context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error)
-}
-
-type StreamOrchestrator interface {
-	HandleStream(
-		ctx context.Context,
-		msg shareddomain.UnifiedMessage,
-		onEvent func(shareddomain.StreamEvent) error,
-	) (shareddomain.OrchestrationResult, error)
 }
 
 type intentInspector interface {
@@ -355,42 +345,11 @@ type controlTaskTerminalInputResponse struct {
 	TaskDetailPath    string `json:"task_detail_path"`
 }
 
-type streamStartResponse struct {
-	MessageID string `json:"message_id"`
-	SessionID string `json:"session_id"`
-	ChannelID string `json:"channel_id"`
-	TraceID   string `json:"trace_id"`
-}
-
-type streamDeltaResponse struct {
-	Delta string             `json:"delta"`
-	Route shareddomain.Route `json:"route,omitempty"`
-}
-
-type streamProcessResponse struct {
-	ProcessStep shareddomain.ProcessStep `json:"process_step"`
-}
-
-type streamDoneResponse struct {
-	Result                   shareddomain.OrchestrationResult `json:"result"`
-	TaskID                   string                           `json:"task_id,omitempty"`
-	TaskStatus               string                           `json:"task_status,omitempty"`
-	ExecutionMode            string                           `json:"execution_mode,omitempty"`
-	EstimatedDurationSeconds int                              `json:"estimated_duration_seconds,omitempty"`
-	ComplexityLevel          string                           `json:"complexity_level,omitempty"`
-	TaskCard                 *taskCardResponse                `json:"task_card,omitempty"`
-}
-
 type taskCardResponse struct {
 	Notice        string `json:"notice"`
 	TaskID        string `json:"task_id"`
 	TaskSummary   string `json:"task_summary"`
 	TaskDetailURL string `json:"task_detail_url"`
-}
-
-type streamErrorResponse struct {
-	Error  string                           `json:"error"`
-	Result shareddomain.OrchestrationResult `json:"result,omitempty"`
 }
 
 type taskLogStreamStartResponse struct {
@@ -730,7 +689,6 @@ func (s *Server) Run(ctx context.Context) error {
 		mux.HandleFunc(path, s.chatPageHandler)
 	}
 	mux.HandleFunc("/api/messages", s.messageHandler)
-	mux.HandleFunc("/api/messages/stream", s.messageStreamHandler)
 	mux.HandleFunc("/api/conversation-runtime/sessions", s.conversationRuntimeSessionCollectionHandler)
 	mux.HandleFunc("/api/conversation-runtime/sessions/", s.conversationRuntimeSessionItemHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
@@ -1405,225 +1363,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-
-	msg, statusCode, err := s.prepareMessage(r)
-	if err != nil {
-		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-		return
-	}
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
-		return
-	}
-	execCtx, detachExecution := executionContextForMessage(r.Context(), msg)
-	stream := newExecutionSSEStream(newSSEStream(w, flusher), detachExecution)
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	s.countGateway(string(msg.ChannelType))
-	hasImageAttachments := len(execdomain.DecodeUserImageAttachments(msg.Metadata)) > 0
-	if err := stream.Event("start", streamStartResponse{
-		MessageID: msg.MessageID,
-		SessionID: msg.SessionID,
-		ChannelID: msg.ChannelID,
-		TraceID:   msg.TraceID,
-	}); err != nil {
-		return
-	}
-	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteChat, msg)
-	s.touchSessionActivityAt(msg.SessionID, msg.ReceivedAt)
-	stopKeepAlive := startSSEKeepAlive(r.Context(), stream, sseHeartbeatInterval)
-	stream.SetKeepAliveStop(stopKeepAlive)
-	defer stopKeepAlive()
-
-	intent := s.classifyMessageIntent(msg.Content)
-	assessment := s.defaultComplexityAssessment()
-	streamCtx, cancelStream := context.WithCancel(execCtx)
-	defer cancelStream()
-
-	streamResultCh := make(chan streamExecutionResult, 1)
-	streamEventCh := make(chan shareddomain.StreamEvent, 16)
-	_, nativeStreaming := s.orchestrator.(StreamOrchestrator)
-	go func() {
-		result, handleErr := s.handleStreamMessage(streamCtx, msg, func(event shareddomain.StreamEvent) error {
-			if event.Type == shareddomain.StreamEventTypeOutput && strings.TrimSpace(event.Text) == "" {
-				return nil
-			}
-			if event.Type == shareddomain.StreamEventTypeProcess && event.ProcessStep == nil {
-				return nil
-			}
-			select {
-			case <-streamCtx.Done():
-				return streamCtx.Err()
-			case streamEventCh <- event:
-				return nil
-			}
-		})
-		streamResultCh <- streamExecutionResult{result: result, err: handleErr}
-	}()
-
-	assessmentReady := false
-	assessmentCh := (<-chan taskapp.ComplexityAssessment)(nil)
-	cancelAssessment := func() {}
-	if intent.Type == orchdomain.IntentTypeAgent && s.tasks != nil && !hasImageAttachments {
-		assessmentCtx, cancel := context.WithCancel(execCtx)
-		cancelAssessment = cancel
-		defer cancelAssessment()
-		localAssessmentCh := make(chan taskapp.ComplexityAssessment, 1)
-		assessmentCh = localAssessmentCh
-		go func() {
-			localAssessmentCh <- s.assessComplexityWithContext(assessmentCtx, msg)
-		}()
-	}
-
-	emittedDelta := false
-	writeEvent := func(event shareddomain.StreamEvent, route shareddomain.Route) error {
-		switch event.Type {
-		case shareddomain.StreamEventTypeOutput:
-			if strings.TrimSpace(event.Text) == "" {
-				return nil
-			}
-			payload := streamDeltaResponse{Delta: event.Text}
-			if strings.TrimSpace(string(route)) != "" {
-				payload.Route = route
-			}
-			if err := stream.Event("delta", payload); err != nil {
-				return err
-			}
-			emittedDelta = true
-			return nil
-		case shareddomain.StreamEventTypeProcess:
-			if event.ProcessStep == nil {
-				return nil
-			}
-			return stream.Event("process", streamProcessResponse{ProcessStep: *event.ProcessStep})
-		default:
-			return nil
-		}
-	}
-	finalizeStreamResult := func(streamResult streamExecutionResult) {
-		cancelAssessment()
-		result := streamResult.result
-		handleErr := streamResult.err
-		_ = s.flushPendingStreamEvents(writeEvent, streamEventCh, "")
-		if intent.Type == orchdomain.IntentTypeAgent {
-			result = attachComplexityMetadata(result, assessment, nil)
-		}
-		if handleErr != nil {
-			s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
-			s.touchSessionActivity(msg.SessionID)
-			s.logWebMessageFailure(msg, handleErr)
-			_ = stream.Event("error", streamErrorResponse{
-				Error:  handleErr.Error(),
-				Result: result,
-			})
-			return
-		}
-
-		if !nativeStreaming {
-			for _, chunk := range chunkText(result.Output, 24) {
-				if err := writeEvent(shareddomain.StreamEvent{
-					Type: shareddomain.StreamEventTypeOutput,
-					Text: chunk,
-				}, result.Route); err != nil {
-					return
-				}
-			}
-		}
-
-		_ = stream.Event("done", streamDoneResponse{
-			Result:                   result,
-			ExecutionMode:            assessment.ExecutionMode,
-			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-			ComplexityLevel:          assessment.ComplexityLevel,
-		})
-		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusReady)
-		s.touchSessionActivity(msg.SessionID)
-	}
-
-	for {
-		select {
-		case event := <-streamEventCh:
-			if err := writeEvent(event, ""); err != nil {
-				return
-			}
-		case assessment = <-assessmentCh:
-			assessmentReady = true
-			if strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) != taskapp.ExecutionModeAsync {
-				continue
-			}
-			_ = s.flushPendingStreamEvents(writeEvent, streamEventCh, "")
-			select {
-			case streamResult := <-streamResultCh:
-				assessment = s.defaultComplexityAssessment()
-				assessmentReady = false
-				finalizeStreamResult(streamResult)
-				return
-			default:
-			}
-
-			cancelStream()
-			taskMsg := enrichMessageWithComplexityMetadata(msg, assessment)
-			task, accepted, submitErr := s.submitAsyncTask(taskMsg, assessment)
-			taskCard := buildTaskCard(taskMsg, assessment, task)
-			result := asyncAcceptedResult(taskMsg, task, assessment, taskCard)
-			if submitErr != nil {
-				s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, taskMsg, conversationRuntimeSessionStatusFailed)
-				s.touchSessionActivity(taskMsg.SessionID)
-				s.logWebMessageFailure(taskMsg, submitErr)
-				_ = stream.Event("error", streamErrorResponse{
-					Error:  submitErr.Error(),
-					Result: result,
-				})
-				return
-			}
-			if accepted {
-				output := result.Output
-				if emittedDelta && strings.TrimSpace(output) != "" {
-					output = "\n\n" + output
-				}
-				for _, chunk := range chunkText(output, 24) {
-					if err := writeEvent(shareddomain.StreamEvent{
-						Type: shareddomain.StreamEventTypeOutput,
-						Text: chunk,
-					}, ""); err != nil {
-						return
-					}
-				}
-				_ = stream.Event("done", streamDoneResponse{
-					Result:                   result,
-					TaskID:                   task.ID,
-					TaskStatus:               string(task.Status),
-					ExecutionMode:            assessment.ExecutionMode,
-					EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-					ComplexityLevel:          assessment.ComplexityLevel,
-					TaskCard:                 taskCard,
-				})
-				s.touchSessionActivity(taskMsg.SessionID)
-				return
-			}
-		case streamResult := <-streamResultCh:
-			if !assessmentReady {
-				cancelAssessment()
-			}
-			finalizeStreamResult(streamResult)
-			return
-		}
-	}
-}
-
-type streamExecutionResult struct {
-	result shareddomain.OrchestrationResult
-	err    error
+	writeJSON(w, http.StatusGone, map[string]string{"error": "chat stream endpoint removed; use POST /api/messages"})
 }
 
 func executionContextForMessage(ctx context.Context, msg shareddomain.UnifiedMessage) (context.Context, bool) {
@@ -1638,137 +1378,6 @@ func executionContextForMessage(ctx context.Context, msg shareddomain.UnifiedMes
 
 func shouldDetachWebConversationExecution(msg shareddomain.UnifiedMessage) bool {
 	return msg.TriggerType == shareddomain.TriggerTypeUser && msg.ChannelType == shareddomain.ChannelTypeWeb
-}
-
-func (s *Server) handleStreamMessage(
-	ctx context.Context,
-	msg shareddomain.UnifiedMessage,
-	callback func(event shareddomain.StreamEvent) error,
-) (shareddomain.OrchestrationResult, error) {
-	if orchestrator, ok := s.orchestrator.(StreamOrchestrator); ok {
-		return orchestrator.HandleStream(ctx, msg, callback)
-	}
-	return s.orchestrator.Handle(ctx, msg)
-}
-
-type sseCommentWriter interface {
-	Comment(text string) error
-}
-
-type executionSSEStream struct {
-	stream              *sseStream
-	ignoreWriteFailures bool
-	stopKeepAlive       func()
-	mu                  sync.Mutex
-	closed              bool
-}
-
-func newExecutionSSEStream(stream *sseStream, ignoreWriteFailures bool) *executionSSEStream {
-	return &executionSSEStream{
-		stream:              stream,
-		ignoreWriteFailures: ignoreWriteFailures,
-		stopKeepAlive:       func() {},
-	}
-}
-
-func (s *executionSSEStream) SetKeepAliveStop(stop func()) {
-	if s == nil {
-		if stop != nil {
-			stop()
-		}
-		return
-	}
-	if stop == nil {
-		stop = func() {}
-	}
-	shouldStop := false
-	s.mu.Lock()
-	s.stopKeepAlive = stop
-	shouldStop = s.closed
-	s.mu.Unlock()
-	if shouldStop {
-		stop()
-	}
-}
-
-func (s *executionSSEStream) Event(event string, payload any) error {
-	if s == nil || s.stream == nil {
-		return errors.New("sse stream is required")
-	}
-	if s.isClosed() {
-		return nil
-	}
-	if err := s.stream.Event(event, payload); err != nil {
-		return s.handleWriteError(err)
-	}
-	return nil
-}
-
-func (s *executionSSEStream) Comment(text string) error {
-	if s == nil || s.stream == nil {
-		return errors.New("sse stream is required")
-	}
-	if s.isClosed() {
-		return nil
-	}
-	if err := s.stream.Comment(text); err != nil {
-		return s.handleWriteError(err)
-	}
-	return nil
-}
-
-func (s *executionSSEStream) isClosed() bool {
-	if s == nil {
-		return true
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.closed
-}
-
-func (s *executionSSEStream) handleWriteError(err error) error {
-	if s == nil || !s.ignoreWriteFailures {
-		return err
-	}
-	s.close()
-	return nil
-}
-
-func (s *executionSSEStream) close() {
-	if s == nil {
-		return
-	}
-	stop := func() {}
-	s.mu.Lock()
-	if s.closed {
-		stop = nil
-	} else {
-		s.closed = true
-		stop = s.stopKeepAlive
-	}
-	s.mu.Unlock()
-	if stop != nil {
-		stop()
-	}
-}
-
-func (s *Server) flushPendingStreamEvents(
-	writeEvent func(event shareddomain.StreamEvent, route shareddomain.Route) error,
-	streamEventCh <-chan shareddomain.StreamEvent,
-	route shareddomain.Route,
-) bool {
-	drained := false
-	for {
-		select {
-		case event := <-streamEventCh:
-			drained = true
-			if err := writeEvent(event, route); err != nil {
-				return drained
-			}
-		default:
-			return drained
-		}
-	}
 }
 
 func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
@@ -5658,64 +5267,6 @@ func (s *sseStream) Comment(text string) error {
 	}
 	s.flusher.Flush()
 	return nil
-}
-
-func startSSEKeepAlive(ctx context.Context, stream sseCommentWriter, interval time.Duration) func() {
-	if ctx == nil || stream == nil {
-		return func() {}
-	}
-	if interval <= 0 {
-		interval = sseHeartbeatInterval
-	}
-	if interval <= 0 {
-		return func() {}
-	}
-
-	stopCh := make(chan struct{})
-	var once sync.Once
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-stopCh:
-				return
-			case <-ticker.C:
-				if err := stream.Comment("keep-alive"); err != nil {
-					return
-				}
-			}
-		}
-	}()
-
-	return func() {
-		once.Do(func() {
-			close(stopCh)
-		})
-	}
-}
-
-func chunkText(content string, maxRunes int) []string {
-	if maxRunes <= 0 {
-		maxRunes = 1
-	}
-	runes := []rune(content)
-	if len(runes) == 0 {
-		return nil
-	}
-
-	chunks := make([]string, 0, (len(runes)+maxRunes-1)/maxRunes)
-	for start := 0; start < len(runes); start += maxRunes {
-		end := start + maxRunes
-		if end > len(runes) {
-			end = len(runes)
-		}
-		chunks = append(chunks, string(runes[start:end]))
-	}
-	return chunks
 }
 
 func mapTaskArtifacts(items []taskdomain.TaskArtifact) ([]taskArtifactResponse, string, string, int) {

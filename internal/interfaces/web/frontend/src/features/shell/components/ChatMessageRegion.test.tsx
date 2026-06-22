@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { vi } from "vitest";
 import { buildChatTimelineItems, ChatMessageRegion, type ChatMessageSnapshot } from "./ChatMessageRegion";
 
 function buildAssistantMessage(overrides: Partial<ChatMessageSnapshot> = {}): ChatMessageSnapshot {
@@ -109,7 +110,7 @@ describe("ChatMessageRegion", () => {
     expect(article.textContent).not.toContain("10:20");
   });
 
-  it("keeps transient assistant status visible while a chat reply is still streaming", () => {
+  it("does not render legacy assistant status chrome while a chat reply is still streaming", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
@@ -118,10 +119,41 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
-    expect(screen.getByText("In Progress")).toBeInTheDocument();
+    expect(screen.queryByText("In Progress")).not.toBeInTheDocument();
+    expect(document.querySelector(".status-pill")).not.toBeInTheDocument();
+    expect(document.querySelector(".msg-meta")).not.toBeInTheDocument();
     expect(document.body.textContent).not.toContain("10:20");
     expect(screen.queryByText("CHAT")).not.toBeInTheDocument();
     expect(screen.queryByText("MODEL")).not.toBeInTheDocument();
+  });
+
+  it("keeps the legacy local process placeholder collapsed until real process content arrives", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "",
+            status: "streaming",
+            processSteps: [
+              {
+                id: "local-stream-start",
+                kind: "commentary",
+                title: "Thinking",
+                detail: "",
+                status: "running",
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    const process = document.querySelector("[data-conversation-process-shell='message-1']") as HTMLElement;
+    expect(process).toHaveClass("is-collapsed");
+    expect(process.querySelector(".terminal-process-body")).toHaveAttribute("hidden");
+    expect(document.querySelector(".status-pill")).not.toBeInTheDocument();
   });
 
   it("hides user prompt timestamps in the shared conversation timeline", () => {
@@ -293,10 +325,16 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".terminal-process-toggle")).toHaveClass("runtime-thinking-toggle");
     expect(article.querySelector(".terminal-process-toggle")).toHaveTextContent("Thinking");
     expect(article.querySelector(".terminal-process-toggle")).toHaveTextContent("4 steps");
-    expect(article.querySelector(".conversation-process-body")).toBeInTheDocument();
-    expect(article.querySelectorAll(".conversation-process-step")).toHaveLength(4);
-    expect(article.querySelector(".conversation-process-step-head")).toBeInTheDocument();
-    expect(article.querySelector(".conversation-process-step-title")).toBeInTheDocument();
+    expect(article.querySelector(".terminal-process-shell")).not.toHaveClass("conversation-process-shell");
+    expect(article.querySelector(".terminal-process-toggle")).not.toHaveClass("conversation-process-toggle");
+    expect(article.querySelector(".terminal-process-body")).toBeInTheDocument();
+    expect(article.querySelector(".conversation-process-body")).not.toBeInTheDocument();
+    expect(article.querySelectorAll(".terminal-step-item")).toHaveLength(4);
+    expect(article.querySelectorAll(".conversation-process-step")).toHaveLength(0);
+    expect(article.querySelector(".terminal-step-toggle")).toBeInTheDocument();
+    expect(article.querySelector(".conversation-process-step-head")).not.toBeInTheDocument();
+    expect(article.querySelector(".terminal-step-title")).toBeInTheDocument();
+    expect(article.querySelector(".conversation-process-step-title")).not.toBeInTheDocument();
     expect(article).toHaveTextContent("Review runtime styles");
     expect(article).toHaveTextContent("Verify regression coverage");
     const answer = document.querySelector(".conversation-process-answer") as HTMLElement;
@@ -304,6 +342,48 @@ describe("ChatMessageRegion", () => {
     expect(answer).toHaveClass("message-markdown-body");
     expect(answer.querySelector(".message-markdown-rendered")).toBeInTheDocument();
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
+  });
+
+  it("renders chat process steps with the same collapsible rows as terminal", async () => {
+    const onToggleProcessStep = vi.fn();
+    const message = buildAssistantMessage({
+      text: "Final answer.",
+      processSteps: buildProcessSteps(),
+      processCollapsed: false,
+    });
+    const { rerender } = render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[message]}
+        expandedProcessSteps={{}}
+        onToggleProcessStep={onToggleProcessStep}
+      />,
+    );
+
+    const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
+    expect(step).toHaveAttribute("data-conversation-process-step", "step-1");
+    const toggle = step.querySelector("[data-terminal-step-toggle='step-1']") as HTMLButtonElement;
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(step.querySelector(".terminal-step-body")).toHaveAttribute("hidden");
+    expect(step.querySelector(".terminal-step-detail")).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(onToggleProcessStep).toHaveBeenCalledWith("message-1", "step-1");
+
+    rerender(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[message]}
+        expandedProcessSteps={{ "message-1:step-1": true }}
+        onToggleProcessStep={onToggleProcessStep}
+      />,
+    );
+    const expandedToggle = document.querySelector("[data-terminal-step-toggle='step-1']") as HTMLButtonElement;
+    expect(expandedToggle).toHaveAttribute("aria-expanded", "true");
+    expect(document.querySelector("[data-terminal-step-item='step-1'] .terminal-step-body")).not.toHaveAttribute("hidden");
   });
 
   it("uses a compact localized thought disclosure for completed skill process details", () => {
@@ -335,5 +415,62 @@ describe("ChatMessageRegion", () => {
     expect(toggle).toHaveTextContent("4 步");
     expect(toggle).not.toHaveTextContent("过程");
     expect(toggle.querySelector(".terminal-step-toggle-icon")).toHaveTextContent(">");
+  });
+
+  it("filters chat process disclosure by runtime event type", () => {
+    const message = buildAssistantMessage({
+      text: "最终答案。",
+      processSteps: [
+        { id: "commentary", kind: "analysis", title: "执行过程", detail: "正在处理重要进度。" },
+        { id: "reasoning", kind: "reasoning", title: "Reasoning", detail: "内部推理摘要。" },
+      ],
+    });
+
+    const defaultItems = buildChatTimelineItems({
+      cacheScope: "runtime-event-filter-default",
+      language: "zh",
+      messages: [message],
+    });
+    expect(JSON.stringify(defaultItems)).toContain("正在处理重要进度。");
+    expect(JSON.stringify(defaultItems)).toContain("内部推理摘要。");
+
+    const expandedItems = buildChatTimelineItems({
+      cacheScope: "runtime-event-filter-expanded",
+      language: "zh",
+      messages: [message],
+      runtimeEventFilter: ["important_text", "reasoning"],
+    });
+    expect(JSON.stringify(expandedItems)).toContain("正在处理重要进度。");
+    expect(JSON.stringify(expandedItems)).toContain("内部推理摘要。");
+  });
+
+  it("filters legacy inline process markers through runtime event types", () => {
+    const message = buildAssistantMessage({
+      id: "legacy-runtime-markers",
+      text: [
+        "[process] action: Read file",
+        "cat package.json",
+        "[process] observation:",
+        "package content",
+        "Final answer.",
+      ].join("\n"),
+      processSteps: [],
+    });
+
+    const defaultItems = buildChatTimelineItems({
+      cacheScope: "legacy-runtime-filter-default",
+      language: "en",
+      messages: [message],
+    });
+    expect(JSON.stringify(defaultItems)).toContain("cat package.json");
+    expect(JSON.stringify(defaultItems)).not.toContain("[process] action");
+
+    const toolItems = buildChatTimelineItems({
+      cacheScope: "legacy-runtime-filter-tools",
+      language: "en",
+      messages: [message],
+      runtimeEventFilter: ["important_text", "tools"],
+    });
+    expect(JSON.stringify(toolItems)).toContain("cat package.json");
   });
 });
