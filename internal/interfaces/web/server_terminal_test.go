@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -630,6 +631,152 @@ func TestTerminalSessionItemHandlerReturnsTurnsInSessionDetail(t *testing.T) {
 	turns, ok := session["turns"].([]any)
 	if !ok || len(turns) != 1 {
 		t.Fatalf("expected turns payload, got %v", session["turns"])
+	}
+}
+
+func TestTerminalSessionItemHandlerPagesTurnsInSessionDetail(t *testing.T) {
+	service := &stubWebTerminalService{
+		getResp: terminaldomain.Session{
+			ID:      "terminal-4",
+			OwnerID: sharedTerminalClientID,
+			Status:  terminaldomain.SessionStatusReady,
+		},
+		getOK: true,
+		turnsResp: []terminalapp.TurnSummary{
+			{ID: "turn-1", Prompt: "one", Status: "completed", FinalOutput: "1"},
+			{ID: "turn-2", Prompt: "two", Status: "completed", FinalOutput: "2"},
+			{ID: "turn-3", Prompt: "three", Status: "completed", FinalOutput: "3"},
+			{ID: "turn-4", Prompt: "four", Status: "completed", FinalOutput: "4"},
+		},
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4?turn_limit=2", nil)
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	session := payload["session"].(map[string]any)
+	turns := session["turns"].([]any)
+	if len(turns) != 2 {
+		t.Fatalf("expected two turns, got %d", len(turns))
+	}
+	if turns[0].(map[string]any)["id"] != "turn-3" || turns[1].(map[string]any)["id"] != "turn-4" {
+		t.Fatalf("expected latest turn page, got %v", turns)
+	}
+	paging := session["turns_paging"].(map[string]any)
+	if paging["has_more_before"] != true {
+		t.Fatalf("expected earlier turns to be available, got %v", paging)
+	}
+	if paging["oldest_turn_id"] != "turn-3" || paging["newest_turn_id"] != "turn-4" {
+		t.Fatalf("expected page boundary ids, got %v", paging)
+	}
+}
+
+func TestTerminalSessionItemHandlerUsesCompactDefaultTurnPage(t *testing.T) {
+	turns := make([]terminalapp.TurnSummary, 45)
+	for index := range turns {
+		turnNumber := index + 1
+		turns[index] = terminalapp.TurnSummary{
+			ID:          fmt.Sprintf("turn-%02d", turnNumber),
+			Prompt:      fmt.Sprintf("prompt-%02d", turnNumber),
+			Status:      "completed",
+			FinalOutput: fmt.Sprintf("output-%02d", turnNumber),
+		}
+	}
+	service := &stubWebTerminalService{
+		getResp: terminaldomain.Session{
+			ID:      "terminal-4",
+			OwnerID: sharedTerminalClientID,
+			Status:  terminaldomain.SessionStatusReady,
+		},
+		getOK:     true,
+		turnsResp: turns,
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4", nil)
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	session := payload["session"].(map[string]any)
+	page := session["turns"].([]any)
+	if len(page) != 20 {
+		t.Fatalf("expected compact default page of 20 turns, got %d", len(page))
+	}
+	if page[0].(map[string]any)["id"] != "turn-26" || page[len(page)-1].(map[string]any)["id"] != "turn-45" {
+		t.Fatalf("expected latest compact turn page, got first=%v last=%v", page[0], page[len(page)-1])
+	}
+	paging := session["turns_paging"].(map[string]any)
+	if paging["limit"] != float64(20) || paging["has_more_before"] != true {
+		t.Fatalf("expected default paging metadata for compact page, got %v", paging)
+	}
+}
+
+func TestTerminalSessionItemHandlerCapsTurnPageByApproximatePayloadSize(t *testing.T) {
+	largeOutput := strings.Repeat("large terminal output\n", 5000)
+	turns := make([]terminalapp.TurnSummary, 5)
+	for index := range turns {
+		turnNumber := index + 1
+		turns[index] = terminalapp.TurnSummary{
+			ID:          fmt.Sprintf("turn-%02d", turnNumber),
+			Prompt:      fmt.Sprintf("prompt-%02d", turnNumber),
+			Status:      "completed",
+			FinalOutput: largeOutput,
+		}
+	}
+	service := &stubWebTerminalService{
+		getResp: terminaldomain.Session{
+			ID:      "terminal-4",
+			OwnerID: sharedTerminalClientID,
+			Status:  terminaldomain.SessionStatusReady,
+		},
+		getOK:     true,
+		turnsResp: turns,
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4?turn_limit=5", nil)
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	session := payload["session"].(map[string]any)
+	page := session["turns"].([]any)
+	if len(page) >= len(turns) {
+		t.Fatalf("expected payload budget to return fewer turns than requested, got %d", len(page))
+	}
+	if page[len(page)-1].(map[string]any)["id"] != "turn-05" {
+		t.Fatalf("expected capped page to keep the latest turn, got %v", page)
+	}
+	paging := session["turns_paging"].(map[string]any)
+	if paging["has_more_before"] != true {
+		t.Fatalf("expected payload cap to keep earlier turns available, got %v", paging)
 	}
 }
 

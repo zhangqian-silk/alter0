@@ -204,6 +204,9 @@ type TerminalSessionPayload = {
   skill_ids?: string[];
   mcp_ids?: string[];
   turns?: TerminalTurnPayload[];
+  turns_paging?: {
+    has_more_before?: boolean;
+  };
 };
 
 type TerminalTurnPayload = {
@@ -548,6 +551,21 @@ function shouldUseParsedMessages(previous: ChatMessage[], parsed: ChatMessage[])
     return false;
   }
   return hasRecoverableAssistantState(previous) && hasPersistedAssistantState(parsed);
+}
+
+function mergePagedMessages(previous: ChatMessage[], parsed: ChatMessage[]): ChatMessage[] {
+  if (previous.length === 0) {
+    return parsed;
+  }
+  const previousIDs = new Set(previous.map((message) => message.id));
+  const hasOverlap = parsed.some((message) => previousIDs.has(message.id));
+  if (!hasOverlap) {
+    return shouldUseParsedMessages(previous, parsed) ? parsed : previous;
+  }
+  const merged = new Map<string, ChatMessage>();
+  previous.forEach((message) => merged.set(message.id, message));
+  parsed.forEach((message) => merged.set(message.id, message));
+  return Array.from(merged.values()).sort((left, right) => left.at - right.at);
 }
 
 function normalizeStoredMessage(item: unknown): ChatMessage | null {
@@ -957,9 +975,11 @@ function normalizeTerminalSession(
     ? item.turns.flatMap(normalizeTerminalTurnMessages)
     : null;
   const messages = parsedMessages
-    ? (previous?.messages.length && !shouldUseParsedMessages(previous.messages, parsedMessages)
-      ? previous.messages
-      : parsedMessages)
+    ? (previous?.messages.length && item.turns_paging?.has_more_before
+      ? mergePagedMessages(previous.messages, parsedMessages)
+      : previous?.messages.length && !shouldUseParsedMessages(previous.messages, parsedMessages)
+        ? previous.messages
+        : parsedMessages)
     : previous?.messages || [];
   const hasExplicitSkillIDs = Array.isArray(item.skill_ids);
   return {

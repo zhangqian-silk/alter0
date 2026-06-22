@@ -54,6 +54,16 @@ type TerminalTurn = {
   steps?: TerminalStepSummary[];
 };
 
+type TerminalTurnPaging = {
+  limit?: number;
+  total?: number;
+  has_more_before?: boolean;
+  has_more_after?: boolean;
+  oldest_turn_id?: string;
+  newest_turn_id?: string;
+  next_before_turn_id?: string;
+};
+
 type TerminalAttachment = {
   id?: string;
   name: string;
@@ -76,6 +86,7 @@ type TerminalSession = {
   updated_at?: string | number;
   error_message?: string;
   turns?: TerminalTurn[];
+  turns_paging?: TerminalTurnPaging;
 };
 
 type TerminalSessionsResponse = {
@@ -619,6 +630,46 @@ function sortSessions(items: TerminalSession[]): TerminalSession[] {
   });
 }
 
+function terminalTurnOrdinal(id: string): number {
+  const match = normalizeText(id).match(/(\d+)$/);
+  return match ? Number(match[1]) : Number.NaN;
+}
+
+function compareTerminalTurns(left: TerminalTurn, right: TerminalTurn): number {
+  const leftAt = Math.max(parseTimestamp(left.started_at), parseTimestamp(left.finished_at));
+  const rightAt = Math.max(parseTimestamp(right.started_at), parseTimestamp(right.finished_at));
+  if (leftAt > 0 && rightAt > 0 && leftAt !== rightAt) {
+    return leftAt - rightAt;
+  }
+  const leftOrdinal = terminalTurnOrdinal(left.id);
+  const rightOrdinal = terminalTurnOrdinal(right.id);
+  if (Number.isFinite(leftOrdinal) && Number.isFinite(rightOrdinal) && leftOrdinal !== rightOrdinal) {
+    return leftOrdinal - rightOrdinal;
+  }
+  return normalizeText(left.id).localeCompare(normalizeText(right.id));
+}
+
+function mergeTerminalTurns(current: TerminalTurn[] | undefined, incoming: TerminalTurn[] | undefined): TerminalTurn[] | undefined {
+  if (!Array.isArray(incoming)) {
+    return current;
+  }
+  if (!Array.isArray(current) || current.length === 0) {
+    return incoming;
+  }
+  const merged = new Map<string, TerminalTurn>();
+  current.forEach((turn) => {
+    if (normalizeText(turn.id)) {
+      merged.set(turn.id, turn);
+    }
+  });
+  incoming.forEach((turn) => {
+    if (normalizeText(turn.id)) {
+      merged.set(turn.id, turn);
+    }
+  });
+  return Array.from(merged.values()).sort(compareTerminalTurns);
+}
+
 function mergeSessionSnapshot(
   current: TerminalSession | undefined,
   incoming: TerminalSession,
@@ -633,6 +684,9 @@ function mergeSessionSnapshot(
       merged[key as string] = value;
     }
   });
+  if (incoming.turns_paging?.has_more_before && Array.isArray(incoming.turns)) {
+    merged.turns = mergeTerminalTurns(current.turns, incoming.turns);
+  }
   return merged as TerminalSession;
 }
 

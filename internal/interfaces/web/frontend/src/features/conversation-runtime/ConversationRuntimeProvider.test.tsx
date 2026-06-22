@@ -62,6 +62,15 @@ function RuntimeHarness() {
   );
 }
 
+function MessageTextHarness() {
+  const runtime = useConversationRuntime();
+  return (
+    <output data-testid="message-texts">
+      {runtime.activeSession?.messages.map((message) => message.text).join("|") || ""}
+    </output>
+  );
+}
+
 function InspectorHarness() {
   const runtime = useConversationRuntime();
 
@@ -1378,5 +1387,78 @@ describe("ConversationRuntimeProvider", () => {
     });
 
     await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Remote completion"));
+  });
+
+  it("merges paged Chat session detail refreshes into existing messages", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Paged chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: { has_more_before: true },
+              turns: [
+                {
+                  id: "turn-1",
+                  prompt: "older",
+                  status: "success",
+                  started_at: "2026-04-23T03:31:00Z",
+                  finished_at: "2026-04-23T03:31:01Z",
+                  final_output: "older answer",
+                },
+                {
+                  id: "turn-2",
+                  prompt: "newer",
+                  status: "success",
+                  started_at: "2026-04-23T03:32:00Z",
+                  finished_at: "2026-04-23T03:32:01Z",
+                  final_output: "newer answer",
+                },
+              ],
+            }],
+          };
+        case "/api/terminal/sessions/alter0-chat?scope=chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Paged chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: { has_more_before: true },
+              turns: [{
+                id: "turn-2",
+                prompt: "newer",
+                status: "success",
+                started_at: "2026-04-23T03:32:00Z",
+                finished_at: "2026-04-23T03:32:02Z",
+                final_output: "newer answer refreshed",
+              }],
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer"));
+
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer refreshed"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer");
   });
 });
