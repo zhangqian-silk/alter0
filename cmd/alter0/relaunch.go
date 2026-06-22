@@ -118,7 +118,7 @@ func (r *serviceRestarter) RequestRestart(options web.RuntimeRestartOptions) (bo
 
 func (r *serviceRestarter) resolveRelaunchExecutable(options web.RuntimeRestartOptions) (string, error) {
 	if options.SyncRemoteMaster {
-		if err := syncRemoteMasterBranch(r.workingDir); err != nil {
+		if err := syncRemoteMasterBranch(r.workingDir, options.ConfirmDiscardTrackedChanges); err != nil {
 			return "", err
 		}
 	}
@@ -186,7 +186,7 @@ func decodeRelaunchArgs(encoded string) ([]string, error) {
 	return args, nil
 }
 
-func syncRemoteMasterBranch(workingDir string) error {
+func syncRemoteMasterBranch(workingDir string, confirmDiscardTrackedChanges bool) error {
 	repoDir := strings.TrimSpace(workingDir)
 	if repoDir == "" {
 		return errors.New("sync remote master requires a working directory")
@@ -205,6 +205,9 @@ func syncRemoteMasterBranch(workingDir string) error {
 		return fmt.Errorf("inspect git working tree: %w", err)
 	}
 	if status != "" {
+		if !confirmDiscardTrackedChanges {
+			return fmt.Errorf("sync remote master requires discard confirmation because tracked working tree changes exist: %s", status)
+		}
 		if err := runCommandWithTimeout(gitStatusTimeout, repoDir, "git", "reset", "--hard", "HEAD"); err != nil {
 			return fmt.Errorf("discard tracked working tree changes: %w", err)
 		}

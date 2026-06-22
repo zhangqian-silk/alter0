@@ -211,7 +211,7 @@ function RoutePageFrame({
   mobileNavOpen: boolean;
   onToggleMobileNav: () => void;
 }) {
-  const isSettingsRoute = route === "settings" || route === "management";
+  const isSettingsRoute = route === "settings";
   const routeHeadingCopy = getLegacyRouteHeadingCopy(language, isSettingsRoute ? "settings" : route);
   const shellCopy = getLegacyShellCopy(language);
 
@@ -219,7 +219,7 @@ function RoutePageFrame({
     <section
       className={isSettingsRoute ? "route-view workbench-route-frame" : "route-view"}
       data-route={route}
-      data-route-family={isSettingsRoute ? "management" : undefined}
+      data-route-family={isSettingsRoute ? "settings" : undefined}
     >
       {isMobileViewport ? (
         <header className="route-mobile-head" data-route-mobile-head>

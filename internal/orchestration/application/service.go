@@ -243,7 +243,7 @@ func (s *Service) handle(
 					slog.String("session_id", msg.SessionID),
 					slog.String("message_id", msg.MessageID),
 					slog.String("mandatory_context_version", mandatorySnapshot.Version),
-					slog.String("mandatory_context_file", mandatorySnapshot.FilePath),
+					slog.String("file_path", mandatorySnapshot.FilePath),
 					slog.String("mandatory_conflicts", conflictMetadata[mandatoryContextConflictDetailMetadataKey]),
 					slog.Int("mandatory_conflict_count", len(conflicts)),
 				)

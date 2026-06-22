@@ -24,7 +24,6 @@ describe("routeState", () => {
     expect(parseWorkbenchRoute("/chat")).toBe("chat");
     expect(parseWorkbenchRoute("/terminal")).toBe("terminal");
     expect(parseWorkbenchRoute("/settings")).toBe("settings");
-    expect(parseWorkbenchRoute("/management")).toBe("settings");
     expect(parseWorkbenchRoute("/skill")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/memory")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/skills")).toBe(DEFAULT_WORKBENCH_ROUTE);
@@ -34,7 +33,7 @@ describe("routeState", () => {
     expect(parseWorkbenchRoute("/cron-jobs")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/channels")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/models")).toBe(DEFAULT_WORKBENCH_ROUTE);
-    expect(parseWorkbenchRoute("/environments")).toBe(DEFAULT_WORKBENCH_ROUTE);
+    expect(parseWorkbenchRoute("/unknown")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/codex-accounts")).toBe(DEFAULT_WORKBENCH_ROUTE);
   });
 
@@ -64,7 +63,7 @@ describe("routeState", () => {
     expect(window.location.search).toBe("?foo=bar");
   });
 
-  it("does not preserve old management subpage paths as workbench routes", () => {
+  it("does not preserve old settings subpage paths as workbench routes", () => {
     navigateWorkbenchRoute("codex-accounts");
 
     expect(window.location.pathname).toBe("/chat");

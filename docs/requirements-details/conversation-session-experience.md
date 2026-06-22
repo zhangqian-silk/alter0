@@ -22,14 +22,14 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 ### Web Shell
 
 - 根路径 `/` 默认进入 Chat 工作台。
-- `/chat`、`/chat` 与 `/terminal` 提供三条主工作流入口；主导航底部固定提供 `Management` 工具入口并进入 `/management`。Control、Memory、Tasks、Sessions、Models、Environments、Codex Runtime 等管理能力统一收敛到同一个 Management 页面内分组展示，不再保留独立工作台 path，并继续复用同一 Web Shell、登录态、主导航与页面骨架。
+- `/chat` 与 `/terminal` 提供两条主工作流入口；主导航底部固定提供 `Settings` 工具入口并进入 `/settings`。Runtime、Skills、Memory 与 Schedules 统一收敛到同一个 Settings 页面内分组展示，不再保留独立工作台 path，并继续复用同一 Web Shell、登录态、主导航与页面骨架。
 - Web Shell 的前端构建源位于 `internal/interfaces/web/frontend`，`/chat` 固定分发 `static/dist/index.html`；该入口仅保留前端挂载容器与静态资源引用，由 React 渲染稳定的 shell DOM，并通过兼容样式层保持旧 DOM 契约。
 - `/chat` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 导航中的语言切换入口负责在英文与中文之间切换，并同步更新根节点语言标记。
 - 登录页在启用密码保护时继续作为统一入口，但视觉需与 Web Shell 保持一致：使用 `IBM Plex Sans + Sora` 字体、近白工作台卡片和安全入口说明文案，不保留独立的默认系统表单风格。
-- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 `/chat`、`/chat`、`/terminal`、`/management` 四个稳定顶层路由、语言切换、主导航折叠/抽屉和运行页/管理页分派；主导航的主工作流只暴露 `Chat / Terminal`，并用单个 `Management` 工具入口进入合并管理页；`chat` 与 `chat` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 terminal-style workspace；`terminal` 通过 `/terminal` 独立 path 进入并继续由共享 runtime host 承载；`runtime / memory / channels / skills / mcp / models / environments / cron-jobs / sessions / tasks / codex-accounts` 等能力由 `/management` 页面内的本地分区切换接管。根壳层稳定暴露 `app-shell[data-workbench-route]` 与 `data-route-family="management"`，各运行页与 route body 继续输出 `data-route / data-conversation-*` 作为样式与测试锚点；兼容层仅保留样式，不再通过 legacy 脚本接管 `/chat` 业务运行时。
+- Web Shell 由 React 单一工作台直接渲染：`src/app/WorkbenchApp.tsx` 负责 `/chat`、`/terminal`、`/settings` 三个稳定顶层路由、语言切换、主导航折叠/抽屉和运行页/设置页分派；主导航的主工作流只暴露 `Chat / Terminal`，并用单个 `Settings` 工具入口进入设置页；`chat` 通过 `ConversationRuntimeProvider + ConversationWorkspace` 渲染 runtime workspace；`terminal` 通过 `/terminal` 独立 path 进入并继续由共享 runtime host 承载；Runtime、Skills、Memory 与 Schedules 由 `/settings` 页面内的本地分区切换接管。根壳层稳定暴露 `app-shell[data-workbench-route]` 与 `data-route-family="settings"`，各运行页与 route body 继续输出 `data-route / data-conversation-*` 作为样式与测试锚点。
 - `channels / skills / mcp / models / cron-jobs` 共享控制台页统一复用同一组响应式内容网格；窄屏下标题区允许徽标下沉、字段行改为单列堆叠、底部标签区保持纵向拉伸，避免复制按钮、状态徽标与多行字段发生重叠或横向溢出。
 - Web Shell 的稳定界面基线收敛为两层：左侧固定主导航负责品牌、三条主工作流入口、当前运行页会话列表、Settings 工具入口与语言切换，右侧主面板统一承载运行页和 Settings 管理页；`Chat / Terminal` 在主面板内部统一采用「时间线工作区 + 底部 Composer + 固定 workspace header」结构，并直接复用工作区容器、工作区头部、聊天滚动区、Composer 与移动端顶部操作行复合 class 语义，标题、状态按钮和 `Details` 按钮也保持同一组共享 header 元素。工作台视觉参考 Gemini 式扁平界面：主工作区、Settings frame、管理分区、表格、详情面板和空态不再依赖外层圆角、卡片边框或厚阴影，层级通过留白、轻量分割线、低对比选中态与 Composer 胶囊建立；Settings 路由的 frame、标题、正文区和分区索引保持静态呈现，不使用独立淡入、位移或页面出现动效；设计基线维护在 `docs/design/workbench-flat-redesign.html` 与对应 PNG。到真手机宽度时，运行页顶层再收敛成单层 workbar：左侧 `Menu`，中间“状态信号 + 当前会话标题”标题按钮，右侧固定保留 `New`；三条运行页都不再显示独立 `Sessions` 顶部按钮，会话列表随左侧导航抽屉展示。`Details` 不再独占手机顶栏，而是由中间标题按钮直接触发。`Terminal` 继续保持原有 `terminal-*` DOM class 契约与布局关系，状态与交互全部由 React 直接维护，但不再通过专属 header kind 或独立 details toggle 派生不同头部皮肤。为避免信息重复，当前壳层遵循单层信息架构：主导航不展示额外品牌口号或实现状态；Conversation workspace 自身承担运行态配置，不再叠加 bridge 期的 welcome/runtime sheet 双轨壳层；`Control / Sessions / Tasks / Memory / Codex Runtime` 等 React 托管 route 页进入同一 Settings 页面，页内共享扁平白底、浅灰辅助层与低对比选中态，并用紧凑分组切换区分能力。
-- Management 桌面布局需使用左侧管理索引和右侧内容区，分区入口提供图标、短标识与活动态；真手机宽度下索引切换为双列入口栅格，保证 Profiles、Memory、Skills、MCP、Sessions、Tasks、Cron Jobs、Channels、Models、Environments 与 Codex Runtime 都可直接扫读。各分区内部的表格、筛选条、详情面板、空态和错误态需共享扁平白底、轻量分割线、浅灰辅助层和紧凑字段行，不再默认使用外层卡片边框、厚圆角或重阴影表达层级。
+- Settings 桌面布局需使用左侧设置索引和右侧内容区，分区入口提供图标、短标识与活动态；真手机宽度下索引切换为双列入口栅格，保证 Runtime、Skills、Memory 与 Schedules 都可直接扫读。各分区内部的表格、筛选条、详情面板、空态和错误态需共享扁平白底、轻量分割线、浅灰辅助层和紧凑字段行，不再默认使用外层卡片边框、厚圆角或重阴影表达层级。
 - `Skill` 与其他 React 托管页面共享同一扁平表面体系：列表、管理表单、托管字段块与消息块使用一致的白底主表面、浅灰辅助层与低对比选中态，不再默认使用卡片边框、厚圆角或重阴影表达层级。
 - `/chat` 页面标题、登录页标题、导航品牌位、会话栏标题与欢迎区 tag 统一展示 `Alter0`，不再混用 `alter0` 小写品牌词。
 - Web Shell 的抽屉式单列工作台仅在主视口宽度 `1100px` 及以下触发；高于该阈值时保留左侧固定主导航与右侧主面板，避免只对聊天内容列做最大阅读宽度限制而让整体壳层失衡。
@@ -64,7 +64,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - Session history 维护会话级 `last_active_at` 与 `pinned`。`last_active_at` 在用户发送消息、assistant 完成或失败、结果收口、打开会话详情、Terminal 输入/详情读取和任务结果写回时刷新；没有显式活跃时间的历史会话回退使用最后消息时间。
 - 运行页会话列表把置顶会话汇入独立 `Pinned / 置顶` 分组并固定在 `Today / 今天` 上方；非置顶会话继续按最近活跃时间排序并进入时间分组。Settings 的 Sessions 页面展示最后活跃时间并提供置顶/取消置顶操作。置顶状态持久化在 Session history metadata 中，不改变消息内容；尚未产生消息、只存在于当前浏览器或 Conversation Runtime registry 的空白 `Chat` 会话，也必须在前端快照与 registry 可用范围内保留置顶反馈。
 - 系统维护任务默认每日清理超过 7 天不活跃的未置顶会话。清理会删除该会话的 Session history、运行时 registry、关联任务引用和 `.alter0/workspaces/sessions/<session_id>` 下的附件/工作区数据；置顶会话始终跳过自动清理，仍有关联 queued/running 任务的会话在任务进入终态前跳过清理。
-- 会话清理不提供复杂配置项。`Settings > Maintenance` 只提供当前状态、上次/下次运行、手动 `Clean up now`、失败重试，以及删除数量、置顶跳过数量、任务保护数量和扫描数量。清理后续资源删除失败时，本次维护状态必须记录为 `failed` 并暴露失败原因。
+- 会话清理不提供复杂配置项。`Settings > Schedules` 的内置会话清理任务只提供当前状态、上次/下次运行、手动触发、失败重试，以及删除数量、置顶跳过数量、任务保护数量和扫描数量。清理后续资源删除失败时，本次维护状态必须记录为 `failed` 并暴露失败原因。
 - 具备独立前端入口的 Skill 不进入通用 Settings 页面历史。
 - `Sessions` 系统页面可展示跨来源会话数据，但不作为 Chat 分栏依据。
 - 未发送文本草稿、附件草稿与当前浏览器中的临时空白会话允许继续本地保存；这些局部态不要求跨设备同步，但不能覆盖服务端已存在的会话摘要、配置与消息历史。
@@ -79,7 +79,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - Web `Chat` 独立消息入口已移除；对话消息统一由 Chat-scoped Terminal session input 处理，运行页列表与详情由 Chat scope 的 Terminal session 接口恢复。
 - 上述消息接口在 `content` 之外还接受 `attachments[]`；当前稳定支持两种图片输入：首次上传时携带 `data_url`、文件名与 MIME 类型，或在同一 Session 内复用已上传的 `id + asset_url + preview_url` 资产引用。允许仅发送图片，服务端会补齐稳定占位文本并把图片载荷并入统一消息元数据。
 - `POST /api/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`；其中 `preview_url` 只用于缩略图位，历史消息回显与预览弹层必须优先读取 `asset_url` 原图。
-- `Terminal` 页面 Composer 与 `Tasks` 详情抽屉 follow-up terminal 输入也复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、缩略预览与历史回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`；其中缩略位继续使用 `preview_url`，再次查看时统一切回 `asset_url`。
+- `Terminal` 页面 Composer 复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、缩略预览与历史回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`；其中缩略位继续使用 `preview_url`，再次查看时统一切回 `asset_url`。
 - assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
 - `GET /api/terminal/sessions?scope=chat` 返回 Chat 运行页会话摘要，至少包含标题、Skills 选择、创建时间、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。Terminal 默认 `/api/terminal/sessions` 不包含 Chat-scoped 会话。
 - `GET /api/terminal/sessions/{session_id}?scope=chat` 返回单个 Chat 运行页会话详情，至少包含 Terminal-compatible `turns`、用户附件引用、结构化 steps 与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
@@ -121,7 +121,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 ### Chat 消息语义
 
 - Chat 前端统一调用 `POST /api/terminal/sessions/{session_id}/input?scope=chat`；不得调用 `/api/messages`、`/api/messages/stream`，不得依赖 SSE 增量、保活帧、浏览器读流状态或本地 `Thinking` 过程步骤驱动消息区。
-- Chat 发送后由 Terminal session 状态进入 `busy`；执行完成、失败或任务收口后，用 input 返回结果、任务轮询结果或 Terminal session 详情恢复当前消息区。
+- Chat 发送后由 Terminal session 状态进入 `busy`；执行完成或失败后，用 input 返回结果或 Terminal session 详情恢复当前消息区。
 - 直连 Codex 的 `agent_message` 按输出频道区分正文与过程：`final` 或旧版无频道消息进入 assistant 最终正文，`commentary` 作为结构化 `process_steps` 进入消息内联 `Thinking / 已思考` 披露区，其他非最终频道不得作为最终 `output` 写入会话正文。
 - Chat 与 Terminal 的过程展示统一消费 `RuntimeTraceEvent`。事件 `kind/source/provider/role/status/lifecycle/blocks/action` 等字段只允许来自底层 SDK/CLI provider、工程 adapter 或 alter0 本地确定性注入，不允许用标题、正文、关键词或语言模式推断。历史 Chat `process_steps`、旧 `[runtime] action / observation` 文本和 Terminal step 摘要只作为兼容输入，在读取或渲染前转换为当前结构，后续可删除过渡兼容逻辑。
 - Chat 显式选择 `Codex` 且消息包含图片附件时，服务端需把已上传并落盘的原图路径传给 Codex CLI `-i` 参数；前端提示词不需要再描述“图片已存在”才能触发图片读取。
@@ -149,12 +149,12 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 页面刷新后，若当前活动会话存在本地失败态流式消息，前端需优先拉取服务端会话消息，并用已持久化结果覆盖本地失败态；即使服务端集合接口已经返回了该会话的摘要项，只要未附带完整消息，也必须继续补拉单会话详情。
 - 页面刷新、前后台恢复或集合接口刷新后，若服务端集合返回的当前会话消息数量短于浏览器侧已追加历史，且本地仍存在本轮用户消息、`Thinking...`、`streaming` assistant 或其他可恢复状态，前端必须继续保留本地时间线并等待单会话详情或后续集合结果确认，不得把刚发送的消息从 UI 中移除。
 - 若当前活动会话已经从服务端恢复出最新 `user` 消息，但该 user 之后尚无 assistant、任务或失败消息，运行页继续按待恢复会话处理并重试详情接口；只有拿到稳定 assistant 或明确失败态后，才停止本轮恢复。
-- 任务轮询与任务回填仅以真实存在的 `task_id` 为准，不得把空值或占位值误判为后台任务。
+- 运行页恢复只依赖会话详情补拉，不再通过后台 Task API 轮询任务状态。
 
 ### 渲染策略
 
-- Chat 消息区使用逐条 patch 与浏览器逐帧合并刷新；Terminal input 结果、任务回填或中断恢复到达时立即收口最终状态。
-- Process 展开收起与任务状态回填不得导致整段消息列表重建，也不得在长输出期间持续占满主线程导致导航、发送、详情和会话切换按钮失去响应。
+- Chat 消息区使用逐条 patch 与浏览器逐帧合并刷新；Terminal input 结果或中断恢复到达时立即收口最终状态。
+- Process 展开收起与运行状态回填不得导致整段消息列表重建，也不得在长输出期间持续占满主线程导致导航、发送、详情和会话切换按钮失去响应。
 - 时间线装配需按单条消息缓存稳定渲染结果；当仅当前 assistant 占位或结果变化时，未变化的历史消息不得重新生成 Markdown HTML、Process step 树或 runtime timeline item。
 - 仅有 Composer 草稿变化时，Conversation 时间线、Markdown 正文与 `Process` 展示不得重新解析或整段重建；性能热点需收敛在输入区本身。
 - 前端点击诊断仅在 `?debug_clicks=1`、`?debugClicks=true` 或 `localStorage["alter0.debug.clicks"]="on"` 时启用。诊断记录需覆盖 `pointerdown / pointerup / touchstart / touchend / click` 的事件目标、坐标命中的顶层元素、当前 `activeElement`、壳层 class、可拦截点击的遮罩层、`defaultPrevented` 与按钮禁用状态，并额外输出主线程 long task，用于排查真机首点无效和双击才响应问题。
@@ -286,7 +286,6 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 - Runtime 提供消息路由与结构化执行结果。
 - Skill 提供 Process 结构与最终答复。
-- Task 提供任务卡片、状态回填和日志入口。
 - Terminal 的会话式终端交互由 Task, Terminal & Workspace 领域维护；用户 prompt、最终输出与本领域运行页共享同一 `runtime-message-*` 消息格式。
 
 ## 验收口径

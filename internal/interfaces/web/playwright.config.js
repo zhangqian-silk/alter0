@@ -4,11 +4,10 @@ const { buildPlaywrightEnv } = require("./playwright.config.shared");
 const port = process.env.ALTER0_PLAYWRIGHT_PORT || "18188";
 const baseURL = `http://127.0.0.1:${port}`;
 const isWindows = process.platform === "win32";
-const codexMockShell = isWindows ? path.resolve(__dirname, "e2e/fixtures/codex-mock.cmd") : "sh";
-const codexMockShellArgs = isWindows ? "" : path.resolve(__dirname, "e2e/fixtures/codex-mock.sh");
-const terminalShellFlags = isWindows
-  ? `-task-terminal-shell "${codexMockShell}"`
-  : `-task-terminal-shell "${codexMockShell}" -task-terminal-shell-args "${codexMockShellArgs}"`;
+const codexMockCommand = isWindows
+  ? path.resolve(__dirname, "e2e/fixtures/codex-mock.cmd")
+  : path.resolve(__dirname, "e2e/fixtures/codex-mock.sh");
+const prepareCodexMockCommand = isWindows ? "" : `chmod +x "${codexMockCommand}" && `;
 const playwrightEnv = buildPlaywrightEnv(process.env);
 const chromiumExecutablePath = process.env.ALTER0_PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || "";
 
@@ -38,7 +37,7 @@ module.exports = {
     trace: "on-first-retry",
   },
   webServer: {
-    command: `go run ./cmd/alter0 -web-addr 127.0.0.1:${port} ${terminalShellFlags}`,
+    command: `${prepareCodexMockCommand}go run ./cmd/alter0 -web-addr 127.0.0.1:${port} -codex-command "${codexMockCommand}"`,
     cwd: path.resolve(__dirname, "../../.."),
     env: playwrightEnv,
     url: `${baseURL}/chat`,

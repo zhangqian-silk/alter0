@@ -169,70 +169,6 @@ func TestCapabilityUnifiedAPI(t *testing.T) {
 	}
 }
 
-func TestEnvironmentConfigEndpoints(t *testing.T) {
-	control := controlapp.NewService()
-	control.SetEnvironmentRuntime(map[string]string{
-		"worker_pool_size": "4",
-		"queue_timeout":    "5s",
-	})
-	server := &Server{
-		control: control,
-		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-
-	listReq := httptest.NewRequest(http.MethodGet, "/api/control/environments", nil)
-	listRec := httptest.NewRecorder()
-	server.environmentConfigHandler(listRec, listReq)
-	if listRec.Code != http.StatusOK {
-		t.Fatalf("expected list 200, got %d", listRec.Code)
-	}
-	var listResp struct {
-		Items []controldomain.EnvironmentConfigItem `json:"items"`
-	}
-	if err := json.NewDecoder(listRec.Body).Decode(&listResp); err != nil {
-		t.Fatalf("decode list response failed: %v", err)
-	}
-	if len(listResp.Items) == 0 {
-		t.Fatalf("expected non-empty environments")
-	}
-
-	putReq := httptest.NewRequest(http.MethodPut, "/api/control/environments", strings.NewReader(`{"operator":"tester","values":{"worker_pool_size":8,"queue_timeout":"8s"}}`))
-	putRec := httptest.NewRecorder()
-	server.environmentConfigHandler(putRec, putReq)
-	if putRec.Code != http.StatusOK {
-		t.Fatalf("expected put 200, got %d: %s", putRec.Code, putRec.Body.String())
-	}
-	var putResp controldomain.EnvironmentUpdateResult
-	if err := json.NewDecoder(putRec.Body).Decode(&putResp); err != nil {
-		t.Fatalf("decode put response failed: %v", err)
-	}
-	if !putResp.NeedsRestart {
-		t.Fatalf("expected restart required")
-	}
-	if len(putResp.Changed) != 2 {
-		t.Fatalf("expected 2 changed items, got %d", len(putResp.Changed))
-	}
-
-	auditReq := httptest.NewRequest(http.MethodGet, "/api/control/environments/audits", nil)
-	auditRec := httptest.NewRecorder()
-	server.environmentAuditListHandler(auditRec, auditReq)
-	if auditRec.Code != http.StatusOK {
-		t.Fatalf("expected audit 200, got %d", auditRec.Code)
-	}
-	var auditResp struct {
-		Items []controldomain.EnvironmentAudit `json:"items"`
-	}
-	if err := json.NewDecoder(auditRec.Body).Decode(&auditResp); err != nil {
-		t.Fatalf("decode audit response failed: %v", err)
-	}
-	if len(auditResp.Items) != 1 {
-		t.Fatalf("expected 1 audit, got %d", len(auditResp.Items))
-	}
-	if auditResp.Items[0].Operator != "tester" {
-		t.Fatalf("expected operator tester, got %s", auditResp.Items[0].Operator)
-	}
-}
-
 func TestRuntimeRestartEndpointAcceptsRequest(t *testing.T) {
 	restarter := &stubRuntimeRestarter{accepted: true}
 	server := &Server{
@@ -259,7 +195,7 @@ func TestRuntimeRestartEndpointAcceptsSyncRemoteMasterOption(t *testing.T) {
 		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/control/runtime/restart", strings.NewReader(`{"sync_remote_master":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/control/runtime/restart", strings.NewReader(`{"sync_remote_master":true,"confirm_discard_tracked_changes":true}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	server.runtimeRestartHandler(rec, req)
@@ -269,6 +205,9 @@ func TestRuntimeRestartEndpointAcceptsSyncRemoteMasterOption(t *testing.T) {
 	}
 	if !restarter.options.SyncRemoteMaster {
 		t.Fatalf("expected sync_remote_master forwarded to runtime restarter")
+	}
+	if !restarter.options.ConfirmDiscardTrackedChanges {
+		t.Fatalf("expected confirm_discard_tracked_changes forwarded to runtime restarter")
 	}
 }
 

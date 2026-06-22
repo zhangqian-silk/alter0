@@ -76,30 +76,6 @@ body {
   color: var(--shell-ink);
 }
 
-.primary-nav,
-.chat-pane,
-.runtime-workspace,
-.runtime-workspace-body,
-.runtime-workspace-session-pane-shell,
-.management-route-nav,
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  border-color: var(--shell-line);
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: none;
-}
-
 .primary-nav {
   background: #f8fafb;
   border-right: 1px solid var(--shell-line);
@@ -128,9 +104,9 @@ body {
 .nav-session-rail-action,
 .runtime-workspace-session-pane-action,
 .runtime-workspace-button,
-.management-route-tab,
-.management-route-content button,
-.management-route-content a,
+.settings-route-tab,
+.settings-route-content button,
+.settings-route-content a,
 .runtime-composer-utility,
 .runtime-composer-upload,
 .runtime-composer-submit,
@@ -166,18 +142,6 @@ body {
 .runtime-workspace-head {
   border-bottom-color: var(--shell-line);
   background: rgba(255, 255, 255, 0.98);
-}
-
-.runtime-workspace-copy h4,
-.route-view h3,
-.management-route-content .route-card-title-copy h4,
-.management-route-content .skill-route-pane-copy h4,
-.management-route-content .control-task-drawer-head h4,
-.management-route-content .codex-accounts-section-head h4,
-.management-route-content .environment-toolbar-copy h3,
-.management-route-content .route-detail-panel-head h4 {
-  color: #101828;
-  letter-spacing: 0;
 }
 
 .runtime-workspace-status-dot,
@@ -250,47 +214,47 @@ body {
 }
 
 .route-body[data-route="settings"],
-.route-view[data-route-family="management"] .route-body,
-.management-route-body {
+.route-view[data-route-family="settings"] .route-body,
+.settings-route-body {
   width: 100%;
 }
 
-.management-route-body {
+.settings-route-body {
   grid-template-columns: minmax(176px, 216px) minmax(0, 1fr);
   gap: 16px;
 }
 
-.management-route-nav {
+.settings-route-nav {
   padding: 10px;
 }
 
-.management-route-tab {
+.settings-route-tab {
   min-height: 42px;
   grid-template-columns: 30px minmax(0, 1fr);
   padding: 6px 8px;
 }
 
-.management-route-tab-shortcut {
+.settings-route-tab-shortcut {
   display: none;
 }
 
-.management-route-tab.is-active {
+.settings-route-tab.is-active {
   border-color: rgba(15, 159, 143, 0.16);
   background: rgba(15, 159, 143, 0.1);
   color: var(--shell-accent-strong);
   box-shadow: inset 3px 0 0 var(--shell-accent);
 }
 
-.management-route-tab-icon {
+.settings-route-tab-icon {
   border-radius: 8px;
   background: #f2f4f7;
 }
 
-.management-route-tab.is-active .management-route-tab-icon {
+.settings-route-tab.is-active .settings-route-tab-icon {
   background: rgba(15, 159, 143, 0.12);
 }
 
-.management-route-content {
+.settings-route-content {
   width: 100%;
   gap: 14px;
 }
@@ -300,53 +264,22 @@ body {
   gap: 14px;
 }
 
-.management-route-content > .settings-composite-section,
-.management-route-content > .route-master-detail,
-.management-route-content > .control-task-layout,
-.management-route-content > .task-history-view,
-.management-route-content > .codex-accounts-workspace,
-.management-route-content > .environment-view {
-  width: min(100%, 1080px);
-}
-
-.management-route-content .route-empty-panel {
+.settings-route-content .route-empty-panel {
   width: min(100%, 620px);
 }
 
-.management-route-content[data-management-route-content="runtime"] .settings-composite-section {
+.settings-route-content[data-settings-route-content="runtime"] .settings-composite-section {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
   align-items: start;
 }
 
-.management-route-content[data-management-route-content="runtime"] .settings-composite-section > * {
+.settings-route-content[data-settings-route-content="runtime"] .settings-composite-section > * {
   min-width: 0;
 }
 
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  padding: 16px;
-}
-
-.management-route-content .route-field-row,
-.management-route-content .codex-accounts-runtime-detail,
-.management-route-content .environment-item,
-.management-route-content .codex-account-metric,
-.management-route-content .codex-accounts-summary-card,
-.management-route-content .skill-builder-managed-item {
-  border-radius: 8px;
-  background: #f8fafc;
-}
-
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea,
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea,
 .runtime-composer-panel,
 .runtime-composer-attachment,
 .runtime-composer-command-option {
@@ -369,26 +302,51 @@ body {
     border-radius: 8px;
   }
 
-  .management-route-body {
+  .settings-route-body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 760px) {
-  .route-view[data-route-family="management"] {
+  .codex-runtime-service-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .codex-runtime-service-actions {
+    justify-content: stretch;
+  }
+
+  .codex-runtime-service-actions .codex-runtime-service-primary-action {
+    width: 100%;
+  }
+
+  .runtime-restart-overlay {
+    align-items: center;
+    padding: 16px;
+  }
+
+  .runtime-restart-panel {
+    width: min(100%, 420px);
+    max-height: min(84vh, calc(var(--mobile-viewport-height, 100dvh) - 32px));
+    margin: 0 auto;
+    border-radius: 12px;
+  }
+
+  .route-view[data-route-family="settings"] {
     --route-padding-x: 12px;
   }
 
-  .management-route-nav {
+  .settings-route-nav {
     padding: 8px;
   }
 
-  .management-route-nav-items {
+  .settings-route-nav-items {
     grid-template-columns: repeat(5, minmax(58px, 1fr));
     gap: 4px;
   }
 
-  .management-route-tab {
+  .settings-route-tab {
     min-height: 58px;
     grid-template-columns: minmax(0, 1fr);
     justify-items: center;
@@ -397,7 +355,7 @@ body {
     text-align: center;
   }
 
-  .management-route-tab-label {
+  .settings-route-tab-label {
     font-size: 11px;
   }
 
@@ -588,7 +546,7 @@ body {
 .runtime-workspace-body,
 .runtime-workspace-panel,
 .runtime-workspace-screen,
-.route-view[data-route-family="management"].workbench-route-frame {
+.route-view[data-route-family="settings"].workbench-route-frame {
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -642,7 +600,7 @@ body {
 .runtime-session-card,
 .runtime-session-action,
 .runtime-session-delete,
-.management-route-tab {
+.settings-route-tab {
   border-radius: 6px;
 }
 
@@ -683,20 +641,20 @@ body {
 .runtime-workspace-head,
 .route-head.workbench-title-head.is-compact,
 .runtime-workspace-mobile-header,
-.route-view[data-route-family="management"] .route-mobile-head {
+.route-view[data-route-family="settings"] .route-mobile-head {
   border-bottom: 1px solid #eeeeee;
   background: #ffffff;
   box-shadow: none;
 }
 
-.route-view[data-route-family="management"].workbench-route-frame,
-.route-view[data-route-family="management"] .route-head,
-.route-view[data-route-family="management"] .route-mobile-head,
-.route-view[data-route-family="management"] .route-body,
-.management-route-body,
-.management-route-nav,
-.management-route-content,
-.management-route-content > * {
+.route-view[data-route-family="settings"].workbench-route-frame,
+.route-view[data-route-family="settings"] .route-head,
+.route-view[data-route-family="settings"] .route-mobile-head,
+.route-view[data-route-family="settings"] .route-body,
+.settings-route-body,
+.settings-route-nav,
+.settings-route-content,
+.settings-route-content > * {
   animation: none;
   transition: none;
   transform: none;
@@ -708,122 +666,68 @@ body {
   box-shadow: none;
 }
 
-.management-route-body {
+.settings-route-body {
   gap: 0;
 }
 
-.management-route-nav,
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.management-route-nav {
+.settings-route-nav {
   border-right: 1px solid #eeeeee;
   background: #ffffff;
 }
 
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  background: transparent;
-}
-
-.management-route-tab {
+.settings-route-tab {
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.management-route-tab:hover {
+.settings-route-tab:hover {
   border-color: transparent;
   background: #f1f3f4;
   box-shadow: none;
 }
 
-.management-route-tab.is-active {
+.settings-route-tab.is-active {
   border-color: transparent;
   background: #ececec;
   color: var(--shell-accent-strong);
   box-shadow: inset 2px 0 0 var(--shell-accent);
 }
 
-.management-route-tab-icon,
-.management-route-tab.is-active .management-route-tab-icon,
-.management-route-tab-shortcut {
+.settings-route-tab-icon,
+.settings-route-tab.is-active .settings-route-tab-icon,
+.settings-route-tab-shortcut {
   background: transparent;
 }
 
-.management-route-content .route-card-head,
-.management-route-content .skill-route-pane-head,
-.management-route-content .control-task-drawer-head,
-.management-route-content .task-detail-head,
-.management-route-content .codex-accounts-section-head,
-.management-route-content .environment-toolbar-head {
-  border-bottom: 1px solid #eeeeee;
-}
-
-.management-route-content .route-field-row,
-.management-route-content .codex-accounts-runtime-detail,
-.management-route-content .environment-item,
-.management-route-content .codex-account-metric,
-.management-route-content .codex-accounts-summary-card,
-.management-route-content .skill-builder-managed-item {
-  border: 0;
-  border-radius: 0;
-  background: #f8f9fa;
-  box-shadow: none;
-}
-
-.management-route-content .route-data-table-wrap {
+.settings-route-content .route-data-table-wrap {
   overflow: auto;
 }
 
-.management-route-content .route-data-table th,
-.management-route-content .route-data-table td {
+.settings-route-content .route-data-table th,
+.settings-route-content .route-data-table td {
   border-bottom: 1px solid #eeeeee;
 }
 
-.management-route-content .page-filter-form,
-.management-route-content .task-filter-form,
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea {
+.settings-route-content .page-filter-form,
+.settings-route-content .task-filter-form,
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea {
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
 
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea {
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea {
   background: #f8f9fa;
 }
 
-.management-route-content .route-empty,
-.management-route-content .route-empty-panel,
-.management-route-content .task-empty-state,
+.settings-route-content .route-empty,
+.settings-route-content .route-empty-panel,
+.settings-route-content .task-empty-state,
 .nav-session-rail .route-empty-panel {
   border: 0;
   border-radius: 0;
@@ -876,29 +780,11 @@ body {
     box-shadow: 18px 0 36px -30px rgba(15, 23, 42, 0.35);
   }
 
-  .management-route-body {
+  .settings-route-body {
     gap: 14px;
   }
 
-  .management-route-nav,
-  .management-route-content .route-card,
-  .management-route-content .route-surface,
-  .management-route-content .route-data-table-wrap,
-  .management-route-content .route-detail-panel,
-  .management-route-content .control-task-drawer-panel,
-  .management-route-content .task-summary-row,
-  .management-route-content .task-detail-placeholder,
-  .management-route-content .environment-toolbar,
-  .management-route-content .environment-module,
-  .management-route-content .environment-summary,
-  .management-route-content .environment-audits,
-  .management-route-content .codex-accounts-panel {
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  .management-route-nav {
+  .settings-route-nav {
     border-right: 0;
     background: #ffffff;
   }
@@ -924,46 +810,46 @@ body {
   display: none;
 }
 
-.route-view[data-route-family="management"].workbench-route-frame,
-.route-view[data-route-family="management"] .route-head,
-.route-view[data-route-family="management"] .route-mobile-head,
-.route-view[data-route-family="management"] .route-body,
-.management-route-body,
-.management-route-nav,
-.management-route-content,
-.management-route-content > * {
+.route-view[data-route-family="settings"].workbench-route-frame,
+.route-view[data-route-family="settings"] .route-head,
+.route-view[data-route-family="settings"] .route-mobile-head,
+.route-view[data-route-family="settings"] .route-body,
+.settings-route-body,
+.settings-route-nav,
+.settings-route-content,
+.settings-route-content > * {
   animation: none;
   transition: none;
   transform: none;
 }
 
-.management-route-content .codex-runtime-identity-card,
-.management-route-content .codex-runtime-chip-row,
-.management-route-content .codex-runtime-quick-form,
-.management-route-content .codex-runtime-kv-select,
-.management-route-content .codex-runtime-quota-item,
-.management-route-content .codex-runtime-provider-note,
-.management-route-content .codex-runtime-provider-note.is-empty {
+.settings-route-content .codex-runtime-identity-card,
+.settings-route-content .codex-runtime-chip-row,
+.settings-route-content .codex-runtime-quick-form,
+.settings-route-content .codex-runtime-kv-select,
+.settings-route-content .codex-runtime-quota-item,
+.settings-route-content .codex-runtime-provider-note,
+.settings-route-content .codex-runtime-provider-note.is-empty {
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
 
-.management-route-content .codex-runtime-kv-select,
-.management-route-content .codex-runtime-quick-form .codex-runtime-kv-select,
-.management-route-content .codex-runtime-quota-item,
-.management-route-content .codex-runtime-provider-note,
-.management-route-content .codex-runtime-provider-note.is-empty {
+.settings-route-content .codex-runtime-kv-select,
+.settings-route-content .codex-runtime-quick-form .codex-runtime-kv-select,
+.settings-route-content .codex-runtime-quota-item,
+.settings-route-content .codex-runtime-provider-note,
+.settings-route-content .codex-runtime-provider-note.is-empty {
   background: #f8f9fa;
 }
 
-.management-route-content .codex-runtime-quick-form .codex-runtime-kv-select {
+.settings-route-content .codex-runtime-quick-form .codex-runtime-kv-select {
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
 
-.management-route-content .codex-runtime-chip-row {
+.settings-route-content .codex-runtime-chip-row {
   border-top: 1px solid #eeeeee;
 }
 
@@ -980,7 +866,7 @@ body {
 .runtime-workspace-body,
 .runtime-workspace-panel,
 .runtime-workspace-screen,
-.route-view[data-route-family="management"].workbench-route-frame {
+.route-view[data-route-family="settings"].workbench-route-frame {
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -1034,7 +920,7 @@ body {
 .runtime-session-card,
 .runtime-session-action,
 .runtime-session-delete,
-.management-route-tab {
+.settings-route-tab {
   border-radius: 6px;
 }
 
@@ -1075,7 +961,7 @@ body {
 .runtime-workspace-head,
 .route-head.workbench-title-head.is-compact,
 .runtime-workspace-mobile-header,
-.route-view[data-route-family="management"] .route-mobile-head {
+.route-view[data-route-family="settings"] .route-mobile-head {
   border-bottom: 1px solid #eeeeee;
   background: #ffffff;
   box-shadow: none;
@@ -1087,122 +973,68 @@ body {
   box-shadow: none;
 }
 
-.management-route-body {
+.settings-route-body {
   gap: 0;
 }
 
-.management-route-nav,
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.management-route-nav {
+.settings-route-nav {
   border-right: 1px solid #eeeeee;
   background: #ffffff;
 }
 
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  background: transparent;
-}
-
-.management-route-tab {
+.settings-route-tab {
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.management-route-tab:hover {
+.settings-route-tab:hover {
   border-color: transparent;
   background: #f1f3f4;
   box-shadow: none;
 }
 
-.management-route-tab.is-active {
+.settings-route-tab.is-active {
   border-color: transparent;
   background: #ececec;
   color: var(--shell-accent-strong);
   box-shadow: inset 2px 0 0 var(--shell-accent);
 }
 
-.management-route-tab-icon,
-.management-route-tab.is-active .management-route-tab-icon,
-.management-route-tab-shortcut {
+.settings-route-tab-icon,
+.settings-route-tab.is-active .settings-route-tab-icon,
+.settings-route-tab-shortcut {
   background: transparent;
 }
 
-.management-route-content .route-card-head,
-.management-route-content .skill-route-pane-head,
-.management-route-content .control-task-drawer-head,
-.management-route-content .task-detail-head,
-.management-route-content .codex-accounts-section-head,
-.management-route-content .environment-toolbar-head {
-  border-bottom: 1px solid #eeeeee;
-}
-
-.management-route-content .route-field-row,
-.management-route-content .codex-accounts-runtime-detail,
-.management-route-content .environment-item,
-.management-route-content .codex-account-metric,
-.management-route-content .codex-accounts-summary-card,
-.management-route-content .skill-builder-managed-item {
-  border: 0;
-  border-radius: 0;
-  background: #f8f9fa;
-  box-shadow: none;
-}
-
-.management-route-content .route-data-table-wrap {
+.settings-route-content .route-data-table-wrap {
   overflow: auto;
 }
 
-.management-route-content .route-data-table th,
-.management-route-content .route-data-table td {
+.settings-route-content .route-data-table th,
+.settings-route-content .route-data-table td {
   border-bottom: 1px solid #eeeeee;
 }
 
-.management-route-content .page-filter-form,
-.management-route-content .task-filter-form,
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea {
+.settings-route-content .page-filter-form,
+.settings-route-content .task-filter-form,
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea {
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
 
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea {
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea {
   background: #f8f9fa;
 }
 
-.management-route-content .route-empty,
-.management-route-content .route-empty-panel,
-.management-route-content .task-empty-state,
+.settings-route-content .route-empty,
+.settings-route-content .route-empty-panel,
+.settings-route-content .task-empty-state,
 .nav-session-rail .route-empty-panel {
   border: 0;
   border-radius: 0;
@@ -1251,29 +1083,11 @@ body {
     box-shadow: 18px 0 36px -30px rgba(15, 23, 42, 0.35);
   }
 
-  .management-route-body {
+  .settings-route-body {
     gap: 14px;
   }
 
-  .management-route-nav,
-  .management-route-content .route-card,
-  .management-route-content .route-surface,
-  .management-route-content .route-data-table-wrap,
-  .management-route-content .route-detail-panel,
-  .management-route-content .control-task-drawer-panel,
-  .management-route-content .task-summary-row,
-  .management-route-content .task-detail-placeholder,
-  .management-route-content .environment-toolbar,
-  .management-route-content .environment-module,
-  .management-route-content .environment-summary,
-  .management-route-content .environment-audits,
-  .management-route-content .codex-accounts-panel {
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  .management-route-nav {
+  .settings-route-nav {
     border-right: 0;
     background: #ffffff;
   }
@@ -1297,7 +1111,7 @@ body {
 .runtime-workspace-body,
 .runtime-workspace-panel,
 .runtime-workspace-screen,
-.route-view[data-route-family="management"].workbench-route-frame {
+.route-view[data-route-family="settings"].workbench-route-frame {
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -1371,7 +1185,7 @@ body {
 .runtime-workspace-head,
 .route-head.workbench-title-head.is-compact,
 .runtime-workspace-mobile-header,
-.route-view[data-route-family="management"] .route-mobile-head {
+.route-view[data-route-family="settings"] .route-mobile-head {
   border-bottom: 1px solid #eeeeee;
   background: #ffffff;
   box-shadow: none;
@@ -1389,11 +1203,11 @@ body {
   background: #f1f3f4;
 }
 
-.management-route-body {
+.settings-route-body {
   gap: 0;
 }
 
-.management-route-nav {
+.settings-route-nav {
   border: 0;
   border-right: 1px solid #eeeeee;
   border-radius: 0;
@@ -1401,102 +1215,63 @@ body {
   background: #ffffff;
 }
 
-.management-route-tab {
+.settings-route-tab {
   border: 0;
   border-radius: 6px;
   background: transparent;
   box-shadow: none;
 }
 
-.management-route-tab:hover {
+.settings-route-tab:hover {
   border-color: transparent;
   background: #f1f3f4;
   box-shadow: none;
 }
 
-.management-route-tab.is-active {
+.settings-route-tab.is-active {
   border-color: transparent;
   background: #ececec;
   color: var(--shell-accent-strong);
   box-shadow: inset 2px 0 0 var(--shell-accent);
 }
 
-.management-route-tab-icon,
-.management-route-tab.is-active .management-route-tab-icon {
+.settings-route-tab-icon,
+.settings-route-tab.is-active .settings-route-tab-icon {
   background: transparent;
 }
 
-.management-route-tab-shortcut {
+.settings-route-tab-shortcut {
   background: transparent;
 }
 
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
-}
-
-.management-route-content .route-card-head,
-.management-route-content .skill-route-pane-head,
-.management-route-content .control-task-drawer-head,
-.management-route-content .task-detail-head,
-.management-route-content .codex-accounts-section-head,
-.management-route-content .environment-toolbar-head {
-  border-bottom: 1px solid #eeeeee;
-}
-
-.management-route-content .route-field-row,
-.management-route-content .codex-accounts-runtime-detail,
-.management-route-content .environment-item,
-.management-route-content .codex-account-metric,
-.management-route-content .codex-accounts-summary-card,
-.management-route-content .skill-builder-managed-item {
-  border: 0;
-  border-radius: 0;
-  background: #f8f9fa;
-  box-shadow: none;
-}
-
-.management-route-content .route-data-table-wrap {
+.settings-route-content .route-data-table-wrap {
   overflow: auto;
 }
 
-.management-route-content .route-data-table th,
-.management-route-content .route-data-table td {
+.settings-route-content .route-data-table th,
+.settings-route-content .route-data-table td {
   border-bottom: 1px solid #eeeeee;
 }
 
-.management-route-content .page-filter-form,
-.management-route-content .task-filter-form,
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea {
+.settings-route-content .page-filter-form,
+.settings-route-content .task-filter-form,
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea {
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
 
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea {
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea {
   background: #f8f9fa;
 }
 
-.management-route-content .route-empty,
-.management-route-content .route-empty-panel,
-.management-route-content .task-empty-state,
+.settings-route-content .route-empty,
+.settings-route-content .route-empty-panel,
+.settings-route-content .task-empty-state,
 .nav-session-rail .route-empty-panel {
   border: 0;
   border-radius: 0;
@@ -1545,29 +1320,11 @@ body {
     box-shadow: 18px 0 36px -30px rgba(15, 23, 42, 0.35);
   }
 
-  .management-route-body {
+  .settings-route-body {
     gap: 14px;
   }
 
-  .management-route-nav,
-  .management-route-content .route-card,
-  .management-route-content .route-surface,
-  .management-route-content .route-data-table-wrap,
-  .management-route-content .route-detail-panel,
-  .management-route-content .control-task-drawer-panel,
-  .management-route-content .task-summary-row,
-  .management-route-content .task-detail-placeholder,
-  .management-route-content .environment-toolbar,
-  .management-route-content .environment-module,
-  .management-route-content .environment-summary,
-  .management-route-content .environment-audits,
-  .management-route-content .codex-accounts-panel {
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  .management-route-nav {
+  .settings-route-nav {
     border-right: 0;
     background: #ffffff;
   }
@@ -1902,12 +1659,12 @@ body {
 }
 
 /* UI UX Pro Max full page states layer */
-.route-view[data-route-family="management"] .route-body {
+.route-view[data-route-family="settings"] .route-body {
   display: block;
   justify-items: stretch;
 }
 
-.management-route-body {
+.settings-route-body {
   width: 100%;
   max-width: 1440px;
   margin-inline: auto;
@@ -1916,7 +1673,7 @@ body {
   gap: 18px;
 }
 
-.management-route-nav {
+.settings-route-nav {
   position: sticky;
   top: 16px;
   max-height: calc(100dvh - 48px);
@@ -1927,16 +1684,16 @@ body {
   background: rgba(255, 255, 255, 0.96);
 }
 
-.management-route-nav-group {
+.settings-route-nav-group {
   min-width: 0;
   margin: 0 0 12px;
 }
 
-.management-route-nav-group:last-child {
+.settings-route-nav-group:last-child {
   margin-bottom: 0;
 }
 
-.management-route-nav-group h4 {
+.settings-route-nav-group h4 {
   margin: 0;
   padding: 8px 8px 6px;
   color: #667085;
@@ -1947,13 +1704,13 @@ body {
   text-transform: uppercase;
 }
 
-.management-route-nav-items {
+.settings-route-nav-items {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 4px;
 }
 
-.management-route-tab {
+.settings-route-tab {
   width: 100%;
   min-width: 0;
   min-height: 40px;
@@ -1964,33 +1721,33 @@ body {
   color: #475467;
 }
 
-.management-route-tab:hover {
+.settings-route-tab:hover {
   border-color: rgba(15, 23, 42, 0.06);
   background: #f2f4f7;
   color: #101828;
 }
 
-.management-route-tab.is-active {
+.settings-route-tab.is-active {
   border-color: rgba(15, 159, 143, 0.16);
   background: rgba(15, 159, 143, 0.1);
   color: #087f73;
   box-shadow: inset 3px 0 0 #0f9f8f;
 }
 
-.management-route-tab-icon {
+.settings-route-tab-icon {
   width: 28px;
   height: 28px;
   border-radius: 8px;
 }
 
-.management-route-tab-label {
+.settings-route-tab-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.management-route-content {
+.settings-route-content {
   min-width: 0;
   width: 100%;
   display: grid;
@@ -1998,30 +1755,13 @@ body {
   justify-items: stretch;
 }
 
-.management-route-content > * {
+.settings-route-content > * {
   min-width: 0;
   width: 100%;
   max-width: 1120px;
 }
 
-.management-route-content > .settings-composite-section,
-.management-route-content > .route-master-detail,
-.management-route-content > .control-task-layout,
-.management-route-content > .task-history-view,
-.management-route-content > .control-task-view,
-.management-route-content > .session-history-view,
-.management-route-content > .memory-view,
-.management-route-content > .skill-studio-view,
-.management-route-content > .codex-runtime-view,
-.management-route-content > .codex-runtime-workspace,
-.management-route-content > .codex-accounts-view,
-.management-route-content > .codex-accounts-workspace,
-.management-route-content > .environment-view,
-.management-route-content > .control-route-grid {
-  max-width: 1120px;
-}
-
-.management-route-content[data-management-route-content="runtime"] .settings-composite-section {
+.settings-route-content[data-settings-route-content="runtime"] .settings-composite-section {
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
@@ -2052,74 +1792,17 @@ body {
   gap: 12px;
 }
 
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-runtime-status-band,
-.management-route-content .codex-runtime-overview,
-.management-route-content .codex-runtime-main,
-.management-route-content .codex-runtime-panel,
-.management-route-content .codex-accounts-panel,
-.management-route-content .codex-accounts-overview,
-.management-route-content .codex-accounts-main,
-.management-route-content .skill-route-card,
-.management-route-content .codex-account-card,
-.management-route-content .session-route-card,
-.memory-panel,
-.task-detail-card {
-  border-radius: 8px;
-  border-color: rgba(15, 23, 42, 0.09);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 12px 28px -24px rgba(15, 23, 42, 0.18);
-}
-
-.management-route-content .route-card-head,
-.management-route-content .skill-route-pane-head,
-.management-route-content .control-task-drawer-head,
-.management-route-content .task-detail-head,
-.management-route-content .codex-runtime-section-head,
-.management-route-content .codex-accounts-section-head,
-.management-route-content .environment-toolbar-head {
-  gap: 10px;
-  align-items: start;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.management-route-content .route-field-row,
-.management-route-content .codex-runtime-detail,
-.management-route-content .codex-runtime-kv-select,
-.management-route-content .codex-accounts-runtime-detail,
-.management-route-content .environment-item,
-.management-route-content .codex-account-metric,
-.management-route-content .codex-accounts-summary-card,
-.management-route-content .skill-builder-managed-item,
-.management-route-content .task-detail-list-item {
-  min-width: 0;
-  border-radius: 8px;
-  border-color: rgba(15, 23, 42, 0.07);
-  background: #f8fafc;
-}
-
-.management-route-content .route-field-row {
+.settings-route-content .route-field-row {
   grid-template-columns: minmax(82px, 112px) minmax(0, 1fr) auto;
   gap: 8px;
 }
 
-.management-route-content .route-field-row > span:first-child,
-.management-route-content .codex-runtime-kv-select > span,
-.management-route-content .codex-accounts-field > span,
-.management-route-content .skill-builder-field > span,
-.management-route-content .skill-builder-wide > span,
-.management-route-content .task-filter-form label span {
+.settings-route-content .route-field-row > span:first-child,
+.settings-route-content .codex-runtime-kv-select > span,
+.settings-route-content .codex-accounts-field > span,
+.settings-route-content .skill-builder-field > span,
+.settings-route-content .skill-builder-wide > span,
+.settings-route-content .task-filter-form label span {
   color: #667085;
   font-size: 11px;
   font-weight: 800;
@@ -2127,57 +1810,57 @@ body {
   text-transform: uppercase;
 }
 
-.management-route-content .route-field-value,
-.management-route-content .route-field-value-wrap,
-.management-route-content .route-field-value code,
-.management-route-content .task-summary-row-id,
-.management-route-content .task-summary-row-subline,
-.management-route-content .session-route-card,
-.management-route-content .memory-content {
+.settings-route-content .route-field-value,
+.settings-route-content .route-field-value-wrap,
+.settings-route-content .route-field-value code,
+.settings-route-content .task-summary-row-id,
+.settings-route-content .task-summary-row-subline,
+.settings-route-content .session-route-card,
+.settings-route-content .memory-content {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.management-route-content .route-data-table-wrap {
+.settings-route-content .route-data-table-wrap {
   max-width: 100%;
   overflow: auto;
 }
 
-.management-route-content .route-data-table {
+.settings-route-content .route-data-table {
   min-width: 640px;
 }
 
-.management-route-content .route-data-table th,
-.management-route-content .route-data-table td {
+.settings-route-content .route-data-table th,
+.settings-route-content .route-data-table td {
   padding: 9px 11px;
   vertical-align: top;
 }
 
-.management-route-content .page-filter-form,
-.management-route-content .task-filter-form,
-.management-route-content .skill-builder-form,
-.management-route-content .codex-runtime-quick-form,
-.management-route-content .codex-accounts-form,
-.management-route-content .codex-accounts-runtime-form {
+.settings-route-content .page-filter-form,
+.settings-route-content .task-filter-form,
+.settings-route-content .skill-builder-form,
+.settings-route-content .codex-runtime-quick-form,
+.settings-route-content .codex-accounts-form,
+.settings-route-content .codex-accounts-runtime-form {
   border-radius: 8px;
   border-color: rgba(15, 23, 42, 0.09);
   background: rgba(255, 255, 255, 0.96);
 }
 
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea {
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea {
   min-height: 38px;
   border-radius: 8px;
   border-color: rgba(15, 23, 42, 0.13);
   background: #fff;
 }
 
-.management-route-content button,
-.management-route-content .route-primary-button,
-.management-route-content .task-filter-apply,
-.management-route-content .task-filter-reset,
-.management-route-content .task-summary-next {
+.settings-route-content button,
+.settings-route-content .route-primary-button,
+.settings-route-content .task-filter-apply,
+.settings-route-content .task-filter-reset,
+.settings-route-content .task-summary-next {
   min-height: 36px;
   border-radius: 8px;
 }
@@ -2272,7 +1955,7 @@ body {
 }
 
 .task-summary-row.active,
-.management-route-content .route-data-table tbody tr.is-active {
+.settings-route-content .route-data-table tbody tr.is-active {
   border-color: rgba(15, 159, 143, 0.18);
   background: rgba(15, 159, 143, 0.08);
 }
@@ -2286,28 +1969,104 @@ body {
   text-transform: none;
 }
 
-.codex-runtime-view,
-.codex-runtime-workspace,
-.codex-runtime-status-band,
-.codex-runtime-identity,
-.codex-runtime-main,
-.codex-runtime-side,
-.codex-runtime-panel,
-.codex-accounts-view,
-.codex-accounts-workspace,
-.codex-accounts-runtime-panel,
-.codex-accounts-overview-shell,
-.skill-studio-view,
-.control-task-layout,
-.task-history-view,
-.session-history-view,
-.environment-view {
-  min-width: 0;
-}
-
 .codex-runtime-view {
   display: grid;
   gap: 14px;
+}
+
+.codex-runtime-service-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+}
+
+.codex-runtime-service-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.codex-runtime-service-actions .codex-runtime-service-primary-action {
+  min-height: 36px;
+  padding: 0 14px;
+  border-color: rgba(15, 159, 143, 0.3);
+  background: #0f9f8f;
+  color: #fff;
+  box-shadow: 0 8px 18px -14px rgba(15, 159, 143, 0.7);
+}
+
+.codex-runtime-service-actions .codex-runtime-service-primary-action:hover {
+  border-color: rgba(8, 127, 115, 0.42);
+  background: #087f73;
+}
+
+.runtime-restart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.44);
+  opacity: 1 !important;
+  pointer-events: auto;
+}
+
+.runtime-restart-panel {
+  width: min(100%, 460px);
+  max-height: min(84vh, 720px);
+  margin: min(18vh, 96px) auto 0;
+  padding: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(244, 249, 255, 0.96) 100%);
+  box-shadow: 0 28px 54px -32px rgba(8, 37, 69, 0.34);
+  color: var(--shell-ink);
+  opacity: 1 !important;
+}
+
+.codex-runtime-restart-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.codex-runtime-restart-option input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: #0f9f8f;
+}
+
+.codex-runtime-restart-option span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.codex-runtime-restart-option strong {
+  color: #101828;
+  font-size: 13px;
+}
+
+.codex-runtime-restart-option small {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .codex-runtime-workspace {
@@ -3012,37 +2771,19 @@ body {
 }
 
 @media (max-width: 1100px) {
-  .management-route-body {
+  .settings-route-body {
     max-width: none;
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .management-route-nav {
+  .settings-route-nav {
     position: sticky;
     top: 0;
     z-index: 12;
     max-height: none;
   }
 
-  .management-route-content > *,
-  .management-route-content > .settings-composite-section,
-  .management-route-content > .route-master-detail,
-  .management-route-content > .control-task-layout,
-  .management-route-content > .task-history-view,
-  .management-route-content > .control-task-view,
-  .management-route-content > .session-history-view,
-  .management-route-content > .memory-view,
-  .management-route-content > .skill-studio-view,
-  .management-route-content > .codex-runtime-view,
-  .management-route-content > .codex-runtime-workspace,
-  .management-route-content > .codex-accounts-view,
-  .management-route-content > .codex-accounts-workspace,
-  .management-route-content > .environment-view,
-  .management-route-content > .control-route-grid {
-    max-width: none;
-  }
-
-  .management-route-content[data-management-route-content="runtime"] .settings-composite-section,
+  .settings-route-content[data-settings-route-content="runtime"] .settings-composite-section,
   .settings-composite-section[data-settings-section="workspaces"],
   .control-task-layout,
   .skill-studio-view,
@@ -3065,11 +2806,11 @@ body {
 }
 
 @media (max-width: 760px) {
-  .management-route-body {
+  .settings-route-body {
     gap: 10px;
   }
 
-  .management-route-nav {
+  .settings-route-nav {
     margin-inline: -4px;
     padding: 6px;
     overflow-x: auto;
@@ -3077,11 +2818,11 @@ body {
     -webkit-overflow-scrolling: touch;
   }
 
-  .management-route-nav-group {
+  .settings-route-nav-group {
     margin-bottom: 8px;
   }
 
-  .management-route-nav-items {
+  .settings-route-nav-items {
     display: flex;
     grid-template-columns: none;
     gap: 5px;
@@ -3090,7 +2831,7 @@ body {
     padding-bottom: 2px;
   }
 
-  .management-route-tab {
+  .settings-route-tab {
     width: auto;
     min-width: 82px;
     max-width: 112px;
@@ -3102,46 +2843,22 @@ body {
     text-align: center;
   }
 
-  .management-route-tab.is-active {
+  .settings-route-tab.is-active {
     box-shadow: inset 0 -3px 0 #0f9f8f;
   }
 
-  .management-route-tab-icon {
+  .settings-route-tab-icon {
     width: 24px;
     height: 24px;
   }
 
-  .management-route-tab-label {
+  .settings-route-tab-label {
     width: 100%;
     font-size: 10.5px;
   }
 
-  .management-route-content {
+  .settings-route-content {
     gap: 10px;
-  }
-
-  .management-route-content .route-card,
-  .management-route-content .route-surface,
-  .management-route-content .route-data-table-wrap,
-  .management-route-content .route-detail-panel,
-  .management-route-content .control-task-drawer-panel,
-  .management-route-content .task-summary-row,
-  .management-route-content .task-detail-placeholder,
-  .management-route-content .environment-toolbar,
-  .management-route-content .environment-module,
-  .management-route-content .environment-summary,
-  .management-route-content .environment-audits,
-    .management-route-content .codex-runtime-status-band,
-    .management-route-content .codex-runtime-identity,
-  .management-route-content .codex-runtime-overview,
-  .management-route-content .codex-runtime-main,
-  .management-route-content .codex-runtime-panel,
-  .management-route-content .codex-accounts-panel,
-  .management-route-content .codex-accounts-overview,
-  .management-route-content .codex-accounts-main,
-  .memory-panel,
-  .task-detail-card {
-    padding: 14px;
   }
 
   .control-route-grid {
@@ -3149,7 +2866,7 @@ body {
     gap: 10px;
   }
 
-  .management-route-content .route-field-row {
+  .settings-route-content .route-field-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -3191,7 +2908,7 @@ body {
     justify-content: flex-start;
   }
 
-  .management-route-content .route-data-table {
+  .settings-route-content .route-data-table {
     min-width: 560px;
   }
 
@@ -4635,11 +4352,11 @@ body::after {
   gap: 18px;
 }
 
-.route-body[data-route="management"] {
+.route-body[data-route="settings"] {
   display: block;
 }
 
-.management-route-body {
+.settings-route-body {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(218px, 254px) minmax(0, 1fr);
@@ -4647,7 +4364,7 @@ body::after {
   align-items: start;
 }
 
-.management-route-nav {
+.settings-route-nav {
   position: sticky;
   top: 0;
   display: grid;
@@ -4660,13 +4377,13 @@ body::after {
   box-shadow: 0 18px 34px -32px rgba(15, 23, 42, 0.24);
 }
 
-.management-route-nav-group {
+.settings-route-nav-group {
   min-width: 0;
   display: grid;
   gap: 8px;
 }
 
-.management-route-nav-group h4 {
+.settings-route-nav-group h4 {
   margin: 0;
   padding: 0 8px;
   color: var(--shell-muted);
@@ -4677,12 +4394,12 @@ body::after {
   text-transform: uppercase;
 }
 
-.management-route-nav-items {
+.settings-route-nav-items {
   display: grid;
   gap: 4px;
 }
 
-.management-route-tab {
+.settings-route-tab {
   width: 100%;
   min-height: 38px;
   padding: 5px 6px;
@@ -4702,25 +4419,25 @@ body::after {
   transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.management-route-tab:hover {
+.settings-route-tab:hover {
   border-color: rgba(37, 99, 235, 0.12);
   background: rgba(239, 246, 255, 0.7);
   color: var(--shell-accent-strong);
 }
 
-.management-route-tab:focus-visible {
+.settings-route-tab:focus-visible {
   outline: 2px solid rgba(96, 165, 250, 0.5);
   outline-offset: 2px;
 }
 
-.management-route-tab.is-active {
+.settings-route-tab.is-active {
   border-color: rgba(37, 99, 235, 0.18);
   background: linear-gradient(180deg, rgba(239, 246, 255, 0.98) 0%, rgba(219, 234, 254, 0.78) 100%);
   color: var(--shell-accent-strong);
   box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.72);
 }
 
-.management-route-tab-icon {
+.settings-route-tab-icon {
   width: 28px;
   height: 28px;
   border-radius: 8px;
@@ -4731,24 +4448,24 @@ body::after {
   background: rgba(148, 163, 184, 0.12);
 }
 
-.management-route-tab-icon svg {
+.settings-route-tab-icon svg {
   width: 15px;
   height: 15px;
   stroke-width: 2.2;
 }
 
-.management-route-tab.is-active .management-route-tab-icon {
+.settings-route-tab.is-active .settings-route-tab-icon {
   background: rgba(37, 99, 235, 0.1);
 }
 
-.management-route-tab-label {
+.settings-route-tab-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.management-route-tab-shortcut {
+.settings-route-tab-shortcut {
   min-width: 30px;
   padding: 2px 6px;
   border-radius: 999px;
@@ -4761,12 +4478,12 @@ body::after {
   text-align: center;
 }
 
-.management-route-tab.is-active .management-route-tab-shortcut {
+.settings-route-tab.is-active .settings-route-tab-shortcut {
   background: rgba(37, 99, 235, 0.12);
   color: var(--shell-accent-strong);
 }
 
-.management-route-content {
+.settings-route-content {
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -4785,6 +4502,18 @@ body::after {
 .route-card {
   background: rgba(255, 255, 255, 0.94);
   padding: 22px;
+}
+
+.settings-route-content .route-card,
+.settings-route-content .route-surface,
+.settings-route-content .route-data-table-wrap,
+.settings-route-content .route-detail-panel,
+.settings-route-content .control-task-drawer-panel,
+.settings-route-content .task-summary-row,
+.settings-route-content .task-detail-placeholder,
+.settings-route-content .codex-accounts-panel {
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.94) 100%);
 }
 
 .route-card:hover {
@@ -4928,56 +4657,16 @@ body::after {
   line-height: 1.7;
 }
 
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.94) 100%);
-  box-shadow: 0 16px 36px -34px rgba(15, 23, 42, 0.26);
-}
-
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  padding: 18px;
-}
-
-.management-route-content .route-card:hover,
-.management-route-content .task-summary-row:hover,
-.management-route-content .skill-route-card:hover,
-.management-route-content .codex-account-card:hover {
+.settings-route-content .route-card:hover,
+.settings-route-content .task-summary-row:hover,
+.settings-route-content .skill-route-card:hover,
+.settings-route-content .codex-account-card:hover {
   transform: none;
   border-color: rgba(37, 99, 235, 0.14);
   box-shadow: 0 18px 38px -34px rgba(15, 23, 42, 0.28);
 }
 
-.management-route-content .route-card-head,
-.management-route-content .skill-route-pane-head,
-.management-route-content .control-task-drawer-head,
-.management-route-content .task-detail-head,
-.management-route-content .codex-accounts-section-head,
-.management-route-content .environment-toolbar-head {
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.86);
-}
-
-.management-route-content .route-card-head {
+.settings-route-content .route-card-head {
   display: flex;
   justify-content: space-between;
 }
@@ -5015,123 +4704,42 @@ body::after {
   opacity: 0.58;
 }
 
-.management-route-content .route-card-title-copy h4,
-.management-route-content .skill-route-pane-copy h4,
-.management-route-content .control-task-drawer-head h4,
-.management-route-content .codex-accounts-section-head h4,
-.management-route-content .environment-toolbar-copy h3,
-.management-route-content .route-detail-panel-head h4 {
-  margin: 0;
-  color: var(--shell-ink);
-  font-size: 16px;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
-}
-
-.management-route-content .route-card-title-meta,
-.management-route-content .skill-route-pane-copy p,
-.management-route-content .control-task-drawer-head p,
-.management-route-content .codex-accounts-section-head p,
-.management-route-content .environment-toolbar-copy p {
-  margin: 4px 0 0;
-  color: var(--shell-muted);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.management-route-content .route-meta,
-.management-route-content .route-card-body,
-.management-route-content .skill-builder-form,
-.management-route-content .codex-accounts-form,
-.management-route-content .codex-accounts-runtime-form,
-.management-route-content .environment-card-body,
-.management-route-content .control-task-drawer-body {
-  gap: 12px;
-}
-
-.management-route-content .page-filter-form,
-.management-route-content .task-filter-form {
+.settings-route-content .page-filter-form,
+.settings-route-content .task-filter-form {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 12px 28px -30px rgba(15, 23, 42, 0.24);
 }
 
-.management-route-content .task-filter-form label span,
-.management-route-content .skill-builder-field > span,
-.management-route-content .skill-builder-wide > span,
-.management-route-content .skill-builder-toggle > span,
-.management-route-content .codex-accounts-field > span,
-.management-route-content .environment-input-row span {
-  color: var(--shell-muted);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-}
-
-.management-route-content .task-filter-form input,
-.management-route-content .task-filter-form select,
-.management-route-content .skill-builder-form input,
-.management-route-content .skill-builder-form textarea,
-.management-route-content .skill-builder-form select,
-.management-route-content .codex-accounts-form input,
-.management-route-content .codex-accounts-form select,
-.management-route-content .codex-accounts-runtime-form select,
-.management-route-content .environment-input-row input,
-.management-route-content .environment-input-row select {
-  border-radius: 8px;
-  border-color: rgba(203, 213, 225, 0.92);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
-}
-
-.management-route-content .task-filter-actions button,
-.management-route-content .task-filter-actions a,
-.management-route-content .task-filter-advanced-toggle,
-.management-route-content .route-primary-button,
-.management-route-content .environment-toolbar-button {
-  border-radius: 8px;
-  box-shadow: none;
-}
-
-.management-route-content .route-data-table th,
-.management-route-content .route-data-table td {
+.settings-route-content .route-data-table th,
+.settings-route-content .route-data-table td {
   padding: 10px 12px;
 }
 
-.management-route-content .route-data-table thead {
+.settings-route-content .route-data-table thead {
   background: rgba(241, 245, 249, 0.92);
 }
 
-.management-route-content .route-data-table tbody tr:hover,
-.management-route-content .route-data-table tbody tr.is-active {
+.settings-route-content .route-data-table tbody tr:hover,
+.settings-route-content .route-data-table tbody tr.is-active {
   background: rgba(239, 246, 255, 0.78);
 }
 
-.management-route-content .route-field-row,
-.management-route-content .codex-accounts-runtime-detail,
-.management-route-content .environment-item,
-.management-route-content .codex-account-metric,
-.management-route-content .codex-accounts-summary-card,
-.management-route-content .skill-builder-managed-item {
-  border-radius: 8px;
-  background: rgba(248, 250, 252, 0.78);
-}
-
-.management-route-content .route-field-row {
+.settings-route-content .route-field-row {
   padding: 9px 10px;
 }
 
-.management-route-content .route-empty,
-.management-route-content .route-empty-panel,
-.management-route-content .task-empty-state {
+.settings-route-content .route-empty,
+.settings-route-content .route-empty-panel,
+.settings-route-content .task-empty-state {
   border: 1px dashed rgba(148, 163, 184, 0.5);
   border-radius: 12px;
   background: rgba(248, 250, 252, 0.78);
   color: var(--shell-muted-strong);
 }
 
-.management-route-content .route-error {
+.settings-route-content .route-error {
   margin: 0;
   padding: 14px 16px;
   border: 1px solid rgba(248, 113, 113, 0.28);
@@ -5142,284 +4750,40 @@ body::after {
   line-height: 1.55;
 }
 
-.management-route-content .skill-studio-view,
-.management-route-content .codex-accounts-workspace,
-.management-route-content .control-task-layout,
-.management-route-content .task-history-view,
-.management-route-content .route-master-detail {
+.settings-route-content .skill-studio-view,
+.settings-route-content .codex-accounts-workspace,
+.settings-route-content .control-task-layout,
+.settings-route-content .task-history-view,
+.settings-route-content .route-master-detail {
   gap: 16px;
 }
 
-.management-route-content .skill-route-card,
-.management-route-content .codex-account-card {
+.settings-route-content .skill-route-card,
+.settings-route-content .codex-account-card {
   border-radius: 10px;
   border-color: rgba(15, 23, 42, 0.08);
   background: rgba(255, 255, 255, 0.78);
   box-shadow: none;
 }
 
-.management-route-content .skill-route-card.is-active,
-.management-route-content .task-summary-row.active,
-.management-route-content .codex-account-state.is-current {
+.settings-route-content .skill-route-card.is-active,
+.settings-route-content .task-summary-row.active,
+.settings-route-content .codex-account-state.is-current {
   border-color: rgba(37, 99, 235, 0.18);
   background: rgba(239, 246, 255, 0.9);
 }
 
-.management-route-content .task-summary-list {
+.settings-route-content .task-summary-list {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.management-route-content .task-summary-row {
+.settings-route-content .task-summary-row {
   border-radius: 10px;
   box-shadow: none;
 }
 
-.management-route-content .control-task-drawer-body {
+.settings-route-content .control-task-drawer-body {
   min-height: 520px;
-}
-
-.environment-view {
-  display: grid;
-  gap: 18px;
-}
-
-.environment-toolbar {
-  display: grid;
-  gap: 18px;
-  padding: 20px 22px;
-}
-
-.environment-toolbar-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 18px;
-}
-
-.environment-toolbar-copy {
-  min-width: 0;
-  max-width: 56ch;
-  display: grid;
-  gap: 6px;
-}
-
-.environment-toolbar-eyebrow {
-  color: var(--shell-accent-strong);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.environment-toolbar-copy h3 {
-  margin: 0;
-  color: var(--shell-ink);
-  font-size: 24px;
-  line-height: 1.05;
-  letter-spacing: -0.04em;
-}
-
-.environment-toolbar-copy p {
-  margin: 0;
-  color: var(--shell-muted);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.environment-toolbar-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
-  gap: 14px;
-  align-items: stretch;
-}
-
-.environment-runtime-meta {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.environment-runtime-meta-item {
-  display: grid;
-  gap: 8px;
-  min-height: 94px;
-  align-content: start;
-  padding: 14px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.92) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
-}
-
-.environment-runtime-meta-item span {
-  color: var(--shell-muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.environment-runtime-meta-item strong,
-.environment-runtime-meta-item code {
-  color: var(--shell-ink);
-  font-size: 15px;
-  line-height: 1.45;
-  font-family: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", monospace;
-}
-
-.environment-status-panel {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  padding: 16px 18px;
-  border-radius: 20px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96) 0%, rgba(239, 246, 255, 0.92) 100%);
-}
-
-.environment-status-panel.is-success {
-  border-color: rgba(34, 197, 94, 0.18);
-  background: linear-gradient(180deg, rgba(240, 253, 244, 0.98) 0%, rgba(220, 252, 231, 0.9) 100%);
-}
-
-.environment-status-panel.is-warning {
-  border-color: rgba(245, 158, 11, 0.18);
-  background: linear-gradient(180deg, rgba(255, 251, 235, 0.98) 0%, rgba(254, 243, 199, 0.9) 100%);
-}
-
-.environment-status-panel.is-error {
-  border-color: rgba(239, 68, 68, 0.18);
-  background: linear-gradient(180deg, rgba(254, 242, 242, 0.98) 0%, rgba(254, 226, 226, 0.9) 100%);
-}
-
-.environment-status-label {
-  color: var(--shell-muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.environment-status {
-  margin: 0;
-  color: var(--shell-muted-strong);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.environment-status.is-success {
-  color: #166534;
-}
-
-.environment-status.is-warning {
-  color: #92400e;
-}
-
-.environment-status.is-error {
-  color: #b91c1c;
-}
-
-.environment-toolbar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.environment-toolbar-action-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 6px;
-  border-radius: 18px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(248, 250, 252, 0.84);
-}
-
-.environment-toolbar-action-group-primary {
-  background: rgba(239, 246, 255, 0.88);
-}
-
-.environment-toolbar-button {
-  min-height: 36px;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--shell-muted-strong);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 0 12px;
-  cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease,
-    color 0.18s ease;
-}
-
-.environment-toolbar-button:hover {
-  transform: translateY(-1px);
-}
-
-.environment-toolbar-button[data-variant="quiet"]:hover {
-  border-color: rgba(37, 99, 235, 0.16);
-  background: rgba(248, 252, 255, 0.96);
-  color: var(--shell-ink);
-}
-
-.environment-toolbar-button[data-variant="restart"] {
-  border-color: rgba(96, 165, 250, 0.36);
-  background: rgba(255, 255, 255, 0.98);
-  color: var(--shell-accent-strong);
-}
-
-.environment-toolbar-button[data-variant="restart"]:hover {
-  border-color: rgba(37, 99, 235, 0.28);
-  background: rgba(239, 246, 255, 0.94);
-}
-
-.environment-toolbar-button[data-variant="primary"] {
-  border-color: rgba(37, 99, 235, 0.22);
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.96) 0%, rgba(29, 78, 216, 0.96) 100%);
-  color: #eff9ff;
-  box-shadow: 0 12px 24px -20px rgba(37, 99, 235, 0.48);
-}
-
-.environment-toolbar-button[data-variant="primary"]:hover {
-  border-color: rgba(29, 78, 216, 0.26);
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.98) 0%, rgba(37, 99, 235, 0.98) 100%);
-}
-
-@media (max-width: 900px) {
-  .environment-toolbar-panel {
-    grid-template-columns: 1fr;
-  }
-
-  .environment-toolbar-actions {
-    justify-content: flex-start;
-  }
-}
-
-@media (max-width: 760px) {
-  .environment-toolbar {
-    padding: 18px 16px;
-  }
-
-  .environment-toolbar-copy h3 {
-    font-size: 21px;
-  }
-
-  .environment-runtime-meta {
-    grid-template-columns: 1fr;
-  }
-
-  .environment-toolbar-action-group {
-    width: 100%;
-  }
-
-  .environment-toolbar-button {
-    flex: 1 1 calc(50% - 4px);
-    justify-content: center;
-  }
 }
 
 .modal-backdrop {
@@ -5510,43 +4874,6 @@ body::after {
   color: var(--shell-ink);
 }
 
-.environment-restart-modal .environment-restart-confirm-hint {
-  margin: 0;
-}
-
-.environment-restart-confirm-hint {
-  color: var(--shell-muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.environment-restart-confirm-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 18px;
-  background: rgba(248, 250, 252, 0.92);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.environment-restart-confirm-option input {
-  margin-top: 2px;
-}
-
-.environment-restart-confirm-option span {
-  display: grid;
-  gap: 4px;
-  color: var(--shell-ink);
-  font-size: 13px;
-}
-
-.environment-restart-confirm-option small {
-  color: var(--shell-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 @media (max-width: 760px) {
   .modal-backdrop {
     align-items: center;
@@ -5569,156 +4896,6 @@ body::after {
   .modal-footer {
     padding-bottom: 16px;
   }
-}
-
-.environment-modules,
-.environment-module,
-.environment-card-body,
-.environment-summary,
-.environment-audits {
-  display: grid;
-  gap: 14px;
-}
-
-.environment-module h4,
-.environment-audits h4 {
-  margin: 0;
-  color: var(--shell-ink);
-  font-size: 15px;
-}
-
-.environment-module-grid,
-.environment-audit-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-}
-
-.environment-item {
-  padding: 18px;
-}
-
-.environment-item-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.environment-item-key code {
-  color: var(--shell-muted);
-  font-size: 12px;
-  font-family: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", monospace;
-}
-
-.environment-pending {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
-  color: #b45309;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.environment-description {
-  display: grid;
-  gap: 6px;
-}
-
-.environment-description span,
-.environment-input-row span,
-.environment-audit-changes > span {
-  color: var(--shell-muted);
-  font-size: 12px;
-}
-
-.environment-description-text {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(248, 250, 252, 0.92);
-  color: var(--shell-muted-strong);
-  line-height: 1.6;
-}
-
-.environment-input-row {
-  display: grid;
-  gap: 8px;
-}
-
-.environment-input-row input,
-.environment-input-row select {
-  min-height: 40px;
-  border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: #ffffff;
-  color: var(--shell-ink);
-  padding: 0 12px;
-  font: inherit;
-}
-
-.environment-details {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.94);
-  overflow: hidden;
-}
-
-.environment-details summary {
-  cursor: pointer;
-  list-style: none;
-  padding: 13px 14px;
-  color: var(--shell-ink);
-  font-size: 13px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.environment-details summary::-webkit-details-marker {
-  display: none;
-}
-
-.environment-details summary::after {
-  content: "+";
-  color: var(--shell-muted);
-}
-
-.environment-details[open] summary::after {
-  content: "-";
-}
-
-.environment-details[open] summary {
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.environment-details-body {
-  display: grid;
-  gap: 10px;
-  padding: 12px 14px 14px;
-}
-
-.environment-audit-item {
-  padding: 18px;
-}
-
-.environment-audit-changes {
-  display: grid;
-  gap: 8px;
-}
-
-.environment-audit-changes ul {
-  margin: 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 4px;
-  color: var(--shell-muted-strong);
-  line-height: 1.6;
 }
 
 .control-task-layout,
@@ -6913,26 +6090,26 @@ body::after {
   font-size: 15px;
 }
 
-.route-view[data-route-family="management"] {
+.route-view[data-route-family="settings"] {
   --route-padding-x: clamp(18px, 2vw, 30px);
   --route-padding-top: clamp(16px, 1.6vw, 24px);
   --route-padding-bottom: clamp(20px, 2vw, 30px);
 }
 
-.route-view[data-route-family="management"] .route-head {
+.route-view[data-route-family="settings"] .route-head {
   padding-bottom: 12px;
   border-bottom: 1px solid rgba(203, 213, 225, 0.78);
 }
 
-.route-view[data-route-family="management"] .route-copy {
+.route-view[data-route-family="settings"] .route-copy {
   gap: 4px;
 }
 
-.route-view[data-route-family="management"] h3 {
+.route-view[data-route-family="settings"] h3 {
   font-size: clamp(24px, 2vw, 30px);
 }
 
-.route-view[data-route-family="management"] p#routeSubtitle {
+.route-view[data-route-family="settings"] p#routeSubtitle {
   max-width: 760px;
   line-height: 1.55;
 }
@@ -7035,25 +6212,25 @@ body::after {
     max-height: 100%;
   }
 
-  .route-view[data-route-family="management"] {
+  .route-view[data-route-family="settings"] {
     --route-padding-x: 16px;
     --route-padding-top: 12px;
     --route-padding-bottom: 20px;
   }
 
-  .management-route-body {
+  .settings-route-body {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
   }
 
-  .management-route-nav {
+  .settings-route-nav {
     position: static;
     gap: 12px;
     padding: 12px;
     overflow: hidden;
   }
 
-  .management-route-nav-items {
+  .settings-route-nav-items {
     display: flex;
     gap: 8px;
     overflow-x: auto;
@@ -7062,13 +6239,13 @@ body::after {
     padding-bottom: 2px;
   }
 
-  .management-route-tab {
+  .settings-route-tab {
     width: auto;
     min-width: 154px;
     grid-template-columns: 28px minmax(0, 1fr);
   }
 
-  .management-route-tab-shortcut {
+  .settings-route-tab-shortcut {
     display: none;
   }
 
@@ -7224,92 +6401,67 @@ body::after {
     white-space: nowrap;
   }
 
-  .route-view[data-route-family="management"] .route-head {
+  .route-view[data-route-family="settings"] .route-head {
     padding-bottom: 10px;
   }
 
-  .route-view[data-route-family="management"] h3 {
+  .route-view[data-route-family="settings"] h3 {
     font-size: 24px;
   }
 
-  .route-view[data-route-family="management"] p#routeSubtitle {
+  .route-view[data-route-family="settings"] p#routeSubtitle {
     font-size: 14px;
   }
 
-  .management-route-nav {
+  .settings-route-nav {
     margin-inline: -2px;
     border-radius: 10px;
   }
 
-  .management-route-nav-group h4 {
+  .settings-route-nav-group h4 {
     padding: 0 4px;
   }
 
-  .management-route-nav-items {
+  .settings-route-nav-items {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     overflow: visible;
     padding-bottom: 0;
   }
 
-  .management-route-tab {
+  .settings-route-tab {
     width: 100%;
     min-width: 0;
     min-height: 36px;
   }
 
-  .management-route-content {
+  .settings-route-content {
     gap: 12px;
   }
 
-  .management-route-content .route-card,
-  .management-route-content .route-surface,
-  .management-route-content .route-data-table-wrap,
-  .management-route-content .route-detail-panel,
-  .management-route-content .control-task-drawer-panel,
-  .management-route-content .task-summary-row,
-  .management-route-content .task-detail-placeholder,
-  .management-route-content .environment-toolbar,
-  .management-route-content .environment-module,
-  .management-route-content .environment-summary,
-  .management-route-content .environment-audits,
-  .management-route-content .codex-accounts-panel {
-    padding: 16px;
-    border-radius: 10px;
-  }
-
-  .management-route-content .page-filter-form,
-  .management-route-content .task-filter-form {
+  .settings-route-content .page-filter-form,
+  .settings-route-content .task-filter-form {
     padding: 14px;
     border-radius: 10px;
   }
 
-  .management-route-content .route-card-head,
-  .management-route-content .skill-route-pane-head,
-  .management-route-content .control-task-drawer-head,
-  .management-route-content .task-detail-head,
-  .management-route-content .codex-accounts-section-head,
-  .management-route-content .environment-toolbar-head {
-    gap: 10px;
-  }
-
-  .management-route-content .route-data-table-wrap {
+  .settings-route-content .route-data-table-wrap {
     overflow-x: auto;
   }
 
-  .management-route-content .route-data-table {
+  .settings-route-content .route-data-table {
     min-width: 560px;
   }
 
-  .management-route-content .route-detail-panel-grid,
-  .management-route-content .codex-accounts-runtime-controls,
-  .management-route-content .codex-accounts-summary-grid,
-  .management-route-content .codex-account-card-metrics,
-  .management-route-content .skill-builder-managed {
+  .settings-route-content .route-detail-panel-grid,
+  .settings-route-content .codex-accounts-runtime-controls,
+  .settings-route-content .codex-accounts-summary-grid,
+  .settings-route-content .codex-account-card-metrics,
+  .settings-route-content .skill-builder-managed {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .management-route-content .control-task-drawer-body {
+  .settings-route-content .control-task-drawer-body {
     min-height: 420px;
   }
 
@@ -10952,30 +10104,6 @@ body {
   color: var(--shell-ink);
 }
 
-.primary-nav,
-.chat-pane,
-.runtime-workspace,
-.runtime-workspace-body,
-.runtime-workspace-session-pane-shell,
-.management-route-nav,
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  border-color: var(--shell-line);
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: none;
-}
-
 .primary-nav {
   background: #f8fafb;
   border-right: 1px solid var(--shell-line);
@@ -11004,9 +10132,9 @@ body {
 .nav-session-rail-action,
 .runtime-workspace-session-pane-action,
 .runtime-workspace-button,
-.management-route-tab,
-.management-route-content button,
-.management-route-content a,
+.settings-route-tab,
+.settings-route-content button,
+.settings-route-content a,
 .runtime-composer-utility,
 .runtime-composer-upload,
 .runtime-composer-submit,
@@ -11042,18 +10170,6 @@ body {
 .runtime-workspace-head {
   border-bottom-color: var(--shell-line);
   background: rgba(255, 255, 255, 0.98);
-}
-
-.runtime-workspace-copy h4,
-.route-view h3,
-.management-route-content .route-card-title-copy h4,
-.management-route-content .skill-route-pane-copy h4,
-.management-route-content .control-task-drawer-head h4,
-.management-route-content .codex-accounts-section-head h4,
-.management-route-content .environment-toolbar-copy h3,
-.management-route-content .route-detail-panel-head h4 {
-  color: #101828;
-  letter-spacing: 0;
 }
 
 .runtime-workspace-status-dot,
@@ -11126,59 +10242,59 @@ body {
 }
 
 .route-body[data-route="settings"],
-.route-view[data-route-family="management"] .route-body,
-.management-route-body,
-.management-route-content {
+.route-view[data-route-family="settings"] .route-body,
+.settings-route-body,
+.settings-route-content {
   width: 100%;
 }
 
-.route-view[data-route-family="management"] {
+.route-view[data-route-family="settings"] {
   display: block;
   align-items: stretch;
 }
 
-.route-view[data-route-family="management"] .route-head,
-.route-view[data-route-family="management"] .route-body {
+.route-view[data-route-family="settings"] .route-head,
+.route-view[data-route-family="settings"] .route-body {
   width: 100%;
   max-width: none;
 }
 
-.management-route-body {
+.settings-route-body {
   grid-template-columns: minmax(176px, 216px) minmax(0, 1fr);
   gap: 16px;
 }
 
-.management-route-nav {
+.settings-route-nav {
   padding: 10px;
 }
 
-.management-route-tab {
+.settings-route-tab {
   min-height: 42px;
   grid-template-columns: 30px minmax(0, 1fr);
   padding: 6px 8px;
 }
 
-.management-route-tab-shortcut {
+.settings-route-tab-shortcut {
   display: none;
 }
 
-.management-route-tab.is-active {
+.settings-route-tab.is-active {
   border-color: rgba(15, 159, 143, 0.16);
   background: rgba(15, 159, 143, 0.1);
   color: var(--shell-accent-strong);
   box-shadow: inset 3px 0 0 var(--shell-accent);
 }
 
-.management-route-tab-icon {
+.settings-route-tab-icon {
   border-radius: 8px;
   background: #f2f4f7;
 }
 
-.management-route-tab.is-active .management-route-tab-icon {
+.settings-route-tab.is-active .settings-route-tab-icon {
   background: rgba(15, 159, 143, 0.12);
 }
 
-.management-route-content {
+.settings-route-content {
   width: 100%;
   gap: 14px;
 }
@@ -11188,53 +10304,22 @@ body {
   gap: 14px;
 }
 
-.management-route-content > .settings-composite-section,
-.management-route-content > .route-master-detail,
-.management-route-content > .control-task-layout,
-.management-route-content > .task-history-view,
-.management-route-content > .codex-accounts-workspace,
-.management-route-content > .environment-view {
-  width: min(100%, 1080px);
-}
-
-.management-route-content .route-empty-panel {
+.settings-route-content .route-empty-panel {
   width: min(100%, 620px);
 }
 
-.management-route-content[data-management-route-content="runtime"] .settings-composite-section {
+.settings-route-content[data-settings-route-content="runtime"] .settings-composite-section {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
   align-items: start;
 }
 
-.management-route-content[data-management-route-content="runtime"] .settings-composite-section > * {
+.settings-route-content[data-settings-route-content="runtime"] .settings-composite-section > * {
   min-width: 0;
 }
 
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  padding: 16px;
-}
-
-.management-route-content .route-field-row,
-.management-route-content .codex-accounts-runtime-detail,
-.management-route-content .environment-item,
-.management-route-content .codex-account-metric,
-.management-route-content .codex-accounts-summary-card,
-.management-route-content .skill-builder-managed-item {
-  border-radius: 8px;
-  background: #f8fafc;
-}
-
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea,
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea,
 .runtime-composer-panel,
 .runtime-composer-attachment,
 .runtime-composer-command-option {
@@ -11257,26 +10342,26 @@ body {
     border-radius: 8px;
   }
 
-  .management-route-body {
+  .settings-route-body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 760px) {
-  .route-view[data-route-family="management"] {
+  .route-view[data-route-family="settings"] {
     --route-padding-x: 12px;
   }
 
-  .management-route-nav {
+  .settings-route-nav {
     padding: 8px;
   }
 
-  .management-route-nav-items {
+  .settings-route-nav-items {
     grid-template-columns: repeat(5, minmax(58px, 1fr));
     gap: 4px;
   }
 
-  .management-route-tab {
+  .settings-route-tab {
     min-height: 58px;
     grid-template-columns: minmax(0, 1fr);
     justify-items: center;
@@ -11285,7 +10370,7 @@ body {
     text-align: center;
   }
 
-  .management-route-tab-label {
+  .settings-route-tab-label {
     font-size: 11px;
   }
 
@@ -11321,7 +10406,7 @@ body {
   max-width: 100%;
 }
 
-.route-view[data-route-family="management"].workbench-route-frame {
+.route-view[data-route-family="settings"].workbench-route-frame {
   min-height: 0;
   height: 100%;
   display: flex;
@@ -11334,7 +10419,7 @@ body {
   box-shadow: 0 34px 70px -54px rgba(15, 23, 42, 0.18);
 }
 
-.route-view[data-route-family="management"] .route-mobile-head {
+.route-view[data-route-family="settings"] .route-mobile-head {
   padding: 12px 12px 0;
 }
 
@@ -11343,7 +10428,7 @@ body {
   display: none;
 }
 
-.route-view[data-route-family="management"] .route-body {
+.route-view[data-route-family="settings"] .route-body {
   flex: 1 1 auto;
   min-height: 0;
   padding: 14px 12px;
@@ -11399,7 +10484,7 @@ body {
   line-height: 1.15;
 }
 
-.route-view[data-route-family="management"] h3 {
+.route-view[data-route-family="settings"] h3 {
   font-size: 15px;
   line-height: 1.15;
 }
@@ -11426,7 +10511,7 @@ body {
   text-overflow: ellipsis;
 }
 
-.route-view[data-route-family="management"] p#routeSubtitle {
+.route-view[data-route-family="settings"] p#routeSubtitle {
   font-size: 13px;
   line-height: 1.35;
   white-space: nowrap;
@@ -11435,7 +10520,7 @@ body {
 }
 
 @media (max-width: 760px) {
-  .route-view[data-route-family="management"] .route-mobile-head {
+  .route-view[data-route-family="settings"] .route-mobile-head {
     min-height: 48px;
     padding: 6px 10px;
     display: grid;
@@ -11445,11 +10530,11 @@ body {
     border-bottom: 1px solid rgba(226, 232, 240, 0.9);
   }
 
-  .route-view[data-route-family="management"] .route-mobile-head .nav-toggle {
+  .route-view[data-route-family="settings"] .route-mobile-head .nav-toggle {
     grid-area: auto;
   }
 
-  .route-view[data-route-family="management"] .route-head.workbench-title-head.is-compact {
+  .route-view[data-route-family="settings"] .route-head.workbench-title-head.is-compact {
     display: none;
   }
 
@@ -11550,7 +10635,7 @@ body {
     box-shadow: 0 0 0 3px rgba(15, 159, 143, 0.1);
   }
 
-  .route-view[data-route-family="management"] h3 {
+  .route-view[data-route-family="settings"] h3 {
     font-size: 15px;
   }
 }
@@ -11728,7 +10813,7 @@ body {
 .runtime-workspace-body,
 .runtime-workspace-panel,
 .runtime-workspace-screen,
-.route-view[data-route-family="management"].workbench-route-frame {
+.route-view[data-route-family="settings"].workbench-route-frame {
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -11782,7 +10867,7 @@ body {
 .runtime-session-card,
 .runtime-session-action,
 .runtime-session-delete,
-.management-route-tab {
+.settings-route-tab {
   border-radius: 6px;
 }
 
@@ -11823,7 +10908,7 @@ body {
 .runtime-workspace-head,
 .route-head.workbench-title-head.is-compact,
 .runtime-workspace-mobile-header,
-.route-view[data-route-family="management"] .route-mobile-head {
+.route-view[data-route-family="settings"] .route-mobile-head {
   border-bottom: 1px solid #eeeeee;
   background: #ffffff;
   box-shadow: none;
@@ -11835,122 +10920,82 @@ body {
   box-shadow: none;
 }
 
-.management-route-body {
+.settings-route-body {
   gap: 0;
 }
 
-.management-route-nav,
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.management-route-nav {
+.settings-route-nav {
   border-right: 1px solid #eeeeee;
   background: #ffffff;
 }
 
-.management-route-content .route-card,
-.management-route-content .route-surface,
-.management-route-content .route-data-table-wrap,
-.management-route-content .route-detail-panel,
-.management-route-content .control-task-drawer-panel,
-.management-route-content .task-summary-row,
-.management-route-content .task-detail-placeholder,
-.management-route-content .environment-toolbar,
-.management-route-content .environment-module,
-.management-route-content .environment-summary,
-.management-route-content .environment-audits,
-.management-route-content .codex-accounts-panel {
-  background: transparent;
-}
-
-.management-route-tab {
+.settings-route-tab {
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.management-route-tab:hover {
+.settings-route-tab:hover {
   border-color: transparent;
   background: #f1f3f4;
   box-shadow: none;
 }
 
-.management-route-tab.is-active {
+.settings-route-tab.is-active {
   border-color: transparent;
   background: #ececec;
   color: var(--shell-accent-strong);
   box-shadow: inset 2px 0 0 var(--shell-accent);
 }
 
-.management-route-tab-icon,
-.management-route-tab.is-active .management-route-tab-icon,
-.management-route-tab-shortcut {
+.settings-route-tab-icon,
+.settings-route-tab.is-active .settings-route-tab-icon,
+.settings-route-tab-shortcut {
   background: transparent;
 }
 
-.management-route-content .route-card-head,
-.management-route-content .skill-route-pane-head,
-.management-route-content .control-task-drawer-head,
-.management-route-content .task-detail-head,
-.management-route-content .codex-accounts-section-head,
-.management-route-content .environment-toolbar-head {
-  border-bottom: 1px solid #eeeeee;
-}
-
-.management-route-content .route-field-row,
-.management-route-content .codex-accounts-runtime-detail,
-.management-route-content .environment-item,
-.management-route-content .codex-account-metric,
-.management-route-content .codex-accounts-summary-card,
-.management-route-content .skill-builder-managed-item {
+.settings-route-nav,
+.settings-route-content .route-card,
+.settings-route-content .route-surface,
+.settings-route-content .route-data-table-wrap,
+.settings-route-content .route-detail-panel,
+.settings-route-content .control-task-drawer-panel,
+.settings-route-content .task-summary-row,
+.settings-route-content .task-detail-placeholder,
+.settings-route-content .codex-accounts-panel {
   border: 0;
   border-radius: 0;
-  background: #f8f9fa;
   box-shadow: none;
 }
 
-.management-route-content .route-data-table-wrap {
+.settings-route-content .route-data-table-wrap {
   overflow: auto;
 }
 
-.management-route-content .route-data-table th,
-.management-route-content .route-data-table td {
+.settings-route-content .route-data-table th,
+.settings-route-content .route-data-table td {
   border-bottom: 1px solid #eeeeee;
 }
 
-.management-route-content .page-filter-form,
-.management-route-content .task-filter-form,
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea {
+.settings-route-content .page-filter-form,
+.settings-route-content .task-filter-form,
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea {
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
 
-.management-route-content input,
-.management-route-content select,
-.management-route-content textarea {
+.settings-route-content input,
+.settings-route-content select,
+.settings-route-content textarea {
   background: #f8f9fa;
 }
 
-.management-route-content .route-empty,
-.management-route-content .route-empty-panel,
-.management-route-content .task-empty-state,
+.settings-route-content .route-empty,
+.settings-route-content .route-empty-panel,
+.settings-route-content .task-empty-state,
 .nav-session-rail .route-empty-panel {
   border: 0;
   border-radius: 0;
@@ -11999,29 +11044,11 @@ body {
     box-shadow: 18px 0 36px -30px rgba(15, 23, 42, 0.35);
   }
 
-  .management-route-body {
+  .settings-route-body {
     gap: 14px;
   }
 
-  .management-route-nav,
-  .management-route-content .route-card,
-  .management-route-content .route-surface,
-  .management-route-content .route-data-table-wrap,
-  .management-route-content .route-detail-panel,
-  .management-route-content .control-task-drawer-panel,
-  .management-route-content .task-summary-row,
-  .management-route-content .task-detail-placeholder,
-  .management-route-content .environment-toolbar,
-  .management-route-content .environment-module,
-  .management-route-content .environment-summary,
-  .management-route-content .environment-audits,
-  .management-route-content .codex-accounts-panel {
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  .management-route-nav {
+  .settings-route-nav {
     border-right: 0;
     background: #ffffff;
   }
@@ -12047,14 +11074,14 @@ body {
   display: none;
 }
 
-.route-view[data-route-family="management"].workbench-route-frame,
-.route-view[data-route-family="management"] .route-head,
-.route-view[data-route-family="management"] .route-mobile-head,
-.route-view[data-route-family="management"] .route-body,
-.management-route-body,
-.management-route-nav,
-.management-route-content,
-.management-route-content > * {
+.route-view[data-route-family="settings"].workbench-route-frame,
+.route-view[data-route-family="settings"] .route-head,
+.route-view[data-route-family="settings"] .route-mobile-head,
+.route-view[data-route-family="settings"] .route-body,
+.settings-route-body,
+.settings-route-nav,
+.settings-route-content,
+.settings-route-content > * {
   animation: none;
   transition: none;
   transform: none;

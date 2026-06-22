@@ -100,7 +100,7 @@ memory/
   conversations/<conversation_id>/summary.md
 ```
 
-`AGENTS.md` 保存仓库/工作区运行规则，`SOUL.md` 保存强约束；二者作为规则型上下文注入，不承载逐轮事实记录。所有持久记忆 Markdown 都由 CLI Runtime 维护。用户显式要求“记住”时，Runtime 先读取已解析记忆文件，再只更新合适目标：`USER.md` 保存稳定用户偏好，Daily Memory 保存当日活跃上下文与候选，`MEMORY.md` 保存跨会话稳定事实，项目记忆保存项目级规则与阶段性上下文。服务侧不再把会话轮次、压缩片段或任务摘要直接写入 Daily/Long-term Markdown；会话内压缩由 Claude Code 或 Codex 自身处理，会话归档只生成 `ConversationSummary`。跨会话长期记忆由系统维护任务每日定时启动同一 CLI Runtime 并加载 `memory-maintenance` Skill 进行整理。记忆维护与会话清理作为 Scheduler 内置任务随服务启动注册，不能删除，可在 `Settings > Schedules` 停用或重新启用；维护状态、上次运行、下次运行、变更文件与失败重试入口在 `Settings > Maintenance` 展示。
+`AGENTS.md` 保存仓库/工作区运行规则，`SOUL.md` 保存强约束；二者作为规则型上下文注入，不承载逐轮事实记录。所有持久记忆 Markdown 都由 CLI Runtime 维护。用户显式要求“记住”时，Runtime 先读取已解析记忆文件，再只更新合适目标：`USER.md` 保存稳定用户偏好，Daily Memory 保存当日活跃上下文与候选，`MEMORY.md` 保存跨会话稳定事实，项目记忆保存项目级规则与阶段性上下文。服务侧不再把会话轮次、压缩片段或任务摘要直接写入 Daily/Long-term Markdown；会话内压缩由 Claude Code 或 Codex 自身处理，会话归档只生成 `ConversationSummary`。跨会话长期记忆由系统维护任务每日定时启动同一 CLI Runtime 并加载 `memory-maintenance` Skill 进行整理。记忆维护与会话清理作为 Scheduler 内置任务随服务启动注册，不能删除，可在 `Settings > Schedules` 停用或重新启用、查看状态并手动触发。
 
 ## Repository Layout
 
@@ -128,13 +128,13 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 服务二进制构建统一通过 `scripts/build_alter0_service.sh` 收口：脚本会先执行 `internal/interfaces/web/frontend` 下的前端构建并校验 `static/dist/index.html` 引用了新的哈希 JS/CSS 产物，再执行 `go build` 生成服务二进制。`scripts/start_alter0_service.sh`、`scripts/relaunch_service.sh` 与 `make build` 都复用该入口，避免服务重启只拉取 Go 源码而继续嵌入旧前端产物。
 
-当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Terminal / Settings` 三个稳定入口，主工作区按运行态或设置页渲染。`/chat` 是唯一对话入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；历史 `/chat` 会自动映射到 `/chat`，旧 Chat 会话会作为 Chat 会话继续展示和恢复。`/settings` 承接运行时、Skill、Memory、Maintenance、Workspaces 与 Schedules；历史 `/management` 会自动映射到 `/settings`。
+当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Terminal / Settings` 三个稳定入口，主工作区按运行态或设置页渲染。`/chat` 是唯一对话入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；历史 `/chat` 会自动映射到 `/chat`，旧 Chat 会话会作为 Chat 会话继续展示和恢复。`/settings` 承接 Runtime、Skills、Memory 与 Schedules。
 
-当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；会话条目尾侧固定为三点更多按钮，展开后提供置顶、详情与删除操作，查看详情会聚焦对应会话并打开详情面板，删除需经过确认弹窗后才进入删除链路。右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。工作台采用参考 Gemini 的扁平视觉基线：主工作区、Settings frame、管理分区、表格、详情面板和空态不再依赖外层圆角、卡片边框或厚阴影，视觉层级主要通过留白、轻量分割线、选中态底色和 Composer 胶囊建立；设计图保存在 `docs/design/workbench-flat-redesign.html` 与 `docs/design/workbench-flat-redesign-*.png`。Chat、Terminal 与 Settings 顶部标题使用同一套紧凑工作台标题栏节奏：运行页显示会话标题、状态信号与 `Details`，Settings 显示同规格标题标记与路由标题，并收进同规格主面板 frame，不再使用独立大标题块、标题副文案或页面出现动效；移动端 `Menu / New` 等边缘操作使用无边框图标按钮并保留可访问文本标签。Settings 正文作为 frame 内部滚动区承载紧凑分区：`Runtime` 管理 Model Provider 与 Codex Runtime，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Maintenance` 查看维护状态并执行手动维护，`Workspaces` 管理会话/任务工作区，`Schedules` 管理普通定时任务、内置维护任务启停与触发记录。旧管理子页面不再作为一级路由展示。
+当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，当前运行页的 `Sessions / New` 会话列表直接展示在同一左侧导航内；会话条目尾侧固定为三点更多按钮，展开后提供置顶、详情与删除操作，查看详情会聚焦对应会话并打开详情面板，删除需经过确认弹窗后才进入删除链路。右侧主面板承载 Chat 时间线、Terminal 输出区或 Settings 内容流。工作台采用参考 Gemini 的扁平视觉基线：主工作区、Settings frame、设置分区、表格、详情面板和空态不再依赖外层圆角、卡片边框或厚阴影，视觉层级主要通过留白、轻量分割线、选中态底色和 Composer 胶囊建立；设计图保存在 `docs/design/workbench-flat-redesign.html` 与 `docs/design/workbench-flat-redesign-*.png`。Chat、Terminal 与 Settings 顶部标题使用同一套紧凑工作台标题栏节奏：运行页显示会话标题、状态信号与 `Details`，Settings 显示同规格标题标记与路由标题，并收进同规格主面板 frame，不再使用独立大标题块、标题副文案或页面出现动效；移动端 `Menu / New` 等边缘操作使用无边框图标按钮并保留可访问文本标签。Settings 正文作为 frame 内部滚动区承载紧凑分区：`Runtime` 管理服务重启、Codex Runtime、Model 与思考深度，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Schedules` 管理普通定时任务、内置维护任务启停、手动触发与触发记录。旧管理子页面不再作为一级路由展示。
 
 `Chat / Terminal` 的消息区采用轻量 IM 式消息流：用户消息右对齐并使用低对比紧凑气泡，助手消息左对齐为无边框正文阅读流，执行过程默认收敛为 `Thinking / 已思考` 内联披露入口，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情。Chat 现在复用 Terminal session 数据模型、状态机与提交链路，但存储 scope 与 Terminal 默认列表隔离：Chat 会话列表、详情、新建、删除和置顶都走 `/api/terminal/sessions?scope=chat`，发送走 `POST /api/terminal/sessions/{session_id}/input?scope=chat`；Terminal 页面继续使用默认 `/api/terminal/sessions` scope。前端不再调用 `/api/messages`、不接入消息 SSE，也不再创建本地 `Thinking` 过程步骤；执行完成、失败或恢复时，由 Terminal session `turns` 重建用户消息、assistant 正文与结构化过程。过程内容统一转换为 `RuntimeTraceEvent`：类型只来自底层 provider、工程 adapter 或 alter0 自身确定生成的字段，不根据自然语言内容猜测；历史 `process_steps` 在读取和渲染时按兼容映射转换为当前事件结构。模型与 Skill 配置面板提供过程披露勾选项，默认只显示 `important_text`，`reasoning / plan / tools / commands / system` 需要用户显式开启。最终回复统一使用稳定的运行页 markdown shell，复制动作位于正文下方，代码块独立呈现为浅灰内容块，逐条消息时间不在正文区显示。直连 Codex 的 `agent_message` 只把 `final` 或旧版无频道内容进入 assistant 正文；`commentary` 归入重要过程文本，其他非最终频道不进入最终回复或会话正文。长会话默认优先展示最新消息，顶部提供 `Load earlier messages / 加载更早消息`，滚到顶部也会按批次渐进加载更早历史；右侧阅读定位条支持连续 `上一条 / 下一条` 跳转。
 `/chat`、`/terminal`、`/settings` 与 `/login` 默认以英文文案和 `html[lang="en"]` 启动；Web Shell 内可通过语言切换入口改为中文。登录页只携带当前 canonical path 作为稳定回跳入口，不携带 query。`Chat / Terminal` 使用统一 `session_id=<8位短hash>` 表达显式会话恢复，不把完整会话 id 暴露在 URL 与页面提示中；从主导航进入 `Chat` 会清理旧 `session_id` 并默认打开当前最新会话。
-控制类与资产类页面默认采用更高信息密度的管理视图：`Profiles` 使用短字段并排的紧凑表单栅格与显式启用开关，`Tasks` 使用左侧任务列表 + 右侧运行详情的主从布局，`Memory` 的任务历史使用表格 + 详情侧栏，`Environments` 使用运行态工具栏 + 模块区展示配置项，并在同页提供敏感值显隐、保存、重载、重启与审计视图，`Codex Runtime` 使用单一顶部信息区展示当前服务运行账户的 Codex 身份、邮箱、计划、认证模式、profile、hourly / weekly 额度与 LLM Provider 注册状态；model / 思考深度直接做成面板内的一行 key-value 选择项并实时保存。页面不再展示多账号导入、登录、切换、Account ID、User ID、CLI 路径、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。`Channels / Skills / MCP / Models / Cron Jobs` 这组共享控制台页统一复用稳定的响应式内容网格，真窄屏下状态徽标会下沉到标题区下方、字段行改为单列展开，避免标题、徽标、复制按钮与多行字段互相挤压；`Skill` 的列表、管理表单与详情区统一使用扁平白底、浅灰说明层与低对比选中态。
+控制类与资产类页面默认采用更高信息密度的管理视图：`Memory` 的任务历史使用表格 + 详情侧栏，`Codex Runtime` 使用单一顶部信息区展示当前服务运行账户的 Codex 身份、邮箱、计划、认证模式、profile、hourly / weekly 额度与 LLM Provider 注册状态；model / 思考深度直接做成面板内的一行 key-value 选择项并实时保存。页面不再展示多账号导入、登录、切换、Account ID、User ID、CLI 路径、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。`Skills / Cron Jobs` 这组共享控制台页统一复用稳定的响应式内容网格，真窄屏下状态徽标会下沉到标题区下方、字段行改为单列展开，避免标题、徽标、复制按钮与多行字段互相挤压；`Skill` 的列表、管理表单与详情区统一使用扁平白底、浅灰说明层与低对比选中态。
 所有 React 托管页面的正文型内容统一支持安全 Markdown 渲染：消息最终回复、Process 说明、Terminal 输出、Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Skill 说明、Codex 运行时说明与 Session Profile 的非等宽字段都会复用同一安全解析器。Chat / Terminal 最终输出统一通过稳定的 `MessageMarkdownShell` 承载，markdown HTML 与 `dangerouslySetInnerHTML` 对象按内容缓存，父级无关重渲染不得替换已渲染文本节点，从而保持浏览器原生文本选择与复制菜单。渲染器支持 ATX/Setext 标题、段落换行、强调、删除线、自动 URL/email 链接、列表、列表内引用与代码块、引用、图片、对齐表格、行内代码与代码块，并过滤 `javascript:` 等不安全链接；Markdown 视觉需保持正文阅读节奏，标题紧凑、段落自然，嵌套列表按 Markdown 缩进保留真实层级，普通链接显示外链箭头，代码块保留浅灰弱边界；Markdown 表格在消息容器内以真实表格结构呈现，只保留横向分割线、无外框卡片和表头灰底；短表格至少铺满消息宽度，普通长文本在单元格内自动换行，链接、URL 与代码保持不硬断开，只有真实不可断内容超宽时才在表格块内部横向滚动，不制造页面级横向滚动；ID、路径、密钥、配置值、时间戳和其他元数据字段继续按纯文本或等宽字段展示。
 Chat 支持显式演示入口 `/chat?markdown_demo=1`，用于在预览环境中直接展示一条非持久化 assistant Markdown 语法覆盖样例；该参数会临时覆盖当前时间线视图但不写入会话历史。样例涵盖当前渲染器支持的 ATX/Setext 标题、段落换行、强调、删除线、自动链接、图片、引用、嵌套列表、任务项、列表内引用与代码块、分割线、代码块、对齐表格与 raw HTML 转义；表格样例覆盖短字符、长中文、长 URL/代码和混合内容场景；折叠示例中的 HTML 标签按代码块展示，折叠内容本身按普通 Markdown 展示。
 
@@ -158,7 +158,7 @@ Agent 请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 - 面向 Web 会话消息。
 - 默认绑定内置 `Alter0`（`main`），作为通用对话入口。
 - Web 登录后，`Chat` 的已发送会话历史落到服务端 Session history，并在同一 Web 登录态下跨设备共享。旧 `Chat` 会话只作为历史兼容数据存在，加载时会迁移到当前 Chat 会话结构并通过 `route=chat` 读取；旧聚合文件在读取时自动重构为当前分文件布局。未发送文本草稿、附件草稿与当前页局部选择继续按浏览器隔离。
-- Session history 维护 `last_active_at` 与 `pinned`：发送消息、执行完成、打开会话详情、Terminal 输入与任务写回都会刷新活跃时间。系统每日自动清理超过 7 天不活跃的未置顶会话；手动置顶的会话不会被自动清理，仍有关联 queued/running 任务的会话会被保护到任务进入终态后再参与清理。`Settings > Sessions` 可查看最后活跃时间并切换置顶，`Settings > Maintenance` 可手动执行清理并查看删除、跳过置顶、任务保护、扫描数量与失败原因。
+- Session history 维护 `last_active_at` 与 `pinned`：发送消息、执行完成、打开会话详情、Terminal 输入与任务写回都会刷新活跃时间。系统每日自动清理超过 7 天不活跃的未置顶会话；手动置顶的会话不会被自动清理，仍有关联 queued/running 任务的会话会被保护到任务进入终态后再参与清理。会话置顶与删除在 Chat / Terminal 自己的会话列表内完成；内置会话清理任务在 `Settings > Schedules` 查看、停用、启用或手动触发。
 - `Chat` 新会话先使用统一占位标题 `New`，早期多轮内可按更具体输入自动升级标题。旧 `/chat?session_id=<短hash>` 入口继续恢复对应历史会话。
 - `Chat` 使用 runtime workspace：会话列表由左侧主导航直接展示，置顶会话单独进入 `Pinned / 置顶` 分组并位于 `Today / 今天` 上方，其余会话再按最近时间分组；主工作区固定为主消息工作区、底部 Composer 与固定 workspace header；真实会话条目右侧固定提供三点更多按钮，展开后提供置顶、详情与删除操作，删除需二次确认。空白 `New` 草稿会话尚未进入 Session history 时只作为输入入口，不显示三点菜单，也不支持置顶、详情或删除；同一路由内只允许存在一个空白虚拟会话，重复点击 `New` 会回到现有空白草稿，首次发送后才升级为真实会话。header 统一只保留当前会话标题、状态按钮与 `Details` 入口，草稿会话的 `Details` 禁用。消息、过程步骤与最终输出都在同一轻量 IM 式消息流中推进。
 - `Chat` 直连 Codex 的输出按频道收口：`final` 或旧版无频道 `agent_message` 才写入 assistant 正文与会话历史；`commentary` 进入结构化 `RuntimeTraceEvent` 的重要文本披露，`reasoning / plan / tool / command` 等类型必须由底层事件或 adapter 显式给出，不从正文猜测；非最终频道不得拼接进最终回复，避免工作进度日志污染用户可读答案。
@@ -176,10 +176,10 @@ Agent 请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 - `Chat` 刷新恢复采用“双层快照 + 服务端回源”策略：浏览器本地除当前活动会话外，还会保留最近会话列表的轻量快照；当服务端集合接口短暂漏掉某个刚创建或最近活跃的会话时，前端仍保留该会话在左侧列表中的可见性，并继续按 `session_id` 单独回源详情，避免刷新其他会话后新会话从列表里瞬时消失。即使集合接口已经返回当前会话的摘要项，只要本地仍残留 `Thinking...`、`Load failed`、历史 `streaming` 占位或当前会话最后一条仍是 user，运行页也会继续补拉单会话详情，并用服务端已持久化的 assistant 结果覆盖本地快照。
 - `Chat` 已接受请求后若服务端历史暂时只有最新 `user` 消息，前端继续把当前活动会话视为待恢复状态并重试单会话详情，直到 assistant 回复、任务消息或失败态落库；该中间态不会被当成完整对话停止等待。
 - `Chat` 的 Web 会话执行已与浏览器请求生命周期解耦：页面刷新、请求断开或标签页短暂切走不会取消服务端已接受的会话执行；刷新后的恢复继续优先按当前 `session_id` 回源服务端详情与状态 registry，避免本轮已发出的消息因为前端断连而整轮丢失。
-- `Chat` 主入口不把浏览器上次活动会话当作固定锚点：访问 `/chat` 或从主导航切回 `Chat` 时会清理旧 `session_id`，并按服务端会话列表与本地最近快照的合并结果打开最新会话。用户在会话列表中显式点选某个 Chat 会话时，URL 使用 `/chat?session_id=<8位短hash>` 精确恢复该会话；`Terminal` 继续使用 `/terminal?session_id=<8位短hash>` 恢复当前终端会话。历史 `/chat?session_id=<8位短hash>` 继续按 Chat 会话恢复对应历史会话。管理能力统一进入 `/management`，页内切换 Profiles、Memory、Tasks、Models、Codex Runtime 等分区时不改写工作台 path。
+- `Chat` 主入口不把浏览器上次活动会话当作固定锚点：访问 `/chat` 或从主导航切回 `Chat` 时会清理旧 `session_id`，并按服务端会话列表与本地最近快照的合并结果打开最新会话。用户在会话列表中显式点选某个 Chat 会话时，URL 使用 `/chat?session_id=<8位短hash>` 精确恢复该会话；`Terminal` 继续使用 `/terminal?session_id=<8位短hash>` 恢复当前终端会话。历史 `/chat?session_id=<8位短hash>` 继续按 Chat 会话恢复对应历史会话。Settings 统一进入 `/settings`，页内切换 Runtime、Skills、Memory 与 Schedules 时不改写工作台 path。
 - `Chat / Terminal` 在页面从后台回到前台，或浏览器重新把当前页激活为可见工作页时，共享 page-activation 刷新链路：`Chat` 会立即按当前路由补拉会话列表、当前活动会话详情和 pending task 状态；`Terminal` 会同步刷新会话列表与当前活动会话详情，避免后台期间的最新输出、标题或状态停留在旧视图。
 - `Chat` 不再维护独立 Conversation Runtime registry；会话存在性、状态、置顶、turn 历史和恢复都沿用 Terminal session store。前端发送前会再次按当前 Skill 目录计算有效选择，确保历史会话里的删除项不会随旧状态重新注入。即使浏览器刷新或请求中断，服务端仍保留该会话的存在性、最近输出与恢复状态，不再把会话可见性完全交给客户端判断。
-- `Terminal` 页面 Composer 支持最多 5 个附件：图片继续提供缩略图预览与移除，常见文本/文档文件以文件条目展示；用户可通过附件按钮选择文件，也可在 PC 输入框内直接使用 `Ctrl+V` 粘贴剪贴板图片，普通文本粘贴继续保持原生输入行为。附件统一先写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，提交时仅发送稳定附件引用。图片继续映射为 Codex CLI `-i` 输入；普通文件会同步写入当前 Terminal 工作区 `input-attachments/<turn_id>/`，并在同轮 prompt 中注入可直接读取的 workspace 相对路径，供 Codex 按需直接读盘。Terminal turn 历史与 `Tasks` 详情抽屉里的图片再次查看时统一优先使用原图资源，缩略位仍保留预览图。`Tasks` 详情抽屉里的 follow-up terminal 输入当前稳定支持图片附件，并继续沿统一消息元数据透传。Terminal Codex CLI 远端 compact 失败时仅把当前 turn 标记失败，保留已持久化线程标识、会话历史和工作区；下一次输入继续 resume 同一运行线程。Terminal workspace header 继续显示当前会话状态信号，信号固定贴在会话标题左侧，右侧只保留 `Details`，状态名称仅保留给可访问性语义；左侧会话列表只在 `busy` 会话标题旁显示 loading，其余状态不显示行内状态灯。Terminal 会话列表为空时先展示与 Chat 一致的 active `New` 占位；该占位不显示三点菜单，`Details` 禁用；点击占位或移动端顶部 `New` 只会关闭会话抽屉并聚焦输入框，不立即创建服务端 Terminal session，首次发送输入或添加附件时才落成真实会话，真实会话在首条输入命名前也使用 `New` 作为默认标题。
+- `Terminal` 页面 Composer 支持最多 5 个附件：图片继续提供缩略图预览与移除，常见文本/文档文件以文件条目展示；用户可通过附件按钮选择文件，也可在 PC 输入框内直接使用 `Ctrl+V` 粘贴剪贴板图片，普通文本粘贴继续保持原生输入行为。附件统一先写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，提交时仅发送稳定附件引用。图片继续映射为 Codex CLI `-i` 输入；普通文件会同步写入当前 Terminal 工作区 `input-attachments/<turn_id>/`，并在同轮 prompt 中注入可直接读取的 workspace 相对路径，供 Codex 按需直接读盘。Terminal turn 历史里的图片再次查看时统一优先使用原图资源，缩略位仍保留预览图。Terminal Codex CLI 远端 compact 失败时仅把当前 turn 标记失败，保留已持久化线程标识、会话历史和工作区；下一次输入继续 resume 同一运行线程。Terminal workspace header 继续显示当前会话状态信号，信号固定贴在会话标题左侧，右侧只保留 `Details`，状态名称仅保留给可访问性语义；左侧会话列表只在 `busy` 会话标题旁显示 loading，其余状态不显示行内状态灯。Terminal 会话列表为空时先展示与 Chat 一致的 active `New` 占位；该占位不显示三点菜单，`Details` 禁用；点击占位或移动端顶部 `New` 只会关闭会话抽屉并聚焦输入框，不立即创建服务端 Terminal session，首次发送输入或添加附件时才落成真实会话，真实会话在首条输入命名前也使用 `New` 作为默认标题。
 - `Terminal` 移动端的命令与 prompt 气泡保持自然整词换行：路径、flag 和短 shell 片段优先按空格或真实长单词边界断行，不允许因为窄屏收缩把 `/usr/bin/bash -lc 'ls -la'` 这类输入压成逐字或逐 token 的碎行。
 - `Terminal` 输出正文区与 prompt 气泡旁不显示 turn 时间；会话列表和 `Details` 仍保留会话级更新时间，方便定位历史。
 - 移动端工作台优先保证输入、抽屉和滚动流畅度：`Chat / Terminal` 的移动表面在窄屏下不再依赖大面积 `backdrop-filter` 或持续背景光晕动效，运行页容器、抽屉遮罩、抽屉面板本体和主工作区统一回落到静态浅色 surface，避免真机滚动和抽屉切换出现卡顿。
@@ -204,7 +204,6 @@ Agent 请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 - 移动端 `Terminal` 在输入框聚焦且软键盘抬起后，底部 Composer 会按 `VisualViewport` 推导出的 `--keyboard-offset` 直接上移到可见底边；Terminal 工作区主体保持原位，键盘弹起不会把页面整体向上推出；长历史输出继续留在 `terminal-chat-screen` 内独立滚动，不允许通过增大 footer padding 把输入区整体挤出屏幕。
 - `Chat / Terminal` 统一使用同一套四键阅读定位条组件，承载 `回到顶部 / 上一条 / 下一条 / 回到底部` 四个动作，并按当前视口中的可见消息块或 Terminal turn 动态计算上下目标。Terminal 的 `上一条` 固定指向当前视口中最靠上的可见 turn，`下一条` 在单条 turn 可见时指向它后面的真实下一条、在多条 turn 同屏可见时指向最靠下的可见 turn；但只要最后一条 turn 已经进入当前视口，无论底部剩余内容是否还存在，都隐藏 `下一条`，剩余阅读交给 `回到底部`。`回到底部` 本身只在最后一条内容的底边仍位于视口外时显示；如果最后只剩容器 padding 或空白余量，不再保留伪底部跳转。这组按钮继续使用原有箭头字形，但按钮本体不参与正文文本选中或长按选中；当消息区存在有效文本选区时，四键会自动隐藏，释放完整复制操作面。
 - `Chat / Terminal` 的四键阅读定位条统一使用独立圆形按钮外观与触摸反馈；移动端固定停靠在工作区右侧、输入区上沿之上，避免落回正文流内或压住输入区。
-- `Chat` 的后台任务轮询会按页面可见性自动收敛；页面隐藏时暂停 pending task 定时扫描，恢复前台后再立即补一次刷新，降低持续耗电、发热和后台请求耗时。
 - `Chat` 与 `Terminal` 的会话设置入口统一位于底部输入框工具栏的 `Session` 按钮。新空白 Chat 会话默认勾选全部可用公有 Skill；用户可在该面板中调整 `Provider / Model`、`Tools / MCP`、`Skills`，变更会立即保存到当前会话并作用于后续发送的消息；取消全部勾选会按空选择保存，不会被旧会话配置自动补回。
 - Agent 请求默认由 Claude Code CLI 或 Codex CLI 直接执行；领域规则通过会话选择的 Skill 注入。
 - 选中的 Skill、MCP、Memory 摘要与工作区事实会在启动 CLI runtime 前注入当前会话工作区。
@@ -326,11 +325,7 @@ Agent 请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 - 默认执行目录：`.alter0/workspaces/sessions/<session_id>`
 - `Chat` 与 `Skill` 会话历史可继续按各自会话维度回放；删除会话时会同步清理对应会话工作区
 
-2. `Async Task`
-- 默认执行目录：`.alter0/workspaces/sessions/<session_id>/tasks/<task_id>`
-- 任务工作区随所属会话工作区隔离，删除所属会话时一并清理
-
-3. `Terminal`
+2. `Terminal`
 - 终端会话工作区：`.alter0/workspaces/terminal/sessions/<terminal_session_id>`
 - 终端会话状态：`.alter0/state/terminal/sessions/<terminal_session_id>.json`
 - 同一 Web 登录态下，手机与 PC 访问同一批 Terminal 会话历史，不再按浏览器设备标识分桶
@@ -350,17 +345,6 @@ Agent 请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 - 对已进入运行时执行链的输入，请求断开只会终止当前 HTTP 回传，不会取消后端执行；最终结果仍通过 Terminal session 详情恢复。
 - 同一会话内的同步请求保持串行；当上一条同步执行尚未结束时，后续用户消息会继续等待并按序执行，不再因为默认队列等待时间直接返回 5 秒超时。
 - 对于仍在执行中的同步请求，同会话后续用户补充会按顺序排队，并在下一轮 CLI runtime 输入中继续推进。
-
-2. `Async Task`
-- 适用于高复杂度、长耗时或产物型请求。
-- 请求被接受后先返回任务受理结果，后续可通过任务视图或任务 API 跟踪状态、日志与产物。
-- 异步任务使用独立后台执行池，不占用主会话同步交流的串行执行槽位。
-- 落到 `Codex CLI` 的异步任务会维持运行态心跳：执行期每 1 分钟记录一次存活心跳，并把任务超时窗口按心跳续租，避免长时间运行但仍健康的会话被固定 90 秒窗口误杀。
-- 任务运行心跳仅用于后台执行存活与超时续租；Chat 消息请求不再维护浏览器侧消息 SSE 保活。
-- `Tasks` 列表卡片会先展示轻量心跳摘要，`Tasks` 详情与 `Memory -> Tasks` 详情会同步展示 `Last Heartbeat / Timeout Window`，用于区分“仍在健康运行”与“长时间无心跳、即将超时”的后台任务。
-- `Tasks` 详情输出日志使用 SSE 读取最新日志；页面进入后台或标签页不可见时会主动断开日志流，恢复前台后重新拉取任务详情、回补日志并从最新 cursor 续接日志流，避免输出页在后台持续唤醒浏览器。
-- `Tasks` 详情抽屉中的日志流会把高频日志重绘合并到浏览器逐帧节奏内执行；连续输出时不再为每条日志事件同步整块重绘日志容器。
-- 异步任务完成后，回写到聊天区的是一轮精简后的结果摘要；完整终端输出、原始报错、代码片段与文件内容仅保留在任务详情、日志与产物中。
 
 Web `Chat` 独立消息链路已移除。对话消息统一使用 Terminal-compatible session 输入接口；历史 Chat 会话在读取阶段兼容迁移为当前 Chat 消息结构，运行页列表与详情由 `/api/terminal/sessions?scope=chat` 系列接口恢复，并与 Terminal 默认 session 列表分开存储。
 
@@ -417,14 +401,14 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 
 ### Runtime Restart
 
-`Environments` 页面中的“重启服务”会走运行时托管链路，而不是由当前业务进程直接自拉起：
+`Settings > Runtime` 中的“重启服务”会走运行时托管链路，而不是由当前业务进程直接自拉起：
 
-1. 点击“重启服务”后会打开单一站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项展示，默认勾选。
+1. 点击“重启服务”后会打开站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项展示，默认不勾选。
 2. `sync_remote_master=false`：基于当前仓库状态构建候选二进制，并由 `supervisor` 完成子进程切换。
-3. `sync_remote_master=true`：先校验当前分支为 `master`，仅丢弃 Git 已跟踪的本地改动并保留未跟踪文件/目录，再执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后通过统一构建入口先重建前端 `static/dist`、再构建候选二进制并切换。
+3. `sync_remote_master=true`：先校验当前分支为 `master`；若存在 Git 已跟踪的本地改动，前端会进入二次确认。只有同时传入 `confirm_discard_tracked_changes=true` 时才会丢弃这些改动，否则不会执行同步重启。确认后执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后通过统一构建入口先重建前端 `static/dist`、再构建候选二进制并切换。
 4. 候选版本只有在 `/readyz` 探活通过后才会成为当前运行版本；若启动失败，会自动恢复上一运行版本。
 5. Git 或构建失败会直接返回到 Web 控制台，便于定位权限、凭据、快进合并失败等问题。
-6. `Environments` 工具栏会展示当前在线实例的最近启动时间与对应 `commit hash`，用于确认上次成功重启切换到的运行版本。
+6. Runtime 面板会展示当前在线实例的最近启动时间与对应 `commit hash`，用于确认上次成功重启切换到的运行版本。
 7. 重启完成后页面会自动刷新到新实例，并以站内成功弹窗提示用户当前页面已连接到最新运行实例。
 
 ### Public Deployment Baseline
@@ -546,7 +530,6 @@ go run ./cmd/alter0
 - Linux / macOS 默认优先使用公共路径 `/usr/local/bin/codex`；若该路径不存在，则回退为 `codex`
 - 如需统一指定 Codex CLI 路径，可通过环境变量 `ALTER0_CODEX_COMMAND` 或启动参数 `-codex-command` 设置
 - 运行时会自动补齐 `$HOME/.local/bin`、`$HOME/.local/share/pnpm`、`/usr/local/bin`、`/usr/bin` 等标准 PATH，确保服务内 `Codex CLI` 可见 `codex`、`node`、`npm`、`npx` 与运行账户自带的 `gh` 包装器
-- 如需固定 shell，可通过启动参数 `-task-terminal-shell` 或运行时环境键 `task_terminal_shell` 指定
 - Windows 下显式指定 `cmd.exe` 时会补充 UTF-8 代码页初始化；如需稳定中文输出，优先使用 `powershell.exe`
 - Terminal 会话退出后不会清空历史或线程标识；重新在原会话发送输入时，系统会优先复用已持久化的 Codex CLI 线程继续执行
 - 若 Codex CLI 在线程续写阶段返回远端 compact 失败，Terminal 会保留原会话历史与工作区，但清空失效线程标识；下一次输入会在同一 Terminal 会话下自动启动新的 Codex 线程继续执行

@@ -19,6 +19,7 @@ const (
 	memoryFileTruncatedSuffix       = "\n...[truncated]"
 	memoryAutoRecallMaxHits         = 6
 	memoryAutoRecallSnippetLines    = 3
+	memoryAutoRecallLineMaxChars    = 180
 	memorySelectionUserMD           = "user_md"
 	memorySelectionSoulMD           = "soul_md"
 	memorySelectionRootInstructions = "root_instructions"
@@ -349,9 +350,18 @@ func buildMemoryRecallSnippet(lines []string, index int) string {
 		if line == "" {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("L%d: %s", idx+1, line))
+		parts = append(parts, fmt.Sprintf("L%d: %s", idx+1, truncateMemoryRecallLine(line)))
 	}
 	return strings.Join(parts, "\n")
+}
+
+func truncateMemoryRecallLine(line string) string {
+	trimmed := strings.TrimSpace(line)
+	runes := []rune(trimmed)
+	if len(runes) <= memoryAutoRecallLineMaxChars {
+		return trimmed
+	}
+	return string(runes[:memoryAutoRecallLineMaxChars]) + "..."
 }
 
 func containsHan(value string) bool {

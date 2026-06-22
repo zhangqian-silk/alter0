@@ -23,18 +23,12 @@ export type IconName =
   | "terminal"
   | "memory"
   | "skills"
-  | "mcp"
-  | "sessions"
-  | "tasks"
   | "cron"
-  | "channels"
   | "models"
-  | "environments"
   | "codex"
   | "settings";
 
 export const SETTINGS_WORKBENCH_ROUTE = "settings";
-export const MANAGEMENT_WORKBENCH_ROUTE = SETTINGS_WORKBENCH_ROUTE;
 export const TOP_LEVEL_WORKBENCH_ROUTES = [
   "chat",
   "terminal",
@@ -42,7 +36,7 @@ export const TOP_LEVEL_WORKBENCH_ROUTES = [
 ] as const;
 
 export type TopLevelWorkbenchRoute = (typeof TOP_LEVEL_WORKBENCH_ROUTES)[number];
-export const MANAGEMENT_DEFAULT_SECTION_ROUTE = "runtime";
+export const SETTINGS_DEFAULT_SECTION_ROUTE = "runtime";
 
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -55,16 +49,13 @@ export const NAV_GROUPS: NavGroup[] = [
   }
 ];
 
-export const MANAGEMENT_ROUTE_GROUPS: NavGroup[] = [
+export const SETTINGS_ROUTE_GROUPS: NavGroup[] = [
   {
     heading: "Settings",
     items: [
       { label: "Runtime", route: "runtime", abbr: "RU", icon: "models" },
-      { label: "Environments", route: "environments", abbr: "EN", icon: "environments" },
       { label: "Skills", route: "skills", abbr: "SK", icon: "skills" },
       { label: "Memory", route: "memory", abbr: "ME", icon: "memory" },
-      { label: "Maintenance", route: "maintenance", abbr: "MA", icon: "cron" },
-      { label: "Workspaces", route: "workspaces", abbr: "WO", icon: "sessions" },
       { label: "Schedules", route: "schedules", abbr: "SC", icon: "cron" }
     ]
   }
@@ -72,7 +63,7 @@ export const MANAGEMENT_ROUTE_GROUPS: NavGroup[] = [
 
 export const ALL_WORKBENCH_ROUTE_GROUPS: NavGroup[] = [
   ...NAV_GROUPS,
-  ...MANAGEMENT_ROUTE_GROUPS,
+  ...SETTINGS_ROUTE_GROUPS,
 ];
 
 export const PROMPTS: PromptItem[] = [

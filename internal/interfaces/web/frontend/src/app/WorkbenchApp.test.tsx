@@ -91,8 +91,8 @@ vi.mock("../features/shell/components/PrimaryNav", () => ({
       <button type="button" onClick={() => onNavigate("tasks")}>
         go tasks
       </button>
-      <button type="button" onClick={() => onNavigate("management")}>
-        go management
+      <button type="button" onClick={() => onNavigate("settings")}>
+        go settings
       </button>
       <button type="button" onClick={() => onNavigate("terminal")}>
         go terminal
@@ -141,7 +141,7 @@ describe("WorkbenchApp", () => {
     });
     expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-language", "zh");
 
-    fireEvent.click(screen.getByRole("button", { name: "go management" }));
+    fireEvent.click(screen.getByRole("button", { name: "go settings" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "settings");
@@ -163,7 +163,7 @@ describe("WorkbenchApp", () => {
     expect(shell).toHaveClass("overlay-open");
     expect(shell).not.toHaveClass("nav-collapsed");
 
-    fireEvent.click(screen.getByRole("button", { name: "go management" }));
+    fireEvent.click(screen.getByRole("button", { name: "go settings" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "settings");
@@ -223,8 +223,8 @@ describe("WorkbenchApp", () => {
     expect(screen.getByTestId("primary-nav-session-rail-body")).not.toHaveTextContent("session rail body:terminal");
   });
 
-  it("renders auxiliary routes inside the unified management page frame", async () => {
-    window.history.replaceState({}, "", "/management");
+  it("renders settings inside the unified settings page frame", async () => {
+    window.history.replaceState({}, "", "/settings");
     mockIsLegacyShellMobileViewport.mockReturnValue(true);
     const { container } = render(<WorkbenchApp />);
     const shell = container.querySelector(".app-shell");
@@ -236,7 +236,7 @@ describe("WorkbenchApp", () => {
     const mobileHeader = container.querySelector("[data-route-mobile-head]") as HTMLElement;
     const routeHead = container.querySelector(".route-head") as HTMLElement;
     expect(mobileHeader).toBeInTheDocument();
-    expect(container.querySelector(".route-view")).toHaveAttribute("data-route-family", "management");
+    expect(container.querySelector(".route-view")).toHaveAttribute("data-route-family", "settings");
     expect(container.querySelector(".route-view")).toHaveClass("workbench-route-frame");
     expect(routeHead).toHaveClass("workbench-title-head", "is-compact");
     expect(routeHead).toHaveAttribute("data-workbench-title-head", "route");

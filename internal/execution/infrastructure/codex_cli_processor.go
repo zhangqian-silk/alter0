@@ -419,7 +419,6 @@ func resolveCodexThreadState(workspaceDir string, metadata map[string]string) co
 	}
 	runtimeDir := filepath.Join(trimmedWorkspace, defaultWorkspaceRootDir, codexRuntimeDirName)
 	if isCanonicalChatRuntimeSession(metadata) {
-		migrateLegacyCanonicalChatCodexThreadState(runtimeDir)
 		return codexThreadState{
 			Enabled: true,
 			Path:    filepath.Join(runtimeDir, "threads", codexThreadArchiveDay(codexThreadNow())+".json"),
@@ -472,42 +471,6 @@ func isCanonicalChatRuntimeSession(metadata map[string]string) bool {
 		)),
 		canonicalChatSessionID,
 	)
-}
-
-func migrateLegacyCanonicalChatCodexThreadState(runtimeDir string) {
-	runtimeDir = strings.TrimSpace(runtimeDir)
-	if runtimeDir == "" {
-		return
-	}
-	legacyPath := filepath.Join(runtimeDir, "thread.json")
-	data, err := os.ReadFile(legacyPath)
-	if err != nil {
-		return
-	}
-	record := persistedCodexThreadState{}
-	if err := json.Unmarshal(data, &record); err != nil {
-		return
-	}
-	if strings.TrimSpace(record.ThreadID) == "" {
-		_ = os.Remove(legacyPath)
-		return
-	}
-	archiveTime := record.UpdatedAt
-	if archiveTime.IsZero() {
-		if info, statErr := os.Stat(legacyPath); statErr == nil {
-			archiveTime = info.ModTime()
-		}
-	}
-	if archiveTime.IsZero() {
-		archiveTime = codexThreadNow()
-	}
-	archivePath := filepath.Join(runtimeDir, "threads", codexThreadArchiveDay(archiveTime)+".json")
-	if _, statErr := os.Stat(archivePath); os.IsNotExist(statErr) {
-		if mkErr := os.MkdirAll(filepath.Dir(archivePath), 0o755); mkErr == nil {
-			_ = os.WriteFile(archivePath, append(data, '\n'), 0o600)
-		}
-	}
-	_ = os.Remove(legacyPath)
 }
 
 func codexThreadArchiveDay(ts time.Time) string {

@@ -1,4 +1,4 @@
-import { MANAGEMENT_ROUTE_GROUPS, NAV_GROUPS, PROMPTS } from "./legacyShellConfig";
+import { SETTINGS_ROUTE_GROUPS, NAV_GROUPS, PROMPTS } from "./legacyShellConfig";
 
 describe("legacyShellConfig", () => {
   it("keeps the navigation groups in the shell order", () => {
@@ -33,13 +33,10 @@ describe("legacyShellConfig", () => {
   });
 
   it("keeps service restart and update controls reachable inside settings", () => {
-    expect(MANAGEMENT_ROUTE_GROUPS[0].items.map((item) => item.route)).toEqual([
+    expect(SETTINGS_ROUTE_GROUPS[0].items.map((item) => item.route)).toEqual([
       "runtime",
-      "environments",
       "skills",
       "memory",
-      "maintenance",
-      "workspaces",
       "schedules",
     ]);
   });

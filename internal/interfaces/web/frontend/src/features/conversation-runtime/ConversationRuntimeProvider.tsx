@@ -149,22 +149,6 @@ type ChatCapability = {
   metadata?: Record<string, string>;
 };
 
-type ChatTaskResponse = {
-  id?: string;
-  status?: string;
-  summary?: string;
-  result?: {
-    route?: string;
-    process_steps?: Array<{
-      id?: string;
-      kind?: string;
-      title?: string;
-      detail?: string;
-      status?: string;
-    }>;
-  };
-};
-
 type ActiveSessionState = Record<ConversationRoute, string>;
 type SessionsState = Record<ConversationRoute, ChatSession[]>;
 type ComposerDraftMap = Record<string, string>;
@@ -1117,10 +1101,6 @@ function isConversationBusyStatus(status: string): boolean {
   return ["streaming", "queued", "running", "in_progress", "inprogress", "busy"].includes(normalizeTaskStatus(status));
 }
 
-function isTerminalTaskStatus(status: string): boolean {
-  return ["success", "failed", "canceled"].includes(normalizeTaskStatus(status));
-}
-
 function serializeMessageAttachment(attachment: ComposerAttachment) {
   if (attachment.assetURL) {
     return {
@@ -1172,7 +1152,6 @@ export function ConversationRuntimeProvider({
   const [inspectorTab, setInspectorTab] = useState<"model" | "capabilities" | "skills">("model");
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [runtimeEventFilter, setRuntimeEventFilter] = useState<RuntimeEventFilterID[]>(() => loadRuntimeEventFilter());
-  const [pendingTasksVersion, setPendingTasksVersion] = useState(0);
   const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   const pollTimerRef = useRef<number>(0);
@@ -1633,7 +1612,6 @@ export function ConversationRuntimeProvider({
       }
     }
 
-    setPendingTasksVersion((value) => value + 1);
   }, [activeSession, hydrateRuntimeSession, loadRuntimeSessions, route, upsertRuntimeSession]);
 
   useEffect(() => {
@@ -1804,23 +1782,11 @@ export function ConversationRuntimeProvider({
           sessionID: session.id,
         })),
     );
-    const pending = Object.entries(sessionsByRoute).flatMap(([routeKey, sessions]) =>
-      sessions.flatMap((session) =>
-        session.messages
-          .filter((message) => message.taskID && message.taskPending && !message.taskResultDelivered)
-          .map((message) => ({
-            route: routeKey as ConversationRoute,
-            sessionID: session.id,
-            messageID: message.id,
-            taskID: message.taskID,
-          })),
-      ),
-    );
-    if (!pending.length && !recoverableSessions.length) {
+    if (!recoverableSessions.length) {
       return;
     }
     const pollPlan = resolveChatTaskPollPlan({
-      pendingCount: pending.length + recoverableSessions.length,
+      pendingCount: recoverableSessions.length,
       pageHidden,
     });
     if (!pollPlan.enabled) {
@@ -1836,32 +1802,9 @@ export function ConversationRuntimeProvider({
         } catch {
         }
       }
-      for (const item of pending) {
-        try {
-          const task = await apiClient.get<ChatTaskResponse>(`/api/tasks/${encodeURIComponent(item.taskID)}`);
-          const status = normalizeTaskStatus(task.status || "");
-          setAssistantMessage(item.route, item.sessionID, item.messageID, {
-            taskStatus: status,
-            taskPending: !isTerminalTaskStatus(status),
-            taskResultDelivered: isTerminalTaskStatus(status),
-            status,
-          });
-          if (isTerminalTaskStatus(status)) {
-            appendMessage(item.route, item.sessionID, createMessage("assistant", normalizeText(task.summary) || "Task completed", {
-              route: normalizeText(task.result?.route),
-              processSteps: normalizeProcessSteps(task.result?.process_steps),
-              error: status !== "success",
-              status: status === "success" ? "done" : "error",
-              taskResultFor: item.taskID,
-            }));
-          }
-        } catch {
-        }
-      }
-      setPendingTasksVersion((value) => value + 1);
     }, pollPlan.interval);
     return () => window.clearTimeout(pollTimerRef.current);
-  }, [apiClient, pageHidden, pendingTasksVersion, sessionsByRoute, upsertRuntimeSession]);
+  }, [pageHidden, sessionsByRoute, upsertRuntimeSession]);
 
   const selection = resolveModelSelection(activeSession, availableProviders);
   const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;

@@ -18,7 +18,6 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 | `RuntimeProfile` | CLI Runtime 的默认执行配置、Skill 组合与上下文注入策略 |
 | `ModelProvider` | Claude Code provider profile 的模型、base URL、凭据状态与健康状态 |
 | `ClaudeProviderProfile` | 启动 Claude Code 时使用的 provider/profile、环境变量和模型选择 |
-| `EnvironmentConfig` | 运行参数、任务并发、Shell、Codex 命令等配置 |
 | `CodexAccount` | 托管的 Codex `auth.json` 快照与活动账号映射 |
 | `CodexLoginSession` | 独立 `codex login` 会话状态、日志与结果 |
 | `RuntimeInstance` | 当前在线实例、启动时间与 commit hash |
@@ -58,13 +57,13 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - 代码开发、旅行攻略、结构化写作等业务能力通过用户选择的 Skill 组合表达，不改变底层 CLI 执行链。
 - Runtime Profile 编辑页中的短字段优先采用并排栅格布局，`Enabled` 使用显式开关控件。
 
-### Cron、Maintenance 与 Codex Runtime
+### Cron 与 Codex Runtime
 
 - Cron Job 控制面接口用于配置普通定时任务、展示系统内置维护任务、切换任务启停和查看触发记录；调度执行归属 Runtime & Orchestration。系统内置维护任务返回 `builtin=true`，不能删除，只能通过 `enabled` 停用或重新启用。
-- Maintenance 控制面展示系统内置维护任务的运行状态，不提供复杂配置项。内置任务包括每日记忆维护和每日会话清理；前端提供状态、上次运行、下次运行、失败信息、手动运行和失败重试。记忆维护执行器不可用时必须返回失败状态，不得记录为空运行成功。
+- Schedules 控制面展示系统内置维护任务的运行状态，不提供复杂配置项。内置任务包括每日记忆维护和每日会话清理；前端提供状态、上次运行、下次运行、失败信息、手动运行和失败重试。记忆维护执行器不可用时必须返回失败状态，不得记录为空运行成功。
 - 会话清理固定使用超过 7 天不活跃的默认阈值，覆盖 Chat/Agent Session history 与 Terminal session store，跳过置顶会话、仍有关联 queued/running 任务的会话，以及 Terminal 中仍处于 busy/starting 的运行态会话；手动 `Clean up now` 与自动清理走同一后端服务，并返回扫描数量、删除数量、置顶跳过数量、保护跳过数量和 Terminal 专属明细统计。清理 Session history 后，关联任务、运行时 registry 或工作区删除失败时，本次维护状态必须标记为失败并返回错误信息；清理 Terminal 会话时复用 Terminal 删除服务同步移除状态文件与独立工作区，删除失败同样标记本次维护失败。
 - Codex Runtime 控制面负责展示服务运行账户当前 Codex 身份、额度、profile、活动 model、思考深度与 LLM Provider 注册状态，并允许直接更新当前 Codex 配置中的 model 与思考深度。首屏加载时，运行时状态与 LLM Provider 状态必须并行读取，避免互不依赖的接口串行拖慢 Settings Runtime 分区。
-- Web Shell 由 `/settings` 单页承接运行时、Skill、Memory、Maintenance、Workspaces 与 Schedules 能力的读取、加载、空态与错误态渲染；历史 `/management` 自动映射到 `/settings`。这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Runtime / Skills / Memory / Maintenance / Workspaces / Schedules` 分区切换。桌面端分区切换作为左侧设置索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有设置分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Settings 作用域下的扁平 route surface：列表、表格、筛选表单、主从详情、空态与错误态共享白底、浅灰辅助层、必要分割线和紧凑字段行，不再默认使用外层卡片边框、厚圆角或重阴影表达层级。控制台页面中的描述、Cron 输入、Skill 说明、Codex 运行时说明与审计/配置说明类文本按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
+- Web Shell 由 `/settings` 单页承接 Runtime、Skills、Memory 与 Schedules 能力的读取、加载、空态与错误态渲染；这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Runtime / Skills / Memory / Schedules` 分区切换。桌面端分区切换作为左侧设置索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有设置分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Settings 作用域下的扁平 route surface：列表、表格、筛选表单、主从详情、空态与错误态共享白底、浅灰辅助层、必要分割线和紧凑字段行，不再默认使用外层卡片边框、厚圆角或重阴影表达层级。控制台页面中的描述、Cron 输入、Skill 说明与 Codex 运行时说明按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
 
 ## 接口边界
 
@@ -73,16 +72,11 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `GET /api/control/capabilities/audit` 查询 Capability 生命周期审计。
 - `GET /api/control/skills`、`PUT /api/control/skills/{skill_id}`、`POST /api/control/skills/{skill_id}`、`DELETE /api/control/skills/{skill_id}` 管理 Skill 兼容接口。
 - `GET /api/control/mcps`、`PUT /api/control/mcps/{mcp_id}`、`POST /api/control/mcps/{mcp_id}`、`DELETE /api/control/mcps/{mcp_id}` 管理 MCP 兼容接口。
-- - `GET /api/control/environments` 与 `PUT /api/control/environments` 读取和更新 Environment 配置。
-- `GET /api/control/environments/audits` 查询 Environment 配置审计。
 - `GET /api/control/workspace-services`、`GET /api/control/workspace-services/{session_id}`、`PUT /api/control/workspace-services/{session_id}`、`GET /api/control/workspace-services/{session_id}/{service_id}`、`PUT /api/control/workspace-services/{session_id}/{service_id}`、`DELETE /api/control/workspace-services/{session_id}/{service_id}` 管理 Session 级 workspace service 注册表。
 - `GET /api/control/runtime` 读取在线实例信息。
 - `POST /api/control/runtime/restart` 请求 supervisor 重启。
 - `GET /api/control/codex/runtime` 查询当前服务运行账户的 Codex 身份、额度、profile、model、思考深度与可选 model 能力；`PUT /api/control/codex/runtime` 更新当前 Codex 配置中的 `model` 与 `model_reasoning_effort`。
 - `GET /api/control/llm/providers`、`POST /api/control/llm/providers`、`GET /api/control/llm/providers/{provider_id}`、`PUT /api/control/llm/providers/{provider_id}`、`POST /api/control/llm/providers/{provider_id}`、`DELETE /api/control/llm/providers/{provider_id}` 管理 Model Provider。
-- `GET /api/maintenance` 查询内置维护任务状态。
-- `POST /api/maintenance/memory/run` 手动运行记忆维护。
-- `POST /api/maintenance/sessions/cleanup` 手动运行会话清理。
 - `GET /api/control/cron/jobs` 返回普通 Cron Job 与内置维护 Job；内置维护 Job 不允许 `DELETE`，允许通过 `PUT /api/control/cron/jobs/{job_id}` 的 `enabled` 字段停用或重新启用。
 - `POST /api/sessions/{session_id}/pin` 更新会话置顶状态，body 使用 `{"pinned": true|false}`。
 - `POST /api/terminal/sessions/{session_id}/pin` 更新 Terminal 会话置顶状态，body 使用 `{"pinned": true|false}`。
@@ -122,27 +116,11 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - 当前消息选择具体 Provider / Model 时，Runtime Resolver 使用对应 Claude Code provider profile。
 - 未显式选择时，回退到 Runtime Profile，再回退到系统默认 Provider 与默认模型；无可用 Provider 时进入 `Codex Direct`。
 
-## Environments
+## Runtime Service Controls
 
-### 配置管理
-
-- Environments 模块支持关键运行参数可视化配置、校验与持久化。
-- 可纳管配置包括任务并发、Terminal shell、Codex 命令、运行时路径与执行相关环境键。
-- Environments 桌面端默认采用运行态工具栏 + 模块化配置卡片：顶部工具栏展示最近启动时间、commit hash、敏感值显隐、重载、保存与重启入口，下方按模块输出配置卡片、输入控件、更多信息折叠区与审计列表。
-- Web & Queue 配置覆盖 `web_addr`、`web_bind_localhost_only`、`web_login_password`、`worker_pool_size`、`max_queue_size` 与 `queue_timeout`。
-- Async Tasks 配置覆盖 `async_task_workers`、`async_task_timeout`、`async_task_max_retries`、`async_task_trigger_threshold` 与 `async_long_content_threshold`。
-- Terminal 配置覆盖 `task_terminal_shell`；启动参数可继续提供 shell args 作为运行态输入。
-- CLI Runtime 配置覆盖 Claude Code 命令、Claude profile 目录、Codex 命令、运行时 home、工作区注入目录和健康检查超时。
-- 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理，服务侧不提供 `session_memory_*` 或 `context_compression_*` 配置项。
-- Persistent Memory 配置覆盖 `daily_memory_dir`、`long_term_memory_path`、`long_term_memory_write_policy`、`long_term_memory_writeback_flush`、`long_term_memory_token_budget` 与 `mandatory_context_file`。
-- LLM 配置覆盖 `llm_temperature`、`llm_max_tokens` 与 `llm_react_max_iterations`，并按配置项声明决定立即生效或重启后生效。
-- 配置更新不得破坏当前已运行会话的持久化状态。
-- 配置更新必须记录 Environment audit，审计列表支持按时间倒序查看操作者、变更 key 与变更时间。
-- 敏感配置默认隐藏，显式切换后才读取真实值；隐藏态下未编辑的敏感字段不得因为保存动作被误清空。
-
-### 实例信息
-
-- 工具栏展示当前在线实例最近启动时间。
+- 旧运行参数配置页和对应接口不再提供；运行时路径、记忆文件、队列、终端 shell 等参数由源码内置默认值或启动配置控制，不在 Settings 中持久化为用户配置。
+- Runtime 面板提供服务重启入口。更新远端 master 默认不勾选；用户勾选更新且工作区存在 Git 已跟踪本地改动时，前端必须进入二次确认。只有二次确认后才传入 `confirm_discard_tracked_changes=true` 并允许后端丢弃已跟踪改动；未跟踪文件保留。
+- Runtime 面板展示当前在线实例最近启动时间和 commit hash，用于确认重启切换后的版本。
 - 工具栏展示当前在线实例对应 commit hash。
 - 页面重连到新实例后以站内成功弹窗提示。
 
@@ -195,7 +173,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ### 同步远端
 
 - `sync_remote_master=false` 时，基于当前仓库状态构建候选二进制并切换。
-- `sync_remote_master=true` 时，先校验当前分支为 `master`，仅丢弃 Git 已跟踪的本地改动并保留未跟踪文件/目录，再执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`。
+- `sync_remote_master=true` 时，先校验当前分支为 `master`；若存在 Git 已跟踪的本地改动，必须要求用户二次确认后才允许丢弃这些改动；未确认时拒绝重启同步。
 - Git、构建或快进失败直接返回到 Web 控制台，便于定位权限与凭据问题。
 
 ### 切换与回滚
@@ -277,7 +255,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 ## 验收口径
 
-- Channel、Capability、Skill、MCP、Skill、Cron、Models、Environments 控制面接口可用。
+- Channel、Capability、Skill、MCP、Skill、Cron、Models 与 Runtime 控制面接口可用。
 - Capability 与 MCP 生命周期审计可查询。
 - 禁用默认 Provider 后自动收敛到可用配置。
 - Runtime 重启成功后页面连接到新实例，失败时自动回滚。

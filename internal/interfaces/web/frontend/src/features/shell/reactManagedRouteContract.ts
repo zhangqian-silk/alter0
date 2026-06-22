@@ -1,9 +1,5 @@
 export const REACT_MANAGED_CONTROL_ROUTES = [
-  "channels",
   "skills",
-  "mcp",
-  "models",
-  "environments",
   "cron-jobs",
 ] as const;
 
@@ -11,7 +7,6 @@ export type ReactManagedControlRoute = (typeof REACT_MANAGED_CONTROL_ROUTES)[num
 
 export const REACT_MANAGED_ROUTE_BODIES = [
   "settings",
-  "management",
   "terminal",
 ] as const;
 

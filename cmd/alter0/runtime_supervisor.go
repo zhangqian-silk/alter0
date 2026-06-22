@@ -298,15 +298,16 @@ func (s *runtimeSupervisor) handleRestart(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeSupervisorJSON(w, http.StatusAccepted, map[string]any{
-		"accepted":           true,
-		"status":             "restarting",
-		"sync_remote_master": req.SyncRemoteMaster,
+		"accepted":                        true,
+		"status":                          "restarting",
+		"sync_remote_master":              req.SyncRemoteMaster,
+		"confirm_discard_tracked_changes": req.ConfirmDiscardTrackedChanges,
 	})
 }
 
 func (s *runtimeSupervisor) prepareCandidate(options web.RuntimeRestartOptions) (string, error) {
 	if options.SyncRemoteMaster {
-		if err := syncRemoteMasterBranch(s.workingDir); err != nil {
+		if err := syncRemoteMasterBranch(s.workingDir, options.ConfirmDiscardTrackedChanges); err != nil {
 			return "", err
 		}
 	}
@@ -549,20 +550,12 @@ func writeSupervisorJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func resolveConfiguredListenAddr(ctx context.Context, requestedAddr string, requestedBindLocalhost bool) (string, error) {
-	controlStore, _, _, _, err := buildStorage(defaultStorageProfile)
-	if err != nil {
-		return "", err
-	}
-	control, err := newControlService(ctx, controlStore)
-	if err != nil {
-		return "", err
-	}
-	listenAddr := strings.TrimSpace(control.ResolveEnvironmentString("web_addr", requestedAddr))
+func resolveConfiguredListenAddr(_ context.Context, requestedAddr string, requestedBindLocalhost bool) (string, error) {
+	listenAddr := strings.TrimSpace(requestedAddr)
 	if listenAddr == "" {
 		listenAddr = defaultWebAddr
 	}
-	if resolveEnvironmentBool(control, "web_bind_localhost_only", requestedBindLocalhost) {
+	if requestedBindLocalhost {
 		listenAddr = forceLoopbackListenAddr(listenAddr)
 	}
 	return listenAddr, nil

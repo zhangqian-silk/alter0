@@ -88,7 +88,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps the runtime shell visible while loading without account management surfaces", () => {
+  it("keeps the runtime shell visible while loading without account switching surfaces", () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockImplementation(() => new Promise(() => {}));
 
@@ -210,6 +210,60 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(screen.getByText("No LLM providers registered. Codex Direct remains available.")).toBeInTheDocument();
+    });
+  });
+
+  it("restarts the service from the runtime controls and preserves the update checkbox flow", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: false }, { status: 202 }))
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: true }, { status: 202 }));
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Service controls")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Restart the running service when runtime settings or deployment state need to be reapplied.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart service" }));
+    expect(document.querySelector(".runtime-restart-overlay")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Restart service?" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Update from remote master/ })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "/api/control/runtime/restart",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ sync_remote_master: false, confirm_discard_tracked_changes: false }),
+        }),
+      );
+    });
+    expect(screen.getByText("Restart accepted. The service will come back online shortly.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart service" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Update from remote master/ }));
+    expect(screen.getByText("Fetch and fast-forward when the working tree has no tracked changes, rebuild, then restart.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+
+    expect(screen.getByRole("dialog", { name: "Discard local tracked changes?" })).toBeInTheDocument();
+    expect(screen.getByText("Updating from remote master will discard tracked local changes before rebuilding. Untracked files are kept.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Discard and restart" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        4,
+        "/api/control/runtime/restart",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ sync_remote_master: true, confirm_discard_tracked_changes: true }),
+        }),
+      );
     });
   });
 

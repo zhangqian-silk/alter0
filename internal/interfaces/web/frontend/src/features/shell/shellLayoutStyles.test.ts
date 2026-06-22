@@ -48,19 +48,19 @@ describe("shell layout stylesheet", () => {
       stylesheet.lastIndexOf("/* Codex-style terminal markdown final override */"),
     );
     expect(flatReset).toMatch(
-      /\.app-shell,\s*\.workbench-main,\s*\.chat-pane,\s*\.runtime-workspace,\s*\.runtime-workspace-body,\s*\.runtime-workspace-panel,\s*\.runtime-workspace-screen,\s*\.route-view\[data-route-family="management"\]\.workbench-route-frame\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
+      /\.app-shell,\s*\.workbench-main,\s*\.chat-pane,\s*\.runtime-workspace,\s*\.runtime-workspace-body,\s*\.runtime-workspace-panel,\s*\.runtime-workspace-screen,\s*\.route-view\[data-route-family="settings"\]\.workbench-route-frame\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(flatReset).toMatch(
       /\.primary-nav\s*\{[\s\S]*?background:\s*#f7f7f7;[\s\S]*?border:\s*0;[\s\S]*?border-right:\s*1px solid #eeeeee;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(flatReset).toMatch(
-      /\.management-route-nav,\s*\.management-route-content \.route-card,\s*\.management-route-content \.route-surface,\s*\.management-route-content \.route-data-table-wrap,\s*\.management-route-content \.route-detail-panel,\s*\.management-route-content \.control-task-drawer-panel,\s*\.management-route-content \.task-summary-row,\s*\.management-route-content \.task-detail-placeholder,\s*\.management-route-content \.environment-toolbar,\s*\.management-route-content \.environment-module,\s*\.management-route-content \.environment-summary,\s*\.management-route-content \.environment-audits,\s*\.management-route-content \.codex-accounts-panel\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
+      /\.settings-route-nav,\s*\.settings-route-content \.route-card,\s*\.settings-route-content \.route-surface,\s*\.settings-route-content \.route-data-table-wrap,\s*\.settings-route-content \.route-detail-panel,\s*\.settings-route-content \.control-task-drawer-panel,\s*\.settings-route-content \.task-summary-row,\s*\.settings-route-content \.task-detail-placeholder,\s*\.settings-route-content \.codex-accounts-panel\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(flatReset).toMatch(
       /\.runtime-composer-form\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*999px;/,
     );
     expect(flatReset).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.management-route-nav,\s*\.management-route-content \.route-card,[\s\S]*?\.management-route-content \.codex-accounts-panel\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.settings-route-nav \{[\s\S]*?border-right:\s*0;[\s\S]*?background:\s*#ffffff;/,
     );
   });
 
@@ -70,7 +70,7 @@ describe("shell layout stylesheet", () => {
     const flatReset = stylesheet.slice(stylesheet.lastIndexOf("/* Gemini-style flat workbench reset */"));
 
     expect(flatReset).toMatch(
-      /\.route-view\[data-route-family="management"\]\.workbench-route-frame,\s*\.route-view\[data-route-family="management"\] \.route-head,\s*\.route-view\[data-route-family="management"\] \.route-mobile-head,\s*\.route-view\[data-route-family="management"\] \.route-body,\s*\.management-route-body,\s*\.management-route-nav,\s*\.management-route-content,\s*\.management-route-content > \*\s*\{[\s\S]*?animation:\s*none;[\s\S]*?transition:\s*none;[\s\S]*?transform:\s*none;/,
+      /\.route-view\[data-route-family="settings"\]\.workbench-route-frame,\s*\.route-view\[data-route-family="settings"\] \.route-head,\s*\.route-view\[data-route-family="settings"\] \.route-mobile-head,\s*\.route-view\[data-route-family="settings"\] \.route-body,\s*\.settings-route-body,\s*\.settings-route-nav,\s*\.settings-route-content,\s*\.settings-route-content > \*\s*\{[\s\S]*?animation:\s*none;[\s\S]*?transition:\s*none;[\s\S]*?transform:\s*none;/,
     );
   });
 
@@ -299,68 +299,52 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("background: rgba(239, 246, 255, 0.92);");
   });
 
-  it("presents management sections as a desktop index and a scrollable mobile control strip", () => {
+  it("presents settings sections as a desktop index and a scrollable mobile control strip", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /\.management-route-body\s*\{[\s\S]*?grid-template-columns:\s*minmax\(218px, 254px\) minmax\(0, 1fr\);/,
+      /\.settings-route-body\s*\{[\s\S]*?grid-template-columns:\s*minmax\(218px, 254px\) minmax\(0, 1fr\);/,
     );
     expect(stylesheet).toMatch(
-      /\.route-body\[data-route="management"\]\s*\{[\s\S]*?display:\s*block;/,
+      /\.route-body\[data-route="settings"\]\s*\{[\s\S]*?display:\s*block;/,
     );
     expect(stylesheet).toMatch(
-      /\.management-route-nav\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?border-radius:\s*12px;/,
+      /\.settings-route-nav\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?border-radius:\s*12px;/,
     );
-    expect(stylesheet).toContain(".management-route-tab-icon {");
-    expect(stylesheet).toContain(".management-route-tab-shortcut {");
+    expect(stylesheet).toContain(".settings-route-tab-icon {");
+    expect(stylesheet).toContain(".settings-route-tab-shortcut {");
     expect(stylesheet).toMatch(
-      /@media \(max-width: 1100px\) \{[\s\S]*?\.management-route-body \{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);[\s\S]*?\.management-route-nav-items \{[\s\S]*?overflow-x:\s*auto;/,
+      /@media \(max-width: 1100px\) \{[\s\S]*?\.settings-route-body \{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);[\s\S]*?\.settings-route-nav-items \{[\s\S]*?overflow-x:\s*auto;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.management-route-nav-items \{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);[\s\S]*?overflow:\s*visible;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.settings-route-nav-items \{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);[\s\S]*?overflow:\s*visible;/,
     );
   });
 
-  it("applies one restrained surface system across every management subsection", () => {
+  it("applies one restrained surface system across every settings subsection", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain(".management-route-content .route-card,");
-    expect(stylesheet).toContain(".management-route-content .route-surface,");
-    expect(stylesheet).toContain(".management-route-content .route-data-table-wrap,");
-    expect(stylesheet).toContain(".management-route-content .control-task-drawer-panel,");
-    expect(stylesheet).toContain(".management-route-content .environment-toolbar,");
-    expect(stylesheet).toContain(".management-route-content .codex-accounts-panel");
+    expect(stylesheet).toContain(".settings-route-content .route-card,");
+    expect(stylesheet).toContain(".settings-route-content .route-surface,");
+    expect(stylesheet).toContain(".settings-route-content .route-data-table-wrap,");
+    expect(stylesheet).toContain(".settings-route-content .control-task-drawer-panel,");
+    expect(stylesheet).toContain(".settings-route-content .codex-accounts-panel");
     expect(stylesheet).toMatch(
-      /\.management-route-content \.route-card,[\s\S]*?\.management-route-content \.codex-accounts-panel\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(255, 255, 255, 0\.98\) 0%, rgba\(248, 250, 252, 0\.94\) 100%\);/,
+      /\.settings-route-content \.route-card,[\s\S]*?\.settings-route-content \.codex-accounts-panel\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(255, 255, 255, 0\.98\) 0%, rgba\(248, 250, 252, 0\.94\) 100%\);/,
     );
     expect(stylesheet).toMatch(
-      /\.management-route-content \.page-filter-form,\s*\.management-route-content \.task-filter-form\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.94\);/,
+      /\.settings-route-content \.page-filter-form,\s*\.settings-route-content \.task-filter-form\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.94\);/,
     );
     expect(stylesheet).toMatch(
-      /\.management-route-content \.route-data-table th,\s*\.management-route-content \.route-data-table td\s*\{[\s\S]*?padding:\s*10px 12px;/,
+      /\.settings-route-content \.route-data-table th,\s*\.settings-route-content \.route-data-table td\s*\{[\s\S]*?padding:\s*10px 12px;/,
     );
     expect(stylesheet).toMatch(
-      /\.management-route-content \.route-error\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(254, 242, 242, 0\.82\);/,
+      /\.settings-route-content \.route-error\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(254, 242, 242, 0\.82\);/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.management-route-content \.route-card,[\s\S]*?\.management-route-content \.codex-accounts-panel \{[\s\S]*?padding:\s*16px;/,
-    );
-  });
-
-  it("gives the environments runtime header a grouped control bar instead of a flat strip of equal-weight buttons", () => {
-    const currentDirectory = dirname(fileURLToPath(import.meta.url));
-    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
-
-    expect(stylesheet).toContain(".environment-toolbar-head {");
-    expect(stylesheet).toContain(".environment-toolbar-copy h3 {");
-    expect(stylesheet).toContain(".environment-toolbar-panel {");
-    expect(stylesheet).toContain("grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);");
-    expect(stylesheet).toContain(".environment-toolbar-action-group-primary {");
-    expect(stylesheet).toContain(".environment-toolbar-button[data-variant=\"primary\"] {");
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.environment-runtime-meta \{[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?\.environment-toolbar-action-group \{[\s\S]*?width:\s*100%;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.settings-route-content \.route-card,[\s\S]*?\.settings-route-content \.codex-accounts-panel \{[\s\S]*?padding:\s*16px;/,
     );
   });
 
@@ -856,19 +840,19 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".route-title-leading.workbench-title-leading {");
     expect(stylesheet).toContain(".route-title-marker {");
     expect(stylesheet).toMatch(
-      /\.route-view\[data-route-family="management"\]\.workbench-route-frame\s*\{[\s\S]*?height:\s*100%;[\s\S]*?display:\s*flex;[\s\S]*?flex-direction:\s*column;[\s\S]*?padding:\s*0;[\s\S]*?border:\s*1px solid rgba\(203, 213, 225, 0\.88\);[\s\S]*?border-radius:\s*14px;/,
+      /\.route-view\[data-route-family="settings"\]\.workbench-route-frame\s*\{[\s\S]*?height:\s*100%;[\s\S]*?display:\s*flex;[\s\S]*?flex-direction:\s*column;[\s\S]*?padding:\s*0;[\s\S]*?border:\s*1px solid rgba\(203, 213, 225, 0\.88\);[\s\S]*?border-radius:\s*14px;/,
     );
     expect(stylesheet).toMatch(
-      /\.route-view\[data-route-family="management"\] \.route-body\s*\{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;[\s\S]*?padding:\s*14px 12px;[\s\S]*?overflow-y:\s*auto;/,
+      /\.route-view\[data-route-family="settings"\] \.route-body\s*\{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;[\s\S]*?padding:\s*14px 12px;[\s\S]*?overflow-y:\s*auto;/,
     );
     expect(stylesheet).toMatch(
       /\.runtime-workspace-head\.is-compact,\s*\.route-head\.workbench-title-head\.is-compact\s*\{[\s\S]*?min-height:\s*42px;[\s\S]*?padding:\s*6px 12px;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.route-view\[data-route-family="management"\] \.route-mobile-head\s*\{[\s\S]*?grid-template-columns:\s*36px minmax\(0, 1fr\) 36px;[\s\S]*?min-height:\s*48px;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.route-view\[data-route-family="settings"\] \.route-mobile-head\s*\{[\s\S]*?grid-template-columns:\s*36px minmax\(0, 1fr\) 36px;[\s\S]*?min-height:\s*48px;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.route-view\[data-route-family="management"\] \.route-mobile-head \.nav-toggle\s*\{[\s\S]*?grid-area:\s*auto;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.route-view\[data-route-family="settings"\] \.route-mobile-head \.nav-toggle\s*\{[\s\S]*?grid-area:\s*auto;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.route-mobile-head \.conversation-mobile-action,\s*\.runtime-workspace-mobile-header \.runtime-workspace-mobile-action\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/,
@@ -877,7 +861,7 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-mobile-header \.runtime-workspace-mobile-action\.is-quiet,\s*\.runtime-workspace-mobile-header \.runtime-workspace-mobile-action\.is-primary,\s*\.route-mobile-head \.conversation-mobile-action\.is-quiet\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.route-view\[data-route-family="management"\] \.route-head\.workbench-title-head\.is-compact\s*\{[\s\S]*?display:\s*none;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.route-view\[data-route-family="settings"\] \.route-head\.workbench-title-head\.is-compact\s*\{[\s\S]*?display:\s*none;/,
     );
     expect(stylesheet).toMatch(
       /\.route-head\.workbench-title-head\.is-compact\s*\{[\s\S]*?border-bottom:\s*1px solid rgba\(226, 232, 240, 0\.9\);[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.98\);/,
@@ -966,7 +950,7 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain("/* UI UX Pro Max full page states layer */");
-    expect(stylesheet).toContain(".management-route-content[data-management-route-content=\"runtime\"] .settings-composite-section");
+    expect(stylesheet).toContain(".settings-route-content[data-settings-route-content=\"runtime\"] .settings-composite-section");
     expect(stylesheet).toContain(".settings-composite-section[data-settings-section=\"workspaces\"]");
     expect(stylesheet).toContain(".memory-tabs");
     expect(stylesheet).toContain(".runtime-composer-command-list");

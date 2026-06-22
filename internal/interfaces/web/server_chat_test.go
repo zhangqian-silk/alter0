@@ -162,14 +162,14 @@ func TestWorkbenchPageHandlerServesAllCanonicalPagePaths(t *testing.T) {
 }
 
 func TestWorkbenchInteractivePagePathsOnlyIncludeTopLevelRoutes(t *testing.T) {
-	for _, path := range []string{"/", "/chat", "/terminal", "/management", "/settings"} {
+	for _, path := range []string{"/", "/chat", "/terminal", "/settings"} {
 		if !isInteractivePagePath(path) {
 			t.Fatalf("expected %s to be an interactive workbench path", path)
 		}
 	}
 	for _, path := range []string{"/legacy-profile", "/memory", "/tasks", "/models", "/codex-accounts"} {
 		if isInteractivePagePath(path) {
-			t.Fatalf("expected old management path %s to stop being an interactive workbench path", path)
+			t.Fatalf("expected retired settings path %s to stop being an interactive workbench path", path)
 		}
 	}
 }
@@ -348,9 +348,6 @@ func TestChatScriptUsesTerminalSessionInput(t *testing.T) {
 		"chatTerminalSessionEndpoint(`${encodeURIComponent(session.id)}/input`)",
 		`skill_ids: activeSkillIDs,`,
 		`await apiClient.post<`,
-		`message.taskID && message.taskPending && !message.taskResultDelivered`,
-		`taskPending: !isTerminalTaskStatus(status),`,
-		`taskResultDelivered: isTerminalTaskStatus(status),`,
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {

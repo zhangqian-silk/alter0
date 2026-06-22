@@ -22,7 +22,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	codexapp "alter0/internal/codex/application"
@@ -49,18 +48,9 @@ var webStaticFS embed.FS
 
 const (
 	canonicalChatSessionID                        = sessiondomain.CanonicalChatSessionID
-	controlTaskMetadataJobIDKey                   = "job_id"
-	controlTaskMetadataJobNameKey                 = "job_name"
-	controlTaskMetadataFiredAtKey                 = "fired_at"
-	controlTaskTerminalParentIDKey                = "alter0.task.terminal_parent_id"
-	controlTaskTerminalSessionIDKey               = "alter0.task.terminal_session_id"
-	controlTaskTerminalInteractiveKey             = "alter0.task.terminal_interactive"
 	codexSandboxMetadataKey                       = "codex_sandbox"
 	codexSandboxDangerFullAccess                  = "danger-full-access"
-	defaultControlTaskChannelID                   = "web-default"
 	maxTaskArtifactCount                          = 128
-	maxTaskArtifactSizeBytes                      = 8 * 1024 * 1024
-	taskArtifactReadTimeout                       = 3 * time.Second
 	webLoginCookieName                            = "alter0_web_session_host"
 	legacySharedWebLoginCookieName                = "alter0_web_session"
 	webLoginCookieTTL                             = 24 * time.Hour
@@ -77,10 +67,9 @@ const (
 )
 
 var workbenchPagePaths = map[string]struct{}{
-	"/chat":       {},
-	"/terminal":   {},
-	"/management": {},
-	"/settings":   {},
+	"/chat":     {},
+	"/terminal": {},
+	"/settings": {},
 }
 
 type Orchestrator interface {
@@ -139,18 +128,11 @@ type sessionHistoryService interface {
 }
 
 type taskService interface {
-	AssessComplexity(msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment
-	AssessComplexityWithContext(ctx context.Context, msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment
-	ShouldRunAsync(msg shareddomain.UnifiedMessage) bool
-	Submit(msg shareddomain.UnifiedMessage) (taskdomain.Task, error)
 	List(query taskapp.ListQuery) taskapp.TaskPage
 	Get(taskID string) (taskdomain.Task, bool)
 	ListBySession(sessionID string) []taskdomain.Task
 	ListLogs(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
 	ListArtifacts(taskID string) ([]taskdomain.TaskArtifact, error)
-	ReadArtifact(ctx context.Context, taskID string, artifactID string) (taskdomain.TaskArtifact, []byte, error)
-	Cancel(taskID string) (taskdomain.Task, error)
-	Retry(taskID string) (taskdomain.Task, error)
 	DeleteBySession(sessionID string) error
 }
 
@@ -187,7 +169,8 @@ type codexAccountService interface {
 }
 
 type RuntimeRestartOptions struct {
-	SyncRemoteMaster bool `json:"sync_remote_master"`
+	SyncRemoteMaster             bool `json:"sync_remote_master"`
+	ConfirmDiscardTrackedChanges bool `json:"confirm_discard_tracked_changes"`
 }
 
 type RuntimeInfo struct {
@@ -231,28 +214,9 @@ type messageAttachmentRequest struct {
 	PreviewURL     string `json:"preview_url,omitempty"`
 }
 
-type taskCreateRequest struct {
-	SessionID       string            `json:"session_id"`
-	SourceMessageID string            `json:"source_message_id,omitempty"`
-	TaskType        string            `json:"task_type,omitempty"`
-	Input           string            `json:"input"`
-	IdempotencyKey  string            `json:"idempotency_key,omitempty"`
-	AsyncHint       string            `json:"async_hint,omitempty"`
-	UserID          string            `json:"user_id,omitempty"`
-	ChannelID       string            `json:"channel_id,omitempty"`
-	CorrelationID   string            `json:"correlation_id,omitempty"`
-	Metadata        map[string]string `json:"metadata,omitempty"`
-}
-
 type messageResponse struct {
-	Result                   shareddomain.OrchestrationResult `json:"result"`
-	TaskID                   string                           `json:"task_id,omitempty"`
-	TaskStatus               string                           `json:"task_status,omitempty"`
-	ExecutionMode            string                           `json:"execution_mode,omitempty"`
-	EstimatedDurationSeconds int                              `json:"estimated_duration_seconds,omitempty"`
-	ComplexityLevel          string                           `json:"complexity_level,omitempty"`
-	TaskCard                 *taskCardResponse                `json:"task_card,omitempty"`
-	Error                    string                           `json:"error,omitempty"`
+	Result shareddomain.OrchestrationResult `json:"result"`
+	Error  string                           `json:"error,omitempty"`
 }
 
 type conversationRuntimeRoute string
@@ -322,66 +286,13 @@ type conversationRuntimeAttachment struct {
 	PreviewURL  string `json:"preview_url,omitempty"`
 }
 
-type taskCreateResponse struct {
-	TaskID        string `json:"task_id"`
-	Status        string `json:"status"`
-	QueuePosition int    `json:"queue_position,omitempty"`
-	AcceptedAt    string `json:"accepted_at"`
-}
-
-type controlTaskTerminalInputRequest struct {
-	Input        string                     `json:"input"`
-	ReuseTask    bool                       `json:"reuse_task,omitempty"`
-	AnchorTaskID string                     `json:"anchor_task_id,omitempty"`
-	Attachments  []messageAttachmentRequest `json:"attachments,omitempty"`
-}
-
-type controlTaskTerminalInputResponse struct {
-	TaskID            string `json:"task_id"`
-	AnchorTaskID      string `json:"anchor_task_id,omitempty"`
-	Status            string `json:"status"`
-	SessionID         string `json:"session_id"`
-	TerminalSessionID string `json:"terminal_session_id"`
-	TaskDetailPath    string `json:"task_detail_path"`
-}
-
-type taskCardResponse struct {
-	Notice        string `json:"notice"`
-	TaskID        string `json:"task_id"`
-	TaskSummary   string `json:"task_summary"`
-	TaskDetailURL string `json:"task_detail_url"`
-}
-
-type taskLogStreamStartResponse struct {
-	TaskID string `json:"task_id"`
-	Cursor int    `json:"cursor"`
-}
-
-type taskLogStreamEvent struct {
-	TaskID     string             `json:"task_id"`
-	Cursor     int                `json:"cursor"`
-	NextCursor int                `json:"next_cursor"`
-	Log        taskdomain.TaskLog `json:"log"`
-}
-
-type taskLogStreamDoneResponse struct {
-	TaskID     string                `json:"task_id"`
-	Status     taskdomain.TaskStatus `json:"status"`
-	NextCursor int                   `json:"next_cursor"`
-}
-
-type taskLogStreamErrorResponse struct {
-	Error      string `json:"error"`
-	NextCursor int    `json:"next_cursor"`
-}
-
 type taskArtifactResponse struct {
 	ArtifactID  string    `json:"artifact_id"`
 	Name        string    `json:"name"`
 	ContentType string    `json:"content_type"`
 	Size        int64     `json:"size"`
 	Summary     string    `json:"summary,omitempty"`
-	DownloadURL string    `json:"download_url"`
+	DownloadURL string    `json:"download_url,omitempty"`
 	PreviewURL  string    `json:"preview_url,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -404,11 +315,6 @@ type skillUpsertRequest struct {
 
 type capabilityLifecycleRequest struct {
 	Action string `json:"action"`
-}
-
-type environmentUpsertRequest struct {
-	Operator string         `json:"operator,omitempty"`
-	Values   map[string]any `json:"values"`
 }
 
 type cronTaskConfigRequest struct {
@@ -462,16 +368,14 @@ type cronJobRunResponse struct {
 }
 
 type memoryTaskSummaryItem struct {
-	TaskID          string                `json:"task_id"`
-	TaskType        string                `json:"task_type"`
-	Goal            string                `json:"goal"`
-	Result          string                `json:"result"`
-	Status          taskdomain.TaskStatus `json:"status"`
-	FinishedAt      time.Time             `json:"finished_at"`
-	UpdatedAt       time.Time             `json:"updated_at"`
-	LastHeartbeatAt time.Time             `json:"last_heartbeat_at,omitempty"`
-	TimeoutAt       time.Time             `json:"timeout_at,omitempty"`
-	Tags            []string              `json:"tags,omitempty"`
+	TaskID     string                `json:"task_id"`
+	TaskType   string                `json:"task_type"`
+	Goal       string                `json:"goal"`
+	Result     string                `json:"result"`
+	Status     taskdomain.TaskStatus `json:"status"`
+	FinishedAt time.Time             `json:"finished_at"`
+	UpdatedAt  time.Time             `json:"updated_at"`
+	Tags       []string              `json:"tags,omitempty"`
 }
 
 type memoryTaskMeta struct {
@@ -479,13 +383,9 @@ type memoryTaskMeta struct {
 	SessionID       string                `json:"session_id"`
 	SourceMessageID string                `json:"source_message_id"`
 	Status          taskdomain.TaskStatus `json:"status"`
-	Progress        int                   `json:"progress"`
 	CreatedAt       time.Time             `json:"created_at"`
 	UpdatedAt       time.Time             `json:"updated_at"`
 	FinishedAt      time.Time             `json:"finished_at,omitempty"`
-	LastHeartbeatAt time.Time             `json:"last_heartbeat_at,omitempty"`
-	TimeoutAt       time.Time             `json:"timeout_at,omitempty"`
-	RetryCount      int                   `json:"retry_count"`
 	TaskType        string                `json:"task_type"`
 }
 
@@ -496,85 +396,6 @@ type memoryTaskListQuery struct {
 	EndAt    time.Time
 	Page     int
 	PageSize int
-}
-
-type controlTaskListQuery struct {
-	SessionID       string
-	Status          taskdomain.TaskStatus
-	TriggerType     shareddomain.TriggerType
-	ChannelType     shareddomain.ChannelType
-	ChannelID       string
-	MessageID       string
-	SourceMessageID string
-	StartAt         time.Time
-	EndAt           time.Time
-	Page            int
-	PageSize        int
-}
-
-type controlTaskSource struct {
-	TriggerType   shareddomain.TriggerType `json:"trigger_type"`
-	ChannelType   shareddomain.ChannelType `json:"channel_type"`
-	ChannelID     string                   `json:"channel_id"`
-	CorrelationID string                   `json:"correlation_id,omitempty"`
-	JobID         string                   `json:"job_id,omitempty"`
-	JobName       string                   `json:"job_name,omitempty"`
-	FiredAt       time.Time                `json:"fired_at,omitempty"`
-}
-
-type controlTaskListItem struct {
-	TaskID          string                   `json:"task_id"`
-	SessionID       string                   `json:"session_id"`
-	SourceMessageID string                   `json:"source_message_id,omitempty"`
-	Status          taskdomain.TaskStatus    `json:"status"`
-	Phase           string                   `json:"phase,omitempty"`
-	Progress        int                      `json:"progress"`
-	QueuePosition   int                      `json:"queue_position,omitempty"`
-	QueueWaitMS     int64                    `json:"queue_wait_ms,omitempty"`
-	RetryCount      int                      `json:"retry_count"`
-	TriggerType     shareddomain.TriggerType `json:"trigger_type"`
-	ChannelType     shareddomain.ChannelType `json:"channel_type"`
-	ChannelID       string                   `json:"channel_id"`
-	CorrelationID   string                   `json:"correlation_id,omitempty"`
-	JobID           string                   `json:"job_id,omitempty"`
-	JobName         string                   `json:"job_name,omitempty"`
-	FiredAt         time.Time                `json:"fired_at,omitempty"`
-	CreatedAt       time.Time                `json:"created_at"`
-	StartedAt       time.Time                `json:"started_at,omitempty"`
-	UpdatedAt       time.Time                `json:"updated_at"`
-	LastHeartbeatAt time.Time                `json:"last_heartbeat_at,omitempty"`
-	TimeoutAt       time.Time                `json:"timeout_at,omitempty"`
-	FinishedAt      time.Time                `json:"finished_at,omitempty"`
-	Error           string                   `json:"error,omitempty"`
-}
-
-type taskControlActionState struct {
-	AllowedStatuses []taskdomain.TaskStatus `json:"allowed_statuses"`
-	Enabled         bool                    `json:"enabled"`
-	Reason          string                  `json:"reason,omitempty"`
-}
-
-type taskControlActions struct {
-	Retry  taskControlActionState `json:"retry"`
-	Cancel taskControlActionState `json:"cancel"`
-}
-
-type taskSessionLink struct {
-	TaskID              string `json:"task_id"`
-	SessionID           string `json:"session_id"`
-	TerminalSessionID   string `json:"terminal_session_id,omitempty"`
-	RequestMessageID    string `json:"request_message_id,omitempty"`
-	ResultMessageID     string `json:"result_message_id,omitempty"`
-	TaskDetailPath      string `json:"task_detail_path"`
-	SessionTasksPath    string `json:"session_tasks_path,omitempty"`
-	SessionMessagesPath string `json:"session_messages_path,omitempty"`
-}
-
-type taskControlView struct {
-	Task    taskdomain.Task    `json:"task"`
-	Source  controlTaskSource  `json:"source"`
-	Actions taskControlActions `json:"actions"`
-	Link    taskSessionLink    `json:"link"`
 }
 
 type WebSecurityOptions struct {
@@ -693,18 +514,9 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/conversation-runtime/sessions/", s.conversationRuntimeSessionItemHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
-	mux.HandleFunc("/api/maintenance", s.maintenanceStatusHandler)
-	mux.HandleFunc("/api/maintenance/memory/run", s.maintenanceMemoryRunHandler)
-	mux.HandleFunc("/api/maintenance/sessions/cleanup", s.maintenanceSessionCleanupHandler)
-	mux.HandleFunc("/api/tasks", s.taskCollectionHandler)
-	mux.HandleFunc("/api/tasks/", s.taskItemHandler)
 	mux.HandleFunc("/api/memory/context", s.memoryContextHandler)
 	mux.HandleFunc("/api/memory/tasks", s.memoryTaskCollectionHandler)
 	mux.HandleFunc("/api/memory/tasks/", s.memoryTaskItemHandler)
-	mux.HandleFunc("/api/control/tasks", s.controlTaskCollectionHandler)
-	mux.HandleFunc("/api/control/tasks/", s.controlTaskItemHandler)
-	mux.HandleFunc("/api/control/environments", s.environmentConfigHandler)
-	mux.HandleFunc("/api/control/environments/audits", s.environmentAuditListHandler)
 	mux.HandleFunc("/api/control/workspace-services", s.workspaceServiceCollectionHandler)
 	mux.HandleFunc("/api/control/workspace-services/", s.workspaceServiceItemHandler)
 	mux.HandleFunc("/api/control/runtime", s.runtimeInfoHandler)
@@ -1064,10 +876,6 @@ func normalizeLoginNext(raw string) string {
 	if index := strings.IndexAny(pathOnly, "?#"); index >= 0 {
 		pathOnly = pathOnly[:index]
 	}
-	switch pathOnly {
-	case "/management":
-		return "/settings"
-	}
 	if _, ok := workbenchPagePaths[pathOnly]; ok {
 		return pathOnly
 	}
@@ -1283,50 +1091,7 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteChat, msg)
 	s.touchSessionActivityAt(msg.SessionID, msg.ReceivedAt)
 
-	s.countGateway(string(msg.ChannelType))
-	hasImageAttachments := len(execdomain.DecodeUserImageAttachments(msg.Metadata)) > 0
-	intent := s.classifyMessageIntent(msg.Content)
-	assessment := s.defaultComplexityAssessment()
-	if intent.Type == orchdomain.IntentTypeAgent {
-		assessment = s.assessComplexity(msg)
-		msg = enrichMessageWithComplexityMetadata(msg, assessment)
-		if !hasImageAttachments {
-			if task, accepted, submitErr := s.submitAsyncTask(msg, assessment); accepted {
-				taskCard := buildTaskCard(msg, assessment, task)
-				if submitErr != nil {
-					s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
-					s.touchSessionActivity(msg.SessionID)
-					s.logWebMessageFailure(msg, submitErr)
-					writeJSON(w, http.StatusInternalServerError, messageResponse{
-						Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
-						ExecutionMode:            assessment.ExecutionMode,
-						EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-						ComplexityLevel:          assessment.ComplexityLevel,
-						TaskCard:                 taskCard,
-						Error:                    submitErr.Error(),
-					})
-					return
-				}
-				writeJSON(w, http.StatusAccepted, messageResponse{
-					Result:                   asyncAcceptedResult(msg, task, assessment, taskCard),
-					TaskID:                   task.ID,
-					TaskStatus:               string(task.Status),
-					ExecutionMode:            assessment.ExecutionMode,
-					EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-					ComplexityLevel:          assessment.ComplexityLevel,
-					TaskCard:                 taskCard,
-				})
-				s.touchSessionActivity(msg.SessionID)
-				return
-			}
-		}
-	}
-
-	execCtx, _ := executionContextForMessage(r.Context(), msg)
-	result, err := s.orchestrator.Handle(execCtx, msg)
-	if intent.Type == orchdomain.IntentTypeAgent {
-		result = attachComplexityMetadata(result, assessment, nil)
-	}
+	result, err := s.orchestrator.Handle(r.Context(), msg)
 	if err != nil {
 		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
 		s.touchSessionActivity(msg.SessionID)
@@ -1334,20 +1099,10 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 		switch result.ErrorCode {
 		case "command_failed", "agent_execution_failed":
 			statusCode = http.StatusInternalServerError
-		case "queue_timeout":
-			statusCode = http.StatusGatewayTimeout
-		case "rate_limited":
-			statusCode = http.StatusTooManyRequests
-		case "queue_canceled":
-			statusCode = http.StatusRequestTimeout
 		}
-		s.logWebMessageFailure(msg, err)
 		writeJSON(w, statusCode, messageResponse{
-			Result:                   result,
-			ExecutionMode:            assessment.ExecutionMode,
-			EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-			ComplexityLevel:          assessment.ComplexityLevel,
-			Error:                    err.Error(),
+			Result: result,
+			Error:  err.Error(),
 		})
 		return
 	}
@@ -1355,29 +1110,12 @@ func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
 	s.touchSessionActivity(msg.SessionID)
 
 	writeJSON(w, http.StatusOK, messageResponse{
-		Result:                   result,
-		ExecutionMode:            assessment.ExecutionMode,
-		EstimatedDurationSeconds: assessment.EstimatedDurationSeconds,
-		ComplexityLevel:          assessment.ComplexityLevel,
+		Result: result,
 	})
 }
 
 func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusGone, map[string]string{"error": "chat stream endpoint removed; use POST /api/messages"})
-}
-
-func executionContextForMessage(ctx context.Context, msg shareddomain.UnifiedMessage) (context.Context, bool) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if !shouldDetachWebConversationExecution(msg) {
-		return ctx, false
-	}
-	return context.WithoutCancel(ctx), true
-}
-
-func shouldDetachWebConversationExecution(msg shareddomain.UnifiedMessage) bool {
-	return msg.TriggerType == shareddomain.TriggerTypeUser && msg.ChannelType == shareddomain.ChannelTypeWeb
 }
 
 func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
@@ -1716,43 +1454,6 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
 	}
-}
-
-func (s *Server) maintenanceStatusHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-	s.ensureMaintenanceService()
-	writeJSON(w, http.StatusOK, s.maintenance.Status(time.Now().UTC()))
-}
-
-func (s *Server) maintenanceMemoryRunHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-	s.ensureMaintenanceService()
-	result := s.maintenance.RunMemoryMaintenance(r.Context(), time.Now().UTC())
-	status := http.StatusOK
-	if result.Status == "failed" {
-		status = http.StatusInternalServerError
-	}
-	writeJSON(w, status, result)
-}
-
-func (s *Server) maintenanceSessionCleanupHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-	s.ensureMaintenanceService()
-	result := s.maintenance.RunSessionCleanup(time.Now().UTC())
-	status := http.StatusOK
-	if result.Status == "failed" {
-		status = http.StatusInternalServerError
-	}
-	writeJSON(w, status, result)
 }
 
 func (s *Server) loadConversationRuntimeSession(
@@ -2115,656 +1816,6 @@ func deriveConversationRuntimeTitle(records []sessiondomain.MessageRecord) strin
 	return "New"
 }
 
-func (s *Server) taskCollectionHandler(w http.ResponseWriter, r *http.Request) {
-	if s.tasks == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		query, statusCode, err := parseTaskListQuery(r)
-		if err != nil {
-			writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, s.tasks.List(query))
-	case http.MethodPost:
-		defer r.Body.Close()
-		var req taskCreateRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
-			return
-		}
-		sessionID := strings.TrimSpace(req.SessionID)
-		if sessionID == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "session_id is required"})
-			return
-		}
-		input := strings.TrimSpace(req.Input)
-		if input == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input is required"})
-			return
-		}
-		channelID := strings.TrimSpace(req.ChannelID)
-		if channelID == "" {
-			channelID = "web-default"
-		}
-
-		metadata := cloneStringMap(req.Metadata)
-		metadata[taskapp.MetadataTaskTypeKey] = strings.TrimSpace(req.TaskType)
-		metadata[taskapp.MetadataTaskIdempotencyKey] = strings.TrimSpace(req.IdempotencyKey)
-		metadata[taskapp.MetadataTaskAsyncMode] = strings.TrimSpace(req.AsyncHint)
-		if strings.TrimSpace(metadata[taskapp.MetadataTaskAsyncMode]) == "" {
-			metadata[taskapp.MetadataTaskAsyncMode] = "force"
-		}
-		s.applyTerminalExecutionDefaults(metadata)
-
-		sourceMessageID := strings.TrimSpace(req.SourceMessageID)
-		if sourceMessageID == "" {
-			sourceMessageID = s.idGenerator.NewID()
-		}
-		metadata[taskapp.MetadataTaskSourceMessageID] = sourceMessageID
-
-		msg := shareddomain.UnifiedMessage{
-			MessageID:     sourceMessageID,
-			SessionID:     sessionID,
-			UserID:        strings.TrimSpace(req.UserID),
-			ChannelID:     channelID,
-			ChannelType:   shareddomain.ChannelTypeWeb,
-			TriggerType:   shareddomain.TriggerTypeUser,
-			Content:       input,
-			Metadata:      metadata,
-			TraceID:       s.idGenerator.NewID(),
-			CorrelationID: strings.TrimSpace(req.CorrelationID),
-			ReceivedAt:    time.Now().UTC(),
-		}
-		task, err := s.tasks.Submit(msg)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		s.touchSessionActivity(msg.SessionID)
-
-		acceptedAt := task.AcceptedAt
-		if acceptedAt.IsZero() {
-			acceptedAt = task.CreatedAt
-		}
-		writeJSON(w, http.StatusAccepted, taskCreateResponse{
-			TaskID:        task.ID,
-			Status:        string(task.Status),
-			QueuePosition: task.QueuePosition,
-			AcceptedAt:    acceptedAt.Format(time.RFC3339Nano),
-		})
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func (s *Server) applyTerminalExecutionDefaults(metadata map[string]string) {
-	if len(metadata) == 0 {
-		return
-	}
-	taskType := strings.ToLower(strings.TrimSpace(metadata[taskapp.MetadataTaskTypeKey]))
-	interactive := strings.ToLower(strings.TrimSpace(metadata[taskapp.MetadataTaskTerminalFlagKey]))
-	if taskType != "terminal" || interactive != "true" {
-		return
-	}
-	if strings.TrimSpace(metadata[codexSandboxMetadataKey]) == "" {
-		metadata[codexSandboxMetadataKey] = codexSandboxDangerFullAccess
-	}
-}
-
-func (s *Server) taskItemHandler(w http.ResponseWriter, r *http.Request) {
-	if s.tasks == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
-		return
-	}
-
-	taskID, action, artifactID, subAction, ok := taskResourceID(r.URL.Path)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid task path"})
-		return
-	}
-
-	switch {
-	case action == "" && r.Method == http.MethodGet:
-		item, exists := s.tasks.Get(taskID)
-		if !exists {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-			return
-		}
-		writeJSON(w, http.StatusOK, item)
-	case action == "logs" && r.Method == http.MethodGet:
-		cursor, limit, statusCode, err := parseTaskLogQuery(r)
-		if err != nil {
-			writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-			return
-		}
-		page, err := s.tasks.ListLogs(taskID, cursor, limit)
-		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-			return
-		}
-		writeJSON(w, http.StatusOK, page)
-	case action == "artifacts" && artifactID == "" && subAction == "" && r.Method == http.MethodGet:
-		items, err := s.tasks.ListArtifacts(taskID)
-		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-			return
-		}
-		artifactItems, errCode, errMessage, statusCode := mapTaskArtifacts(items)
-		if statusCode != 0 {
-			writeJSON(w, statusCode, map[string]string{"error": errMessage, "error_code": errCode})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": artifactItems})
-	case action == "artifacts" && artifactID != "" && subAction == "download" && r.Method == http.MethodGet:
-		s.taskArtifactDeliveryHandler(w, r, taskID, artifactID, false)
-	case action == "artifacts" && artifactID != "" && subAction == "preview" && r.Method == http.MethodGet:
-		s.taskArtifactDeliveryHandler(w, r, taskID, artifactID, true)
-	case action == "cancel" && r.Method == http.MethodPost:
-		item, err := s.tasks.Cancel(taskID)
-		if err != nil {
-			if errors.Is(err, taskapp.ErrTaskNotFound) {
-				writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-				return
-			}
-			if errors.Is(err, taskapp.ErrTaskConflict) {
-				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-				return
-			}
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, item)
-	case action == "retry" && r.Method == http.MethodPost:
-		item, err := s.tasks.Retry(taskID)
-		if err != nil {
-			if errors.Is(err, taskapp.ErrTaskNotFound) {
-				writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-				return
-			}
-			if errors.Is(err, taskapp.ErrTaskConflict) {
-				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-				return
-			}
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusAccepted, item)
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func (s *Server) taskArtifactDeliveryHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-	taskID string,
-	artifactID string,
-	preview bool,
-) {
-	ctx, cancel := context.WithTimeout(r.Context(), taskArtifactReadTimeout)
-	defer cancel()
-
-	artifact, raw, err := s.tasks.ReadArtifact(ctx, taskID, artifactID)
-	if err != nil {
-		switch {
-		case errors.Is(err, taskapp.ErrTaskNotFound), errors.Is(err, taskapp.ErrArtifactNotFound), errors.Is(err, taskapp.ErrArtifactContentAbsent):
-			writeJSON(w, http.StatusNotFound, map[string]string{
-				"error":      "artifact not found",
-				"error_code": "artifact_not_found",
-			})
-		case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
-			writeJSON(w, http.StatusGatewayTimeout, map[string]string{
-				"error":      "artifact read timeout",
-				"error_code": "artifact_read_timeout",
-			})
-		default:
-			writeJSON(w, http.StatusInternalServerError, map[string]string{
-				"error":      "artifact read failed",
-				"error_code": "artifact_read_failed",
-			})
-		}
-		return
-	}
-
-	artifactSize := artifact.Size
-	if artifactSize <= 0 {
-		artifactSize = int64(len(raw))
-	}
-	if artifactSize > maxTaskArtifactSizeBytes || int64(len(raw)) > maxTaskArtifactSizeBytes {
-		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{
-			"error":      "artifact is too large",
-			"error_code": "artifact_too_large",
-		})
-		return
-	}
-
-	contentType := strings.TrimSpace(artifact.ContentType)
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	if preview {
-		if !supportsArtifactPreviewContentType(contentType) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error":      "artifact preview is not supported",
-				"error_code": "artifact_preview_not_supported",
-			})
-			return
-		}
-		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Content-Length", strconv.Itoa(len(raw)))
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(raw)
-		return
-	}
-
-	filename := sanitizeArtifactFilename(artifact.Name, artifact.ArtifactID)
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Length", strconv.Itoa(len(raw)))
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(raw)
-}
-
-func (s *Server) controlTaskItemHandler(w http.ResponseWriter, r *http.Request) {
-	if s.tasks == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
-		return
-	}
-
-	taskID, action, subAction, ok := controlTaskResourceID(r.URL.Path)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid control task path"})
-		return
-	}
-
-	switch {
-	case action == "" && subAction == "" && r.Method == http.MethodGet:
-		item, exists := s.tasks.Get(taskID)
-		if !exists {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-			return
-		}
-		writeJSON(w, http.StatusOK, s.toTaskControlView(item))
-	case action == "retry" && subAction == "" && r.Method == http.MethodPost:
-		item, err := s.tasks.Retry(taskID)
-		if err != nil {
-			s.writeTaskControlError(w, taskID, err)
-			return
-		}
-		writeJSON(w, http.StatusAccepted, s.toTaskControlView(item))
-	case action == "cancel" && subAction == "" && r.Method == http.MethodPost:
-		item, err := s.tasks.Cancel(taskID)
-		if err != nil {
-			s.writeTaskControlError(w, taskID, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, s.toTaskControlView(item))
-	case action == "logs" && subAction == "" && r.Method == http.MethodGet:
-		cursor, limit, statusCode, err := parseTaskLogQuery(r)
-		if err != nil {
-			writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-			return
-		}
-		page, err := s.tasks.ListLogs(taskID, cursor, limit)
-		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-			return
-		}
-		writeJSON(w, http.StatusOK, page)
-	case action == "logs" && subAction == "stream" && r.Method == http.MethodGet:
-		s.streamTaskLogs(w, r, taskID)
-	case action == "terminal" && subAction == "input" && r.Method == http.MethodPost:
-		s.controlTaskTerminalInputHandler(w, r, taskID)
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func (s *Server) controlTaskTerminalInputHandler(w http.ResponseWriter, r *http.Request, taskID string) {
-	defer r.Body.Close()
-
-	baseTask, exists := s.tasks.Get(taskID)
-	if !exists {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-		return
-	}
-
-	var req controlTaskTerminalInputRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
-		return
-	}
-
-	terminalSessionID := strings.TrimSpace(baseTask.RequestMetadata[controlTaskTerminalSessionIDKey])
-	if terminalSessionID == "" {
-		terminalSessionID = strings.TrimSpace(baseTask.SessionID)
-	}
-	if terminalSessionID == "" {
-		terminalSessionID = strings.TrimSpace(baseTask.ID)
-	}
-	attachments, err := s.normalizeConversationMessageAttachments(terminalSessionID, req.Attachments)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	input := strings.TrimSpace(req.Input)
-	if input == "" && len(attachments) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "input or attachments are required"})
-		return
-	}
-	if input == "" && len(attachments) > 0 {
-		input = defaultAttachmentContent(attachments)
-	}
-
-	source := resolveControlTaskSource(baseTask)
-	channelID := strings.TrimSpace(source.ChannelID)
-	if channelID == "" {
-		channelID = defaultControlTaskChannelID
-	}
-	channelType := source.ChannelType
-	if channelType == "" {
-		channelType = shareddomain.ChannelTypeWeb
-	}
-
-	sourceMessageID := s.idGenerator.NewID()
-	metadata := cloneStringMap(baseTask.RequestMetadata)
-	metadata[taskapp.MetadataTaskAsyncMode] = "force"
-	metadata[taskapp.MetadataTaskSourceMessageID] = sourceMessageID
-	metadata[taskapp.MetadataTaskChannelIDKey] = channelID
-	metadata[taskapp.MetadataTaskChannelTypeKey] = string(channelType)
-	metadata[taskapp.MetadataTaskTriggerTypeKey] = string(shareddomain.TriggerTypeUser)
-	metadata[taskapp.MetadataTaskTraceIDKey] = s.idGenerator.NewID()
-	metadata[controlTaskTerminalSessionIDKey] = terminalSessionID
-	metadata[controlTaskTerminalParentIDKey] = strings.TrimSpace(baseTask.ID)
-	metadata[controlTaskTerminalInteractiveKey] = "true"
-	if rawAttachments, err := execdomain.EncodeUserAttachments(attachments); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid attachments"})
-		return
-	} else if rawAttachments != "" {
-		metadata[execdomain.UserAttachmentsMetadataKey] = rawAttachments
-		if rawImages, imageErr := execdomain.EncodeUserImageAttachments(execdomain.FilterUserImageAttachments(attachments)); imageErr == nil && rawImages != "" {
-			metadata[execdomain.UserImageAttachmentsMetadataKey] = rawImages
-		}
-	}
-
-	msg := shareddomain.UnifiedMessage{
-		MessageID:     sourceMessageID,
-		SessionID:     strings.TrimSpace(baseTask.SessionID),
-		UserID:        strings.TrimSpace(metadata[taskapp.MetadataTaskUserIDKey]),
-		ChannelID:     channelID,
-		ChannelType:   channelType,
-		TriggerType:   shareddomain.TriggerTypeUser,
-		Content:       input,
-		Metadata:      metadata,
-		TraceID:       metadata[taskapp.MetadataTaskTraceIDKey],
-		CorrelationID: strings.TrimSpace(metadata[taskapp.MetadataTaskCorrelationKey]),
-		ReceivedAt:    time.Now().UTC(),
-	}
-
-	task, err := s.tasks.Submit(msg)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	s.touchSessionActivity(msg.SessionID)
-
-	anchorTaskID := ""
-	if req.ReuseTask {
-		anchorTaskID = strings.TrimSpace(req.AnchorTaskID)
-		if anchorTaskID == "" {
-			anchorTaskID = s.resolveTerminalAnchorTaskID(baseTask)
-		}
-		if anchorTaskID == "" {
-			anchorTaskID = strings.TrimSpace(baseTask.ID)
-		}
-	}
-
-	writeJSON(w, http.StatusAccepted, controlTaskTerminalInputResponse{
-		TaskID:            task.ID,
-		AnchorTaskID:      anchorTaskID,
-		Status:            string(task.Status),
-		SessionID:         task.SessionID,
-		TerminalSessionID: terminalSessionID,
-		TaskDetailPath:    "/api/control/tasks/" + strings.TrimSpace(task.ID),
-	})
-}
-
-func (s *Server) resolveTerminalAnchorTaskID(task taskdomain.Task) string {
-	current := task
-	visited := map[string]struct{}{}
-	for hops := 0; hops < 32; hops++ {
-		currentID := strings.TrimSpace(current.ID)
-		if currentID == "" {
-			break
-		}
-		if _, exists := visited[currentID]; exists {
-			break
-		}
-		visited[currentID] = struct{}{}
-
-		parentID := strings.TrimSpace(current.RequestMetadata[controlTaskTerminalParentIDKey])
-		if parentID == "" || parentID == currentID {
-			return currentID
-		}
-		parent, exists := s.tasks.Get(parentID)
-		if !exists {
-			return currentID
-		}
-		current = parent
-	}
-	return strings.TrimSpace(task.ID)
-}
-
-func (s *Server) controlTaskCollectionHandler(w http.ResponseWriter, r *http.Request) {
-	if s.tasks == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-
-	query, statusCode, err := parseControlTaskListQuery(r)
-	if err != nil {
-		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-		return
-	}
-
-	tasks := s.collectTasksForControl(query)
-	items := make([]controlTaskListItem, 0, len(tasks))
-	for _, item := range tasks {
-		items = append(items, toControlTaskListItem(item))
-	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
-			return items[i].TaskID > items[j].TaskID
-		}
-		return items[i].UpdatedAt.After(items[j].UpdatedAt)
-	})
-
-	from, to := memoryTaskPageBounds(len(items), query.Page, query.PageSize)
-	pageItems := make([]controlTaskListItem, 0, to-from)
-	pageItems = append(pageItems, items[from:to]...)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"items": pageItems,
-		"pagination": taskapp.Pagination{
-			Page:     query.Page,
-			PageSize: query.PageSize,
-			Total:    len(items),
-			HasNext:  to < len(items),
-		},
-	})
-}
-
-func (s *Server) writeTaskControlError(w http.ResponseWriter, taskID string, err error) {
-	if errors.Is(err, taskapp.ErrTaskNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-		return
-	}
-	if errors.Is(err, taskapp.ErrTaskConflict) {
-		if item, exists := s.tasks.Get(taskID); exists {
-			writeJSON(w, http.StatusConflict, map[string]any{
-				"error": err.Error(),
-				"view":  s.toTaskControlView(item),
-			})
-			return
-		}
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-}
-
-func (s *Server) toTaskControlView(task taskdomain.Task) taskControlView {
-	return taskControlView{
-		Task:    task,
-		Source:  resolveControlTaskSource(task),
-		Actions: resolveTaskControlActions(task),
-		Link:    s.resolveTaskSessionLink(task),
-	}
-}
-
-func resolveTaskControlActions(task taskdomain.Task) taskControlActions {
-	allowedRetry := []taskdomain.TaskStatus{taskdomain.TaskStatusFailed, taskdomain.TaskStatusCanceled}
-	allowedCancel := []taskdomain.TaskStatus{taskdomain.TaskStatusQueued, taskdomain.TaskStatusRunning}
-	retryEnabled := task.Status == taskdomain.TaskStatusFailed || task.Status == taskdomain.TaskStatusCanceled
-	cancelEnabled := task.Status == taskdomain.TaskStatusQueued || task.Status == taskdomain.TaskStatusRunning
-
-	retryReason := ""
-	if !retryEnabled {
-		retryReason = "retry is allowed only when task status is failed or canceled"
-	}
-	cancelReason := ""
-	if !cancelEnabled {
-		cancelReason = "cancel is allowed only when task status is queued or running"
-	}
-
-	return taskControlActions{
-		Retry: taskControlActionState{
-			AllowedStatuses: allowedRetry,
-			Enabled:         retryEnabled,
-			Reason:          retryReason,
-		},
-		Cancel: taskControlActionState{
-			AllowedStatuses: allowedCancel,
-			Enabled:         cancelEnabled,
-			Reason:          cancelReason,
-		},
-	}
-}
-
-func (s *Server) resolveTaskSessionLink(task taskdomain.Task) taskSessionLink {
-	sessionID := strings.TrimSpace(task.SessionID)
-	taskID := strings.TrimSpace(task.ID)
-	terminalSessionID := strings.TrimSpace(task.RequestMetadata[controlTaskTerminalSessionIDKey])
-	if terminalSessionID == "" {
-		terminalSessionID = sessionID
-	}
-	link := taskSessionLink{
-		TaskID:              taskID,
-		SessionID:           sessionID,
-		TerminalSessionID:   terminalSessionID,
-		RequestMessageID:    strings.TrimSpace(task.MessageLink.RequestMessageID),
-		ResultMessageID:     strings.TrimSpace(task.MessageLink.ResultMessageID),
-		TaskDetailPath:      "/api/control/tasks/" + taskID,
-		SessionTasksPath:    "/api/sessions/" + sessionID + "/tasks",
-		SessionMessagesPath: "/api/sessions/" + sessionID + "/messages",
-	}
-	if link.RequestMessageID == "" {
-		link.RequestMessageID = strings.TrimSpace(task.SourceMessageID)
-	}
-	if sessionID == "" {
-		link.SessionTasksPath = ""
-		link.SessionMessagesPath = ""
-	}
-	return link
-}
-
-func (s *Server) streamTaskLogs(w http.ResponseWriter, r *http.Request, taskID string) {
-	cursor, err := parseNonNegativeInt(r.URL.Query().Get("cursor"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cursor must be a non-negative integer"})
-		return
-	}
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
-		return
-	}
-
-	if _, exists := s.tasks.Get(taskID); !exists {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	if err := writeSSE(w, "start", taskLogStreamStartResponse{TaskID: taskID, Cursor: cursor}); err != nil {
-		return
-	}
-	flusher.Flush()
-
-	ticker := time.NewTicker(350 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		page, listErr := s.tasks.ListLogs(taskID, cursor, 200)
-		if listErr != nil {
-			_ = writeSSE(w, "error", taskLogStreamErrorResponse{Error: "task not found", NextCursor: cursor})
-			flusher.Flush()
-			return
-		}
-		for _, item := range page.Items {
-			nextCursor := cursor + 1
-			if err := writeSSE(w, "log", taskLogStreamEvent{
-				TaskID:     taskID,
-				Cursor:     cursor,
-				NextCursor: nextCursor,
-				Log:        item,
-			}); err != nil {
-				return
-			}
-			cursor = nextCursor
-			flusher.Flush()
-		}
-
-		if page.NextCursor > cursor {
-			cursor = page.NextCursor
-		}
-		if page.HasMore {
-			continue
-		}
-
-		task, exists := s.tasks.Get(taskID)
-		if !exists {
-			_ = writeSSE(w, "error", taskLogStreamErrorResponse{Error: "task not found", NextCursor: cursor})
-			flusher.Flush()
-			return
-		}
-		if task.Status.IsTerminal() {
-			_ = writeSSE(w, "done", taskLogStreamDoneResponse{TaskID: taskID, Status: task.Status, NextCursor: cursor})
-			flusher.Flush()
-			return
-		}
-
-		select {
-		case <-r.Context().Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
 func (s *Server) memoryContextHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -2933,194 +1984,6 @@ func (s *Server) collectTasksForMemory(status taskdomain.TaskStatus) []taskdomai
 	return items
 }
 
-func (s *Server) collectTasksForControl(query controlTaskListQuery) []taskdomain.Task {
-	items := make([]taskdomain.Task, 0, 64)
-	page := 1
-	for {
-		result := s.tasks.List(taskapp.ListQuery{
-			SessionID: query.SessionID,
-			Status:    query.Status,
-			Page:      page,
-			PageSize:  200,
-		})
-		if len(result.Items) == 0 {
-			break
-		}
-		for _, item := range result.Items {
-			if !matchControlTaskFilters(item, query) {
-				continue
-			}
-			items = append(items, item)
-		}
-		if !result.Pagination.HasNext {
-			break
-		}
-		page++
-		if page > 10000 {
-			break
-		}
-	}
-	return items
-}
-
-func toControlTaskListItem(task taskdomain.Task) controlTaskListItem {
-	errorText := strings.TrimSpace(task.ErrorMessage)
-	if errorText == "" {
-		errorText = strings.TrimSpace(task.ErrorCode)
-	}
-	source := resolveControlTaskSource(task)
-	return controlTaskListItem{
-		TaskID:          strings.TrimSpace(task.ID),
-		SessionID:       strings.TrimSpace(task.SessionID),
-		SourceMessageID: resolveTaskSourceMessageID(task),
-		Status:          task.Status,
-		Phase:           strings.TrimSpace(task.Phase),
-		Progress:        task.Progress,
-		QueuePosition:   task.QueuePosition,
-		QueueWaitMS:     task.QueueWaitMS,
-		RetryCount:      task.RetryCount,
-		TriggerType:     source.TriggerType,
-		ChannelType:     source.ChannelType,
-		ChannelID:       source.ChannelID,
-		CorrelationID:   source.CorrelationID,
-		JobID:           source.JobID,
-		JobName:         source.JobName,
-		FiredAt:         source.FiredAt,
-		CreatedAt:       task.CreatedAt.UTC(),
-		StartedAt:       task.StartedAt.UTC(),
-		UpdatedAt:       resolveControlTaskUpdatedAt(task),
-		LastHeartbeatAt: task.LastHeartbeatAt.UTC(),
-		TimeoutAt:       task.TimeoutAt.UTC(),
-		FinishedAt:      task.FinishedAt.UTC(),
-		Error:           errorText,
-	}
-}
-
-func resolveControlTaskUpdatedAt(task taskdomain.Task) time.Time {
-	if !task.UpdatedAt.IsZero() {
-		return task.UpdatedAt.UTC()
-	}
-	if !task.FinishedAt.IsZero() {
-		return task.FinishedAt.UTC()
-	}
-	if !task.CreatedAt.IsZero() {
-		return task.CreatedAt.UTC()
-	}
-	return time.Now().UTC()
-}
-
-func matchControlTaskFilters(task taskdomain.Task, query controlTaskListQuery) bool {
-	source := resolveControlTaskSource(task)
-	if strings.TrimSpace(string(query.TriggerType)) != "" && source.TriggerType != query.TriggerType {
-		return false
-	}
-	if strings.TrimSpace(string(query.ChannelType)) != "" && source.ChannelType != query.ChannelType {
-		return false
-	}
-	if query.ChannelID != "" && !strings.EqualFold(source.ChannelID, query.ChannelID) {
-		return false
-	}
-	if query.SourceMessageID != "" && !strings.EqualFold(resolveTaskSourceMessageID(task), query.SourceMessageID) {
-		return false
-	}
-	if query.MessageID != "" && !matchTaskMessageID(task, query.MessageID) {
-		return false
-	}
-	at := resolveControlTaskUpdatedAt(task)
-	if !query.StartAt.IsZero() && at.Before(query.StartAt) {
-		return false
-	}
-	if !query.EndAt.IsZero() && at.After(query.EndAt) {
-		return false
-	}
-	return true
-}
-
-func resolveTaskSourceMessageID(task taskdomain.Task) string {
-	if sourceMessageID := strings.TrimSpace(task.SourceMessageID); sourceMessageID != "" {
-		return sourceMessageID
-	}
-	if requestMessageID := strings.TrimSpace(task.MessageLink.RequestMessageID); requestMessageID != "" {
-		return requestMessageID
-	}
-	if messageID := strings.TrimSpace(task.MessageID); messageID != "" {
-		return messageID
-	}
-	return ""
-}
-
-func matchTaskMessageID(task taskdomain.Task, messageID string) bool {
-	target := strings.TrimSpace(messageID)
-	if target == "" {
-		return true
-	}
-	candidates := []string{
-		strings.TrimSpace(task.SourceMessageID),
-		strings.TrimSpace(task.MessageID),
-		strings.TrimSpace(task.MessageLink.RequestMessageID),
-		strings.TrimSpace(task.MessageLink.ResultMessageID),
-	}
-	for _, candidate := range candidates {
-		if strings.EqualFold(candidate, target) {
-			return true
-		}
-	}
-	return false
-}
-
-func resolveControlTaskSource(task taskdomain.Task) controlTaskSource {
-	metadata := task.RequestMetadata
-	triggerType := parseControlTriggerType(metadata[taskapp.MetadataTaskTriggerTypeKey])
-	channelType := parseControlChannelType(metadata[taskapp.MetadataTaskChannelTypeKey])
-	channelID := strings.TrimSpace(metadata[taskapp.MetadataTaskChannelIDKey])
-	if channelID == "" {
-		channelID = defaultControlTaskChannelID
-	}
-	source := controlTaskSource{
-		TriggerType:   triggerType,
-		ChannelType:   channelType,
-		ChannelID:     channelID,
-		CorrelationID: strings.TrimSpace(metadata[taskapp.MetadataTaskCorrelationKey]),
-	}
-	if source.TriggerType == shareddomain.TriggerTypeCron {
-		source.JobID = strings.TrimSpace(metadata[controlTaskMetadataJobIDKey])
-		source.JobName = strings.TrimSpace(metadata[controlTaskMetadataJobNameKey])
-		if source.CorrelationID == "" {
-			source.CorrelationID = source.JobID
-		}
-		if firedAt, err := parseRFC3339Time(metadata[controlTaskMetadataFiredAtKey]); err == nil {
-			source.FiredAt = firedAt
-		}
-	}
-	return source
-}
-
-func parseControlTriggerType(raw string) shareddomain.TriggerType {
-	switch shareddomain.TriggerType(strings.ToLower(strings.TrimSpace(raw))) {
-	case shareddomain.TriggerTypeUser:
-		return shareddomain.TriggerTypeUser
-	case shareddomain.TriggerTypeCron:
-		return shareddomain.TriggerTypeCron
-	case shareddomain.TriggerTypeSystem:
-		return shareddomain.TriggerTypeSystem
-	default:
-		return shareddomain.TriggerTypeUser
-	}
-}
-
-func parseControlChannelType(raw string) shareddomain.ChannelType {
-	switch shareddomain.ChannelType(strings.ToLower(strings.TrimSpace(raw))) {
-	case shareddomain.ChannelTypeCLI:
-		return shareddomain.ChannelTypeCLI
-	case shareddomain.ChannelTypeWeb:
-		return shareddomain.ChannelTypeWeb
-	case shareddomain.ChannelTypeScheduler:
-		return shareddomain.ChannelTypeScheduler
-	default:
-		return shareddomain.ChannelTypeWeb
-	}
-}
-
 func matchMemoryTaskFilters(task taskdomain.Task, query memoryTaskListQuery) bool {
 	if strings.TrimSpace(string(query.Status)) != "" && task.Status != query.Status {
 		return false
@@ -3188,16 +2051,14 @@ func resolveMemoryTaskSummary(task taskdomain.Task) memoryTaskSummaryItem {
 		summary.Status = task.Status
 	}
 	return memoryTaskSummaryItem{
-		TaskID:          strings.TrimSpace(summary.TaskID),
-		TaskType:        strings.TrimSpace(summary.TaskType),
-		Goal:            strings.TrimSpace(summary.Goal),
-		Result:          strings.TrimSpace(summary.Result),
-		Status:          summary.Status,
-		FinishedAt:      summary.FinishedAt.UTC(),
-		UpdatedAt:       task.UpdatedAt.UTC(),
-		LastHeartbeatAt: task.LastHeartbeatAt.UTC(),
-		TimeoutAt:       task.TimeoutAt.UTC(),
-		Tags:            append([]string(nil), summary.Tags...),
+		TaskID:     strings.TrimSpace(summary.TaskID),
+		TaskType:   strings.TrimSpace(summary.TaskType),
+		Goal:       strings.TrimSpace(summary.Goal),
+		Result:     strings.TrimSpace(summary.Result),
+		Status:     summary.Status,
+		FinishedAt: summary.FinishedAt.UTC(),
+		UpdatedAt:  task.UpdatedAt.UTC(),
+		Tags:       append([]string(nil), summary.Tags...),
 	}
 }
 
@@ -3207,13 +2068,9 @@ func resolveMemoryTaskMeta(task taskdomain.Task) memoryTaskMeta {
 		SessionID:       strings.TrimSpace(task.SessionID),
 		SourceMessageID: strings.TrimSpace(task.SourceMessageID),
 		Status:          task.Status,
-		Progress:        task.Progress,
 		CreatedAt:       task.CreatedAt.UTC(),
 		UpdatedAt:       task.UpdatedAt.UTC(),
 		FinishedAt:      task.FinishedAt.UTC(),
-		LastHeartbeatAt: task.LastHeartbeatAt.UTC(),
-		TimeoutAt:       task.TimeoutAt.UTC(),
-		RetryCount:      task.RetryCount,
 		TaskType:        resolveMemoryTaskType(task),
 	}
 }
@@ -3271,53 +2128,6 @@ func memoryTaskPageBounds(total int, page int, pageSize int) (int, int) {
 	return offset, end
 }
 
-func (s *Server) environmentConfigHandler(w http.ResponseWriter, r *http.Request) {
-	if s.control == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		revealSensitive := parseBoolFlag(r.URL.Query().Get("reveal_sensitive"))
-		items := s.control.ListEnvironmentConfigs(revealSensitive)
-		writeJSON(w, http.StatusOK, map[string]any{"items": items})
-	case http.MethodPut:
-		defer r.Body.Close()
-		var req environmentUpsertRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
-			return
-		}
-		values := normalizeEnvironmentValues(req.Values)
-		if len(values) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "values are required"})
-			return
-		}
-		result, err := s.control.UpdateEnvironmentConfigs(values, req.Operator)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, result)
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func (s *Server) environmentAuditListHandler(w http.ResponseWriter, r *http.Request) {
-	if s.control == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "control service unavailable"})
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-	revealSensitive := parseBoolFlag(r.URL.Query().Get("reveal_sensitive"))
-	writeJSON(w, http.StatusOK, map[string]any{"items": s.control.ListEnvironmentAudits(revealSensitive)})
-}
-
 func (s *Server) runtimeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -3360,9 +2170,10 @@ func (s *Server) runtimeRestartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"accepted":           true,
-		"status":             "restarting",
-		"sync_remote_master": req.SyncRemoteMaster,
+		"accepted":                        true,
+		"status":                          "restarting",
+		"sync_remote_master":              req.SyncRemoteMaster,
+		"confirm_discard_tracked_changes": req.ConfirmDiscardTrackedChanges,
 	})
 }
 
@@ -4428,77 +3239,6 @@ func sanitizeWorkspaceSegment(value string) string {
 	return strings.ToLower(sanitized)
 }
 
-func taskResourceID(path string) (string, string, string, string, bool) {
-	const prefix = "/api/tasks/"
-	if !strings.HasPrefix(path, prefix) {
-		return "", "", "", "", false
-	}
-
-	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
-	parts := strings.Split(trimmed, "/")
-	if len(parts) == 1 {
-		taskID := strings.TrimSpace(parts[0])
-		if taskID == "" {
-			return "", "", "", "", false
-		}
-		return taskID, "", "", "", true
-	}
-	if len(parts) == 2 {
-		taskID := strings.TrimSpace(parts[0])
-		action := strings.TrimSpace(parts[1])
-		if taskID == "" || action == "" {
-			return "", "", "", "", false
-		}
-		return taskID, action, "", "", true
-	}
-	if len(parts) == 4 {
-		taskID := strings.TrimSpace(parts[0])
-		action := strings.TrimSpace(parts[1])
-		artifactID := strings.TrimSpace(parts[2])
-		subAction := strings.TrimSpace(parts[3])
-		if taskID == "" || action != "artifacts" || artifactID == "" || subAction == "" {
-			return "", "", "", "", false
-		}
-		return taskID, action, artifactID, subAction, true
-	}
-	return "", "", "", "", false
-}
-
-func controlTaskResourceID(path string) (string, string, string, bool) {
-	const prefix = "/api/control/tasks/"
-	if !strings.HasPrefix(path, prefix) {
-		return "", "", "", false
-	}
-
-	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
-	parts := strings.Split(trimmed, "/")
-	if len(parts) == 1 {
-		taskID := strings.TrimSpace(parts[0])
-		if taskID == "" {
-			return "", "", "", false
-		}
-		return taskID, "", "", true
-	}
-	if len(parts) == 2 {
-		taskID := strings.TrimSpace(parts[0])
-		action := strings.TrimSpace(parts[1])
-		if taskID == "" || action == "" {
-			return "", "", "", false
-		}
-		return taskID, action, "", true
-	}
-	if len(parts) == 3 {
-		taskID := strings.TrimSpace(parts[0])
-		action := strings.TrimSpace(parts[1])
-		subAction := strings.TrimSpace(parts[2])
-		if taskID == "" || action == "" || subAction == "" {
-			return "", "", "", false
-		}
-		return taskID, action, subAction, true
-	}
-	return "", "", "", false
-}
-
 func memoryTaskResourceID(path string) (string, string, bool) {
 	const prefix = "/api/memory/tasks/"
 	if !strings.HasPrefix(path, prefix) {
@@ -4609,27 +3349,6 @@ func parseMessageQuery(r *http.Request, sessionID string) (sessionapp.MessageQue
 	}, http.StatusOK, nil
 }
 
-func parseTaskListQuery(r *http.Request) (taskapp.ListQuery, int, error) {
-	page, pageSize, statusCode, err := parsePaginationQuery(r)
-	if err != nil {
-		return taskapp.ListQuery{}, statusCode, err
-	}
-	query := taskapp.ListQuery{
-		SessionID: strings.TrimSpace(r.URL.Query().Get("session_id")),
-		Page:      page,
-		PageSize:  pageSize,
-	}
-	rawStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
-	if rawStatus != "" {
-		status := taskdomain.TaskStatus(rawStatus)
-		if !status.IsValid() {
-			return taskapp.ListQuery{}, http.StatusBadRequest, errors.New("status must be queued/running/success/failed/canceled")
-		}
-		query.Status = status
-	}
-	return query, http.StatusOK, nil
-}
-
 func parseMemoryTaskListQuery(r *http.Request) (memoryTaskListQuery, int, error) {
 	page, err := parsePositiveInt(r.URL.Query().Get("page"))
 	if err != nil {
@@ -4662,122 +3381,12 @@ func parseMemoryTaskListQuery(r *http.Request) (memoryTaskListQuery, int, error)
 	rawStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
 	if rawStatus != "" {
 		status := taskdomain.TaskStatus(rawStatus)
-		if !status.IsValid() {
-			return memoryTaskListQuery{}, http.StatusBadRequest, errors.New("status must be queued/running/success/failed/canceled")
+		if status != taskdomain.TaskStatusSuccess && status != taskdomain.TaskStatusFailed && status != taskdomain.TaskStatusCanceled {
+			return memoryTaskListQuery{}, http.StatusBadRequest, errors.New("status must be success/failed/canceled")
 		}
 		query.Status = status
 	}
 	return query, http.StatusOK, nil
-}
-
-func parseControlTaskListQuery(r *http.Request) (controlTaskListQuery, int, error) {
-	page, err := parsePositiveInt(r.URL.Query().Get("page"))
-	if err != nil {
-		return controlTaskListQuery{}, http.StatusBadRequest, errors.New("page must be a positive integer")
-	}
-	pageSize, err := parsePositiveInt(r.URL.Query().Get("page_size"))
-	if err != nil {
-		return controlTaskListQuery{}, http.StatusBadRequest, errors.New("page_size must be a positive integer")
-	}
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 200 {
-		pageSize = 200
-	}
-
-	startAt, endAt, statusCode, err := parseTimeRangeQuery(r)
-	if err != nil {
-		return controlTaskListQuery{}, statusCode, err
-	}
-
-	rawTimeRange := strings.TrimSpace(r.URL.Query().Get("time_range"))
-	if rawTimeRange != "" {
-		parsedStart, parsedEnd, parseErr := parseControlTimeRange(rawTimeRange)
-		if parseErr != nil {
-			return controlTaskListQuery{}, http.StatusBadRequest, parseErr
-		}
-		if !parsedStart.IsZero() {
-			startAt = parsedStart
-		}
-		if !parsedEnd.IsZero() {
-			endAt = parsedEnd
-		}
-	}
-
-	if !startAt.IsZero() && !endAt.IsZero() && endAt.Before(startAt) {
-		return controlTaskListQuery{}, http.StatusBadRequest, errors.New("time range is invalid")
-	}
-
-	query := controlTaskListQuery{
-		SessionID:       strings.TrimSpace(r.URL.Query().Get("session_id")),
-		ChannelID:       strings.TrimSpace(r.URL.Query().Get("channel_id")),
-		MessageID:       strings.TrimSpace(r.URL.Query().Get("message_id")),
-		SourceMessageID: strings.TrimSpace(r.URL.Query().Get("source_message_id")),
-		StartAt:         startAt,
-		EndAt:           endAt,
-		Page:            page,
-		PageSize:        pageSize,
-	}
-	rawStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
-	if rawStatus != "" {
-		status := taskdomain.TaskStatus(rawStatus)
-		if !status.IsValid() {
-			return controlTaskListQuery{}, http.StatusBadRequest, errors.New("status must be queued/running/success/failed/canceled")
-		}
-		query.Status = status
-	}
-	rawTriggerType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("trigger_type")))
-	if rawTriggerType != "" {
-		triggerType := shareddomain.TriggerType(rawTriggerType)
-		switch triggerType {
-		case shareddomain.TriggerTypeUser, shareddomain.TriggerTypeCron, shareddomain.TriggerTypeSystem:
-			query.TriggerType = triggerType
-		default:
-			return controlTaskListQuery{}, http.StatusBadRequest, errors.New("trigger_type must be user/cron/system")
-		}
-	}
-	rawChannelType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("channel_type")))
-	if rawChannelType != "" {
-		channelType := shareddomain.ChannelType(rawChannelType)
-		switch channelType {
-		case shareddomain.ChannelTypeCLI, shareddomain.ChannelTypeWeb, shareddomain.ChannelTypeScheduler:
-			query.ChannelType = channelType
-		default:
-			return controlTaskListQuery{}, http.StatusBadRequest, errors.New("channel_type must be cli/web/scheduler")
-		}
-	}
-	return query, http.StatusOK, nil
-}
-
-func parseControlTimeRange(raw string) (time.Time, time.Time, error) {
-	trimmed := strings.TrimSpace(raw)
-	now := time.Now().UTC()
-	switch strings.ToLower(trimmed) {
-	case "last_1h":
-		return now.Add(-1 * time.Hour), now, nil
-	case "last_24h":
-		return now.Add(-24 * time.Hour), now, nil
-	case "last_7d":
-		return now.Add(-7 * 24 * time.Hour), now, nil
-	}
-
-	parts := strings.Split(trimmed, ",")
-	if len(parts) != 2 {
-		return time.Time{}, time.Time{}, errors.New("time_range must be last_1h/last_24h/last_7d or start,end in RFC3339")
-	}
-	startAt, err := parseRFC3339Time(parts[0])
-	if err != nil {
-		return time.Time{}, time.Time{}, errors.New("time_range start must be RFC3339 format")
-	}
-	endAt, err := parseRFC3339Time(parts[1])
-	if err != nil {
-		return time.Time{}, time.Time{}, errors.New("time_range end must be RFC3339 format")
-	}
-	return startAt, endAt, nil
 }
 
 func parseTaskLogQuery(r *http.Request) (int, int, int, error) {
@@ -4958,317 +3567,6 @@ func defaultAttachmentContent(attachments []execdomain.UserAttachment) string {
 	return fmt.Sprintf("Attached %d files, including %d images.", count, imageCount)
 }
 
-func (s *Server) submitAsyncTask(msg shareddomain.UnifiedMessage, assessment taskapp.ComplexityAssessment) (taskdomain.Task, bool, error) {
-	if s.tasks == nil {
-		return taskdomain.Task{}, false, nil
-	}
-	if strings.ToLower(strings.TrimSpace(assessment.ExecutionMode)) != taskapp.ExecutionModeAsync {
-		return taskdomain.Task{}, false, nil
-	}
-	item, err := s.tasks.Submit(enrichMessageWithComplexityMetadata(msg, assessment))
-	if err != nil {
-		return taskdomain.Task{}, true, err
-	}
-	return item, true, nil
-}
-
-func (s *Server) classifyMessageIntent(content string) orchdomain.Intent {
-	if classifier, ok := s.orchestrator.(intentInspector); ok {
-		return classifier.Classify(content)
-	}
-	trimmed := strings.TrimSpace(content)
-	if strings.HasPrefix(trimmed, "/") {
-		return orchdomain.Intent{Type: orchdomain.IntentTypeCommand}
-	}
-	return orchdomain.Intent{Type: orchdomain.IntentTypeAgent}
-}
-
-func (s *Server) defaultComplexityAssessment() taskapp.ComplexityAssessment {
-	return taskapp.ComplexityAssessment{
-		EstimatedDurationSeconds: 10,
-		ComplexityLevel:          taskapp.ComplexityLevelLow,
-		ExecutionMode:            taskapp.ExecutionModeStreaming,
-	}
-}
-
-func (s *Server) assessComplexity(msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
-	if s.tasks == nil {
-		return s.defaultComplexityAssessment()
-	}
-	return s.tasks.AssessComplexity(msg)
-}
-
-func (s *Server) assessComplexityWithContext(ctx context.Context, msg shareddomain.UnifiedMessage) taskapp.ComplexityAssessment {
-	if s.tasks == nil {
-		return s.defaultComplexityAssessment()
-	}
-	return s.tasks.AssessComplexityWithContext(ctx, msg)
-}
-
-func buildTaskCard(msg shareddomain.UnifiedMessage, assessment taskapp.ComplexityAssessment, task taskdomain.Task) *taskCardResponse {
-	taskID := strings.TrimSpace(task.ID)
-	if taskID == "" {
-		return nil
-	}
-	taskSummary := strings.TrimSpace(assessment.TaskSummary)
-	if taskSummary == "" {
-		taskSummary = summaryText(strings.TrimSpace(msg.Content), 120)
-	}
-	if taskSummary == "" {
-		taskSummary = "任务摘要待补充"
-	}
-	return &taskCardResponse{
-		Notice:        "当前任务较复杂，已创建后台任务执行，请稍后",
-		TaskID:        taskID,
-		TaskSummary:   taskSummary,
-		TaskDetailURL: "/api/control/tasks/" + taskID,
-	}
-}
-
-func asyncAcceptedResult(
-	msg shareddomain.UnifiedMessage,
-	task taskdomain.Task,
-	assessment taskapp.ComplexityAssessment,
-	taskCard *taskCardResponse,
-) shareddomain.OrchestrationResult {
-	metadata := map[string]string{
-		taskapp.MetadataTaskIDKey: task.ID,
-	}
-	if strings.TrimSpace(string(task.Status)) != "" {
-		metadata[taskapp.MetadataTaskStatusKey] = string(task.Status)
-	}
-	metadata[taskapp.MetadataExecutionMode] = taskapp.ExecutionModeAsync
-	metadata[taskapp.MetadataComplexityLevel] = strings.TrimSpace(assessment.ComplexityLevel)
-	metadata[taskapp.MetadataEstimatedDurationSeconds] = strconv.Itoa(assessment.EstimatedDurationSeconds)
-	if strings.TrimSpace(assessment.TaskSummary) != "" {
-		metadata[taskapp.MetadataTaskSummary] = strings.TrimSpace(assessment.TaskSummary)
-	}
-	if strings.TrimSpace(assessment.TaskApproach) != "" {
-		metadata[taskapp.MetadataTaskApproach] = strings.TrimSpace(assessment.TaskApproach)
-	}
-	if assessment.Fallback {
-		metadata[taskapp.MetadataComplexityFallback] = "true"
-	}
-	output := ""
-	if taskCard != nil {
-		output = buildAsyncAcceptedOutput(msg, assessment, taskCard)
-		metadata["task_summary"] = taskCard.TaskSummary
-		if strings.TrimSpace(assessment.TaskApproach) != "" {
-			metadata["task_approach"] = strings.TrimSpace(assessment.TaskApproach)
-		}
-		metadata["task_detail_url"] = taskCard.TaskDetailURL
-	}
-	return shareddomain.OrchestrationResult{
-		MessageID: msg.MessageID,
-		SessionID: msg.SessionID,
-		ErrorCode: "task_accepted",
-		Output:    output,
-		Metadata:  metadata,
-	}
-}
-
-func buildAsyncAcceptedOutput(
-	msg shareddomain.UnifiedMessage,
-	assessment taskapp.ComplexityAssessment,
-	taskCard *taskCardResponse,
-) string {
-	if taskCard == nil {
-		return ""
-	}
-	taskSummary := strings.TrimSpace(taskCard.TaskSummary)
-	if taskSummary == "" {
-		taskSummary = strings.TrimSpace(assessment.TaskSummary)
-	}
-	if taskSummary == "" {
-		taskSummary = summaryText(strings.TrimSpace(msg.Content), 120)
-	}
-	approach := strings.TrimSpace(assessment.TaskApproach)
-	if approach == "" {
-		approach = "先确认目标与边界，再分步骤推进执行，完成后整理结果与产物。"
-	}
-	estimated := formatAsyncEstimatedDuration(assessment.EstimatedDurationSeconds)
-	lines := []string{
-		"这个请求预计耗时较长，我先说明执行安排，然后转入后台继续处理。",
-	}
-	if estimated != "" {
-		lines = append(lines, "预计耗时："+estimated)
-	}
-	lines = append(lines,
-		"",
-		"任务："+taskSummary,
-		"执行计划：",
-		"1. 先确认目标、范围和关键约束，明确本次任务的完成边界。",
-		"2. 按以下思路推进执行："+approach,
-		"3. 持续记录进度，完成后整理结果、产物和结论，并回写到任务详情。",
-		"",
-		"后台任务已创建："+taskCard.TaskID,
-		"查看进度："+taskCard.TaskDetailURL,
-	)
-	return strings.Join(lines, "\n")
-}
-
-func formatAsyncEstimatedDuration(seconds int) string {
-	if seconds <= 0 {
-		return ""
-	}
-	duration := time.Duration(seconds) * time.Second
-	if duration < time.Minute {
-		return fmt.Sprintf("%d 秒", seconds)
-	}
-	minutes := int(duration / time.Minute)
-	if duration%time.Minute == 0 {
-		if minutes < 60 {
-			return fmt.Sprintf("%d 分钟", minutes)
-		}
-	}
-	hours := minutes / 60
-	remainMinutes := minutes % 60
-	if hours <= 0 {
-		return fmt.Sprintf("%d 分钟", minutes)
-	}
-	if remainMinutes == 0 {
-		return fmt.Sprintf("%d 小时", hours)
-	}
-	return fmt.Sprintf("%d 小时 %d 分钟", hours, remainMinutes)
-}
-
-func attachComplexityMetadata(
-	result shareddomain.OrchestrationResult,
-	assessment taskapp.ComplexityAssessment,
-	taskCard *taskCardResponse,
-) shareddomain.OrchestrationResult {
-	metadata := cloneStringMap(result.Metadata)
-	metadata[taskapp.MetadataExecutionMode] = strings.TrimSpace(assessment.ExecutionMode)
-	metadata[taskapp.MetadataComplexityLevel] = strings.TrimSpace(assessment.ComplexityLevel)
-	metadata[taskapp.MetadataEstimatedDurationSeconds] = strconv.Itoa(assessment.EstimatedDurationSeconds)
-	if strings.TrimSpace(assessment.TaskSummary) != "" {
-		metadata[taskapp.MetadataTaskSummary] = strings.TrimSpace(assessment.TaskSummary)
-	}
-	if strings.TrimSpace(assessment.TaskApproach) != "" {
-		metadata[taskapp.MetadataTaskApproach] = strings.TrimSpace(assessment.TaskApproach)
-	}
-	if assessment.Fallback {
-		metadata[taskapp.MetadataComplexityFallback] = "true"
-	}
-	if taskCard != nil {
-		metadata["task_summary"] = strings.TrimSpace(taskCard.TaskSummary)
-		metadata["task_detail_url"] = strings.TrimSpace(taskCard.TaskDetailURL)
-	}
-	result.Metadata = metadata
-	return result
-}
-
-func enrichMessageWithComplexityMetadata(
-	msg shareddomain.UnifiedMessage,
-	assessment taskapp.ComplexityAssessment,
-) shareddomain.UnifiedMessage {
-	metadata := cloneStringMap(msg.Metadata)
-	metadata[taskapp.MetadataExecutionMode] = strings.TrimSpace(assessment.ExecutionMode)
-	metadata[taskapp.MetadataComplexityLevel] = strings.TrimSpace(assessment.ComplexityLevel)
-	metadata[taskapp.MetadataEstimatedDurationSeconds] = strconv.Itoa(assessment.EstimatedDurationSeconds)
-	if strings.TrimSpace(assessment.TaskSummary) != "" {
-		metadata[taskapp.MetadataTaskSummary] = strings.TrimSpace(assessment.TaskSummary)
-	}
-	if strings.TrimSpace(assessment.TaskApproach) != "" {
-		metadata[taskapp.MetadataTaskApproach] = strings.TrimSpace(assessment.TaskApproach)
-	}
-	if assessment.Fallback {
-		metadata[taskapp.MetadataComplexityFallback] = "true"
-	}
-	msg.Metadata = metadata
-	return msg
-}
-
-func summaryText(content string, maxRunes int) string {
-	if maxRunes <= 0 {
-		maxRunes = 120
-	}
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
-		return ""
-	}
-	runes := []rune(trimmed)
-	if len(runes) <= maxRunes {
-		return trimmed
-	}
-	return string(runes[:maxRunes]) + "..."
-}
-
-func (s *Server) countGateway(channelType string) {
-	if s.telemetry == nil {
-		return
-	}
-	s.telemetry.CountGateway(channelType)
-}
-
-func (s *Server) logWebMessageFailure(msg shareddomain.UnifiedMessage, err error) {
-	if s.logger == nil {
-		return
-	}
-	s.logger.Error("web message failed",
-		slog.String("trace_id", msg.TraceID),
-		slog.String("session_id", msg.SessionID),
-		slog.String("message_id", msg.MessageID),
-		slog.String("channel_id", msg.ChannelID),
-		slog.String("channel_type", string(msg.ChannelType)),
-		slog.String("error", err.Error()),
-	)
-}
-
-func writeSSE(w http.ResponseWriter, event string, payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	if _, err := w.Write([]byte("event: " + event + "\n")); err != nil {
-		return err
-	}
-	if _, err := w.Write([]byte("data: " + string(data) + "\n\n")); err != nil {
-		return err
-	}
-	return nil
-}
-
-type sseStream struct {
-	w       http.ResponseWriter
-	flusher http.Flusher
-	mu      sync.Mutex
-}
-
-func newSSEStream(w http.ResponseWriter, flusher http.Flusher) *sseStream {
-	return &sseStream{w: w, flusher: flusher}
-}
-
-func (s *sseStream) Event(event string, payload any) error {
-	if s == nil {
-		return errors.New("sse stream is required")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := writeSSE(s.w, event, payload); err != nil {
-		return err
-	}
-	s.flusher.Flush()
-	return nil
-}
-
-func (s *sseStream) Comment(text string) error {
-	if s == nil {
-		return errors.New("sse stream is required")
-	}
-	comment := strings.TrimSpace(text)
-	if comment == "" {
-		comment = "keep-alive"
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, err := s.w.Write([]byte(": " + comment + "\n\n")); err != nil {
-		return err
-	}
-	s.flusher.Flush()
-	return nil
-}
-
 func mapTaskArtifacts(items []taskdomain.TaskArtifact) ([]taskArtifactResponse, string, string, int) {
 	if len(items) == 0 {
 		return []taskArtifactResponse{}, "", "", 0
@@ -5279,9 +3577,6 @@ func mapTaskArtifacts(items []taskdomain.TaskArtifact) ([]taskArtifactResponse, 
 	out := make([]taskArtifactResponse, 0, len(items))
 	for _, item := range items {
 		downloadURL := strings.TrimSpace(item.DownloadURL)
-		if downloadURL == "" {
-			continue
-		}
 		artifact := taskArtifactResponse{
 			ArtifactID:  strings.TrimSpace(item.ArtifactID),
 			Name:        strings.TrimSpace(item.Name),
@@ -5342,36 +3637,6 @@ func parseBoolFlag(raw string) bool {
 	default:
 		return false
 	}
-}
-
-func normalizeEnvironmentValues(input map[string]any) map[string]string {
-	if len(input) == 0 {
-		return map[string]string{}
-	}
-	values := make(map[string]string, len(input))
-	for key, raw := range input {
-		trimmedKey := strings.TrimSpace(key)
-		if trimmedKey == "" {
-			continue
-		}
-		switch value := raw.(type) {
-		case string:
-			values[trimmedKey] = value
-		case float64:
-			if value == float64(int64(value)) {
-				values[trimmedKey] = strconv.FormatInt(int64(value), 10)
-			} else {
-				values[trimmedKey] = strconv.FormatFloat(value, 'f', -1, 64)
-			}
-		case bool:
-			values[trimmedKey] = strconv.FormatBool(value)
-		case nil:
-			values[trimmedKey] = ""
-		default:
-			values[trimmedKey] = strings.TrimSpace(fmt.Sprintf("%v", value))
-		}
-	}
-	return values
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, value any) {

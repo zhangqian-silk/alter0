@@ -1,6 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createAPIClient } from "../../../shared/api/client";
-import { formatDateTime } from "../../../shared/time/format";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 import {
   isReactManagedControlRoute,
@@ -10,8 +9,6 @@ import {
   normalizeText,
   RouteCard,
   RouteFieldRow,
-  RouteMarkdownContent,
-  RouteTagSection,
 } from "./RouteBodyPrimitives";
 
 type ControlRouteRecord = {
@@ -22,63 +19,6 @@ type ControlRouteRecord = {
   scope?: string;
   version?: string;
   enabled?: boolean;
-};
-
-type LLMProviderRecord = {
-  id?: string;
-  name?: string;
-  provider_type?: string;
-  api_type?: string;
-  base_url?: string;
-  default_model?: string;
-  models?: Array<{
-    id?: string;
-    name?: string;
-    is_enabled?: boolean;
-  }>;
-  is_enabled?: boolean;
-};
-
-type EnvironmentRouteRecord = {
-  definition?: {
-    key?: string;
-    name?: string;
-    module?: string;
-    description?: string;
-    type?: string;
-    apply_mode?: string;
-    default_value?: string;
-    sensitive?: boolean;
-    hot_reload?: boolean;
-    validation?: {
-      required?: boolean;
-      min?: string;
-      max?: string;
-      allowed?: string[];
-    };
-  };
-  value?: string;
-  effective_value?: string;
-  value_source?: string;
-  pending_restart?: boolean;
-  masked?: boolean;
-};
-
-type EnvironmentAuditRecord = {
-  operator?: string;
-  occurred_at?: string;
-  requires_restart?: boolean;
-  changes?: Array<{
-    key?: string;
-    old_value?: string;
-    new_value?: string;
-    apply_mode?: string;
-  }>;
-};
-
-type RuntimeInfoRecord = {
-  started_at?: string;
-  commit_hash?: string;
 };
 
 type CronJobRouteRecord = {
@@ -97,7 +37,7 @@ type CronJobRouteRecord = {
   };
 };
 
-type RouteRecord = ControlRouteRecord | LLMProviderRecord | EnvironmentRouteRecord | CronJobRouteRecord;
+type RouteRecord = ControlRouteRecord | CronJobRouteRecord;
 
 type ControlRouteResponse = {
   items?: RouteRecord[];
@@ -107,8 +47,6 @@ type ControlRouteCopy = {
   loading: string;
   statusEnabled: string;
   statusDisabled: string;
-  statusApplied: string;
-  statusPendingRestart: string;
   copyValue: string;
   fieldID: string;
   fieldType: string;
@@ -116,17 +54,6 @@ type ControlRouteCopy = {
   fieldName: string;
   fieldScope: string;
   fieldVersion: string;
-  fieldProviderType: string;
-  fieldAPIType: string;
-  fieldBaseURL: string;
-  fieldDefaultModel: string;
-  fieldModels: string;
-  fieldKey: string;
-  fieldValue: string;
-  fieldEffectiveValue: string;
-  fieldValueSource: string;
-  fieldApplyMode: string;
-  fieldModule: string;
   fieldScheduleMode: string;
   fieldTimezone: string;
   fieldCronExpression: string;
@@ -139,11 +66,7 @@ type ControlRouteCopy = {
   enableJob: string;
   disableJob: string;
   actionFailed: (message: string) => string;
-  emptyChannels: string;
   emptySkills: string;
-  emptyMCP: string;
-  emptyModels: string;
-  emptyEnvironments: string;
   emptyCronJobs: string;
   loadFailed: (message: string) => string;
 };
@@ -153,8 +76,6 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     loading: "Loading...",
     statusEnabled: "Enabled",
     statusDisabled: "Disabled",
-    statusApplied: "Applied",
-    statusPendingRestart: "Pending restart",
     copyValue: "Copy value",
     fieldID: "ID",
     fieldType: "Type",
@@ -162,17 +83,6 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     fieldName: "Name",
     fieldScope: "Scope",
     fieldVersion: "Version",
-    fieldProviderType: "Provider Type",
-    fieldAPIType: "API Type",
-    fieldBaseURL: "Base URL",
-    fieldDefaultModel: "Default Model",
-    fieldModels: "Models",
-    fieldKey: "Key",
-    fieldValue: "Value",
-    fieldEffectiveValue: "Effective Value",
-    fieldValueSource: "Source",
-    fieldApplyMode: "Apply Mode",
-    fieldModule: "Module",
     fieldScheduleMode: "Schedule Mode",
     fieldTimezone: "Timezone",
     fieldCronExpression: "Cron Expression",
@@ -185,20 +95,14 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     enableJob: "Enable job",
     disableJob: "Disable job",
     actionFailed: (message) => `Action failed: ${message}`,
-    emptyChannels: "No Channels available.",
     emptySkills: "No Skills available.",
-    emptyMCP: "No MCP available.",
-    emptyModels: "No model providers available.",
-    emptyEnvironments: "No environment config available.",
-    emptyCronJobs: "No cron jobs available.",
+    emptyCronJobs: "No schedules available.",
     loadFailed: (message) => `Load failed: ${message}`,
   },
   zh: {
     loading: "加载中...",
     statusEnabled: "启用",
     statusDisabled: "停用",
-    statusApplied: "已生效",
-    statusPendingRestart: "待重启",
     copyValue: "复制内容",
     fieldID: "ID",
     fieldType: "类型",
@@ -206,17 +110,6 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     fieldName: "名称",
     fieldScope: "范围",
     fieldVersion: "版本",
-    fieldProviderType: "提供方类型",
-    fieldAPIType: "接口类型",
-    fieldBaseURL: "基础地址",
-    fieldDefaultModel: "默认模型",
-    fieldModels: "模型",
-    fieldKey: "键",
-    fieldValue: "当前值",
-    fieldEffectiveValue: "生效值",
-    fieldValueSource: "来源",
-    fieldApplyMode: "生效方式",
-    fieldModule: "模块",
     fieldScheduleMode: "调度模式",
     fieldTimezone: "时区",
     fieldCronExpression: "Cron 表达式",
@@ -229,271 +122,10 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     enableJob: "启用任务",
     disableJob: "停用任务",
     actionFailed: (message) => `操作失败：${message}`,
-    emptyChannels: "暂无可用通道。",
     emptySkills: "暂无可用技能。",
-    emptyMCP: "暂无 MCP 配置。",
-    emptyModels: "暂无模型提供方配置。",
-    emptyEnvironments: "暂无环境配置。",
-    emptyCronJobs: "暂无定时任务配置。",
+    emptyCronJobs: "暂无定时任务。",
     loadFailed: (message) => `加载失败：${message}`,
   },
-};
-
-type EnvironmentRouteCopy = {
-  loading: string;
-  loadFailed: (message: string) => string;
-  runtimePanelEyebrow: string;
-  runtimePanelTitle: string;
-  runtimePanelDescription: string;
-  restartService: string;
-  confirmRestart: string;
-  cancelRestart: string;
-  restarting: string;
-  restartingSync: string;
-  restartFailed: (message: string) => string;
-  restartSuccess: string;
-  restartWaitTimeout: string;
-  restartConfirm: string;
-  restartConfirmDescription: string;
-  restartSyncMaster: string;
-  restartSyncMasterHint: string;
-  lastRestart: string;
-  commitHash: string;
-  reload: string;
-  revealSensitive: string;
-  hideSensitive: string;
-  saveChanges: string;
-  saved: string;
-  saveFailed: (message: string) => string;
-  noChanges: string;
-  auditsTitle: string;
-  auditsEmpty: string;
-  auditOperator: string;
-  auditAt: string;
-  auditRequiresRestart: string;
-  auditChange: (key: string, oldValue: string, newValue: string, applyMode: string) => string;
-  restartNotice: (keys: string) => string;
-  currentValue: string;
-  defaultValue: string;
-  effectiveValue: string;
-  valueType: string;
-  applyMode: string;
-  source: string;
-  validation: string;
-  details: string;
-  pendingRestart: string;
-  hotReload: string;
-  hidden: string;
-  fieldDescription: string;
-  fieldModule: string;
-  fieldKey: string;
-  fieldType: string;
-  fieldApplyMode: string;
-  fieldSource: string;
-  fieldDefault: string;
-  fieldCurrent: string;
-  fieldEffective: string;
-  tags: string;
-  statusApplied: string;
-  statusPendingRestart: string;
-  statusEnabled: string;
-  statusDisabled: string;
-  sourceDefault: string;
-  sourceRuntime: string;
-  sourcePersisted: string;
-  applyImmediate: string;
-  applyRestart: string;
-  typeInteger: string;
-  typeDuration: string;
-  typeString: string;
-  typeEnum: string;
-  typeUnknown: string;
-  validationNone: string;
-  copyValue: string;
-  emptyEnvironments: string;
-  statusHealthyLabel: string;
-  statusHealthyDescription: string;
-  statusDraftLabel: string;
-  statusDraftDescription: (count: number) => string;
-  statusPendingLabel: string;
-  statusPendingDescription: (count: number) => string;
-  statusActivityLabel: string;
-  statusAttentionLabel: string;
-};
-
-const ENVIRONMENT_ROUTE_COPY: Record<LegacyShellLanguage, EnvironmentRouteCopy> = {
-  en: {
-    loading: "Loading environments...",
-    loadFailed: (message) => `Load failed: ${message}`,
-    runtimePanelEyebrow: "Environment Runtime",
-    runtimePanelTitle: "Live Configuration Control",
-    runtimePanelDescription: "Inspect the active instance, review runtime metadata, and apply configuration updates from a single control surface.",
-    restartService: "Restart Service",
-    confirmRestart: "Confirm Restart",
-    cancelRestart: "Cancel",
-    restarting: "Restarting service...",
-    restartingSync: "Syncing remote master and restarting service...",
-    restartFailed: (message) => `Restart failed: ${message}`,
-    restartSuccess: "Service restart completed. The page is now connected to the latest runtime.",
-    restartWaitTimeout: "Restart is taking longer than expected. Refresh and retry in a moment.",
-    restartConfirm: "Restart the service now?",
-    restartConfirmDescription: "The page will reload automatically after the new runtime passes health checks.",
-    restartSyncMaster: "Sync remote master changes before restart",
-    restartSyncMasterHint: "Recommended. Requires local branch master. Tracked local changes will be discarded; untracked files stay untouched.",
-    lastRestart: "Last Restart",
-    commitHash: "Commit Hash",
-    reload: "Reload",
-    revealSensitive: "Reveal Sensitive",
-    hideSensitive: "Hide Sensitive",
-    saveChanges: "Save Changes",
-    saved: "Environment configuration saved.",
-    saveFailed: (message) => `Save failed: ${message}`,
-    noChanges: "No configuration changes.",
-    auditsTitle: "Change Audits",
-    auditsEmpty: "No environment audits.",
-    auditOperator: "Operator",
-    auditAt: "Changed At",
-    auditRequiresRestart: "Requires Restart",
-    auditChange: (key, oldValue, newValue, applyMode) => `${key}: ${oldValue} -> ${newValue} (${applyMode})`,
-    restartNotice: (keys) => `Some changes require restart: ${keys}`,
-    currentValue: "Configured",
-    defaultValue: "Default",
-    effectiveValue: "Effective",
-    valueType: "Value Type",
-    applyMode: "Apply Mode",
-    source: "Source",
-    validation: "Validation",
-    details: "More Details",
-    pendingRestart: "Pending Restart",
-    hotReload: "Hot Reload",
-    hidden: "Hidden value",
-    fieldDescription: "Description",
-    fieldModule: "Module",
-    fieldKey: "Key",
-    fieldType: "Type",
-    fieldApplyMode: "Apply Mode",
-    fieldSource: "Source",
-    fieldDefault: "Default",
-    fieldCurrent: "Configured",
-    fieldEffective: "Effective",
-    tags: "Tags",
-    statusApplied: "Applied",
-    statusPendingRestart: "Pending restart",
-    statusEnabled: "Enabled",
-    statusDisabled: "Disabled",
-    sourceDefault: "Default",
-    sourceRuntime: "Runtime",
-    sourcePersisted: "Persisted",
-    applyImmediate: "Immediate",
-    applyRestart: "Restart",
-    typeInteger: "Integer",
-    typeDuration: "Duration, e.g. 5s / 2m / 1h",
-    typeString: "Text",
-    typeEnum: "Enumerated option",
-    typeUnknown: "Unknown",
-    validationNone: "No constraints",
-    copyValue: "Copy value",
-    emptyEnvironments: "No environment config available.",
-    statusHealthyLabel: "Runtime Healthy",
-    statusHealthyDescription: "The live instance is aligned with the saved environment configuration.",
-    statusDraftLabel: "Unsaved Changes",
-    statusDraftDescription: (count) =>
-      `${count} configuration ${count === 1 ? "change is" : "changes are"} staged locally and not saved yet.`,
-    statusPendingLabel: "Restart Pending",
-    statusPendingDescription: (count) =>
-      `${count} saved ${count === 1 ? "item is" : "items are"} waiting for a restart before the runtime adopts the new values.`,
-    statusActivityLabel: "Runtime Activity",
-    statusAttentionLabel: "Action Required",
-  },
-  zh: {
-    loading: "正在加载环境配置...",
-    loadFailed: (message) => `加载失败：${message}`,
-    runtimePanelEyebrow: "环境运行态",
-    runtimePanelTitle: "在线配置控制台",
-    runtimePanelDescription: "在同一块控制区内查看当前实例、运行时元数据，并完成配置更新与生效操作。",
-    restartService: "重启服务",
-    confirmRestart: "确认重启",
-    cancelRestart: "取消",
-    restarting: "服务正在重启...",
-    restartingSync: "正在同步远端 master 并重启服务...",
-    restartFailed: (message) => `重启失败：${message}`,
-    restartSuccess: "服务重启已完成，当前页面已连接到最新运行实例。",
-    restartWaitTimeout: "服务重启时间超出预期，请稍后刷新后重试。",
-    restartConfirm: "现在重启服务吗？",
-    restartConfirmDescription: "新实例探活通过后，当前页面会自动刷新并重新连接。",
-    restartSyncMaster: "重启前同步远端 master 最新改动",
-    restartSyncMasterHint: "默认开启。要求当前本地分支为 master。已跟踪的本地改动会在同步前丢弃，未跟踪文件保持不变。",
-    lastRestart: "最近重启时间",
-    commitHash: "Commit Hash",
-    reload: "重新加载",
-    revealSensitive: "显示敏感项",
-    hideSensitive: "隐藏敏感项",
-    saveChanges: "保存变更",
-    saved: "环境配置已保存。",
-    saveFailed: (message) => `保存失败：${message}`,
-    noChanges: "没有配置变更。",
-    auditsTitle: "变更审计",
-    auditsEmpty: "暂无环境配置审计。",
-    auditOperator: "操作人",
-    auditAt: "变更时间",
-    auditRequiresRestart: "需要重启",
-    auditChange: (key, oldValue, newValue, applyMode) => `${key}: ${oldValue} -> ${newValue}（${applyMode}）`,
-    restartNotice: (keys) => `以下配置需重启后生效：${keys}`,
-    currentValue: "配置值",
-    defaultValue: "默认值",
-    effectiveValue: "生效值",
-    valueType: "值类型",
-    applyMode: "生效方式",
-    source: "来源",
-    validation: "校验规则",
-    details: "更多信息",
-    pendingRestart: "待重启生效",
-    hotReload: "热更新",
-    hidden: "隐藏值",
-    fieldDescription: "描述",
-    fieldModule: "模块",
-    fieldKey: "键",
-    fieldType: "类型",
-    fieldApplyMode: "生效方式",
-    fieldSource: "来源",
-    fieldDefault: "默认值",
-    fieldCurrent: "配置值",
-    fieldEffective: "生效值",
-    tags: "标签",
-    statusApplied: "已生效",
-    statusPendingRestart: "待重启",
-    statusEnabled: "启用",
-    statusDisabled: "停用",
-    sourceDefault: "默认值",
-    sourceRuntime: "运行时",
-    sourcePersisted: "持久化",
-    applyImmediate: "即时生效",
-    applyRestart: "重启生效",
-    typeInteger: "整数",
-    typeDuration: "时长，例如 5s / 2m / 1h",
-    typeString: "文本",
-    typeEnum: "枚举选项",
-    typeUnknown: "未知",
-    validationNone: "无约束",
-    copyValue: "复制内容",
-    emptyEnvironments: "暂无环境配置。",
-    statusHealthyLabel: "运行态正常",
-    statusHealthyDescription: "当前在线实例与已保存的环境配置保持一致。",
-    statusDraftLabel: "存在未保存变更",
-    statusDraftDescription: (count) => `当前有 ${count} 项配置变更仅保留在页面草稿中，尚未保存。`,
-    statusPendingLabel: "等待重启生效",
-    statusPendingDescription: (count) => `当前有 ${count} 项已保存配置等待重启后写入运行态。`,
-    statusActivityLabel: "运行态动态",
-    statusAttentionLabel: "需要处理",
-  },
-};
-
-type EnvironmentToolbarStatusTone = "neutral" | "success" | "warning" | "error";
-
-type EnvironmentToolbarStatus = {
-  label: string;
-  message: string;
-  tone: EnvironmentToolbarStatusTone;
 };
 
 type FieldSpec = {
@@ -507,10 +139,11 @@ type FieldSpec = {
   markdown?: boolean;
 };
 
-type RequestState =
-  | { status: "loading"; items: RouteRecord[]; error: string }
-  | { status: "ready"; items: RouteRecord[]; error: string }
-  | { status: "error"; items: RouteRecord[]; error: string };
+type RequestState = {
+  status: "loading" | "ready" | "error";
+  items: RouteRecord[];
+  error: string;
+};
 
 type ReactManagedControlRouteBodyProps = {
   route: ReactManagedControlRoute;
@@ -526,34 +159,10 @@ type RouteConfig = {
   title: (item: RouteRecord) => string | null | undefined;
   type: (item: RouteRecord) => string | null | undefined;
   enabled: (item: RouteRecord) => boolean;
-  statusLabels?: (copy: ControlRouteCopy) => {
-    enabled: string;
-    disabled: string;
-  };
   fields: (item: RouteRecord, copy: ControlRouteCopy) => FieldSpec[];
 };
 
 const ROUTE_CONFIG: Record<ReactManagedControlRoute, RouteConfig> = {
-  channels: {
-    path: "/api/control/channels",
-    empty: (copy) => copy.emptyChannels,
-    key: (item) => normalizeText((item as ControlRouteRecord).id),
-    title: (item) => (item as ControlRouteRecord).id,
-    type: (item) => (item as ControlRouteRecord).type,
-    enabled: (item) => Boolean((item as ControlRouteRecord).enabled),
-    fields: (item, copy) => [
-      { label: copy.fieldID, value: (item as ControlRouteRecord).id, copyable: true, mono: true },
-      { label: copy.fieldType, value: (item as ControlRouteRecord).type },
-      {
-        label: copy.fieldDescription,
-        value: (item as ControlRouteRecord).description,
-        multiline: true,
-        preview: true,
-        clampLines: 3,
-        markdown: true,
-      },
-    ],
-  },
   skills: {
     path: "/api/control/skills",
     empty: (copy) => copy.emptySkills,
@@ -567,67 +176,9 @@ const ROUTE_CONFIG: Record<ReactManagedControlRoute, RouteConfig> = {
       { label: copy.fieldName, value: (item as ControlRouteRecord).name },
       { label: copy.fieldScope, value: (item as ControlRouteRecord).scope },
       { label: copy.fieldVersion, value: (item as ControlRouteRecord).version },
-    ],
-  },
-  mcp: {
-    path: "/api/control/mcps",
-    empty: (copy) => copy.emptyMCP,
-    key: (item) => normalizeText((item as ControlRouteRecord).id),
-    title: (item) => (item as ControlRouteRecord).id,
-    type: (item) => (item as ControlRouteRecord).type,
-    enabled: (item) => Boolean((item as ControlRouteRecord).enabled),
-    fields: (item, copy) => [
-      { label: copy.fieldID, value: (item as ControlRouteRecord).id, copyable: true, mono: true },
-      { label: copy.fieldType, value: (item as ControlRouteRecord).type },
-      { label: copy.fieldName, value: (item as ControlRouteRecord).name },
-      { label: copy.fieldScope, value: (item as ControlRouteRecord).scope },
-      { label: copy.fieldVersion, value: (item as ControlRouteRecord).version },
-    ],
-  },
-  models: {
-    path: "/api/control/llm/providers",
-    empty: (copy) => copy.emptyModels,
-    key: (item) => normalizeText((item as LLMProviderRecord).id || (item as LLMProviderRecord).name),
-    title: (item) => (item as LLMProviderRecord).name || (item as LLMProviderRecord).id,
-    type: (item) => (item as LLMProviderRecord).provider_type || (item as LLMProviderRecord).api_type,
-    enabled: (item) => Boolean((item as LLMProviderRecord).is_enabled),
-    fields: (item, copy) => [
-      { label: copy.fieldID, value: (item as LLMProviderRecord).id, copyable: true, mono: true },
-      { label: copy.fieldProviderType, value: (item as LLMProviderRecord).provider_type },
-      { label: copy.fieldAPIType, value: (item as LLMProviderRecord).api_type },
-      {
-        label: copy.fieldBaseURL,
-        value: (item as LLMProviderRecord).base_url,
-        mono: true,
-        preview: true,
-        clampLines: 2,
-      },
-      { label: copy.fieldDefaultModel, value: (item as LLMProviderRecord).default_model },
-      { label: copy.fieldModels, value: summarizeProviderModels(item as LLMProviderRecord), multiline: true, preview: true, clampLines: 3 },
-    ],
-  },
-  environments: {
-    path: "/api/control/environments",
-    empty: (copy) => copy.emptyEnvironments,
-    key: (item) => normalizeText((item as EnvironmentRouteRecord).definition?.key),
-    title: (item) => (item as EnvironmentRouteRecord).definition?.name || (item as EnvironmentRouteRecord).definition?.key,
-    type: (item) => (item as EnvironmentRouteRecord).definition?.module || (item as EnvironmentRouteRecord).definition?.type,
-    enabled: (item) => !Boolean((item as EnvironmentRouteRecord).pending_restart),
-    statusLabels: (copy) => ({
-      enabled: copy.statusApplied,
-      disabled: copy.statusPendingRestart,
-    }),
-    fields: (item, copy) => [
-      { label: copy.fieldKey, value: (item as EnvironmentRouteRecord).definition?.key, copyable: true, mono: true },
-      { label: copy.fieldModule, value: (item as EnvironmentRouteRecord).definition?.module },
-      { label: copy.fieldType, value: (item as EnvironmentRouteRecord).definition?.type },
-      { label: copy.fieldApplyMode, value: (item as EnvironmentRouteRecord).definition?.apply_mode },
-      { label: copy.fieldValue, value: (item as EnvironmentRouteRecord).value, mono: true },
-      { label: copy.fieldEffectiveValue, value: (item as EnvironmentRouteRecord).effective_value, mono: true },
-      { label: copy.fieldValueSource, value: (item as EnvironmentRouteRecord).value_source },
       {
         label: copy.fieldDescription,
-        value: (item as EnvironmentRouteRecord).definition?.description,
+        value: (item as ControlRouteRecord).description,
         multiline: true,
         preview: true,
         clampLines: 3,
@@ -669,10 +220,6 @@ export function ReactManagedControlRouteBody({
   route,
   language,
 }: ReactManagedControlRouteBodyProps) {
-  if (route === "environments") {
-    return <ReactManagedEnvironmentRouteBody language={language} />;
-  }
-
   const copy = CONTROL_ROUTE_COPY[language];
   const routeConfig = ROUTE_CONFIG[route];
   const [state, setState] = useState<RequestState>({
@@ -733,11 +280,6 @@ export function ReactManagedControlRouteBody({
   if (!state.items.length) {
     return <p className="route-empty">{routeConfig.empty(copy)}</p>;
   }
-
-  const statusLabels = routeConfig.statusLabels?.(copy) ?? {
-    enabled: copy.statusEnabled,
-    disabled: copy.statusDisabled,
-  };
 
   async function toggleCronJobEnabled(item: RouteRecord) {
     if (route !== "cron-jobs") {
@@ -803,8 +345,8 @@ export function ReactManagedControlRouteBody({
             title={routeConfig.title(item)}
             type={routeConfig.type(item)}
             enabled={routeConfig.enabled(item)}
-            statusEnabledLabel={statusLabels.enabled}
-            statusDisabledLabel={statusLabels.disabled}
+            statusEnabledLabel={copy.statusEnabled}
+            statusDisabledLabel={copy.statusDisabled}
             actions={renderCronJobActions(item)}
           >
             {routeConfig.fields(item, copy).map((field) => (
@@ -815,752 +357,4 @@ export function ReactManagedControlRouteBody({
       </section>
     </>
   );
-}
-
-function summarizeProviderModels(item: LLMProviderRecord) {
-  const models = Array.isArray(item.models) ? item.models : [];
-  const enabledModels = models
-    .filter((model) => model?.is_enabled)
-    .map((model) => String(model?.name || model?.id || "").trim())
-    .filter(Boolean);
-
-  if (enabledModels.length) {
-    return enabledModels.join(", ");
-  }
-
-  const fallbackModels = models
-    .map((model) => String(model?.name || model?.id || "").trim())
-    .filter(Boolean);
-
-  return fallbackModels.join(", ");
-}
-
-function ReactManagedEnvironmentRouteBody({
-  language,
-}: {
-  language: LegacyShellLanguage;
-}) {
-  const copy = ENVIRONMENT_ROUTE_COPY[language];
-  const apiClient = createAPIClient();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [items, setItems] = useState<EnvironmentRouteRecord[]>([]);
-  const [audits, setAudits] = useState<EnvironmentAuditRecord[]>([]);
-  const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfoRecord>({});
-  const [revealSensitive, setRevealSensitive] = useState(false);
-  const [draftValues, setDraftValues] = useState<Record<string, string>>({});
-  const [dirtyKeys, setDirtyKeys] = useState<Record<string, boolean>>({});
-  const [statusMessage, setStatusMessage] = useState("");
-  const [statusKind, setStatusKind] = useState<"success" | "error" | "">("");
-  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
-  const [syncRemoteMaster, setSyncRemoteMaster] = useState(true);
-  const restartPollTimerRef = useRef<number | null>(null);
-  const restartDialogTitleID = useId();
-  const restartDialogDescriptionID = useId();
-
-  useEffect(() => {
-    const notice = consumeRuntimeRestartNotice();
-    if (notice) {
-      setStatusMessage(copy.restartSuccess);
-      setStatusKind("success");
-    }
-  }, [copy.restartSuccess]);
-
-  useEffect(() => {
-    void reloadEnvironmentState();
-    return () => {
-      clearRestartPollTimer(restartPollTimerRef);
-    };
-  }, [revealSensitive]);
-
-  useEffect(() => {
-    if (!restartConfirmOpen) {
-      return undefined;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setRestartConfirmOpen(false);
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [restartConfirmOpen]);
-
-  async function reloadEnvironmentState(nextStatusMessage = "", nextStatusKind: "success" | "error" | "" = "") {
-    setLoading(true);
-    setError("");
-    try {
-      const query = revealSensitive ? "?reveal_sensitive=true" : "";
-      const [environmentPayload, auditPayload, runtimePayload] = await Promise.all([
-        apiClient.get<{ items?: EnvironmentRouteRecord[] }>(`/api/control/environments${query}`),
-        apiClient.get<{ items?: EnvironmentAuditRecord[] }>(`/api/control/environments/audits${query}`),
-        apiClient.get<RuntimeInfoRecord>("/api/control/runtime"),
-      ]);
-      const nextItems = Array.isArray(environmentPayload?.items) ? environmentPayload.items : [];
-      setItems(nextItems);
-      setAudits(Array.isArray(auditPayload?.items) ? auditPayload.items : []);
-      setRuntimeInfo(runtimePayload || {});
-      setDraftValues(buildEnvironmentDrafts(nextItems, revealSensitive));
-      setDirtyKeys({});
-      setStatusMessage(nextStatusMessage);
-      setStatusKind(nextStatusKind);
-      setRestartConfirmOpen(false);
-    } catch (requestError: unknown) {
-      setItems([]);
-      setAudits([]);
-      setRuntimeInfo({});
-      setError(requestError instanceof Error ? requestError.message : "unknown_error");
-      setStatusMessage(nextStatusMessage);
-      setStatusKind(nextStatusKind);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleSave() {
-    const changedValues = buildChangedEnvironmentValues(items, draftValues, dirtyKeys, revealSensitive);
-    const changedKeys = Object.keys(changedValues);
-    if (!changedKeys.length) {
-      setStatusMessage(copy.noChanges);
-      setStatusKind("");
-      return;
-    }
-
-    try {
-      const result = await apiClient.put<{
-        needs_restart?: boolean;
-        restart_keys?: string[];
-      }>("/api/control/environments", {
-        operator: "web-console",
-        values: changedValues,
-      });
-      const restartKeys = Array.isArray(result?.restart_keys) ? result.restart_keys.filter(Boolean) : [];
-      const nextMessage = restartKeys.length ? copy.restartNotice(restartKeys.join(", ")) : copy.saved;
-      await reloadEnvironmentState(nextMessage, "success");
-    } catch (saveError: unknown) {
-      setStatusMessage(copy.saveFailed(saveError instanceof Error ? saveError.message : "unknown_error"));
-      setStatusKind("error");
-    }
-  }
-
-  async function handleConfirmRestart() {
-    const previousRuntime = {
-      started_at: normalizeTextValue(runtimeInfo.started_at),
-      commit_hash: normalizeTextValue(runtimeInfo.commit_hash),
-    };
-
-    try {
-      await apiClient.post("/api/control/runtime/restart", {
-        sync_remote_master: syncRemoteMaster,
-      });
-      setStatusMessage(syncRemoteMaster ? copy.restartingSync : copy.restarting);
-      setStatusKind("success");
-      setRestartConfirmOpen(false);
-      scheduleRuntimeRestartPoll({
-        apiClient,
-        previousRuntime,
-        onTimeout: () => {
-          setStatusMessage(copy.restartWaitTimeout);
-          setStatusKind("error");
-        },
-        onReady: (nextRuntime) => {
-          setRuntimeInfo(nextRuntime);
-          persistRuntimeRestartNotice();
-          window.location.reload();
-        },
-        timerRef: restartPollTimerRef,
-      });
-    } catch (restartError: unknown) {
-      setRestartConfirmOpen(false);
-      setStatusMessage(copy.restartFailed(restartError instanceof Error ? restartError.message : "unknown_error"));
-      setStatusKind("error");
-    }
-  }
-
-  function openRestartConfirm() {
-    setSyncRemoteMaster(true);
-    setRestartConfirmOpen(true);
-  }
-
-  if (loading) {
-    return <p className="route-loading">{copy.loading}</p>;
-  }
-
-  if (error) {
-    return <p className="route-error">{copy.loadFailed(error)}</p>;
-  }
-
-  if (!items.length) {
-    return <p className="route-empty">{copy.emptyEnvironments}</p>;
-  }
-
-  const groupedItems = groupEnvironmentItems(items);
-  const dirtyCount = Object.keys(dirtyKeys).length;
-  const pendingRestartCount = items.reduce((count, item) => count + (item.pending_restart ? 1 : 0), 0);
-  const toolbarStatus = buildEnvironmentToolbarStatus({
-    copy,
-    dirtyCount,
-    pendingRestartCount,
-    statusKind,
-    statusMessage,
-  });
-
-  return (
-    <section className="environment-view">
-      <div className="route-surface environment-toolbar">
-        <div className="environment-toolbar-head">
-          <div className="environment-toolbar-copy">
-            <span className="environment-toolbar-eyebrow">{copy.runtimePanelEyebrow}</span>
-            <h3>{copy.runtimePanelTitle}</h3>
-            <p>{copy.runtimePanelDescription}</p>
-          </div>
-
-          <div className="environment-toolbar-actions">
-            <div className="environment-toolbar-action-group">
-              <button
-                className="environment-toolbar-button"
-                data-variant="quiet"
-                type="button"
-                onClick={() => setRevealSensitive((current) => !current)}
-              >
-                {revealSensitive ? copy.hideSensitive : copy.revealSensitive}
-              </button>
-              <button
-                className="environment-toolbar-button"
-                data-variant="quiet"
-                type="button"
-                onClick={() => void reloadEnvironmentState()}
-              >
-                {copy.reload}
-              </button>
-            </div>
-
-            <div className="environment-toolbar-action-group environment-toolbar-action-group-primary">
-              <button className="environment-toolbar-button" data-variant="restart" type="button" onClick={openRestartConfirm}>
-                {copy.restartService}
-              </button>
-              <button className="environment-toolbar-button" data-variant="primary" type="button" onClick={() => void handleSave()}>
-                {copy.saveChanges}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="environment-toolbar-panel">
-          <div className="environment-runtime-meta">
-            <div className="environment-runtime-meta-item">
-              <span>{copy.lastRestart}</span>
-              <strong>{formatDateTime(runtimeInfo.started_at)}</strong>
-            </div>
-            <div className="environment-runtime-meta-item">
-              <span>{copy.commitHash}</span>
-              <strong>
-                <code title={normalizeTextValue(runtimeInfo.commit_hash)}>
-                  {shortenCommitHash(runtimeInfo.commit_hash)}
-                </code>
-              </strong>
-            </div>
-          </div>
-
-          <div className={`environment-status-panel is-${toolbarStatus.tone}`}>
-            <span className="environment-status-label">{toolbarStatus.label}</span>
-            <p className={`environment-status ${toolbarStatus.tone === "error" ? "is-error" : toolbarStatus.tone === "success" ? "is-success" : toolbarStatus.tone === "warning" ? "is-warning" : ""}`}>
-              {toolbarStatus.message}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {restartConfirmOpen ? (
-        <div
-          className="modal-backdrop"
-          data-modal-state="open"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setRestartConfirmOpen(false);
-            }
-          }}
-        >
-          <div
-            aria-describedby={restartDialogDescriptionID}
-            aria-labelledby={restartDialogTitleID}
-            aria-modal="true"
-            className="modal-dialog environment-restart-modal"
-            role="dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="modal-header">
-              <h3 id={restartDialogTitleID}>{copy.restartConfirm}</h3>
-            </div>
-            <div className="modal-body">
-              <p className="environment-restart-confirm-hint" id={restartDialogDescriptionID}>
-                {copy.restartConfirmDescription}
-              </p>
-              <label className="environment-restart-confirm-option">
-                <input
-                  aria-label={copy.restartSyncMaster}
-                  checked={syncRemoteMaster}
-                  type="checkbox"
-                  onChange={(event) => setSyncRemoteMaster(event.target.checked)}
-                />
-                <span>
-                  {copy.restartSyncMaster}
-                  <small>{copy.restartSyncMasterHint}</small>
-                </span>
-              </label>
-            </div>
-            <div className="modal-footer">
-              <button data-variant="secondary" type="button" onClick={() => setRestartConfirmOpen(false)}>
-                {copy.cancelRestart}
-              </button>
-              <button type="button" onClick={() => void handleConfirmRestart()}>
-                {copy.confirmRestart}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="environment-modules">
-        {Object.entries(groupedItems).map(([moduleName, moduleItems]) => (
-          <section key={moduleName} className="environment-module">
-            <h4>{moduleName}</h4>
-            <div className="environment-module-grid">
-              {moduleItems.map((item) => {
-                const key = normalizeTextValue(item.definition?.key);
-                const hiddenSensitive = Boolean(item.definition?.sensitive) && !revealSensitive;
-                const inputValue = draftValues[key] ?? "";
-                return (
-                  <RouteCard
-                    key={key}
-                    title={item.definition?.name || key}
-                    type={item.definition?.type}
-                    enabled={!item.pending_restart}
-                    statusEnabledLabel={copy.statusApplied}
-                    statusDisabledLabel={copy.statusPendingRestart}
-                    className="environment-item"
-                    body={
-                      <div className="environment-card-body">
-                        <div className="environment-summary">
-                          <div className="environment-item-key">
-                            <code title={key}>{key}</code>
-                            {item.pending_restart ? <span className="environment-pending">{copy.pendingRestart}</span> : null}
-                          </div>
-                          <div className="environment-description">
-                            <span>{copy.fieldDescription}</span>
-                            <RouteMarkdownContent
-                              className="environment-description-text"
-                              value={item.definition?.description}
-                            />
-                          </div>
-                          <label className="environment-input-row">
-                            <span>{copy.currentValue}</span>
-                            {renderEnvironmentInput({
-                              copy,
-                              hiddenSensitive,
-                              item,
-                              value: inputValue,
-                              onChange: (value) => {
-                                setDraftValues((current) => ({
-                                  ...current,
-                                  [key]: value,
-                                }));
-                                setDirtyKeys((current) => ({
-                                  ...current,
-                                  [key]: true,
-                                }));
-                              },
-                            })}
-                          </label>
-                          <details className="environment-details">
-                            <summary>{copy.details}</summary>
-                            <div className="environment-details-body">
-                              <RouteFieldRow label={copy.fieldKey} value={key} copyLabel={copy.copyValue} copyable mono />
-                              <RouteFieldRow label={copy.fieldModule} value={item.definition?.module} copyLabel={copy.copyValue} />
-                              <RouteFieldRow label={copy.fieldType} value={formatEnvironmentType(item.definition?.type, copy)} copyLabel={copy.copyValue} />
-                              <RouteFieldRow label={copy.fieldApplyMode} value={formatEnvironmentApplyMode(item.definition?.apply_mode, copy)} copyLabel={copy.copyValue} />
-                              <RouteFieldRow label={copy.fieldSource} value={formatEnvironmentSource(item.value_source, copy)} copyLabel={copy.copyValue} />
-                              <RouteFieldRow label={copy.fieldDefault} value={item.definition?.default_value} copyLabel={copy.copyValue} mono multiline />
-                              <RouteFieldRow label={copy.fieldCurrent} value={item.value} copyLabel={copy.copyValue} mono multiline />
-                              <RouteFieldRow label={copy.fieldEffective} value={item.effective_value} copyLabel={copy.copyValue} mono multiline />
-                              <RouteFieldRow label={copy.validation} value={formatEnvironmentValidation(item, copy)} copyLabel={copy.copyValue} multiline markdown />
-                            </div>
-                          </details>
-                        </div>
-                      </div>
-                    }
-                    footer={
-                      <RouteTagSection
-                        label={copy.tags}
-                        tags={buildEnvironmentTags(item, copy)}
-                      />
-                    }
-                    footerClassName="route-card-footer-spread"
-                  />
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-
-      <section className="environment-audits">
-        <h4>{copy.auditsTitle}</h4>
-        <div className="environment-audit-list">
-          {audits.length ? (
-            audits.map((audit, index) => (
-              <RouteCard
-                key={`${normalizeTextValue(audit.occurred_at)}-${index}`}
-                title={audit.operator || copy.auditOperator}
-                type={audit.requires_restart ? copy.statusPendingRestart : copy.statusApplied}
-                enabled={!audit.requires_restart}
-                statusEnabledLabel={copy.statusApplied}
-                statusDisabledLabel={copy.auditRequiresRestart}
-                className="environment-audit-item"
-              >
-                <RouteFieldRow label={copy.auditOperator} value={audit.operator} copyLabel={copy.copyValue} />
-                <RouteFieldRow label={copy.auditAt} value={formatDateTime(audit.occurred_at)} copyLabel={copy.copyValue} />
-                <div className="environment-audit-changes">
-                  <span>{copy.fieldDescription}</span>
-                  <ul>
-                    {(audit.changes || []).map((change, changeIndex) => (
-                      <li key={`${normalizeTextValue(change.key)}-${changeIndex}`}>
-                        {copy.auditChange(
-                          normalizeText(change.key),
-                          normalizeText(change.old_value),
-                          normalizeText(change.new_value),
-                          formatEnvironmentApplyMode(change.apply_mode, copy),
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </RouteCard>
-            ))
-          ) : (
-            <p className="route-empty">{copy.auditsEmpty}</p>
-          )}
-        </div>
-      </section>
-    </section>
-  );
-}
-
-function renderEnvironmentInput({
-  copy,
-  hiddenSensitive,
-  item,
-  value,
-  onChange,
-}: {
-  copy: EnvironmentRouteCopy;
-  hiddenSensitive: boolean;
-  item: EnvironmentRouteRecord;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const options = Array.isArray(item.definition?.validation?.allowed)
-    ? item.definition?.validation?.allowed?.filter(Boolean) || []
-    : [];
-
-  if (String(item.definition?.type || "").toLowerCase() === "enum" && options.length) {
-    return (
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
-  return (
-    <input
-      placeholder={hiddenSensitive ? copy.hidden : normalizeTextValue(item.definition?.default_value)}
-      type={hiddenSensitive ? "password" : "text"}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    />
-  );
-}
-
-function buildEnvironmentDrafts(items: EnvironmentRouteRecord[], revealSensitive: boolean) {
-  return items.reduce<Record<string, string>>((accumulator, item) => {
-    const key = normalizeTextValue(item.definition?.key);
-    if (!key) {
-      return accumulator;
-    }
-    accumulator[key] =
-      Boolean(item.definition?.sensitive) && Boolean(item.masked) && !revealSensitive
-        ? ""
-        : normalizeTextValue(item.value);
-    return accumulator;
-  }, {});
-}
-
-function buildChangedEnvironmentValues(
-  items: EnvironmentRouteRecord[],
-  draftValues: Record<string, string>,
-  dirtyKeys: Record<string, boolean>,
-  revealSensitive: boolean,
-) {
-  return items.reduce<Record<string, string>>((accumulator, item) => {
-    const key = normalizeTextValue(item.definition?.key);
-    if (!key) {
-      return accumulator;
-    }
-    const nextValue = draftValues[key] ?? "";
-    const sensitiveMasked = Boolean(item.definition?.sensitive) && Boolean(item.masked) && !revealSensitive;
-    if (sensitiveMasked) {
-      if (dirtyKeys[key]) {
-        accumulator[key] = nextValue;
-      }
-      return accumulator;
-    }
-    if (normalizeTextValue(item.value) !== nextValue.trim()) {
-      accumulator[key] = nextValue;
-    }
-    return accumulator;
-  }, {});
-}
-
-function groupEnvironmentItems(items: EnvironmentRouteRecord[]) {
-  return items.reduce<Record<string, EnvironmentRouteRecord[]>>((accumulator, item) => {
-    const moduleName = normalizeText(item.definition?.module);
-    if (!accumulator[moduleName]) {
-      accumulator[moduleName] = [];
-    }
-    accumulator[moduleName].push(item);
-    return accumulator;
-  }, {});
-}
-
-function buildEnvironmentTags(item: EnvironmentRouteRecord, copy: EnvironmentRouteCopy) {
-  return [
-    formatEnvironmentApplyMode(item.definition?.apply_mode, copy),
-    formatEnvironmentSource(item.value_source, copy),
-    item.definition?.hot_reload ? copy.hotReload : copy.statusDisabled,
-  ];
-}
-
-function buildEnvironmentToolbarStatus({
-  copy,
-  dirtyCount,
-  pendingRestartCount,
-  statusKind,
-  statusMessage,
-}: {
-  copy: EnvironmentRouteCopy;
-  dirtyCount: number;
-  pendingRestartCount: number;
-  statusKind: "success" | "error" | "";
-  statusMessage: string;
-}): EnvironmentToolbarStatus {
-  if (statusKind === "error" && statusMessage) {
-    return {
-      label: copy.statusAttentionLabel,
-      message: statusMessage,
-      tone: "error",
-    };
-  }
-
-  if (statusMessage) {
-    return {
-      label: copy.statusActivityLabel,
-      message: statusMessage,
-      tone: "success",
-    };
-  }
-
-  if (dirtyCount > 0) {
-    return {
-      label: copy.statusDraftLabel,
-      message: copy.statusDraftDescription(dirtyCount),
-      tone: "neutral",
-    };
-  }
-
-  if (pendingRestartCount > 0) {
-    return {
-      label: copy.statusPendingLabel,
-      message: copy.statusPendingDescription(pendingRestartCount),
-      tone: "warning",
-    };
-  }
-
-  return {
-    label: copy.statusHealthyLabel,
-    message: copy.statusHealthyDescription,
-    tone: "neutral",
-  };
-}
-
-function formatEnvironmentApplyMode(value: unknown, copy: EnvironmentRouteCopy) {
-  const normalized = normalizeTextValue(value).toLowerCase();
-  if (normalized === "immediate") {
-    return copy.applyImmediate;
-  }
-  if (normalized === "restart") {
-    return copy.applyRestart;
-  }
-  return normalizeText(value);
-}
-
-function formatEnvironmentSource(value: unknown, copy: EnvironmentRouteCopy) {
-  const normalized = normalizeTextValue(value).toLowerCase();
-  if (normalized === "default") {
-    return copy.sourceDefault;
-  }
-  if (normalized === "runtime") {
-    return copy.sourceRuntime;
-  }
-  if (normalized === "persisted" || normalized === "control") {
-    return copy.sourcePersisted;
-  }
-  return normalizeText(value);
-}
-
-function formatEnvironmentType(value: unknown, copy: EnvironmentRouteCopy) {
-  const normalized = normalizeTextValue(value).toLowerCase();
-  if (normalized === "integer") {
-    return copy.typeInteger;
-  }
-  if (normalized === "duration") {
-    return copy.typeDuration;
-  }
-  if (normalized === "string") {
-    return copy.typeString;
-  }
-  if (normalized === "enum") {
-    return copy.typeEnum;
-  }
-  if (!normalized) {
-    return copy.typeUnknown;
-  }
-  return normalizeText(value);
-}
-
-function formatEnvironmentValidation(item: EnvironmentRouteRecord, copy: EnvironmentRouteCopy) {
-  const validation = item.definition?.validation;
-  if (!validation) {
-    return copy.validationNone;
-  }
-  const parts: string[] = [];
-  if (validation.required) {
-    parts.push("required");
-  }
-  if (normalizeTextValue(validation.min)) {
-    parts.push(`min=${normalizeTextValue(validation.min)}`);
-  }
-  if (normalizeTextValue(validation.max)) {
-    parts.push(`max=${normalizeTextValue(validation.max)}`);
-  }
-  const allowed = Array.isArray(validation.allowed)
-    ? validation.allowed.map((option) => normalizeTextValue(option)).filter(Boolean)
-    : [];
-  if (allowed.length) {
-    parts.push(`allowed=${allowed.join(", ")}`);
-  }
-  return parts.length ? parts.join(" | ") : copy.validationNone;
-}
-
-function shortenCommitHash(value: unknown) {
-  const normalized = normalizeTextValue(value);
-  if (!normalized) {
-    return "-";
-  }
-  if (normalized.length <= 16) {
-    return normalized;
-  }
-  return `${normalized.slice(0, 12)}...`;
-}
-
-function normalizeTextValue(value: unknown) {
-  const normalized = String(value || "").trim();
-  return normalized;
-}
-
-function persistRuntimeRestartNotice() {
-  try {
-    window.sessionStorage.setItem(
-      "alter0.runtime-restart-notice",
-      JSON.stringify({ status: "success", created_at: Date.now() }),
-    );
-  } catch {
-    // ignore storage failures
-  }
-}
-
-function consumeRuntimeRestartNotice() {
-  try {
-    const raw = window.sessionStorage.getItem("alter0.runtime-restart-notice");
-    window.sessionStorage.removeItem("alter0.runtime-restart-notice");
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw) as { status?: string } | null;
-    return parsed?.status === "success" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function clearRestartPollTimer(timerRef: { current: number | null }) {
-  if (timerRef.current) {
-    window.clearTimeout(timerRef.current);
-    timerRef.current = null;
-  }
-}
-
-function scheduleRuntimeRestartPoll({
-  apiClient,
-  previousRuntime,
-  onTimeout,
-  onReady,
-  timerRef,
-}: {
-  apiClient: ReturnType<typeof createAPIClient>;
-  previousRuntime: RuntimeInfoRecord;
-  onTimeout: () => void;
-  onReady: (nextRuntime: RuntimeInfoRecord) => void;
-  timerRef: { current: number | null };
-}) {
-  clearRestartPollTimer(timerRef);
-  const deadline = Date.now() + 120000;
-
-  const poll = async () => {
-    try {
-      const nextRuntime = await apiClient.get<RuntimeInfoRecord>("/api/control/runtime");
-      const nextStartedAt = normalizeTextValue(nextRuntime.started_at);
-      const nextCommitHash = normalizeTextValue(nextRuntime.commit_hash);
-      if (
-        nextStartedAt !== normalizeTextValue(previousRuntime.started_at) ||
-        nextCommitHash !== normalizeTextValue(previousRuntime.commit_hash)
-      ) {
-        onReady(nextRuntime);
-        return;
-      }
-    } catch {
-      // runtime may be temporarily unavailable while restarting
-    }
-
-    if (Date.now() >= deadline) {
-      clearRestartPollTimer(timerRef);
-      onTimeout();
-      return;
-    }
-
-    timerRef.current = window.setTimeout(() => {
-      void poll();
-    }, 1500);
-  };
-
-  timerRef.current = window.setTimeout(() => {
-    void poll();
-  }, 1500);
 }

@@ -3,8 +3,7 @@
 ## 覆盖范围
 
 - Control、Scheduler、Session、Task 本地文件往返。
-- JSON/Markdown 兼容读取。
-- Task artifact、日志追加去重、legacy 迁移、日志保留、删除目录清理。
+- Task artifact、日志追加去重、日志保留、删除目录清理。
 
 ## 边界
 

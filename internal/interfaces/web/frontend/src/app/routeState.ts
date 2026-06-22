@@ -6,24 +6,17 @@ export const DEFAULT_WORKBENCH_ROUTE = "chat";
 export type WorkbenchSessionRoute = "chat" | "terminal";
 
 const KNOWN_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);
-const LEGACY_ROUTE_ALIASES: Record<string, string> = {
-  management: "settings",
-};
 const SESSION_QUERY_KEY = "session_id";
 
 export function parseWorkbenchRoute(
   pathname: string = window.location.pathname,
 ): string {
   const route = normalizePathname(pathname).replace(/^\//, "");
-  if (LEGACY_ROUTE_ALIASES[route]) {
-    return LEGACY_ROUTE_ALIASES[route];
-  }
   return KNOWN_ROUTES.has(route) ? route : DEFAULT_WORKBENCH_ROUTE;
 }
 
 export function navigateWorkbenchRoute(route: string): void {
-  const aliased = LEGACY_ROUTE_ALIASES[route] ?? route;
-  const normalized = KNOWN_ROUTES.has(aliased) ? aliased : DEFAULT_WORKBENCH_ROUTE;
+  const normalized = KNOWN_ROUTES.has(route) ? route : DEFAULT_WORKBENCH_ROUTE;
   const currentRoute = parseWorkbenchRoute();
   const nextURL = new URL(window.location.href);
   nextURL.pathname = `/${normalized}`;

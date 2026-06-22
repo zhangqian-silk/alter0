@@ -5,7 +5,6 @@
 - memory capability 与 runtime catalog 字段往返。
 - Capability 默认值、版本规则与类型校验。
 - Skill 统一模型校验。
-- Environment 配置值、duration、enum 归一。
 
 ## 边界
 

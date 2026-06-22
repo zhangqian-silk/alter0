@@ -28,8 +28,10 @@ func TestServiceBuildScriptsUseUnifiedFrontendAwareBuild(t *testing.T) {
 
 	assertContains(t, startScript, "scripts/build_alter0_service.sh")
 	assertContains(t, relaunchScript, "scripts/build_alter0_service.sh")
+	assertContains(t, relaunchScript, "git merge --ff-only")
 	assertNotContains(t, startScript, "go build -o")
 	assertNotContains(t, relaunchScript, "go build -o")
+	assertNotContains(t, relaunchScript, "git reset --hard")
 	assertContains(t, makefile, "build:")
 	assertContains(t, makefile, "scripts/build_alter0_service.sh")
 }

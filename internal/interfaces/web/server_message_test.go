@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -155,7 +156,7 @@ func TestMessageHandlerCarriesImageAttachmentsInMetadata(t *testing.T) {
 	}
 }
 
-func TestMessageHandlerIgnoresCanceledRequestContextForWebConversation(t *testing.T) {
+func TestMessageHandlerUsesRequestContextForWebConversation(t *testing.T) {
 	orchestrator := &stubWebOrchestrator{
 		result: shareddomain.OrchestrationResult{
 			MessageID: "message-generated",
@@ -180,7 +181,7 @@ func TestMessageHandlerIgnoresCanceledRequestContextForWebConversation(t *testin
 	if orchestrator.handleCount != 1 {
 		t.Fatalf("expected orchestrator handle count 1, got %d", orchestrator.handleCount)
 	}
-	if orchestrator.lastCtxErr != nil {
-		t.Fatalf("expected detached execution context, got %v", orchestrator.lastCtxErr)
+	if !errors.Is(orchestrator.lastCtxErr, context.Canceled) {
+		t.Fatalf("expected request context cancellation to reach orchestrator, got %v", orchestrator.lastCtxErr)
 	}
 }
