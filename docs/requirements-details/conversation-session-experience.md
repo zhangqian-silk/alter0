@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-06-14
+> Last update: 2026-06-23
 
 ## 领域边界
 
@@ -111,6 +111,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `POST /api/terminal/sessions/{session_id}/input?scope=chat` 在 Web 层接受请求后，后端执行与持久化不得再依赖浏览器连接持续存活；页面刷新、标签页切换、请求断开或前端取消只允许中断当前 HTTP 回传，不得直接取消本轮会话执行。
 - `Chat` 的 URL query 只表达显式会话恢复：页面首次加载、刷新、手动粘贴 `/chat?session_id=<8位短hash>` 或浏览器恢复带 query 的标签页时，Chat 先读取 `session_id` 恢复目标会话。访问 `/chat` 或从主导航切回 `Chat` 时，工作台清理旧 `session_id`，并按服务端会话列表与本地最近快照的合并结果打开最新会话，避免上一次活动会话被 query 或 sessionStorage 固定。历史 `/chat?session_id=<8位短hash>` 入口继续按 Chat 会话恢复对应历史会话。
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
+- `Chat` 在同一 SPA 工作台内从 Chat 切到 Settings、Terminal 或其他页面再返回时，应优先使用浏览器内存级运行态缓存恢复会话列表、当前活动会话和最新少量消息；缓存 TTL 为 8 小时，当前会话消息最多保留 12 条。该缓存只服务路由切换后的首屏恢复，不写入 `sessionStorage` / `localStorage`，不替代服务端历史或刷新恢复快照；会话列表和单会话详情接口返回后必须继续按现有合并规则更新视图，超过 TTL 的缓存不得参与首屏渲染。
 - `Chat` 需复用 Terminal session store 作为服务端会话事实来源，记录 `session_id -> title / skills / status / turns / pinned / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
 - `Chat / Terminal` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前运行页会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。列表项主体只展示标题，真实会话尾侧固定提供单个三点更多按钮；展开菜单承载置顶、查看详情与删除操作，查看详情会聚焦该会话并打开 `Details` 面板且不主动收起已打开的移动会话抽屉，删除操作必须二次确认后才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、短 hash、Skill 标签或额外摘要。运行页空列表、Chat 本地空白草稿和 Terminal 加载态优先展示一条 active `New` 占位会话；`New` 草稿/占位只作为输入入口，不显示三点菜单，不支持置顶、详情或删除，同一路由内重复点击 `New` 只聚焦既有空白虚拟会话，不创建多个空会话。Terminal 占位会话不立即写入服务端，点击列表占位或移动端顶部 `New` 关闭会话抽屉并聚焦输入框，首次发送输入或添加附件后才创建真实 Terminal session 并替换占位项；真实 Terminal session 在首条输入命名前也以 `New` 作为默认标题。三条运行页继续生成同一规则的 8 位短 hash，用于运行页 URL 恢复、预览域名映射与人工排障引用；左侧会话列表不展示短 hash。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表或 URL 展示值。

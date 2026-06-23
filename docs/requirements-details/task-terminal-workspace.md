@@ -1,6 +1,6 @@
 # Terminal & Workspace Requirements
 
-> Last update: 2026-06-22
+> Last update: 2026-06-23
 
 ## 领域边界
 
@@ -153,6 +153,7 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 - Terminal 单会话详情默认裁剪到最新 `20` 个 turns，并按约 `256KiB` 的 turns 页预算控制单次响应体；接口支持 `turn_limit` 与 `turn_before` 分批读取更早 turns，并返回 `turns_paging` 标识总量、页边界、`byte_limit / approx_bytes` 和是否仍有更早内容。前端刷新当前活动会话时按 turn id 合并分页结果，避免长会话在 page-activation 或轮询中被最新片段截断。
 - Terminal 打开已有 turn 的会话、刷新恢复当前会话或切换到其他已有输出会话后，`terminal-chat-screen` 初始视口必须落到最新输出所在底部；该定位只作用于会话进入阶段，后续轮询刷新、前后台恢复、Process 展开收起或用户正在滚动输出区时不得强制把视口拉回底部。
 - 页面从后台恢复到前台、浏览器重新把当前 Terminal 页激活为可见页、bfcache 恢复或网络恢复在线时，必须复用运行页共享的 page-activation 链路，立即补拉会话列表与当前活动会话详情，再回到对应状态下的轮询节奏。
+- Terminal 前端在 SPA 路由切换导致组件卸载后，应保留浏览器内存级运行态缓存，用于回到 Terminal 时立即恢复最近会话列表和当前活动会话的最新少量 turns。缓存只作为首屏快照使用，必须在接口响应后按现有列表与单会话详情合并规则更新；缓存写入需裁剪 turns 数量并设置 8 小时 TTL，超过 TTL 后不得参与首屏渲染。
 - Terminal 会话在列表中执行删除并确认成功后，前端必须保持当前会话列表面板状态不变；无论删除的是历史会话还是当前活动会话，都不得因为删除动作自动收起移动端 `Sessions` 抽屉或桌面侧栏上下文。该恢复只允许兜住删除造成的那一次被动收起，不能劫持用户后续的主动关闭；用户点击 `Hide`、再次点击 `Sessions` 按钮或点击抽屉外部遮罩后，面板必须正常关闭。同时继续在本地屏蔽该 `session_id`，即使后续轮询或 page-activation 补拉暂时返回陈旧列表，也不得把已删除项重新插回当前会话侧栏。
 - Terminal 当前稳定入口为 `/terminal`，当前活动会话需同步写入 URL query `session_id=<8位短hash>`；刷新、直接打开 `/terminal?session_id=<8位短hash>` 或浏览器恢复标签页时，前端先按该参数恢复指定 Terminal 会话，只有参数缺失或目标会话已不存在时，才允许回退到列表首项或本地草稿恢复逻辑。
 - 滚动中的导航计算与位置测量合并到逐帧节奏，并复用稳定 turn 位置缓存；仅在 turn 列表、折叠态或布局尺寸变化后重测。

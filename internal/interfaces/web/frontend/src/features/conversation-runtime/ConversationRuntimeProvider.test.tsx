@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
+  CHAT_RUNTIME_CACHE_MESSAGE_LIMIT,
+  CHAT_RUNTIME_CACHE_SESSION_TTL_MS,
   ConversationRuntimeProvider,
+  resetConversationRuntimeCache,
   resolveChatSessionPollPlan,
   useConversationRuntime,
   useConversationRuntimeComposer,
@@ -193,6 +196,30 @@ function setupDefaultAPI() {
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+function chatTurnFixtures(count: number, outputPrefix = "cached answer") {
+  return Array.from({ length: count }, (_, index) => {
+    const value = index + 1;
+    return {
+      id: `turn-cache-${value}`,
+      prompt: `cached prompt ${value}`,
+      status: "success",
+      started_at: `2026-04-23T03:${String(value).padStart(2, "0")}:00Z`,
+      finished_at: `2026-04-23T03:${String(value).padStart(2, "0")}:02Z`,
+      final_output: `${outputPrefix} ${value}`,
+    };
+  });
+}
+
 function mockMessageDone(output = "Done") {
   apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
     if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
@@ -221,6 +248,7 @@ function mockMessageDone(output = "Done") {
 
 describe("ConversationRuntimeProvider", () => {
   beforeEach(() => {
+    resetConversationRuntimeCache();
     vi.clearAllMocks();
     window.sessionStorage.clear();
     window.history.replaceState({}, "", "/chat");
@@ -261,7 +289,9 @@ describe("ConversationRuntimeProvider", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    resetConversationRuntimeCache();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     window.history.replaceState({}, "", "/");
   });
 
@@ -278,6 +308,159 @@ describe("ConversationRuntimeProvider", () => {
       enabled: false,
       interval: 0,
     });
+  });
+
+  it("keeps the Chat runtime cache alive for long single-device route gaps", () => {
+    expect(CHAT_RUNTIME_CACHE_SESSION_TTL_MS).toBe(8 * 60 * 60 * 1000);
+  });
+
+  it("hydrates a fresh Chat runtime cache immediately and refreshes after the API returns", async () => {
+    const cachedTurnCount = Math.floor(CHAT_RUNTIME_CACHE_MESSAGE_LIMIT / 2) + 2;
+    const cachedTurns = chatTurnFixtures(cachedTurnCount);
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Cached chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: cachedTurns,
+            }],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const firstView = render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent(`cached answer ${cachedTurnCount}`));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("cached answer 1");
+    firstView.unmount();
+    window.sessionStorage.removeItem(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY);
+    window.sessionStorage.removeItem(RECENT_SESSION_SNAPSHOT_STORAGE_KEY);
+
+    const listRequest = deferred<{ items?: unknown[] }>();
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return listRequest.promise;
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    expect(screen.getByTestId("active-session-title")).toHaveTextContent("Cached chat");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent(`cached answer ${cachedTurnCount}`);
+    expect(screen.getByTestId("message-texts")).not.toHaveTextContent("cached answer 1");
+
+    listRequest.resolve({
+      items: [{
+        id: "alter0-chat",
+        title: "Server chat",
+        status: "ready",
+        created_at: "2026-04-23T03:30:00Z",
+        turns: chatTurnFixtures(cachedTurnCount, "server answer"),
+      }],
+    });
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Server chat"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent(`server answer ${cachedTurnCount}`);
+  });
+
+  it("does not hydrate an expired Chat runtime cache", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1000);
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Expired chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: chatTurnFixtures(1, "expired answer"),
+            }],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const firstView = render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("expired answer 1"));
+    firstView.unmount();
+    window.sessionStorage.removeItem(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY);
+    window.sessionStorage.removeItem(RECENT_SESSION_SNAPSHOT_STORAGE_KEY);
+
+    nowSpy.mockReturnValue(1000 + CHAT_RUNTIME_CACHE_SESSION_TTL_MS + 1);
+    const listRequest = deferred<{ items?: unknown[] }>();
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return listRequest.promise;
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    expect(screen.getByTestId("active-session-title")).toHaveTextContent("");
+    expect(screen.getByTestId("message-texts")).not.toHaveTextContent("expired answer 1");
+
+    listRequest.resolve({
+      items: [{
+        id: "alter0-chat",
+        title: "Server chat after expiry",
+        status: "ready",
+        created_at: "2026-04-23T04:00:00Z",
+        turns: chatTurnFixtures(1, "server answer after expiry"),
+      }],
+    });
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Server chat after expiry"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("server answer after expiry 1");
   });
 
   it("does not create local blank Chat sessions before the user starts a Terminal-backed session", async () => {
