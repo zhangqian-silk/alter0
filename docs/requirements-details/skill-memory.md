@@ -135,10 +135,9 @@ memory/
 
 ## Memory 页面
 
-- 前端 `Skill -> Memory` 提供 `AGENTS.md`、`SOUL.md`、长期记忆、天级记忆、项目记忆、会话摘要、任务历史与说明文档入口。
-- Memory 页面按安全 Markdown 渲染正文；路径、任务 ID、时间、状态等元数据保持纯文本或等宽字段展示。
+- 前端 `Skill -> Memory` 提供 `AGENTS.md`、`SOUL.md`、长期记忆、天级记忆、项目记忆、会话摘要与说明文档入口。
+- Memory 页面按安全 Markdown 渲染正文；路径、时间、状态等元数据保持纯文本或等宽字段展示。
 - `GET /api/memory/context` 返回 `AGENTS.md` root instructions、`SOUL.md` 强约束、长期记忆、天级记忆、项目记忆和说明文档的只读聚合视图。
-- `GET /api/memory/tasks` 与相关详情接口提供任务摘要、任务日志、产物引用和摘要重建。
 - Memory 聚合接口默认只读展示；写入由 CLI Runtime 或记忆维护任务完成。
 
 ## 依赖与边界

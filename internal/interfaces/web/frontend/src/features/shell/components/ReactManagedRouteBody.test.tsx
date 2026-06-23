@@ -49,12 +49,6 @@ describe("ReactManagedRouteBody", () => {
           mandatory: { exists: false },
           specification: { exists: false },
         }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [],
-          pagination: { page: 1, total: 0, has_next: false },
-        }),
       );
 
     expect(isReactManagedRouteBody("settings")).toBe(true);
@@ -73,7 +67,7 @@ describe("ReactManagedRouteBody", () => {
     fireEvent.click(screen.getByRole("button", { name: "Memory" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Task History" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Long-Term" })).toBeInTheDocument();
     });
     expect(window.location.pathname).toBe("/settings");
     expect(container.querySelector(".settings-route-body")).toHaveAttribute("data-settings-route", "memory");
@@ -84,10 +78,7 @@ describe("ReactManagedRouteBody", () => {
       "/api/memory/context",
       expect.objectContaining({ method: "GET" }),
     );
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/memory/tasks?page=1&page_size=10",
-      expect.objectContaining({ method: "GET" }),
-    );
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/memory/tasks"), expect.anything());
   });
 
   it("keeps the service restart flow reachable from runtime settings", async () => {

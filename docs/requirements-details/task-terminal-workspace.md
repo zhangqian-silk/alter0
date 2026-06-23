@@ -4,37 +4,18 @@
 
 ## 领域边界
 
-Terminal & Workspace 负责会话式终端代理、执行工作区隔离、Terminal 会话恢复，以及 Memory 页对既有任务摘要数据的只读观测与维护。当前 Web 对话不再分流到后台 Task，也不再提供通用 Task 或 Control Task HTTP 接口。
+Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Terminal 会话恢复。当前 Web 对话不再分流到后台 Task，也不再提供通用 Task、Control Task 或 Memory Task HTTP 接口。
 
 ## 核心对象
 
 | 对象 | 职责 |
 | --- | --- |
-| `TaskSummary` | Memory 可读取的既有任务摘要 |
-| `TaskLog` | Memory 详情中可回看的历史日志 |
-| `ArtifactRef` | Memory 详情中展示的历史产物引用元数据 |
 | `TerminalSession` | Terminal 会话身份、标题、状态、工作区和 Codex 线程 |
 | `TerminalTurn` / `TerminalStep` | Terminal 执行轮次与步骤明细 |
 | `Workspace` | Chat 与 Terminal 的默认执行目录 |
 | `RuntimeWorkspace` | CLI Runtime 的上下文注入目录、运行时 home 与线程/会话状态 |
 
-## 任务记忆视图
-
-- `Settings -> Memory` 的任务历史面板复用既有任务摘要数据，支持按状态、类型、时间与分页查询任务摘要。
-- 任务历史列表默认以高密度表格展示，任务详情通过侧栏读取摘要、来源字段、状态、时间戳、日志和产物元数据。
-- 任务日志下钻支持游标分页读取，缺失日志时返回稳定错误并保留任务详情可读。
-- 任务摘要缺失或需要刷新时，支持对单个任务触发摘要重建。
-- Memory 任务视图只提供历史观测和摘要维护，不承担任务执行、重试或取消控制。
-
 ## 接口边界
-
-### Memory Task
-
-- `GET /api/memory/tasks` 查询任务记忆摘要列表。
-- `GET /api/memory/tasks/{task_id}` 查询任务记忆详情。
-- `GET /api/memory/tasks/{task_id}/logs` 下钻任务日志。
-- `GET /api/memory/tasks/{task_id}/artifacts` 下钻任务产物。
-- `POST /api/memory/tasks/{task_id}/rebuild-summary` 重建任务摘要。
 
 ### Terminal
 

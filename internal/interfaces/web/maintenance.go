@@ -177,9 +177,6 @@ func (m *maintenanceService) RunSessionCleanup(now time.Time) maintenanceRunResp
 				cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete tasks for %s: %v", sessionID, err))
 			}
 		}
-		if err := m.server.deleteConversationRuntimeSessionRegistryEntry(sessionID); err != nil {
-			cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete runtime registry for %s: %v", sessionID, err))
-		}
 		if err := removeConversationSessionWorkspace(m.server.workspaceRoot, sessionID); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete workspace for %s: %v", sessionID, err))
 		}

@@ -62,7 +62,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 本地 Session history 按会话类型拆分物理文件：`Chat` 的 `alter0-chat` 按北京时间 05:00 的归档日边界写入 `.alter0/sessions/_default/alter0-chat/<YYYY-MM-DD>.json` 或 `.md`；具备明确 Skill 来源的会话按 Skill bucket 与会话身份写入 `.alter0/sessions/<skill_bucket>/<session_id>.json` 或 `.md`。缺少 Skill 来源的非 Chat 会话归入 `_default`；服务读取旧版 `.alter0/sessions.json` 或 `.alter0/sessions.md` 聚合文件时需立即重构为新的分文件布局，并删除旧聚合文件。
 - Chat/Chat 消息接口接受请求后，服务端先把本轮 `user` 消息写入 Session history，再进入同步执行；assistant 回复在执行完成、失败或任务收口后追加写入。同一轮请求的浏览器关闭、刷新、请求断开或前端取消不会让用户已发送内容只留在浏览器缓存中。
 - Session history 维护会话级 `last_active_at` 与 `pinned`。`last_active_at` 在用户发送消息、assistant 完成或失败、结果收口、打开会话详情、Terminal 输入/详情读取和任务结果写回时刷新；没有显式活跃时间的历史会话回退使用最后消息时间。
-- 运行页会话列表把置顶会话汇入独立 `Pinned / 置顶` 分组并固定在 `Today / 今天` 上方；非置顶会话继续按最近活跃时间排序并进入时间分组。Settings 的 Sessions 页面展示最后活跃时间并提供置顶/取消置顶操作。置顶状态持久化在 Session history metadata 中，不改变消息内容；尚未产生消息、只存在于当前浏览器或 Conversation Runtime registry 的空白 `Chat` 会话，也必须在前端快照与 registry 可用范围内保留置顶反馈。
+- 运行页会话列表把置顶会话汇入独立 `Pinned / 置顶` 分组并固定在 `Today / 今天` 上方；非置顶会话继续按最近活跃时间排序并进入时间分组。Settings 的 Sessions 页面展示最后活跃时间并提供置顶/取消置顶操作。置顶状态持久化在 Terminal session store 中，不改变消息内容；尚未产生消息、只存在于当前浏览器的空白 `Chat` 会话，也必须在前端快照可用范围内保留置顶反馈。
 - 系统维护任务默认每日清理超过 7 天不活跃的未置顶会话。清理会删除该会话的 Session history、运行时 registry、关联任务引用和 `.alter0/workspaces/sessions/<session_id>` 下的附件/工作区数据；置顶会话始终跳过自动清理，仍有关联 queued/running 任务的会话在任务进入终态前跳过清理。
 - 会话清理不提供复杂配置项。`Settings > Schedules` 的内置会话清理任务只提供当前状态、上次/下次运行、手动触发、失败重试，以及删除数量、置顶跳过数量、任务保护数量和扫描数量。清理后续资源删除失败时，本次维护状态必须记录为 `failed` 并暴露失败原因。
 - 具备独立前端入口的 Skill 不进入通用 Settings 页面历史。
@@ -122,8 +122,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 - Chat 前端统一调用 `POST /api/terminal/sessions/{session_id}/input?scope=chat`；不得调用 `/api/messages`、`/api/messages/stream`，不得依赖 SSE 增量、保活帧、浏览器读流状态或本地 `Thinking` 过程步骤驱动消息区。
 - Chat 发送后由 Terminal session 状态进入 `busy`；执行完成或失败后，用 input 返回结果或 Terminal session 详情恢复当前消息区。
-- 直连 Codex 的 `agent_message` 按输出频道区分正文与过程：`final` 或旧版无频道消息进入 assistant 最终正文，`commentary` 作为结构化 `process_steps` 进入消息内联 `Thinking / 已思考` 披露区，其他非最终频道不得作为最终 `output` 写入会话正文。
-- Chat 与 Terminal 的过程展示统一消费 `RuntimeTraceEvent`。事件 `kind/source/provider/role/status/lifecycle/blocks/action` 等字段只允许来自底层 SDK/CLI provider、工程 adapter 或 alter0 本地确定性注入，不允许用标题、正文、关键词或语言模式推断。历史 Chat `process_steps`、旧 `[runtime] action / observation` 文本和 Terminal step 摘要只作为兼容输入，在读取或渲染前转换为当前结构，后续可删除过渡兼容逻辑。
+- 直连 Codex 的 `agent_message` 按输出频道区分正文与过程：`final` 或旧版无频道消息进入 assistant 最终正文，`commentary` 作为结构化过程事件进入消息内联 `Thinking / 已思考` 披露区，其他非最终频道不得作为最终 `output` 写入会话正文。
+- Chat 与 Terminal 的过程展示统一消费 `RuntimeTraceEvent`。事件 `kind/source/provider/role/status/lifecycle/blocks/action` 等字段只允许来自底层 SDK/CLI provider、工程 adapter 或 alter0 本地确定性注入，不允许用标题、正文、关键词或语言模式推断。Terminal step 摘要在读取或渲染前转换为当前结构。
 - Chat 显式选择 `Codex` 且消息包含图片附件时，服务端需把已上传并落盘的原图路径传给 Codex CLI `-i` 参数；前端提示词不需要再描述“图片已存在”才能触发图片读取。
 
 ### 执行不中断
@@ -137,7 +137,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 是唯一 Web 对话运行态，页面初始化、发送消息、附件草稿、服务端回源和刷新恢复都围绕 Chat 会话模型进行；旧 `chat` 会话只在加载阶段迁移进 Chat，不再保留多业务编排、多 session 的独立运行态。
 - `Chat` 的长期历史按北京时间 05:00 作为归档日边界分文件存储；05:00 之前的消息归入前一归档日，05:00 及之后的消息归入当天归档日。该分文件规则只改变本地存储和迁移形态，不改变 `alter0-chat` 对外的逻辑 `session_id`。
 - `Chat` 直连 Codex 的 thread id 与同一归档日绑定，写入当前 Chat 工作区 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json`；归档日切换后，新文件不存在即代表新的 Codex 会话环境，运行时不得继续 resume 前一归档日的 Codex thread。
-- 单条 assistant 消息只能由当前请求结果、任务回填或会话详情恢复补丁；补丁目标只能是当前活跃的未完成消息，消息进入稳定结果或任务态后，迟到结果不得重新打开或覆盖最终正文。
+- 单条 assistant 消息只能由当前请求结果或会话详情恢复补丁；补丁目标只能是当前活跃的未完成消息，消息进入稳定结果后，迟到结果不得重新打开或覆盖最终正文。
 - 运行页初始化时，服务端会话详情回填不得覆盖当前浏览器里已经新追加、但服务端详情请求发起时尚未落库的本地消息；本地新消息与当前请求占位优先级高于陈旧详情响应。
 - 若运行页刷新后服务端会话集合接口暂时未包含当前活动 `session_id`，前端仍需保留本地恢复出的该条会话，并主动尝试按 `GET /api/terminal/sessions/{session_id}` 补拉详情；在单会话详情也确认不存在之前，不得立刻创建新的空白会话顶替当前活动会话。
 - 若运行页刷新后服务端会话集合接口暂时未包含某条最近会话，即使该会话当前并非活动会话，前端也不得立刻把它从 `Sessions` 列表移除；左侧最近会话列表以本地快照和服务端结果合并视图为准，只有在用户显式删除或后续回源明确确认不存在时才允许消失。
@@ -161,14 +161,14 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat / Terminal` 的移动端运行页头部按钮需直接响应首个 `touchstart` 或非鼠标 `pointerdown`：`Menu`、中间标题详情入口、`New` 会话入口以及保留的移动端会话入口都不得依赖后续合成 `click` 才触发；同一触摸产生的后续 `click` 需被去重，避免一次手势执行两次。移动端边缘操作以无边框图标按钮作为可见形态，`Menu / New` 文案保留为可访问标签。
 - Terminal 长输出复制按钮不得把完整输出写入 `data-*` 属性或其他 DOM 元数据；复制 payload 保留在组件闭包并通过剪贴板 API / document copy 兜底写出，避免长日志在 DOM 中重复放大并拖慢轮询、选择和点击。
 - Terminal 时间线渲染需按 `turns / 展开态 / step 详情 / 语言` 等稳定输入缓存，Composer 草稿、滚动活跃态、配置面板开关或复制状态变化不得触发整段输出重新解析 Markdown。
-- Skill 消息中的 `Process` 优先使用服务端返回的结构化 `process_steps` 渲染；仅对缺失结构化步骤的历史消息保留文本解析兼容。
-- 结构化 steps 需要在 Terminal input 结果、Task 结果回填与会话历史恢复后保持一致，刷新页面不得把已完成消息重新退化为仅正文展示。
+- Skill 消息中的 `Process` 使用 Terminal turn steps 转换后的结构化事件渲染，不再保留文本解析兼容。
+- 结构化 steps 需要在 Terminal input 结果与会话历史恢复后保持一致，刷新页面不得把已完成消息重新退化为仅正文展示。
 - Process 披露过滤按 `RuntimeTraceEvent.kind` 执行：`assistant_commentary` 归入 `important_text`，`plan` 归入 `plan`，`reasoning` 归入 `reasoning`，tool/MCP/skill/hook/approval 归入 `tools`，shell command 归入 `commands`，runtime/system/unknown/error 归入 `system`。过滤器只隐藏或显示折叠区事件，不改变最终 assistant 正文。
 - `Chat / Terminal` 的消息输出结构统一收敛到轻量 IM 式消息流：用户输入右对齐并使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制，助手回复左对齐并弱化为无边框正文阅读流；Chat 消息阅读区使用白底无框正文面，视觉层级由阅读宽度、留白和角色对齐承担，不在对话区叠加明显边框、背景分界或卡片容器。Skill 与 Terminal 中间步骤默认按 `Thinking / 已思考` 轻量披露行展示，展开后在当前消息内进入步骤详情，移动端也保持同页内联展开；Chat / Terminal 助手最终答复统一使用稳定的运行页 markdown shell，正文先于复制工具栏渲染，复制动作位于正文下方，代码块独立呈现为浅灰内容块；消息正文区不显示逐条时间，仅在进行中、排队、失败等非稳定状态下保留状态标签。新增运行页若呈现用户输入与助手输出，必须复用 `RuntimeTimeline` 与 `runtime-message / runtime-message-user / runtime-message-assistant / runtime-message-bubble` 契约，避免继续产生页面私有气泡格式。
 - `Chat` 在显式访问 `/chat?markdown_demo=1` 时可临时覆盖当前时间线视图并注入一条非持久化 assistant Markdown 演示消息，用于预览环境验收 ATX/Setext 标题、段落换行、强调、删除线、自动链接、图片、引用、嵌套列表、任务项、列表内引用与代码块、分割线、代码块、对齐表格与 raw HTML 转义等当前支持语法；表格样例覆盖短字符、长中文、长 URL/代码和混合内容场景；折叠示例中的 HTML 标签按代码块展示，折叠内容本身按普通 Markdown 展示；普通 `/chat` 不显示该样例，也不把该消息写入 Session history。
 - 长会话默认只渲染最新一批消息；当顶部仍存在更早历史时，消息区需展示 `Load earlier messages / 加载更早消息` 入口，并在滚到顶部时自动按批次扩展更早消息。扩展历史时需保持当前阅读位置，不得强制跳回底部。
 - `Process` 步骤标题与正文在桌面和移动端都必须保持整列阅读宽度；步骤序号、展开图标、标题与状态信息需在同一行垂直居中；长中文说明、路径、命令片段与 Markdown 文本优先在当前消息容器内自然换行，不得在真机窄屏下塌缩成逐字竖排窄列。
-- Conversation 展示层必须在渲染 `process_steps.title/detail` 与最终 markdown 前移除零宽断行字符，并对“每字一行”的病态段落做可读性归一化；该修正同时适用于消息结果、Task 回填和历史会话恢复。
+- Conversation 展示层必须在渲染结构化过程事件与最终 markdown 前移除零宽断行字符，并对“每字一行”的病态段落做可读性归一化；该修正同时适用于消息结果和历史会话恢复。
 - Chat 与 Terminal 的最终 Markdown 输出不得复用需要额外 CSS 强制补丁的旧 shell 结构；其正文 DOM 必须保持普通静态文本语义，不绑定 `touchstart / pointerdown` 选区脚本，不设置 `contenteditable / inputmode / tabindex`，不创建浮动复制层或假选中 class。复制按钮只读取组件闭包中的原始文本，不把长 payload 镜像到 DOM 属性。
 - `Chat` 的消息时间线在内容较少时必须保持顶部收口；短用户消息、折叠后的 `Thinking / 已思考` 披露行、最终回复与对应状态标签继续贴近各自消息气泡排布，不得因为时间线容器满高拉伸而出现大块垂直空白。
 - `Chat` 打开已有消息的会话、刷新恢复当前会话或切换到其他会话后，时间线初始视口必须落到最新消息所在底部；当前活动会话内发送新消息后，时间线必须随新增消息回到底部，使本轮用户消息与助手占位立即可见；若用户已经在同一会话内手动滚动阅读历史，后续结果 patch、Process 展开状态变化和草稿输入不得强制把视口拉回底部。

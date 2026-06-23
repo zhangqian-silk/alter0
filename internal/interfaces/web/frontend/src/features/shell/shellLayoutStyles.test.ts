@@ -54,7 +54,7 @@ describe("shell layout stylesheet", () => {
       /\.primary-nav\s*\{[\s\S]*?background:\s*#f7f7f7;[\s\S]*?border:\s*0;[\s\S]*?border-right:\s*1px solid #eeeeee;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(flatReset).toMatch(
-      /\.settings-route-nav,\s*\.settings-route-content \.route-card,\s*\.settings-route-content \.route-surface,\s*\.settings-route-content \.route-data-table-wrap,\s*\.settings-route-content \.route-detail-panel,\s*\.settings-route-content \.control-task-drawer-panel,\s*\.settings-route-content \.task-summary-row,\s*\.settings-route-content \.task-detail-placeholder,\s*\.settings-route-content \.codex-accounts-panel\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
+      /\.settings-route-nav,\s*\.settings-route-content \.route-card,\s*\.settings-route-content \.route-surface,\s*\.settings-route-content \.route-data-table-wrap,\s*\.settings-route-content \.route-detail-panel,\s*\.settings-route-content \.control-task-drawer-panel,\s*\.settings-route-content \.codex-accounts-panel\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
     );
     expect(flatReset).toMatch(
       /\.runtime-composer-form\s*\{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*999px;/,
@@ -335,8 +335,10 @@ describe("shell layout stylesheet", () => {
       /\.settings-route-content \.route-card,[\s\S]*?\.settings-route-content \.codex-accounts-panel\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(255, 255, 255, 0\.98\) 0%, rgba\(248, 250, 252, 0\.94\) 100%\);/,
     );
     expect(stylesheet).toMatch(
-      /\.settings-route-content \.page-filter-form,\s*\.settings-route-content \.task-filter-form\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.94\);/,
+      /\.settings-route-content \.page-filter-form\s*\{[\s\S]*?border-radius:\s*12px;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.94\);/,
     );
+    expect(stylesheet).not.toContain(".task-filter-form");
+    expect(stylesheet).not.toContain(".task-history-view");
     expect(stylesheet).toMatch(
       /\.settings-route-content \.route-data-table th,\s*\.settings-route-content \.route-data-table td\s*\{[\s\S]*?padding:\s*10px 12px;/,
     );

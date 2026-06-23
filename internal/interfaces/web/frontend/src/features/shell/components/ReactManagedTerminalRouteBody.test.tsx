@@ -1640,9 +1640,9 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     const fetchMock = vi.mocked(fetch);
-    const inputCall = fetchMock.mock.calls.find(([request, init]) =>
+    const inputCall = fetchMock.mock.calls.filter(([request, init]) =>
       String(request) === "/api/terminal/sessions/terminal-1/input"
-      && String(init?.method || "GET").toUpperCase() === "POST");
+      && String(init?.method || "GET").toUpperCase() === "POST").at(-1);
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
     expect(payload.attachments[0]).toMatchObject({
       id: "asset-terminal-file-1",

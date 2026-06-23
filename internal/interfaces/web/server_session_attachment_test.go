@@ -13,6 +13,7 @@ import (
 
 	execdomain "alter0/internal/execution/domain"
 	"alter0/internal/shared/infrastructure/observability"
+	terminaldomain "alter0/internal/terminal/domain"
 )
 
 type sessionAttachmentUploadResponse struct {
@@ -30,9 +31,9 @@ func TestSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing
 
 	workspaceRoot := t.TempDir()
 	server := &Server{
-		idGenerator: &sequenceIDGenerator{ids: []string{"asset-1"}},
-		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		telemetry:   observability.NewTelemetry(),
+		idGenerator:   &sequenceIDGenerator{ids: []string{"asset-1"}},
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry:     observability.NewTelemetry(),
 		workspaceRoot: workspaceRoot,
 	}
 
@@ -148,16 +149,22 @@ func TestSessionAttachmentHandlerStoresFilesWithoutPreviewVariant(t *testing.T) 
 	}
 }
 
-func TestMessageHandlerEncodesWorkspaceAttachmentReferences(t *testing.T) {
+func TestTerminalInputEncodesWorkspaceAttachmentReferences(t *testing.T) {
 	t.Parallel()
 
 	workspaceRoot := t.TempDir()
-	orchestrator := &stubWebOrchestrator{}
+	terminal := &stubWebTerminalService{
+		inputResp: terminaldomain.Session{
+			ID:      "session-images",
+			OwnerID: chatTerminalClientID,
+			Status:  terminaldomain.SessionStatusRunning,
+		},
+	}
 	server := &Server{
-		orchestrator:  orchestrator,
 		telemetry:     observability.NewTelemetry(),
-		idGenerator:   &sequenceIDGenerator{ids: []string{"asset-1", "message-1", "trace-1"}},
+		idGenerator:   &sequenceIDGenerator{ids: []string{"asset-1"}},
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		terminals:     terminal,
 		workspaceRoot: workspaceRoot,
 	}
 
@@ -182,9 +189,8 @@ func TestMessageHandlerEncodesWorkspaceAttachmentReferences(t *testing.T) {
 		t.Fatalf("decode upload response: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/messages", strings.NewReader(`{
-		"session_id":"session-images",
-		"content":"请分析这张图",
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-images/input?scope=chat", strings.NewReader(`{
+		"input":"请分析这张图",
 		"attachments":[
 			{
 				"id":"`+uploadPayload.Items[0].ID+`",
@@ -196,13 +202,13 @@ func TestMessageHandlerEncodesWorkspaceAttachmentReferences(t *testing.T) {
 		]
 	}`))
 	rec := httptest.NewRecorder()
-	server.messageHandler(rec, req)
+	server.terminalSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
 	}
 
-	attachments := execdomain.DecodeUserImageAttachments(orchestrator.lastMessage.Metadata)
+	attachments := execdomain.FilterUserImageAttachments(terminal.inputReq.Attachments)
 	if len(attachments) != 1 {
 		t.Fatalf("expected 1 attachment in metadata, got %+v", attachments)
 	}
