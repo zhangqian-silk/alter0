@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -92,23 +94,44 @@ type RuntimeReasoningMode struct {
 }
 
 type LoginSessionStatus string
+type LoginAuthMethod string
 
 const (
 	LoginSessionStatusPending   LoginSessionStatus = "pending"
 	LoginSessionStatusRunning   LoginSessionStatus = "running"
 	LoginSessionStatusSucceeded LoginSessionStatus = "succeeded"
 	LoginSessionStatusFailed    LoginSessionStatus = "failed"
+
+	LoginAuthMethodBrowser LoginAuthMethod = "browser"
+	LoginAuthMethodDevice  LoginAuthMethod = "device_auth"
 )
+
+type LoginSessionStartRequest struct {
+	Name       string          `json:"name"`
+	Overwrite  bool            `json:"overwrite"`
+	AuthMethod LoginAuthMethod `json:"auth_method,omitempty"`
+}
+
+type LoginDeviceInfo struct {
+	VerificationURI         string `json:"verification_uri,omitempty"`
+	VerificationURIComplete string `json:"verification_uri_complete,omitempty"`
+	UserCode                string `json:"user_code,omitempty"`
+	ExpiresIn               int    `json:"expires_in,omitempty"`
+	Interval                int    `json:"interval,omitempty"`
+	Message                 string `json:"message,omitempty"`
+}
 
 type LoginSession struct {
 	ID          string             `json:"id"`
 	AccountName string             `json:"account_name,omitempty"`
+	AuthMethod  LoginAuthMethod    `json:"auth_method,omitempty"`
 	Status      LoginSessionStatus `json:"status"`
 	Logs        string             `json:"logs,omitempty"`
 	Error       string             `json:"error,omitempty"`
 	StartedAt   time.Time          `json:"started_at,omitempty"`
 	CompletedAt time.Time          `json:"completed_at,omitempty"`
 	Account     *Record            `json:"account,omitempty"`
+	Device      *LoginDeviceInfo   `json:"device,omitempty"`
 }
 
 type Store interface {
@@ -595,17 +618,21 @@ func (s *Service) UpdateRuntimeSettings(model string, reasoningEffort string) (*
 	return s.RuntimeStatus()
 }
 
-func (s *Service) StartLoginSession(ctx context.Context, name string, overwrite bool) (LoginSession, error) {
+func (s *Service) StartLoginSession(ctx context.Context, request LoginSessionStartRequest) (LoginSession, error) {
 	if s.store == nil {
 		return LoginSession{}, errors.New("codex account store is not configured")
 	}
+	name := strings.TrimSpace(request.Name)
+	authMethod := normalizeLoginAuthMethod(request.AuthMethod)
+	overwrite := request.Overwrite
 	if err := s.ensureNameAvailable(name, overwrite); err != nil {
 		return LoginSession{}, err
 	}
 
 	session := LoginSession{
 		ID:          strings.TrimSpace(s.newID()),
-		AccountName: strings.TrimSpace(name),
+		AccountName: name,
+		AuthMethod:  authMethod,
 		Status:      LoginSessionStatusPending,
 		StartedAt:   s.now(),
 	}
@@ -621,7 +648,7 @@ func (s *Service) StartLoginSession(ctx context.Context, name string, overwrite 
 	s.loginSession[session.ID] = session
 	s.mu.Unlock()
 
-	go s.runLoginSession(ctx, session.ID, loginHome, name, overwrite)
+	go s.runLoginSession(ctx, session.ID, loginHome, name, overwrite, authMethod)
 	return session, nil
 }
 
@@ -632,7 +659,7 @@ func (s *Service) GetLoginSession(id string) (LoginSession, bool) {
 	return session, ok
 }
 
-func (s *Service) runLoginSession(ctx context.Context, sessionID string, loginHome string, name string, overwrite bool) {
+func (s *Service) runLoginSession(ctx context.Context, sessionID string, loginHome string, name string, overwrite bool, authMethod LoginAuthMethod) {
 	s.updateLoginSession(sessionID, func(session *LoginSession) {
 		session.Status = LoginSessionStatusRunning
 	})
@@ -646,34 +673,42 @@ func (s *Service) runLoginSession(ctx context.Context, sessionID string, loginHo
 		return
 	}
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	stdoutWriter := io.Writer(&stdout)
+	capture := newLoginOutputCapture(func(logs string, device *LoginDeviceInfo) {
+		s.updateLoginSession(sessionID, func(session *LoginSession) {
+			session.Logs = logs
+			if device != nil {
+				session.Device = device
+			}
+		})
+	})
+	stdoutWriter := io.Writer(capture)
 	if s.loginStdout != nil {
-		stdoutWriter = io.MultiWriter(&stdout, s.loginStdout)
+		stdoutWriter = io.MultiWriter(capture, s.loginStdout)
 	}
-	stderrWriter := io.Writer(&stderr)
+	stderrWriter := io.Writer(capture)
 	if s.loginStdout != nil {
-		stderrWriter = io.MultiWriter(&stderr, s.loginStdout)
+		stderrWriter = io.MultiWriter(capture, s.loginStdout)
 	}
-	err := s.runCommand(ctx, s.command, []string{"login"}, CommandOptions{
+	args := []string{"login"}
+	if authMethod == LoginAuthMethodDevice {
+		args = append(args, "--device-auth")
+	}
+	err := s.runCommand(ctx, s.command, args, CommandOptions{
 		Env:    withEnvValue(os.Environ(), "CODEX_HOME", loginHome),
 		Stdout: stdoutWriter,
 		Stderr: stderrWriter,
 	})
 
-	logs := strings.TrimSpace(stdout.String())
-	if stderrText := strings.TrimSpace(stderr.String()); stderrText != "" {
-		if logs != "" {
-			logs += "\n"
-		}
-		logs += stderrText
-	}
+	logs := capture.logs()
+	device := capture.device()
 	if err != nil {
 		s.updateLoginSession(sessionID, func(session *LoginSession) {
 			session.Status = LoginSessionStatusFailed
 			session.Error = err.Error()
 			session.Logs = logs
+			if device != nil {
+				session.Device = device
+			}
 			session.CompletedAt = s.now()
 		})
 		return
@@ -685,6 +720,9 @@ func (s *Service) runLoginSession(ctx context.Context, sessionID string, loginHo
 			session.Status = LoginSessionStatusFailed
 			session.Error = fmt.Sprintf("read login auth.json: %v", readErr)
 			session.Logs = logs
+			if device != nil {
+				session.Device = device
+			}
 			session.CompletedAt = s.now()
 		})
 		return
@@ -695,6 +733,9 @@ func (s *Service) runLoginSession(ctx context.Context, sessionID string, loginHo
 			session.Status = LoginSessionStatusFailed
 			session.Error = addErr.Error()
 			session.Logs = logs
+			if device != nil {
+				session.Device = device
+			}
 			session.CompletedAt = s.now()
 		})
 		return
@@ -703,6 +744,9 @@ func (s *Service) runLoginSession(ctx context.Context, sessionID string, loginHo
 		session.Status = LoginSessionStatusSucceeded
 		session.Account = record
 		session.Logs = logs
+		if device != nil {
+			session.Device = device
+		}
 		session.CompletedAt = s.now()
 	})
 }
@@ -716,6 +760,135 @@ func (s *Service) updateLoginSession(id string, update func(session *LoginSessio
 	}
 	update(&session)
 	s.loginSession[id] = session
+}
+
+func normalizeLoginAuthMethod(value LoginAuthMethod) LoginAuthMethod {
+	switch LoginAuthMethod(strings.ToLower(strings.TrimSpace(string(value)))) {
+	case LoginAuthMethodDevice:
+		return LoginAuthMethodDevice
+	default:
+		return LoginAuthMethodBrowser
+	}
+}
+
+type loginOutputCapture struct {
+	mu       sync.Mutex
+	buffer   bytes.Buffer
+	onUpdate func(logs string, device *LoginDeviceInfo)
+}
+
+func newLoginOutputCapture(onUpdate func(logs string, device *LoginDeviceInfo)) *loginOutputCapture {
+	return &loginOutputCapture{onUpdate: onUpdate}
+}
+
+func (c *loginOutputCapture) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n, err := c.buffer.Write(p)
+	if c.onUpdate != nil {
+		logs := strings.TrimSpace(c.buffer.String())
+		c.onUpdate(logs, parseLoginDeviceInfo(logs))
+	}
+	return n, err
+}
+
+func (c *loginOutputCapture) logs() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return strings.TrimSpace(c.buffer.String())
+}
+
+func (c *loginOutputCapture) device() *LoginDeviceInfo {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return parseLoginDeviceInfo(strings.TrimSpace(c.buffer.String()))
+}
+
+var (
+	loginURLPattern          = regexp.MustCompile(`https?://[^\s<>"']+`)
+	loginCodePattern         = regexp.MustCompile(`(?i)(?:user\s+code|one[-\s]?time\s+code|code)\s*(?:is|:)?\s*([A-Z0-9]{4,}(?:[- ][A-Z0-9]{3,})*)`)
+	loginExpiresInPattern    = regexp.MustCompile(`(?i)expires?\s+(?:in\s+)?(\d+)\s*(seconds?|secs?|s|minutes?|mins?|m)\b`)
+	loginPollIntervalPattern = regexp.MustCompile(`(?i)(?:poll(?:ing)?|retry|check)\s+(?:every|interval)?\s*(\d+)\s*(seconds?|secs?|s|minutes?|mins?|m)\b`)
+)
+
+func parseLoginDeviceInfo(logs string) *LoginDeviceInfo {
+	logs = strings.TrimSpace(logs)
+	if logs == "" {
+		return nil
+	}
+	device := LoginDeviceInfo{Message: firstNonEmptyLine(logs)}
+	urls := loginURLPattern.FindAllString(logs, -1)
+	for _, rawURL := range urls {
+		cleaned := strings.TrimRight(rawURL, ".,);]")
+		if cleaned == "" {
+			continue
+		}
+		if device.VerificationURI == "" {
+			device.VerificationURI = cleaned
+		}
+		if strings.Contains(strings.ToLower(cleaned), "user_code=") || strings.Contains(strings.ToLower(cleaned), "code=") {
+			device.VerificationURIComplete = cleaned
+		}
+	}
+	if match := loginCodePattern.FindStringSubmatch(logs); len(match) > 1 {
+		device.UserCode = strings.ReplaceAll(strings.ToUpper(strings.TrimSpace(match[1])), " ", "-")
+	} else if code := firstLikelyDeviceCode(logs); code != "" {
+		device.UserCode = code
+	}
+	if match := loginExpiresInPattern.FindStringSubmatch(logs); len(match) > 2 {
+		device.ExpiresIn = durationSeconds(match[1], match[2])
+	}
+	if match := loginPollIntervalPattern.FindStringSubmatch(logs); len(match) > 2 {
+		device.Interval = durationSeconds(match[1], match[2])
+	}
+	if device.VerificationURI == "" && device.VerificationURIComplete == "" && device.UserCode == "" {
+		return nil
+	}
+	return &device
+}
+
+func firstNonEmptyLine(value string) string {
+	for _, line := range strings.Split(value, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+func firstLikelyDeviceCode(value string) string {
+	for _, field := range strings.Fields(value) {
+		field = strings.Trim(field, ".,:;()[]{}<>\"'")
+		upper := strings.ToUpper(field)
+		if len(upper) < 7 || !strings.Contains(upper, "-") {
+			continue
+		}
+		valid := true
+		for _, char := range upper {
+			if char == '-' || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') {
+				continue
+			}
+			valid = false
+			break
+		}
+		if valid {
+			return upper
+		}
+	}
+	return ""
+}
+
+func durationSeconds(rawValue string, unit string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(rawValue))
+	if err != nil || value <= 0 {
+		return 0
+	}
+	unit = strings.ToLower(strings.TrimSpace(unit))
+	if strings.HasPrefix(unit, "m") {
+		return value * 60
+	}
+	return value
 }
 
 func (s *Service) resolveRecordName(name string, snapshot codexdomain.Snapshot) (string, error) {

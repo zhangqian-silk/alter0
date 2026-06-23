@@ -53,6 +53,25 @@ type RuntimeQuotaWindow = {
   reset_at?: string;
 };
 
+type CodexLoginDeviceInfo = {
+  verification_uri?: string;
+  verification_uri_complete?: string;
+  user_code?: string;
+  expires_in?: number;
+  interval?: number;
+  message?: string;
+};
+
+type CodexLoginSession = {
+  id?: string;
+  account_name?: string;
+  auth_method?: "browser" | "device_auth" | string;
+  status?: "pending" | "running" | "succeeded" | "failed" | string;
+  logs?: string;
+  error?: string;
+  device?: CodexLoginDeviceInfo | null;
+};
+
 type RuntimeConfigOrigin = {
   key_path?: string;
   file_path?: string;
@@ -79,6 +98,19 @@ type RuntimeModel = {
 type LLMProviderRecord = {
   id?: string;
   name?: string;
+  provider_type?: string;
+  api_type?: string;
+  base_url?: string;
+  api_key?: string;
+  default_model?: string;
+  models?: LLMProviderModel[];
+  is_enabled?: boolean;
+  is_default?: boolean;
+};
+
+type LLMProviderModel = {
+  id?: string;
+  name?: string;
   is_enabled?: boolean;
 };
 
@@ -93,6 +125,16 @@ type RuntimeRestartStatus = {
   confirm_discard_tracked_changes?: boolean;
   started_at?: string;
   updated_at?: string;
+};
+
+type ProviderRegistrationForm = {
+  name: string;
+  baseURL: string;
+  apiKey: string;
+  models: string;
+  providerType: string;
+  apiType: string;
+  isEnabled: boolean;
 };
 
 type RequestState =
@@ -112,6 +154,31 @@ type RuntimeCopy = {
   providersMissing: string;
   providersMissingHint: string;
   providersReadyHint: string;
+  providerRegisterTitle: string;
+  providerRegisterSubtitle: string;
+  providerListTitle: string;
+  providerListSubtitle: string;
+  providerName: string;
+  providerBaseURL: string;
+  providerAPIKey: string;
+  providerModels: string;
+  providerModelsHelp: string;
+  providerStoredAPIKeyHelp: string;
+  providerRegisterAction: string;
+  providerUpdateAction: string;
+  providerNewAction: string;
+  providerEditButton: string;
+  providerEditAction: (name: string) => string;
+  providerRegistering: string;
+  providerUpdating: string;
+  providerRegisterSucceeded: string;
+  providerUpdateSucceeded: string;
+  providerDefaultModel: (model: string) => string;
+  providerModelCount: (count: number) => string;
+  providerEnabled: string;
+  providerDisabled: string;
+  providerDefault: string;
+  providerNoModels: string;
   activeProfile: string;
   identityName: string;
   identityPlan: string;
@@ -121,6 +188,18 @@ type RuntimeCopy = {
   quotaRemaining: string;
   quotaResets: string;
   codexDefault: string;
+  deviceLoginTitle: string;
+  deviceLoginSubtitle: string;
+  startDeviceLogin: string;
+  startingDeviceLogin: string;
+  deviceLoginPending: string;
+  deviceLoginSucceeded: string;
+  deviceLoginFailed: string;
+  deviceVerificationLink: string;
+  deviceUserCode: string;
+  deviceExpiresIn: (seconds: number) => string;
+  devicePollInterval: (seconds: number) => string;
+  loginLogs: string;
   serviceControls: string;
   serviceControlsSubtitle: string;
   restartService: string;
@@ -162,6 +241,31 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     providersMissing: "No LLM providers registered. Codex Direct remains available.",
     providersMissingHint: "Provider-based execution is disabled until a provider appears in the Models registry.",
     providersReadyHint: "Provider-based execution can be used by Chat sessions.",
+    providerRegisterTitle: "Claude Code Provider",
+    providerRegisterSubtitle: "Register an OpenAI-compatible endpoint for Claude Code execution.",
+    providerListTitle: "Configured Providers",
+    providerListSubtitle: "Review registered endpoints and load one into the form to update its URL, key, or models.",
+    providerName: "Provider Name",
+    providerBaseURL: "Base URL",
+    providerAPIKey: "API Key",
+    providerModels: "Provider Models",
+    providerModelsHelp: "Use one model per line or separate models with commas. The first model becomes the default.",
+    providerStoredAPIKeyHelp: "Leave blank to keep the stored API key.",
+    providerRegisterAction: "Register provider",
+    providerUpdateAction: "Update provider",
+    providerNewAction: "New provider",
+    providerEditButton: "Edit",
+    providerEditAction: (name) => `Edit ${name}`,
+    providerRegistering: "Registering...",
+    providerUpdating: "Updating...",
+    providerRegisterSucceeded: "Provider registered for Claude Code.",
+    providerUpdateSucceeded: "Provider updated for Claude Code.",
+    providerDefaultModel: (model) => `Default: ${model || "-"}`,
+    providerModelCount: (count) => `${count} model${count === 1 ? "" : "s"}`,
+    providerEnabled: "Enabled",
+    providerDisabled: "Disabled",
+    providerDefault: "Default",
+    providerNoModels: "No models configured",
     activeProfile: "Profile",
     identityName: "Account",
     identityPlan: "Plan",
@@ -171,6 +275,18 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     quotaRemaining: "Remaining",
     quotaResets: "Resets",
     codexDefault: "Codex default",
+    deviceLoginTitle: "Device Code Login",
+    deviceLoginSubtitle: "Start a headless ChatGPT sign-in for this runtime and enter the one-time code in your browser.",
+    startDeviceLogin: "Start device login",
+    startingDeviceLogin: "Starting...",
+    deviceLoginPending: "Waiting for browser confirmation.",
+    deviceLoginSucceeded: "Codex login succeeded. Runtime identity has been refreshed.",
+    deviceLoginFailed: "Codex login failed.",
+    deviceVerificationLink: "Verification link",
+    deviceUserCode: "User code",
+    deviceExpiresIn: (seconds) => `Expires in ${seconds}s`,
+    devicePollInterval: (seconds) => `Poll every ${seconds}s`,
+    loginLogs: "Login output",
     serviceControls: "Service controls",
     serviceControlsSubtitle: "Restart the running service when runtime settings or deployment state need to be reapplied.",
     restartService: "Restart service",
@@ -210,6 +326,31 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     providersMissing: "暂无 LLM Provider 注册；Codex Direct 仍可使用。",
     providersMissingHint: "Provider 执行链需等 Models 注册表出现可用 Provider 后启用。",
     providersReadyHint: "Chat 会话可使用 Provider 执行链。",
+    providerRegisterTitle: "Claude Code Provider",
+    providerRegisterSubtitle: "注册 OpenAI-compatible endpoint，供 Claude Code 执行链使用。",
+    providerListTitle: "已配置 Provider",
+    providerListSubtitle: "查看已注册 endpoint，并载入表单修改 URL、密钥或 models。",
+    providerName: "Provider 名称",
+    providerBaseURL: "Base URL",
+    providerAPIKey: "API Key",
+    providerModels: "Provider Models",
+    providerModelsHelp: "每行填写一个 model，也可用逗号分隔；第一个 model 会作为默认模型。",
+    providerStoredAPIKeyHelp: "留空表示保留已保存的 API key。",
+    providerRegisterAction: "注册 Provider",
+    providerUpdateAction: "更新 Provider",
+    providerNewAction: "新建 Provider",
+    providerEditButton: "编辑",
+    providerEditAction: (name) => `编辑 ${name}`,
+    providerRegistering: "注册中...",
+    providerUpdating: "更新中...",
+    providerRegisterSucceeded: "Claude Code Provider 已注册。",
+    providerUpdateSucceeded: "Claude Code Provider 已更新。",
+    providerDefaultModel: (model) => `默认：${model || "-"}`,
+    providerModelCount: (count) => `${count} 个 model`,
+    providerEnabled: "已启用",
+    providerDisabled: "已停用",
+    providerDefault: "默认",
+    providerNoModels: "暂无 models",
     activeProfile: "Profile",
     identityName: "账号",
     identityPlan: "计划",
@@ -219,6 +360,18 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     quotaRemaining: "剩余",
     quotaResets: "重置",
     codexDefault: "Codex 默认值",
+    deviceLoginTitle: "Device Code 登录",
+    deviceLoginSubtitle: "为当前运行时启动无头 ChatGPT 登录，并在浏览器中输入一次性验证码。",
+    startDeviceLogin: "启动 device 登录",
+    startingDeviceLogin: "启动中...",
+    deviceLoginPending: "等待浏览器确认。",
+    deviceLoginSucceeded: "Codex 登录成功，运行时身份已刷新。",
+    deviceLoginFailed: "Codex 登录失败。",
+    deviceVerificationLink: "验证链接",
+    deviceUserCode: "用户码",
+    deviceExpiresIn: (seconds) => `${seconds}s 后过期`,
+    devicePollInterval: (seconds) => `每 ${seconds}s 轮询`,
+    loginLogs: "登录输出",
     serviceControls: "服务控制",
     serviceControlsSubtitle: "当运行时设置或部署状态需要重新加载时，重启当前服务。",
     restartService: "重启服务",
@@ -263,6 +416,11 @@ export function ReactManagedCodexAccountsRouteBody({
   const [statusMessage, setStatusMessage] = useState("");
   const [statusKind, setStatusKind] = useState<"success" | "error" | "">("");
   const [restartStatus, setRestartStatus] = useState<RuntimeRestartStatus | null>(null);
+  const [loginSession, setLoginSession] = useState<CodexLoginSession | null>(null);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [editingProviderID, setEditingProviderID] = useState("");
+  const [providerForm, setProviderForm] = useState<ProviderRegistrationForm>(() => createProviderRegistrationForm("Claude Code"));
+  const [providerBusy, setProviderBusy] = useState(false);
   const [restartDialog, setRestartDialog] = useState<{ open: boolean; syncRemoteMaster: boolean; confirmDiscard: boolean }>({
     open: false,
     syncRemoteMaster: false,
@@ -285,6 +443,18 @@ export function ReactManagedCodexAccountsRouteBody({
   }, [restartStatus?.status]);
 
   useEffect(() => {
+    const sessionID = normalizeText(loginSession?.id);
+    if (!sessionID || !isLoginSessionActive(loginSession)) {
+      return;
+    }
+    const intervalSeconds = normalizePositiveNumber(loginSession?.device?.interval) || 5;
+    const timer = window.setTimeout(() => {
+      void pollLoginSession(sessionID);
+    }, Math.max(2, intervalSeconds) * 1000);
+    return () => window.clearTimeout(timer);
+  }, [loginSession?.id, loginSession?.status, loginSession?.device?.interval]);
+
+  useEffect(() => {
     if (!restartDialog.open) {
       return;
     }
@@ -297,7 +467,11 @@ export function ReactManagedCodexAccountsRouteBody({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [restartBusy, restartDialog.open]);
 
-  async function reloadRuntime(nextMessage = "", nextKind: "success" | "error" | "" = "") {
+  async function reloadRuntime(
+    nextMessage = "",
+    nextKind: "success" | "error" | "" = "",
+    options: { resetProviderForm?: boolean } = {},
+  ) {
     setRequestState({ status: "loading", error: "" });
     try {
       const [runtimeStatus, providerPayload, nextRestartStatus] = await Promise.all([
@@ -306,9 +480,20 @@ export function ReactManagedCodexAccountsRouteBody({
         apiClient.get<RuntimeRestartStatus>("/api/control/runtime/restart").catch(() => null),
       ]);
       const nextSelection = deriveRuntimeSelection(runtimeStatus);
+      const providerItems = Array.isArray(providerPayload?.items) ? providerPayload.items : [];
       setRuntime(runtimeStatus);
-      setProviders(Array.isArray(providerPayload?.items) ? providerPayload.items : []);
       setRestartStatus(normalizeRestartStatus(nextRestartStatus));
+      setProviders(providerItems);
+      setProviderForm((current) => {
+        const nextName = nextClaudeCodeProviderName(providerItems);
+        if (options.resetProviderForm) {
+          return createProviderRegistrationForm(nextName);
+        }
+        return isProviderRegistrationFormPristine(current) ? { ...current, name: nextName } : current;
+      });
+      if (options.resetProviderForm) {
+        setEditingProviderID("");
+      }
       setSelectedModel(nextSelection.model);
       setSelectedReasoning(nextSelection.reasoning);
       setStatusMessage(nextMessage);
@@ -369,6 +554,72 @@ export function ReactManagedCodexAccountsRouteBody({
     }
   }
 
+  async function registerClaudeCodeProvider() {
+    const name = normalizeText(providerForm.name) || "Claude Code";
+    const baseURL = normalizeText(providerForm.baseURL);
+    const apiKey = normalizeText(providerForm.apiKey);
+    const modelIDs = parseProviderModelIDs(providerForm.models);
+    if (!baseURL || (!apiKey && !editingProviderID) || modelIDs.length === 0) {
+      setStatusKind("error");
+      setStatusMessage(copy.actionFailed("base_url, api_key, and at least one model are required"));
+      return;
+    }
+
+    setProviderBusy(true);
+    setStatusMessage("");
+    setStatusKind("");
+    try {
+      const payload = {
+        id: editingProviderID || undefined,
+        name,
+        provider_type: normalizeText(providerForm.providerType) || "openai-compatible",
+        api_type: normalizeText(providerForm.apiType) || "openai-completions",
+        base_url: baseURL,
+        api_key: apiKey,
+        default_model: modelIDs[0],
+        models: modelIDs.map((modelID) => ({
+          id: modelID,
+          name: modelID,
+          supports_tools: true,
+          supports_vision: true,
+          supports_streaming: true,
+          is_enabled: true,
+        })),
+        is_enabled: providerForm.isEnabled,
+      };
+      if (editingProviderID) {
+        await apiClient.put(`/api/control/llm/providers/${encodeURIComponent(editingProviderID)}`, payload);
+        await reloadRuntime(copy.providerUpdateSucceeded, "success", { resetProviderForm: true });
+      } else {
+        await apiClient.post("/api/control/llm/providers", payload);
+        await reloadRuntime(copy.providerRegisterSucceeded, "success", { resetProviderForm: true });
+      }
+    } catch (error: unknown) {
+      setStatusKind("error");
+      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
+    } finally {
+      setProviderBusy(false);
+    }
+  }
+
+  function startProviderEdit(provider: LLMProviderRecord) {
+    const providerID = normalizeText(provider.id);
+    if (!providerID) {
+      return;
+    }
+    setEditingProviderID(providerID);
+    setProviderForm(providerRecordToForm(provider));
+    setStatusMessage("");
+    setStatusKind("");
+  }
+
+  function startProviderCreate() {
+    setEditingProviderID("");
+    setProviderForm(createProviderRegistrationForm(nextClaudeCodeProviderName(providers)));
+    setStatusMessage("");
+    setStatusKind("");
+  }
+
   async function requestRuntimeRestart(syncRemoteMaster: boolean, confirmDiscardTrackedChanges = false) {
     setRestartBusy(true);
     try {
@@ -386,6 +637,48 @@ export function ReactManagedCodexAccountsRouteBody({
       void reloadRestartStatus();
     } finally {
       setRestartBusy(false);
+    }
+  }
+
+  async function startDeviceLogin() {
+    setLoginBusy(true);
+    setStatusMessage("");
+    setStatusKind("");
+    try {
+      const session = await apiClient.post<CodexLoginSession>("/api/control/codex/accounts/login-sessions", {
+        name: "runtime-device",
+        overwrite: true,
+        auth_method: "device_auth",
+      });
+      setLoginSession(session);
+      const sessionID = normalizeText(session?.id);
+      if (sessionID) {
+        await pollLoginSession(sessionID);
+      }
+    } catch (error: unknown) {
+      setStatusKind("error");
+      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
+    } finally {
+      setLoginBusy(false);
+    }
+  }
+
+  async function pollLoginSession(sessionID: string, refreshOnSuccess = true) {
+    try {
+      const session = await apiClient.get<CodexLoginSession>(
+        `/api/control/codex/accounts/login-sessions/${encodeURIComponent(sessionID)}`,
+      );
+      setLoginSession(session);
+      if (session.status === "succeeded" && refreshOnSuccess) {
+        await reloadRuntime(copy.deviceLoginSucceeded, "success");
+      }
+      if (session.status === "failed") {
+        setStatusKind("error");
+        setStatusMessage(`${copy.deviceLoginFailed}${session.error ? ` ${session.error}` : ""}`);
+      }
+    } catch (error: unknown) {
+      setStatusKind("error");
+      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
     }
   }
 
@@ -530,6 +823,24 @@ export function ReactManagedCodexAccountsRouteBody({
           </div>
         </div>
 
+        <section className="codex-runtime-device-login" aria-label={copy.deviceLoginTitle}>
+          <div className="codex-runtime-device-login-head">
+            <div className="codex-runtime-title-block">
+              <h4>{copy.deviceLoginTitle}</h4>
+              <p>{copy.deviceLoginSubtitle}</p>
+            </div>
+            <button
+              className="route-card-action codex-runtime-device-login-action"
+              type="button"
+              disabled={loginBusy || isLoginSessionActive(loginSession)}
+              onClick={() => void startDeviceLogin()}
+            >
+              {loginBusy ? copy.startingDeviceLogin : copy.startDeviceLogin}
+            </button>
+          </div>
+          {loginSession ? <RuntimeDeviceLoginSession copy={copy} session={loginSession} /> : null}
+        </section>
+
         <div className="codex-runtime-quick-form">
           <div className="codex-runtime-ledger-grid is-editable">
             <RuntimeSelectItem
@@ -578,10 +889,19 @@ export function ReactManagedCodexAccountsRouteBody({
           <RuntimeQuotaItem label={copy.quotaWeekly} copy={copy} window={runtime?.current?.quota?.weekly} />
         </div>
 
-        <div className={providerCount > 0 ? "codex-runtime-provider-note is-ready" : "codex-runtime-provider-note is-empty"}>
-          <strong>{providerCount > 0 ? copy.providerRegistered(providerCount) : copy.providersMissing}</strong>
-          <span>{providerCount > 0 ? copy.providersReadyHint : copy.providersMissingHint}</span>
-        </div>
+        <RuntimeProviderConsole
+          copy={copy}
+          providers={providers}
+          providerCount={providerCount}
+          providerForm={providerForm}
+          providerBusy={providerBusy}
+          editingProviderID={editingProviderID}
+          editing={Boolean(editingProviderID)}
+          onEdit={startProviderEdit}
+          onChangeProviderForm={setProviderForm}
+          onNew={startProviderCreate}
+          onSubmit={() => void registerClaudeCodeProvider()}
+        />
       </section>
       {restartModal}
     </section>
@@ -684,6 +1004,249 @@ function RuntimeSelectItem({
   );
 }
 
+function RuntimeProviderConsole({
+  copy,
+  providers,
+  providerCount,
+  providerForm,
+  providerBusy,
+  editingProviderID,
+  editing,
+  onEdit,
+  onChangeProviderForm,
+  onNew,
+  onSubmit,
+}: {
+  copy: RuntimeCopy;
+  providers: LLMProviderRecord[];
+  providerCount: number;
+  providerForm: ProviderRegistrationForm;
+  providerBusy: boolean;
+  editingProviderID: string;
+  editing: boolean;
+  onEdit: (provider: LLMProviderRecord) => void;
+  onChangeProviderForm: (value: ProviderRegistrationForm) => void;
+  onNew: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <section className="codex-runtime-provider-console" aria-label={copy.providerRegisterTitle}>
+      <header className="codex-runtime-provider-console-head">
+        <div className={providerCount > 0 ? "codex-runtime-provider-note is-ready" : "codex-runtime-provider-note is-empty"}>
+          <strong>{providerCount > 0 ? copy.providerRegistered(providerCount) : copy.providersMissing}</strong>
+          <span>{providerCount > 0 ? copy.providersReadyHint : copy.providersMissingHint}</span>
+        </div>
+      </header>
+      <div className={providerCount > 0 ? "codex-runtime-provider-console-grid" : "codex-runtime-provider-console-grid is-empty"}>
+        {providerCount > 0 ? (
+          <RuntimeProviderList
+            copy={copy}
+            providers={providers}
+            editingProviderID={editingProviderID}
+            onEdit={onEdit}
+          />
+        ) : null}
+        <div className="codex-runtime-provider-editor">
+          <RuntimeProviderRegistrationForm
+            copy={copy}
+            value={providerForm}
+            busy={providerBusy}
+            editing={editing}
+            onChange={onChangeProviderForm}
+            onNew={onNew}
+            onSubmit={onSubmit}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RuntimeProviderList({
+  copy,
+  providers,
+  editingProviderID,
+  onEdit,
+}: {
+  copy: RuntimeCopy;
+  providers: LLMProviderRecord[];
+  editingProviderID: string;
+  onEdit: (provider: LLMProviderRecord) => void;
+}) {
+  return (
+    <section className="codex-runtime-provider-registry" aria-label={copy.providerListTitle}>
+      <div className="codex-runtime-provider-list-head">
+        <div className="codex-runtime-title-block">
+          <h4>{copy.providerListTitle}</h4>
+          <p>{copy.providerListSubtitle}</p>
+        </div>
+      </div>
+      <div className="codex-runtime-provider-items">
+        {providers.map((provider) => {
+          const providerID = normalizeText(provider.id);
+          const providerName = normalizeText(provider.name) || providerID || "Provider";
+          const modelIDs = providerModelIDs(provider);
+          const defaultModel = normalizeText(provider.default_model) || modelIDs[0] || "";
+          const modelSummary = modelIDs.length > 0 ? modelIDs.join(", ") : copy.providerNoModels;
+          return (
+            <article
+              className={providerID && providerID === editingProviderID ? "codex-runtime-provider-item is-editing" : "codex-runtime-provider-item"}
+              key={providerID || providerName}
+            >
+              <div className="codex-runtime-provider-item-main">
+                <div className="codex-runtime-provider-item-title">
+                  <strong>{providerName}</strong>
+                  <span>{provider.is_enabled === false ? copy.providerDisabled : copy.providerEnabled}</span>
+                  {provider.is_default ? <span>{copy.providerDefault}</span> : null}
+                </div>
+                <p>{normalizeText(provider.base_url) || "-"}</p>
+                <div className="codex-runtime-provider-model-row">
+                  <span>{copy.providerDefaultModel(defaultModel)}</span>
+                  <span>{copy.providerModelCount(modelIDs.length)}</span>
+                </div>
+                <small>{modelSummary}</small>
+              </div>
+              <button
+                className="route-card-action codex-runtime-provider-edit"
+                type="button"
+                aria-label={copy.providerEditAction(providerName)}
+                onClick={() => onEdit(provider)}
+              >
+                {copy.providerEditButton}
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function RuntimeProviderRegistrationForm({
+  copy,
+  value,
+  busy,
+  editing,
+  onChange,
+  onNew,
+  onSubmit,
+}: {
+  copy: RuntimeCopy;
+  value: ProviderRegistrationForm;
+  busy: boolean;
+  editing: boolean;
+  onChange: (value: ProviderRegistrationForm) => void;
+  onNew: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="codex-runtime-provider-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <div className="codex-runtime-provider-form-head">
+        <div className="codex-runtime-title-block">
+          <h4>{copy.providerRegisterTitle}</h4>
+          <p>{copy.providerRegisterSubtitle}</p>
+        </div>
+        <div className="codex-runtime-provider-actions">
+          {editing ? (
+            <button className="route-card-action codex-runtime-provider-new" type="button" disabled={busy} onClick={onNew}>
+              {copy.providerNewAction}
+            </button>
+          ) : null}
+          <button className="route-card-action codex-runtime-provider-submit" type="submit" disabled={busy}>
+            {busy ? (editing ? copy.providerUpdating : copy.providerRegistering) : editing ? copy.providerUpdateAction : copy.providerRegisterAction}
+          </button>
+        </div>
+      </div>
+      <div className="codex-runtime-provider-fields">
+        <RuntimeTextField
+          label={copy.providerName}
+          value={value.name}
+          onChange={(nextValue) => onChange({ ...value, name: nextValue })}
+        />
+        <RuntimeTextField
+          label={copy.providerBaseURL}
+          value={value.baseURL}
+          onChange={(nextValue) => onChange({ ...value, baseURL: nextValue })}
+          placeholder="https://api.example.com/v1"
+        />
+        <RuntimeTextField
+          label={copy.providerAPIKey}
+          value={value.apiKey}
+          onChange={(nextValue) => onChange({ ...value, apiKey: nextValue })}
+          type="password"
+          autoComplete="off"
+          help={editing ? copy.providerStoredAPIKeyHelp : ""}
+        />
+        <RuntimeTextField
+          label={copy.providerModels}
+          value={value.models}
+          onChange={(nextValue) => onChange({ ...value, models: nextValue })}
+          placeholder={"claude-sonnet-4\nclaude-opus-4\nclaude-haiku-4"}
+          help={copy.providerModelsHelp}
+          fieldClassName="codex-runtime-provider-models-field"
+          multiline
+          rows={4}
+        />
+      </div>
+    </form>
+  );
+}
+
+function RuntimeTextField({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder = "",
+  autoComplete,
+  multiline = false,
+  help = "",
+  fieldClassName = "",
+  rows = 2,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: "text" | "password";
+  placeholder?: string;
+  autoComplete?: string;
+  multiline?: boolean;
+  help?: string;
+  fieldClassName?: string;
+  rows?: number;
+}) {
+  return (
+    <label className={fieldClassName ? `codex-runtime-text-field ${fieldClassName}` : "codex-runtime-text-field"}>
+      <span>{label}</span>
+      {multiline ? (
+        <textarea
+          aria-label={label}
+          value={value}
+          placeholder={placeholder}
+          rows={rows}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : (
+        <input
+          aria-label={label}
+          type={type}
+          value={value}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+      {help ? <small>{help}</small> : null}
+    </label>
+  );
+}
+
 function RuntimeQuotaItem({
   label,
   copy,
@@ -729,6 +1292,68 @@ function RuntimeMetaItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function RuntimeDeviceLoginSession({
+  copy,
+  session,
+}: {
+  copy: RuntimeCopy;
+  session: CodexLoginSession;
+}) {
+  const device = session.device ?? null;
+  const verificationLink = normalizeText(device?.verification_uri_complete) || normalizeText(device?.verification_uri);
+  const userCode = normalizeText(device?.user_code);
+  const expiresIn = normalizePositiveNumber(device?.expires_in);
+  const interval = normalizePositiveNumber(device?.interval);
+  const status = normalizeText(session.status);
+  const statusLabel =
+    status === "succeeded"
+      ? copy.deviceLoginSucceeded
+      : status === "failed"
+        ? `${copy.deviceLoginFailed}${session.error ? ` ${session.error}` : ""}`
+        : copy.deviceLoginPending;
+
+  return (
+    <div className={`codex-runtime-device-session is-${status || "pending"}`}>
+      <p className="codex-runtime-device-session-status">{statusLabel}</p>
+      <div className="codex-runtime-device-grid">
+        {verificationLink ? (
+          <RuntimeDeviceDetail label={copy.deviceVerificationLink}>
+            <a href={verificationLink} target="_blank" rel="noreferrer">
+              {verificationLink}
+            </a>
+          </RuntimeDeviceDetail>
+        ) : null}
+        {userCode ? (
+          <RuntimeDeviceDetail label={copy.deviceUserCode}>
+            <strong className="codex-runtime-device-code">{userCode}</strong>
+          </RuntimeDeviceDetail>
+        ) : null}
+      </div>
+      {expiresIn || interval ? (
+        <div className="codex-runtime-device-timing">
+          {expiresIn ? <span>{copy.deviceExpiresIn(expiresIn)}</span> : null}
+          {interval ? <span>{copy.devicePollInterval(interval)}</span> : null}
+        </div>
+      ) : null}
+      {session.logs ? (
+        <details className="codex-runtime-device-logs" open>
+          <summary>{copy.loginLogs}</summary>
+          <pre>{session.logs}</pre>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function RuntimeDeviceDetail({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="codex-runtime-device-detail">
+      <span>{label}</span>
+      <div>{children}</div>
+    </div>
+  );
+}
+
 function runtimeIdentityDetails(runtime: RuntimeStatus | null) {
   const live = runtime?.current?.live ?? null;
   const managed = runtime?.current?.managed ?? null;
@@ -739,6 +1364,19 @@ function runtimeIdentityDetails(runtime: RuntimeStatus | null) {
     plan: normalizeText(runtime?.current?.quota?.plan) || normalizeText(snapshot?.plan) || "-",
     authMode: normalizeText(snapshot?.auth_mode) || "-",
   };
+}
+
+function isLoginSessionActive(session: CodexLoginSession | null) {
+  const status = normalizeText(session?.status);
+  return status === "pending" || status === "running";
+}
+
+function normalizePositiveNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.round(parsed);
 }
 
 function normalizeQuotaPercent(value: unknown) {
@@ -828,4 +1466,86 @@ function formatReasoningEffort(value: unknown) {
 
 function normalizeText(value: unknown) {
   return String(value || "").trim();
+}
+
+function createProviderRegistrationForm(name: string): ProviderRegistrationForm {
+  return {
+    name,
+    baseURL: "",
+    apiKey: "",
+    models: "",
+    providerType: "openai-compatible",
+    apiType: "openai-completions",
+    isEnabled: true,
+  };
+}
+
+function providerRecordToForm(provider: LLMProviderRecord): ProviderRegistrationForm {
+  return {
+    name: normalizeText(provider.name),
+    baseURL: normalizeText(provider.base_url),
+    apiKey: "",
+    models: providerModelIDs(provider).join("\n"),
+    providerType: normalizeText(provider.provider_type) || "openai-compatible",
+    apiType: normalizeText(provider.api_type) || "openai-completions",
+    isEnabled: provider.is_enabled !== false,
+  };
+}
+
+function providerModelIDs(provider: LLMProviderRecord) {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  for (const model of provider.models ?? []) {
+    const modelID = normalizeText(model.id) || normalizeText(model.name);
+    if (!modelID || seen.has(modelID)) {
+      continue;
+    }
+    seen.add(modelID);
+    models.push(modelID);
+  }
+  return models;
+}
+
+function nextClaudeCodeProviderName(providers: LLMProviderRecord[]) {
+  const names = new Set(
+    providers
+      .map((provider) => normalizeText(provider.name).toLowerCase())
+      .filter(Boolean),
+  );
+  if (!names.has("claude code")) {
+    return "Claude Code";
+  }
+  for (let index = 2; ; index += 1) {
+    const candidate = `Claude Code ${index}`;
+    if (!names.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+}
+
+function isProviderRegistrationFormPristine(form: ProviderRegistrationForm) {
+  const name = normalizeText(form.name);
+  return (
+    !normalizeText(form.baseURL) &&
+    !normalizeText(form.apiKey) &&
+    !normalizeText(form.models) &&
+    normalizeText(form.providerType) === "openai-compatible" &&
+    normalizeText(form.apiType) === "openai-completions" &&
+    form.isEnabled &&
+    (!name || /^Claude Code(?: \d+)?$/i.test(name))
+  );
+}
+
+function parseProviderModelIDs(value: unknown) {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  for (const item of String(value || "").split(/[\n,，]+/)) {
+    const modelID = normalizeText(item);
+    if (!modelID || seen.has(modelID)) {
+      continue;
+    }
+    seen.add(modelID);
+    models.push(modelID);
+  }
+  return models;
 }

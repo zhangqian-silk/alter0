@@ -40,7 +40,8 @@ func TestServiceAddFromRawAndSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
-	service := codexapp.NewService(codexapp.ServiceOptions{
+	var service *codexapp.Service
+	service = codexapp.NewService(codexapp.ServiceOptions{
 		Store:             store,
 		ResolveActiveHome: func() (string, error) { return activeHome, nil },
 		Now: func() time.Time {
@@ -108,7 +109,8 @@ func TestServiceListStatusesMarksCurrentAndRefreshesQuota(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
-	service := codexapp.NewService(codexapp.ServiceOptions{
+	var service *codexapp.Service
+	service = codexapp.NewService(codexapp.ServiceOptions{
 		Store:             store,
 		ResolveActiveHome: func() (string, error) { return activeHome, nil },
 		QueryQuota: func(_ []byte, _ codexapp.QuotaQueryOptions) (*codexdomain.QuotaStatus, []byte, error) {
@@ -268,7 +270,7 @@ func TestServiceStartLoginSessionPersistsAccountOnSuccess(t *testing.T) {
 		LoginStdout: &stdout,
 	})
 
-	session, err := service.StartLoginSession(context.Background(), "fresh", false)
+	session, err := service.StartLoginSession(context.Background(), codexapp.LoginSessionStartRequest{Name: "fresh"})
 	if err != nil {
 		t.Fatalf("StartLoginSession returned error: %v", err)
 	}
@@ -297,6 +299,83 @@ func TestServiceStartLoginSessionPersistsAccountOnSuccess(t *testing.T) {
 	}
 }
 
+func TestServiceStartLoginSessionUsesDeviceAuthAndStreamsDeviceDetails(t *testing.T) {
+	activeHome := filepath.Join(t.TempDir(), ".codex")
+	store, err := localcodex.NewStore(filepath.Join(t.TempDir(), "accounts"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	var service *codexapp.Service
+	service = codexapp.NewService(codexapp.ServiceOptions{
+		Store:             store,
+		Command:           "codex",
+		ResolveActiveHome: func() (string, error) { return activeHome, nil },
+		NewID:             func() string { return "login-device" },
+		RunCommand: func(_ context.Context, name string, args []string, options codexapp.CommandOptions) error {
+			if name != "codex" {
+				t.Fatalf("command name = %q, want codex", name)
+			}
+			if len(args) != 2 || args[0] != "login" || args[1] != "--device-auth" {
+				t.Fatalf("command args = %v, want [login --device-auth]", args)
+			}
+			if _, err := io.WriteString(options.Stdout, "Open https://login.openai.com/activate and enter code WDJB-MJHT\nThis code expires in 900 seconds. Polling every 5 seconds.\n"); err != nil {
+				return err
+			}
+			deadline := time.Now().Add(time.Second)
+			for time.Now().Before(deadline) {
+				session, ok := service.GetLoginSession("login-device")
+				if ok && session.Device != nil && session.Device.UserCode == "WDJB-MJHT" {
+					if session.AuthMethod != codexapp.LoginAuthMethodDevice {
+						t.Fatalf("session.AuthMethod = %q, want %q", session.AuthMethod, codexapp.LoginAuthMethodDevice)
+					}
+					if session.Device.VerificationURI != "https://login.openai.com/activate" {
+						t.Fatalf("VerificationURI = %q", session.Device.VerificationURI)
+					}
+					if session.Device.ExpiresIn != 900 || session.Device.Interval != 5 {
+						t.Fatalf("device timing = %+v, want expires=900 interval=5", session.Device)
+					}
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			session, _ := service.GetLoginSession("login-device")
+			if session.Device == nil || session.Device.UserCode != "WDJB-MJHT" {
+				t.Fatalf("device details were not streamed before command exit: %+v", session)
+			}
+			loginHome := envValue(options.Env, "CODEX_HOME")
+			raw := buildServiceOAuthAuth(t, serviceOAuthInput{
+				Name:      "Device Account",
+				Email:     "device@example.com",
+				UserID:    "user-device",
+				AccountID: "acct-device",
+				Plan:      "team",
+				ExpiresAt: time.Date(2026, 4, 19, 8, 0, 0, 0, time.UTC),
+			})
+			return os.WriteFile(codexapp.AuthFilePath(loginHome), raw, 0o600)
+		},
+	})
+
+	session, err := service.StartLoginSession(context.Background(), codexapp.LoginSessionStartRequest{
+		Name:       "device",
+		AuthMethod: codexapp.LoginAuthMethodDevice,
+	})
+	if err != nil {
+		t.Fatalf("StartLoginSession returned error: %v", err)
+	}
+	if session.AuthMethod != codexapp.LoginAuthMethodDevice {
+		t.Fatalf("session.AuthMethod = %q, want %q", session.AuthMethod, codexapp.LoginAuthMethodDevice)
+	}
+
+	finalSession := waitForLoginStatus(t, service, "login-device", codexapp.LoginSessionStatusSucceeded)
+	if finalSession.Device == nil || finalSession.Device.UserCode != "WDJB-MJHT" {
+		t.Fatalf("final device details = %+v", finalSession.Device)
+	}
+	if !strings.Contains(finalSession.Logs, "WDJB-MJHT") {
+		t.Fatalf("expected login logs to include device code, got %q", finalSession.Logs)
+	}
+}
+
 func TestServiceStartLoginSessionMarksFailure(t *testing.T) {
 	activeHome := filepath.Join(t.TempDir(), ".codex")
 	store, err := localcodex.NewStore(filepath.Join(t.TempDir(), "accounts"))
@@ -315,7 +394,7 @@ func TestServiceStartLoginSessionMarksFailure(t *testing.T) {
 		},
 	})
 
-	if _, err := service.StartLoginSession(context.Background(), "broken", false); err != nil {
+	if _, err := service.StartLoginSession(context.Background(), codexapp.LoginSessionStartRequest{Name: "broken"}); err != nil {
 		t.Fatalf("StartLoginSession returned error: %v", err)
 	}
 
