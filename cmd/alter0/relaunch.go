@@ -241,7 +241,10 @@ func syncRemoteMasterBranch(workingDir string, confirmDiscardTrackedChanges bool
 	}
 	if status != "" {
 		if !confirmDiscardTrackedChanges {
-			return fmt.Errorf("sync remote master requires discard confirmation because tracked working tree changes exist: %s", status)
+			return web.NewRuntimeRestartError(
+				web.RuntimeRestartDiscardConfirmationRequired,
+				fmt.Sprintf("sync remote master requires discard confirmation because tracked working tree changes exist: %s", status),
+			)
 		}
 		if err := runCommandWithTimeout(gitStatusTimeout, repoDir, "git", "reset", "--hard", "HEAD"); err != nil {
 			return fmt.Errorf("discard tracked working tree changes: %w", err)

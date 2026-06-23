@@ -161,6 +161,27 @@ type RuntimeRestartOptions struct {
 	ConfirmDiscardTrackedChanges bool `json:"confirm_discard_tracked_changes"`
 }
 
+const RuntimeRestartDiscardConfirmationRequired = "runtime_restart_discard_confirmation_required"
+
+type RuntimeRestartError struct {
+	Code    string
+	Message string
+}
+
+func NewRuntimeRestartError(code string, message string) *RuntimeRestartError {
+	return &RuntimeRestartError{Code: strings.TrimSpace(code), Message: strings.TrimSpace(message)}
+}
+
+func (e *RuntimeRestartError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Message != "" {
+		return e.Message
+	}
+	return e.Code
+}
+
 type RuntimeRestartStatus struct {
 	Status                       string    `json:"status"`
 	Error                        string    `json:"error,omitempty"`
@@ -1148,6 +1169,15 @@ func (s *Server) runtimeRestartHandler(w http.ResponseWriter, r *http.Request) {
 
 	accepted, err := s.runtime.RequestRestart(req)
 	if err != nil {
+		var restartErr *RuntimeRestartError
+		if errors.As(err, &restartErr) && restartErr.Code != "" {
+			status := http.StatusInternalServerError
+			if restartErr.Code == RuntimeRestartDiscardConfirmationRequired {
+				status = http.StatusConflict
+			}
+			writeJSON(w, status, map[string]string{"code": restartErr.Code, "error": restartErr.Error()})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}

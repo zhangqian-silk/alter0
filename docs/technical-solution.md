@@ -342,7 +342,7 @@ Control UI / API
 Runtime restart
   -> Web confirmation
   -> supervisor
-  -> optional git fast-forward
+  -> optional git fast-forward or structured discard-confirmation error
   -> build candidate binary
   -> readyz probe
   -> switch or rollback
@@ -362,7 +362,7 @@ Runtime restart
 - Codex Runtime 服务固定解析当前活动 `CODEX_HOME`，未显式设置时回退到 `$HOME/.codex`；当前服务运行账户的 `<active_codex_home>/auth.json` 与 `config.toml` 作为运行时认证和配置来源。
 - Codex 运行时状态接口同时返回活动 `auth.json`、`config.toml`、当前 profile、活动 model、思考深度、配置来源、`model/list` 返回的可选 model 能力集，以及当前 `auth.json` 解析出的身份快照与实时刷新后的 quota 信息；更新运行时设置时，后端先通过 `config/read` 解析当前生效 key path，再调用 `config/batchWrite` 更新 `model` 与 `model_reasoning_effort`，并触发 `reloadUserConfig` 让当前运行时立即生效。登录会话接口复用 Codex account service，不把 device-code 状态写入长期账号存储；只有 `codex login` 成功产出登录目录下的 `auth.json` 后，才通过既有 `AddFromRaw` 保存账号快照并允许覆盖 `runtime-device` 记录。
 - CLI Runtime 运行参数通过源码内置默认值、启动参数和运行账户配置解析，仍受 Provider、Claude Code 与 Codex CLI 实际能力约束。
-- Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换；当 `sync_remote_master=true` 且存在 Git 已跟踪改动时，必须要求用户二次确认后才允许丢弃这些改动，不得在未确认时清理或回滚本地工作区内容。
+- Runtime 重启必须由 supervisor 托管，候选实例通过 readyz 后才切换；Runtime 页打开重启弹窗时默认选择 `sync_remote_master=true`。当同步请求无 Git 已跟踪改动时直接拉取、快进、构建并切换；当存在 Git 已跟踪改动时，`cmd/alter0` 返回 `RuntimeRestartError`，错误码固定为 `runtime_restart_discard_confirmation_required`，Web API 与 supervisor client 必须透传同一 JSON `code`，前端只在收到该错误码后进入二次确认。未确认时不得清理或回滚本地工作区内容。
 - 共享 Web 运行时内置通用 workspace service 注册表 `.alter0/workspace-services.json`：控制面 `PUT /api/control/workspace-services/{session_id}` 注册默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 注册附加服务。`frontend_dist` 默认校验 git 工作区和 `internal/interfaces/web/static/dist` 构建产物，并在 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>-<session_short_hash>.alter0.cn` 时优先分发 `/`、`/chat`、`/terminal`、`/assets/*` 与 `/legacy/*`；`travel` 服务是唯一前端静态例外，固定命中 `https://travel-<session_short_hash>.alter0.cn`，当注册路径根目录已存在 `index.html` 时直接把该目录作为静态攻略根目录公开分发，并继续对该 host 只返回静态 HTML/资源、直接阻断 `/api/*` 与其他工作台路由。`http` 服务既可反向代理到外部 upstream，也可由共享运行时按注册的 `start_command + workdir + port + health_path` 托管本地子进程。默认 `scripts/deploy_test_service.sh <session_id>` 会为 `web` 合成一条当前分支后端启动命令并注册给共享运行时，先构建前端产物，再让 `https://<session_short_hash>.alter0.cn` 整体代理到这份托管后端，从而让前端与 `/api/*` 保持同一版本；当 `service_id=travel` 且未显式传入 `--repo-path` 时，脚本默认回退到当前 Session 工作区根目录，直接发布已生成的静态攻略页。由于线上证书只覆盖 `alter0.cn` 与 `*.alter0.cn`，附加服务必须保持单级子域名格式，不能再生成 `<service>.<short_hash>.alter0.cn` 或 `<short_hash>.travel.alter0.cn` 这类二级嵌套 host。共享运行时自己的 `supervisor -> web child` 继续继承 `web_login_password` 作为主登录边界，托管 workspace service 子进程启动前会剥离 `ALTER0_WEB_LOGIN_PASSWORD` 并注入 `ALTER0_WEB_REUSE_GATEWAY_AUTH=1`，使预览后端只复用共享网关登录态，不再叠第二层鉴权。
 - Web 登录态继续由 `server.go` 的 `authMiddleware + loginHandler` 统一管理；当请求 Host 命中主域或其预览子域时，登录 cookie 会把 `Domain` 收敛到根域 `alter0.cn`，使主域工作台与短哈希预览 host 共享同一登录会话，而不是各自维护孤立 cookie。交互页登录回跳通过 `loginNextForRequest` 归一化：`/` 与 `/chat` 只回跳到 `/chat`，`/terminal` 只回跳到 `/terminal`，其他 HTML 导航仍保留安全校验后的相对 Request URI；实际运行页的会话 query 由前端收敛为 8 位短 hash，避免会话级长 id 进入登录页和稳定页面 URL。
 - systemd 基线统一 `HOME=/var/lib/alter0`，确保 Codex、gh、git signing、Node/Playwright 工具链使用同一运行账户上下文。
@@ -372,7 +372,7 @@ Runtime restart
 ### 验证策略
 
 - Control 测试覆盖 Channel、Capability、Skill、MCP、Runtime Profile、Codex Runtime、Schedules 内置任务、Capability 审计和服务重启请求。
-- Web 接口测试覆盖会话置顶、7 天不活跃清理、置顶跳过、queued/running 任务保护、workspace 删除、维护执行器不可用和资源清理失败；前端组件测试覆盖 Schedules 内置任务、Runtime 重启确认、二次确认、Codex device-code 登录和 Runtime 页 Claude Code Provider Console 的多 Provider 连续注册、查看与编辑。
+- Web 接口测试覆盖会话置顶、7 天不活跃清理、置顶跳过、queued/running 任务保护、workspace 删除、维护执行器不可用、资源清理失败和 Runtime 重启确认错误码；前端组件测试覆盖 Schedules 内置任务、Runtime 重启默认远端同步、按需二次确认、Codex device-code 登录和 Runtime 页 Claude Code Provider Console 的多 Provider 连续注册、查看与编辑。
 - Provider 测试覆盖创建、更新、缺失密钥恢复、默认项收敛、Claude Code profile 生成和 OpenRouter 字段。
 - Runtime supervisor 测试覆盖候选版本构建、readyz 切换、失败回滚和 metadata 展示。
 - 文档治理变更至少运行 Markdown 引用与空白检查；代码变更按 TDD 运行对应包或全量测试。

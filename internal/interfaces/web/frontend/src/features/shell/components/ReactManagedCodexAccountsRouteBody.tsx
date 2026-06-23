@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { createAPIClient } from "../../../shared/api/client";
+import { APIClientError, createAPIClient } from "../../../shared/api/client";
 import { formatDateTimeMinute } from "../../../shared/time/format";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 
@@ -126,6 +126,8 @@ type RuntimeRestartStatus = {
   started_at?: string;
   updated_at?: string;
 };
+
+const runtimeRestartDiscardConfirmationRequired = "runtime_restart_discard_confirmation_required";
 
 type ProviderRegistrationForm = {
   name: string;
@@ -632,6 +634,17 @@ export function ReactManagedCodexAccountsRouteBody({
       setStatusKind("success");
       setStatusMessage(copy.restartAccepted);
     } catch (error: unknown) {
+      if (
+        syncRemoteMaster &&
+        !confirmDiscardTrackedChanges &&
+        error instanceof APIClientError &&
+        error.code === runtimeRestartDiscardConfirmationRequired
+      ) {
+        setRestartDialog({ open: true, syncRemoteMaster: true, confirmDiscard: true });
+        setStatusKind("");
+        setStatusMessage("");
+        return;
+      }
       setStatusKind("error");
       setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
       void reloadRestartStatus();
@@ -755,10 +768,6 @@ export function ReactManagedCodexAccountsRouteBody({
                   type="button"
                   disabled={restartBusy}
                   onClick={() => {
-                    if (restartDialog.syncRemoteMaster && !restartDialog.confirmDiscard) {
-                      setRestartDialog((current) => ({ ...current, confirmDiscard: true }));
-                      return;
-                    }
                     void requestRuntimeRestart(restartDialog.syncRemoteMaster, restartDialog.syncRemoteMaster && restartDialog.confirmDiscard);
                   }}
                 >
@@ -789,7 +798,7 @@ export function ReactManagedCodexAccountsRouteBody({
           <button
             className="route-card-action codex-runtime-service-primary-action"
             type="button"
-            onClick={() => setRestartDialog({ open: true, syncRemoteMaster: false, confirmDiscard: false })}
+            onClick={() => setRestartDialog({ open: true, syncRemoteMaster: true, confirmDiscard: false })}
           >
             {copy.restartService}
           </button>

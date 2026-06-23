@@ -405,9 +405,9 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 
 `Settings > Runtime` 中的“重启服务”会走运行时托管链路，而不是由当前业务进程直接自拉起：
 
-1. 点击“重启服务”后会打开站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项展示，默认不勾选。
+1. 点击“重启服务”后会打开站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项展示，默认勾选。
 2. `sync_remote_master=false`：基于当前仓库状态构建候选二进制，并由 `supervisor` 完成子进程切换。
-3. `sync_remote_master=true`：先校验当前分支为 `master`；若存在 Git 已跟踪的本地改动，前端会进入二次确认。只有同时传入 `confirm_discard_tracked_changes=true` 时才会丢弃这些改动，否则不会执行同步重启。确认后执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后通过统一构建入口先重建前端 `static/dist`、再构建候选二进制并切换。
+3. `sync_remote_master=true`：先校验当前分支为 `master`；无 Git 已跟踪本地改动时直接执行同步重启；若后端检测到 Git 已跟踪本地改动，会以结构化错误要求前端进入二次确认。只有用户二次确认并传入 `confirm_discard_tracked_changes=true` 时才会丢弃这些改动，否则不会清理本地工作区内容。确认后执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后通过统一构建入口先重建前端 `static/dist`、再构建候选二进制并切换。
 4. 候选版本只有在 `/readyz` 探活通过后才会成为当前运行版本；若启动失败，会自动恢复上一运行版本。
 5. Git 或构建失败会直接返回到 Web 控制台，便于定位权限、凭据、快进合并失败等问题。
 6. Runtime 面板会展示当前在线实例的最近启动时间与对应 `commit hash`，用于确认上次成功重启切换到的运行版本。

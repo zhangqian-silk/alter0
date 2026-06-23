@@ -82,10 +82,24 @@ describe("ReactManagedRouteBody", () => {
   });
 
   it("keeps the service restart flow reachable from runtime settings", async () => {
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/control/llm/providers") {
         return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/control/runtime/restart" && init?.method === "POST") {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: "runtime_restart_discard_confirmation_required",
+              error: "tracked changes exist",
+            },
+            { status: 409 },
+          ),
+        );
+      }
+      if (url === "/api/control/runtime/restart") {
+        return Promise.resolve(jsonResponse({ status: "idle" }));
       }
       if (url === "/api/codex/accounts") {
         return Promise.resolve(jsonResponse({
@@ -114,12 +128,13 @@ describe("ReactManagedRouteBody", () => {
 
     expect(screen.getByRole("dialog", { name: "Restart service?" })).toBeInTheDocument();
     const updateCheckbox = screen.getByRole("checkbox");
-    expect(updateCheckbox).not.toBeChecked();
+    expect(updateCheckbox).toBeChecked();
 
-    fireEvent.click(updateCheckbox);
     fireEvent.click(screen.getByRole("button", { name: "Restart" }));
 
-    expect(screen.getByRole("dialog", { name: "Discard local tracked changes?" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Discard local tracked changes?" })).toBeInTheDocument();
+    });
   });
 
   it("does not treat old settings subpages as react-managed route bodies", () => {
