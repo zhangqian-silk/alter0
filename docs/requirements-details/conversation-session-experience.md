@@ -259,7 +259,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 的移动端发送按钮支持在键盘保持打开时直接点按提交；首触发送需覆盖 `pointerdown(touch)` 与 `touchstart` 提交链路，并在同一次触摸内去重，立即进入当前 `sendPrompt` 链路，不需要先收键盘或补第二次点击。
 - `Chat` 的 fixed composer 不额外叠加 `bottom` 过渡动画；键盘回弹与输入区回贴底边时只消费 `VisualViewport` 的实时位置，避免补间动画与视口收缩/回弹叠加造成拖滞。
 - `Chat` 在输入框失焦后，若 `VisualViewport` 仍处于收缩态，必须继续保留当前键盘偏移并随视口恢复逐步释放；不允许先把 composer 闪回到底边，再被后续 viewport resize 顶回去。
-- `Chat / Terminal` 在输入框保持聚焦且软键盘占位已建立后，需容忍浏览器键盘动画中的短暂完整高度回报；该抖动事件不得立刻清空键盘偏移或让 composer 闪回底边。
+- `Chat / Terminal` 在输入框保持聚焦且软键盘占位已建立后，需容忍浏览器键盘动画中的短暂完整高度回报；当同一阶段出现 `VisualViewport.height` 仍收缩但 `offsetTop` 临时增大的事件时，键盘占位继续按收缩高度计算，不用 `height + offsetTop` 作为恢复判定；该抖动事件不得立刻清空键盘偏移或让 composer 闪回底边。
 - `Chat / Terminal` 的共享 runtime Composer 在真手机宽度下必须用 `bottom: var(--keyboard-offset)` 类底部偏移贴住可见底边，不使用 `transform` 承载软键盘位移；输入框阴影和白色 surface 在键盘弹起、收起或浏览器工具栏回弹期间不得留下灰色残影、旧层缓存或底部悬空阴影块。
 - `Chat / Terminal` 的四键阅读定位条统一使用同一套圆形按钮样式和触摸反馈，避免不同运行页在跳转控件上分叉出独立实现。
 - `760px` 及以下的真手机宽度下，主导航抽屉、会话列表区、头部按钮高度与间距继续压缩，避免头部按钮挤占可用阅读高度。

@@ -1,4 +1,6 @@
 import {
+  MOBILE_KEYBOARD_MIN_OFFSET_PX,
+  MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS,
   createDefaultMobileViewportState,
   deriveMobileViewportState,
   isMobileViewportWidth,
@@ -30,8 +32,18 @@ export function createMobileViewportSyncController(
   const hasActiveInput = options.hasActiveInput ?? (() => defaultHasActiveInput(doc));
   const visualViewport = win.visualViewport;
   let state = createDefaultMobileViewportState();
+  let cooldownSyncTimeoutID = 0;
+
+  const clearCooldownSync = () => {
+    if (!cooldownSyncTimeoutID) {
+      return;
+    }
+    win.clearTimeout(cooldownSyncTimeoutID);
+    cooldownSyncTimeoutID = 0;
+  };
 
   const sync = () => {
+    const activeInput = hasActiveInput();
     const result = deriveMobileViewportState(state, {
       mobileViewport: isMobileViewportWidth(win.innerWidth),
       windowWidth: win.innerWidth,
@@ -39,11 +51,24 @@ export function createMobileViewportSyncController(
       viewportWidth: visualViewport?.width,
       viewportHeight: visualViewport?.height,
       viewportOffsetTop: visualViewport?.offsetTop,
-      hasActiveInput: hasActiveInput(),
+      hasActiveInput: activeInput,
     });
     state = result.state;
     root.style.setProperty("--mobile-viewport-height", result.cssVars.mobileViewportHeight);
     root.style.setProperty("--keyboard-offset", result.cssVars.keyboardOffset);
+    clearCooldownSync();
+    const reportedViewportHeight = Math.round(visualViewport?.height ?? win.innerHeight);
+    const focusedFullHeightReport =
+      activeInput
+      && result.state.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+      && result.state.baselineHeight > 0
+      && reportedViewportHeight >= result.state.baselineHeight - 2;
+    if (focusedFullHeightReport) {
+      cooldownSyncTimeoutID = win.setTimeout(() => {
+        cooldownSyncTimeoutID = 0;
+        syncWhenVisible();
+      }, MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS + 16);
+    }
   };
   const syncWhenVisible = () => {
     if (doc.visibilityState === "hidden") {
@@ -65,6 +90,7 @@ export function createMobileViewportSyncController(
   return {
     sync,
     destroy: () => {
+      clearCooldownSync();
       win.removeEventListener("resize", sync);
       win.removeEventListener("focus", syncWhenVisible);
       win.removeEventListener("pageshow", syncWhenVisible);

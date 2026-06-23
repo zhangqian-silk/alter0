@@ -75,9 +75,14 @@ export function deriveMobileViewportState(
     };
   }
 
-  const effectiveHeight = Math.max(
+  const reportedViewportHeight = Math.max(
     0,
-    Math.round((input.viewportHeight ?? input.windowHeight) + Math.max(input.viewportOffsetTop ?? 0, 0)),
+    Math.round(input.viewportHeight ?? input.windowHeight),
+  );
+  const viewportOffsetTop = Math.max(input.viewportOffsetTop ?? 0, 0);
+  const viewportBottomHeight = Math.max(
+    0,
+    Math.round(reportedViewportHeight + viewportOffsetTop),
   );
   const viewportWidth = Math.max(
     0,
@@ -85,6 +90,18 @@ export function deriveMobileViewportState(
   );
   const widthChanged = Math.abs(viewportWidth - previousState.width) > MOBILE_VIEWPORT_WIDTH_RESET_DELTA_PX;
   const currentTimeMS = Number.isFinite(input.currentTimeMS) ? Number(input.currentTimeMS) : Date.now();
+  const previousKeyboardActive =
+    previousState.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+    && previousState.baselineHeight > 0;
+  const reportedViewportKeyboardOffset = previousState.baselineHeight > 0
+    ? Math.max(0, previousState.baselineHeight - reportedViewportHeight)
+    : 0;
+  const viewportReportsKeyboard =
+    reportedViewportKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+    && (input.hasActiveInput || previousKeyboardActive);
+  const effectiveHeight = viewportReportsKeyboard
+    ? reportedViewportHeight
+    : viewportBottomHeight;
   const keyboardRecentlyAligned =
     previousState.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
     && (currentTimeMS - (previousState.lastAlignedAt || 0)) < MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS;

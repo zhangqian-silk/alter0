@@ -136,6 +136,81 @@ describe("shared viewport mobileViewport", () => {
     expect(settled.cssVars.keyboardOffset).toBe("0px");
   });
 
+  it("keeps the active keyboard inset when a focused viewport reports a shifted visual offset", () => {
+    const previous = {
+      ...createDefaultMobileViewportState(),
+      baselineHeight: 932,
+      width: 430,
+      height: 620,
+      keyboardOffset: 312,
+      lastAlignedAt: 1000
+    };
+
+    const shifted = deriveMobileViewportState(previous, {
+      mobileViewport: true,
+      windowWidth: 430,
+      windowHeight: 932,
+      viewportWidth: 430,
+      viewportHeight: 620,
+      viewportOffsetTop: 312,
+      hasActiveInput: true,
+      currentTimeMS: 1600
+    });
+
+    expect(shifted.state.height).toBe(620);
+    expect(shifted.state.keyboardOffset).toBe(312);
+    expect(shifted.cssVars).toEqual({
+      mobileViewportHeight: "620px",
+      keyboardOffset: "312px"
+    });
+  });
+
+  it("keeps the keyboard inset after blur while a shifted visual viewport is still recovering", () => {
+    const previous = {
+      ...createDefaultMobileViewportState(),
+      baselineHeight: 932,
+      width: 430,
+      height: 620,
+      keyboardOffset: 312,
+      lastAlignedAt: 1000
+    };
+
+    const recovering = deriveMobileViewportState(previous, {
+      mobileViewport: true,
+      windowWidth: 430,
+      windowHeight: 932,
+      viewportWidth: 430,
+      viewportHeight: 620,
+      viewportOffsetTop: 312,
+      hasActiveInput: false,
+      currentTimeMS: 1600
+    });
+
+    expect(recovering.state.height).toBe(620);
+    expect(recovering.state.keyboardOffset).toBe(312);
+    expect(recovering.cssVars).toEqual({
+      mobileViewportHeight: "620px",
+      keyboardOffset: "312px"
+    });
+
+    const recovered = deriveMobileViewportState(recovering.state, {
+      mobileViewport: true,
+      windowWidth: 430,
+      windowHeight: 932,
+      viewportWidth: 430,
+      viewportHeight: 932,
+      viewportOffsetTop: 0,
+      hasActiveInput: false,
+      currentTimeMS: 1800
+    });
+
+    expect(recovered.state.keyboardOffset).toBe(0);
+    expect(recovered.cssVars).toEqual({
+      mobileViewportHeight: "932px",
+      keyboardOffset: "0px"
+    });
+  });
+
   it("resets the baseline when viewport width changes substantially", () => {
     const previous = {
       ...createDefaultMobileViewportState(),

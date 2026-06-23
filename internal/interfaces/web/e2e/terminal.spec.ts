@@ -346,7 +346,7 @@ test.describe("Terminal route", () => {
     expect(metrics?.mobileViewportHeight).toBe("620px");
     expect(metrics?.keyboardOffset).toBe("312px");
     expect(metrics?.chatScrollable).toBe(true);
-    expect(metrics?.composerPosition).toBe("fixed");
+    expect(metrics?.composerPosition).toBe("relative");
     expect(metrics?.composerBottomStyle).toBe("312px");
     expect(metrics?.composerBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
     expect(metrics?.composerTop ?? 0).toBeGreaterThanOrEqual((metrics?.viewportBottom ?? 0) - 220);
@@ -552,7 +552,7 @@ test.describe("Terminal route", () => {
     const readShellMetrics = async () => page.evaluate(() => {
       const appShell = document.querySelector(".app-shell");
       const workspace = document.querySelector("[data-runtime-workspace='terminal']");
-      const composer = document.querySelector(".terminal-composer-shell");
+      const composer = document.querySelector("[data-runtime-composer-kind='terminal']");
       const viewport = window.visualViewport;
       if (
         !(appShell instanceof HTMLElement) ||
@@ -593,7 +593,7 @@ test.describe("Terminal route", () => {
     expect(Math.abs((metrics?.shellHeight ?? 0) - (baseline?.shellHeight ?? 0))).toBeLessThanOrEqual(2);
     expect(Math.abs((metrics?.workspaceTop ?? 0) - (baseline?.workspaceTop ?? 0))).toBeLessThanOrEqual(2);
     expect(Math.abs((metrics?.workspaceHeight ?? 0) - (baseline?.workspaceHeight ?? 0))).toBeLessThanOrEqual(2);
-    expect(metrics?.composerPosition).toBe("fixed");
+    expect(metrics?.composerPosition).toBe("relative");
     expect(metrics?.windowScrollY ?? 0).toBeLessThanOrEqual(1);
     expect(metrics?.maxWindowScrollY ?? 0).toBeLessThanOrEqual(1);
     expect(metrics?.composerBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
@@ -609,7 +609,7 @@ test.describe("Terminal route", () => {
     expect(Math.abs((nextMetrics?.shellHeight ?? 0) - (baseline?.shellHeight ?? 0))).toBeLessThanOrEqual(2);
     expect(Math.abs((nextMetrics?.workspaceTop ?? 0) - (baseline?.workspaceTop ?? 0))).toBeLessThanOrEqual(2);
     expect(Math.abs((nextMetrics?.workspaceHeight ?? 0) - (baseline?.workspaceHeight ?? 0))).toBeLessThanOrEqual(2);
-    expect(nextMetrics?.composerPosition).toBe("fixed");
+    expect(nextMetrics?.composerPosition).toBe("relative");
     expect(nextMetrics?.windowScrollY ?? 0).toBeLessThanOrEqual(1);
     expect(nextMetrics?.maxWindowScrollY ?? 0).toBeLessThanOrEqual(1);
     expect(nextMetrics?.composerBottom ?? 0).toBeLessThanOrEqual((nextMetrics?.viewportBottom ?? 0) + 2);
