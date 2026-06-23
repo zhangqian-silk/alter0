@@ -86,6 +86,15 @@ type LLMProviderResponse = {
   items?: LLMProviderRecord[];
 };
 
+type RuntimeRestartStatus = {
+  status?: string;
+  error?: string;
+  sync_remote_master?: boolean;
+  confirm_discard_tracked_changes?: boolean;
+  started_at?: string;
+  updated_at?: string;
+};
+
 type RequestState =
   | { status: "loading"; error: string }
   | { status: "ready"; error: string }
@@ -127,6 +136,15 @@ type RuntimeCopy = {
   back: string;
   restarting: string;
   restartAccepted: string;
+  restartLastStatus: string;
+  restartStatusPreparing: string;
+  restartStatusSwitching: string;
+  restartStatusCompleted: string;
+  restartStatusFailed: string;
+  restartStatusUnknown: string;
+  restartUpdatedAt: (value: string) => string;
+  restartSyncEnabled: string;
+  restartFailureReason: (message: string) => string;
   loadFailed: (message: string) => string;
   actionFailed: (message: string) => string;
 };
@@ -168,6 +186,15 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     back: "Back",
     restarting: "Restarting...",
     restartAccepted: "Restart accepted. The service will come back online shortly.",
+    restartLastStatus: "Last restart",
+    restartStatusPreparing: "Preparing candidate",
+    restartStatusSwitching: "Switching runtime",
+    restartStatusCompleted: "Completed",
+    restartStatusFailed: "Failed and rolled back",
+    restartStatusUnknown: "Status unavailable",
+    restartUpdatedAt: (value) => `Updated ${value}`,
+    restartSyncEnabled: "Remote master sync requested",
+    restartFailureReason: (message) => `Failure reason: ${message}`,
     loadFailed: (message) => `Load failed: ${message}`,
     actionFailed: (message) => `Action failed: ${message}`,
   },
@@ -207,6 +234,15 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     back: "返回",
     restarting: "重启中...",
     restartAccepted: "已接受重启请求，服务稍后会重新上线。",
+    restartLastStatus: "最近一次重启",
+    restartStatusPreparing: "正在准备候选版本",
+    restartStatusSwitching: "正在切换运行时",
+    restartStatusCompleted: "已完成",
+    restartStatusFailed: "失败并已回滚",
+    restartStatusUnknown: "状态不可用",
+    restartUpdatedAt: (value) => `更新于 ${value}`,
+    restartSyncEnabled: "已请求同步远端 master",
+    restartFailureReason: (message) => `失败原因：${message}`,
     loadFailed: (message) => `加载失败：${message}`,
     actionFailed: (message) => `操作失败：${message}`,
   },
@@ -226,6 +262,7 @@ export function ReactManagedCodexAccountsRouteBody({
   const [selectedReasoning, setSelectedReasoning] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [statusKind, setStatusKind] = useState<"success" | "error" | "">("");
+  const [restartStatus, setRestartStatus] = useState<RuntimeRestartStatus | null>(null);
   const [restartDialog, setRestartDialog] = useState<{ open: boolean; syncRemoteMaster: boolean; confirmDiscard: boolean }>({
     open: false,
     syncRemoteMaster: false,
@@ -236,6 +273,16 @@ export function ReactManagedCodexAccountsRouteBody({
   useEffect(() => {
     void reloadRuntime();
   }, []);
+
+  useEffect(() => {
+    if (!isActiveRestartStatus(restartStatus)) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void reloadRestartStatus();
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [restartStatus?.status]);
 
   useEffect(() => {
     if (!restartDialog.open) {
@@ -253,13 +300,15 @@ export function ReactManagedCodexAccountsRouteBody({
   async function reloadRuntime(nextMessage = "", nextKind: "success" | "error" | "" = "") {
     setRequestState({ status: "loading", error: "" });
     try {
-      const [runtimeStatus, providerPayload] = await Promise.all([
+      const [runtimeStatus, providerPayload, nextRestartStatus] = await Promise.all([
         apiClient.get<RuntimeStatus>("/api/control/codex/runtime"),
         apiClient.get<LLMProviderResponse>("/api/control/llm/providers"),
+        apiClient.get<RuntimeRestartStatus>("/api/control/runtime/restart").catch(() => null),
       ]);
       const nextSelection = deriveRuntimeSelection(runtimeStatus);
       setRuntime(runtimeStatus);
       setProviders(Array.isArray(providerPayload?.items) ? providerPayload.items : []);
+      setRestartStatus(normalizeRestartStatus(nextRestartStatus));
       setSelectedModel(nextSelection.model);
       setSelectedReasoning(nextSelection.reasoning);
       setStatusMessage(nextMessage);
@@ -270,6 +319,15 @@ export function ReactManagedCodexAccountsRouteBody({
         status: "error",
         error: error instanceof Error ? error.message : "unknown_error",
       });
+    }
+  }
+
+  async function reloadRestartStatus() {
+    try {
+      const nextStatus = await apiClient.get<RuntimeRestartStatus>("/api/control/runtime/restart");
+      setRestartStatus(normalizeRestartStatus(nextStatus));
+    } catch {
+      setRestartStatus(null);
     }
   }
 
@@ -314,16 +372,18 @@ export function ReactManagedCodexAccountsRouteBody({
   async function requestRuntimeRestart(syncRemoteMaster: boolean, confirmDiscardTrackedChanges = false) {
     setRestartBusy(true);
     try {
-      await apiClient.post("/api/control/runtime/restart", {
+      const acceptedStatus = await apiClient.post<RuntimeRestartStatus>("/api/control/runtime/restart", {
         sync_remote_master: syncRemoteMaster,
         confirm_discard_tracked_changes: confirmDiscardTrackedChanges,
       });
+      setRestartStatus(normalizeRestartStatus(acceptedStatus));
       setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false });
       setStatusKind("success");
       setStatusMessage(copy.restartAccepted);
     } catch (error: unknown) {
       setStatusKind("error");
       setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
+      void reloadRestartStatus();
     } finally {
       setRestartBusy(false);
     }
@@ -343,6 +403,7 @@ export function ReactManagedCodexAccountsRouteBody({
   const runtimeIdentity = runtimeIdentityDetails(runtime);
   const providerCount = providers.length;
   const showingDiscardConfirm = restartDialog.syncRemoteMaster && restartDialog.confirmDiscard;
+  const restartStatusVisible = restartStatus && normalizeText(restartStatus.status) !== "" && normalizeText(restartStatus.status) !== "idle";
   const restartModal =
     restartDialog.open && typeof document !== "undefined"
       ? createPortal(
@@ -429,6 +490,7 @@ export function ReactManagedCodexAccountsRouteBody({
         <div className="codex-runtime-title-block">
           <h4>{copy.serviceControls}</h4>
           <p>{copy.serviceControlsSubtitle}</p>
+          {restartStatusVisible && restartStatus ? <RuntimeRestartStatusNote status={restartStatus} copy={copy} /> : null}
         </div>
         <div className="codex-runtime-service-actions">
           <button
@@ -544,6 +606,54 @@ function RuntimeLoadingView({ copy }: { copy: RuntimeCopy }) {
       </section>
     </section>
   );
+}
+
+function RuntimeRestartStatusNote({ status, copy }: { status: RuntimeRestartStatus; copy: RuntimeCopy }) {
+  const normalizedStatus = normalizeText(status.status);
+  const updatedAt = normalizeText(status.updated_at || status.started_at);
+  const statusText = formatRestartStatusLabel(normalizedStatus, copy);
+  const isError = normalizedStatus === "failed";
+  return (
+    <div className={isError ? "codex-runtime-restart-status is-error" : "codex-runtime-restart-status"}>
+      <strong>{copy.restartLastStatus}</strong>
+      <span>{statusText}</span>
+      {updatedAt ? <small>{copy.restartUpdatedAt(formatDateTimeMinute(updatedAt))}</small> : null}
+      {status.sync_remote_master ? <small>{copy.restartSyncEnabled}</small> : null}
+      {status.error ? <small>{copy.restartFailureReason(status.error)}</small> : null}
+    </div>
+  );
+}
+
+function formatRestartStatusLabel(status: string, copy: RuntimeCopy) {
+  switch (status) {
+    case "preparing":
+      return copy.restartStatusPreparing;
+    case "switching":
+    case "restarting":
+      return copy.restartStatusSwitching;
+    case "completed":
+      return copy.restartStatusCompleted;
+    case "failed":
+      return copy.restartStatusFailed;
+    default:
+      return copy.restartStatusUnknown;
+  }
+}
+
+function normalizeRestartStatus(status: RuntimeRestartStatus | null | undefined): RuntimeRestartStatus | null {
+  if (!status || typeof status !== "object") {
+    return null;
+  }
+  const normalizedStatus = normalizeText(status.status);
+  if (!normalizedStatus || normalizedStatus === "idle") {
+    return null;
+  }
+  return { ...status, status: normalizedStatus };
+}
+
+function isActiveRestartStatus(status: RuntimeRestartStatus | null): boolean {
+  const normalizedStatus = normalizeText(status?.status);
+  return normalizedStatus === "preparing" || normalizedStatus === "switching" || normalizedStatus === "restarting";
 }
 
 function RuntimeSelectItem({

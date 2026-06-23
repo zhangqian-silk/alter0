@@ -152,6 +152,7 @@ type terminalService interface {
 
 type runtimeRestarter interface {
 	RequestRestart(options RuntimeRestartOptions) (bool, error)
+	GetRestartStatus() RuntimeRestartStatus
 }
 
 type runtimeInfoProvider interface {
@@ -171,6 +172,15 @@ type codexAccountService interface {
 type RuntimeRestartOptions struct {
 	SyncRemoteMaster             bool `json:"sync_remote_master"`
 	ConfirmDiscardTrackedChanges bool `json:"confirm_discard_tracked_changes"`
+}
+
+type RuntimeRestartStatus struct {
+	Status                       string    `json:"status"`
+	Error                        string    `json:"error,omitempty"`
+	SyncRemoteMaster             bool      `json:"sync_remote_master"`
+	ConfirmDiscardTrackedChanges bool      `json:"confirm_discard_tracked_changes"`
+	StartedAt                    time.Time `json:"started_at,omitempty"`
+	UpdatedAt                    time.Time `json:"updated_at,omitempty"`
 }
 
 type RuntimeInfo struct {
@@ -2141,12 +2151,16 @@ func (s *Server) runtimeInfoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runtimeRestartHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 	if s.runtime == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "runtime restart unavailable"})
+		return
+	}
+	if r.Method == http.MethodGet {
+		writeJSON(w, http.StatusOK, s.runtime.GetRestartStatus())
 		return
 	}
 

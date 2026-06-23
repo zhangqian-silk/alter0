@@ -188,12 +188,15 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
           resolveProviders = resolve;
         });
       }
+      if (url === "/api/control/runtime/restart") {
+        return Promise.reject(new Error("restart status unavailable"));
+      }
       return Promise.reject(new Error(`Unhandled fetch: ${url}`));
     });
 
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "/api/control/codex/runtime",
@@ -202,6 +205,11 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "/api/control/llm/providers",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/control/runtime/restart",
       expect.objectContaining({ method: "GET" }),
     );
 
@@ -218,6 +226,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
       .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
       .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: false }, { status: 202 }))
       .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: true }, { status: 202 }));
 
@@ -236,7 +245,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        3,
+        4,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
@@ -257,7 +266,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        4,
+        5,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
@@ -267,11 +276,36 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     });
   });
 
+  it("shows the latest runtime restart failure reason", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: "failed",
+          error: "candidate runtime exited before ready: flag provided but not defined",
+          sync_remote_master: true,
+          updated_at: "2026-06-23T05:20:00Z",
+        }),
+      );
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Last restart")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Failed and rolled back")).toBeInTheDocument();
+    expect(screen.getByText("Remote master sync requested")).toBeInTheDocument();
+    expect(screen.getByText("Failure reason: candidate runtime exited before ready: flag provided but not defined")).toBeInTheDocument();
+  });
+
   it("updates the active model and reasoning depth from the runtime-only endpoint", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
       .mockResolvedValueOnce(jsonResponse({ items: [{ id: "anthropic", name: "Anthropic", is_enabled: true }] }))
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
       .mockResolvedValueOnce(
         jsonResponse(
           runtimeFixture({
@@ -308,7 +342,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        3,
+        4,
         "/api/control/codex/runtime",
         expect.objectContaining({
           method: "PUT",
@@ -326,7 +360,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
+      5,
       "/api/control/codex/runtime",
       expect.objectContaining({
         method: "PUT",

@@ -9,7 +9,7 @@ import (
 	"alter0/internal/interfaces/web"
 )
 
-func TestFilterInternalRuntimeArgsRemovesInternalFlags(t *testing.T) {
+func TestFilterInternalRuntimeArgsKeepsOnlySupportedPublicFlags(t *testing.T) {
 	args := []string{
 		"-" + runtimeChildFlag,
 		"-" + relaunchHelperFlag,
@@ -19,16 +19,26 @@ func TestFilterInternalRuntimeArgsRemovesInternalFlags(t *testing.T) {
 		"-" + relaunchArgsFlag + "=encoded",
 		"-" + relaunchWorkingDirFlag,
 		"/tmp/repo",
+		"-daily-memory-dir",
+		"/var/lib/alter0/storage/memory",
+		"-long-term-memory-path=/var/lib/alter0/storage/memory/long-term/MEMORY.md",
 		"-web-addr",
 		"127.0.0.1:18088",
+		"-web-bind-localhost-only=false",
+		"--codex-command=/usr/local/bin/codex",
+		"-unknown-public-flag",
+		"value",
 	}
 
 	filtered := filterInternalRuntimeArgs(args)
-	if len(filtered) != 2 {
-		t.Fatalf("expected 2 args after filtering, got %d: %v", len(filtered), filtered)
+	expected := []string{
+		"-web-addr",
+		"127.0.0.1:18088",
+		"-web-bind-localhost-only=false",
+		"--codex-command=/usr/local/bin/codex",
 	}
-	if filtered[0] != "-web-addr" || filtered[1] != "127.0.0.1:18088" {
-		t.Fatalf("unexpected filtered args: %v", filtered)
+	if strings.Join(filtered, "\n") != strings.Join(expected, "\n") {
+		t.Fatalf("unexpected filtered args:\n got: %v\nwant: %v", filtered, expected)
 	}
 }
 
@@ -84,5 +94,35 @@ func TestSupervisorClientRestarterRejectsEmptyBodyError(t *testing.T) {
 	_, err := restarter.RequestRestart(web.RuntimeRestartOptions{})
 	if err == nil || !strings.Contains(err.Error(), "HTTP 502") {
 		t.Fatalf("expected restart error")
+	}
+}
+
+func TestSupervisorClientRestarterReturnsRestartStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/restart" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get(supervisorTokenHeader) != "secret" {
+			t.Fatalf("expected supervisor token header")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"failed","error":"candidate runtime exited before ready","sync_remote_master":true}`))
+	}))
+	defer server.Close()
+
+	restarter := &supervisorClientRestarter{
+		addr:   server.URL,
+		token:  "secret",
+		client: server.Client(),
+	}
+	status := restarter.GetRestartStatus()
+	if status.Status != "failed" {
+		t.Fatalf("expected failed status, got %q", status.Status)
+	}
+	if !status.SyncRemoteMaster {
+		t.Fatalf("expected sync flag from status")
+	}
+	if !strings.Contains(status.Error, "candidate runtime exited") {
+		t.Fatalf("unexpected status error %q", status.Error)
 	}
 }

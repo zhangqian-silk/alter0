@@ -42,6 +42,7 @@ type serviceRestarter struct {
 
 	mu         sync.Mutex
 	restarting bool
+	status     web.RuntimeRestartStatus
 }
 
 func newServiceRestarter(cancel context.CancelFunc, logger *slog.Logger, args []string) (*serviceRestarter, error) {
@@ -72,16 +73,19 @@ func (r *serviceRestarter) RequestRestart(options web.RuntimeRestartOptions) (bo
 		return false, nil
 	}
 	r.restarting = true
+	r.status = newRestartStatus("preparing", options, "")
 	r.mu.Unlock()
 
 	relaunchExecutable, err := r.resolveRelaunchExecutable(options)
 	if err != nil {
+		r.setRestartStatus("failed", options, err)
 		r.reset()
 		return false, err
 	}
 
 	encodedArgs, err := encodeRelaunchArgs(r.args)
 	if err != nil {
+		r.setRestartStatus("failed", options, err)
 		r.reset()
 		return false, err
 	}
@@ -96,9 +100,11 @@ func (r *serviceRestarter) RequestRestart(options web.RuntimeRestartOptions) (bo
 	helper := exec.Command(r.executable, helperArgs...)
 	helper.Dir = r.workingDir
 	if err := helper.Start(); err != nil {
+		r.setRestartStatus("failed", options, err)
 		r.reset()
 		return false, fmt.Errorf("start relaunch helper: %w", err)
 	}
+	r.setRestartStatus("switching", options, nil)
 
 	if r.logger != nil {
 		r.logger.Info(
@@ -114,6 +120,35 @@ func (r *serviceRestarter) RequestRestart(options web.RuntimeRestartOptions) (bo
 		r.cancel()
 	}()
 	return true, nil
+}
+
+func (r *serviceRestarter) GetRestartStatus() web.RuntimeRestartStatus {
+	if r == nil {
+		return web.RuntimeRestartStatus{Status: "idle"}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.status.Status == "" {
+		return web.RuntimeRestartStatus{Status: "idle"}
+	}
+	return r.status
+}
+
+func (r *serviceRestarter) setRestartStatus(status string, options web.RuntimeRestartOptions, cause error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.status.StartedAt.IsZero() {
+		r.status = newRestartStatus(status, options, "")
+	}
+	r.status.Status = status
+	r.status.SyncRemoteMaster = options.SyncRemoteMaster
+	r.status.ConfirmDiscardTrackedChanges = options.ConfirmDiscardTrackedChanges
+	r.status.UpdatedAt = time.Now().UTC()
+	if cause != nil {
+		r.status.Error = cause.Error()
+	} else {
+		r.status.Error = ""
+	}
 }
 
 func (r *serviceRestarter) resolveRelaunchExecutable(options web.RuntimeRestartOptions) (string, error) {
