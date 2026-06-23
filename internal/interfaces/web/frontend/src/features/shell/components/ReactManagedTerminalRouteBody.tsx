@@ -323,12 +323,32 @@ const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 const TERMINAL_NEW_SESSION_PLACEHOLDER_ID = "terminal-new-placeholder";
 const TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.attachments.v1";
 const TERMINAL_PENDING_DRAFT_KEY = "__pending__";
+export const TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+export const TERMINAL_RUNTIME_CACHE_TURN_LIMIT = 6;
 
 type TerminalPollPlan = {
   enabled: boolean;
   interval: number;
   refreshActiveSession: boolean;
 };
+
+type TerminalRuntimeCacheSnapshot = {
+  cachedAt: number;
+  activeSessionID: string;
+  sessions: TerminalSession[];
+};
+
+type TerminalRuntimeInitialState = {
+  sessions: TerminalSession[];
+  activeSessionID: string;
+  hydratedFromCache: boolean;
+};
+
+let terminalRuntimeCache: TerminalRuntimeCacheSnapshot | null = null;
+
+export function resetTerminalRuntimeCache() {
+  terminalRuntimeCache = null;
+}
 
 const TERMINAL_NARRATIVE_BLOCK_TYPES = new Set(["text", "message", "reasoning", "plan", "log"]);
 
@@ -649,6 +669,85 @@ function compareTerminalTurns(left: TerminalTurn, right: TerminalTurn): number {
   return normalizeText(left.id).localeCompare(normalizeText(right.id));
 }
 
+function cloneTerminalTurn(turn: TerminalTurn): TerminalTurn {
+  return {
+    ...turn,
+    attachments: Array.isArray(turn.attachments)
+      ? turn.attachments.map((attachment) => ({ ...attachment }))
+      : undefined,
+    steps: Array.isArray(turn.steps)
+      ? turn.steps.map((step) => ({ ...step }))
+      : undefined,
+  };
+}
+
+function cloneTerminalSession(session: TerminalSession): TerminalSession {
+  return {
+    ...session,
+    turns: Array.isArray(session.turns) ? session.turns.map(cloneTerminalTurn) : undefined,
+    turns_paging: session.turns_paging ? { ...session.turns_paging } : undefined,
+  };
+}
+
+function trimTerminalSessionForRuntimeCache(session: TerminalSession): TerminalSession {
+  const next = cloneTerminalSession(session);
+  if (!Array.isArray(next.turns) || next.turns.length <= TERMINAL_RUNTIME_CACHE_TURN_LIMIT) {
+    return next;
+  }
+  const sortedTurns = [...next.turns].sort(compareTerminalTurns);
+  const retainedTurns = sortedTurns.slice(-TERMINAL_RUNTIME_CACHE_TURN_LIMIT);
+  const oldest = retainedTurns[0];
+  const newest = retainedTurns[retainedTurns.length - 1];
+  next.turns = retainedTurns;
+  next.turns_paging = {
+    ...(next.turns_paging || {}),
+    has_more_before: true,
+    oldest_turn_id: oldest?.id || next.turns_paging?.oldest_turn_id,
+    newest_turn_id: newest?.id || next.turns_paging?.newest_turn_id,
+    next_before_turn_id: next.turns_paging?.next_before_turn_id || oldest?.id,
+  };
+  return next;
+}
+
+function readTerminalRuntimeCache(): TerminalRuntimeCacheSnapshot | null {
+  if (!terminalRuntimeCache) {
+    return null;
+  }
+  if (Date.now() - terminalRuntimeCache.cachedAt > TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS) {
+    terminalRuntimeCache = null;
+    return null;
+  }
+  return {
+    cachedAt: terminalRuntimeCache.cachedAt,
+    activeSessionID: terminalRuntimeCache.activeSessionID,
+    sessions: terminalRuntimeCache.sessions.map(cloneTerminalSession),
+  };
+}
+
+function writeTerminalRuntimeCache(sessions: TerminalSession[], activeSessionID: string) {
+  terminalRuntimeCache = {
+    cachedAt: Date.now(),
+    activeSessionID,
+    sessions: sortSessions(sessions).map(trimTerminalSessionForRuntimeCache),
+  };
+}
+
+function resolveInitialTerminalRuntimeState(): TerminalRuntimeInitialState {
+  const routeSessionID = readWorkbenchRouteSessionID("terminal");
+  const cache = readTerminalRuntimeCache();
+  const sessions = cache?.sessions || [];
+  const activeSessionID = resolveSessionIDReference(sessions, routeSessionID)
+    || resolveSessionIDReference(sessions, cache?.activeSessionID || "")
+    || routeSessionID
+    || sessions[0]?.id
+    || "";
+  return {
+    sessions,
+    activeSessionID,
+    hydratedFromCache: sessions.length > 0,
+  };
+}
+
 function mergeTerminalTurns(current: TerminalTurn[] | undefined, incoming: TerminalTurn[] | undefined): TerminalTurn[] | undefined {
   if (!Array.isArray(incoming)) {
     return current;
@@ -793,14 +892,18 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const [language, setLanguage] = useState<"en" | "zh">(() => resolveLanguage());
   const copy = TERMINAL_COPY[language];
   const shellCopy = getLegacyShellCopy(workbench.language);
-  const [sessions, setSessions] = useState<TerminalSession[]>([]);
-  const [activeSessionID, setActiveSessionID] = useState(() => readWorkbenchRouteSessionID("terminal"));
+  const initialRuntimeStateRef = useRef<TerminalRuntimeInitialState | null>(null);
+  if (!initialRuntimeStateRef.current) {
+    initialRuntimeStateRef.current = resolveInitialTerminalRuntimeState();
+  }
+  const [sessions, setSessions] = useState<TerminalSession[]>(() => initialRuntimeStateRef.current?.sessions || []);
+  const [activeSessionID, setActiveSessionID] = useState(() => initialRuntimeStateRef.current?.activeSessionID || "");
   const [metaOpen, setMetaOpen] = useState(false);
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingSessionID, setDeletingSessionID] = useState("");
   const [pinningSessionID, setPinningSessionID] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialRuntimeStateRef.current?.hydratedFromCache);
   const [loadError, setLoadError] = useState("");
   const [inputValue, setInputValue] = useState("");
   const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ComposerAttachment[]>>(() => loadTerminalAttachmentDrafts());
@@ -1182,6 +1285,10 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   useEffect(() => {
     writeWorkbenchRouteSessionID("terminal", activeSessionID);
   }, [activeSessionID]);
+
+  useEffect(() => {
+    writeTerminalRuntimeCache(sessions, activeSessionID);
+  }, [activeSessionID, sessions]);
 
   useEffect(() => {
     if (!activeSessionID) {

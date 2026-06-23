@@ -45,6 +45,8 @@ const CODEX_RUNTIME_MODEL_ID = "codex";
 const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
+export const CHAT_RUNTIME_CACHE_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+export const CHAT_RUNTIME_CACHE_MESSAGE_LIMIT = 12;
 
 function chatTerminalSessionEndpoint(path: string = ""): string {
   const normalizedPath = path.trim().replace(/^\/+/, "");
@@ -144,6 +146,23 @@ type ComposerDraftMap = Record<string, string>;
 type ComposerAttachmentDraftMap = Record<string, ComposerAttachment[]>;
 type StoredActiveSessionSnapshotState = Record<string, unknown>;
 type StoredRecentSessionSnapshotState = Record<string, unknown>;
+
+type ConversationRuntimeCacheSnapshot = {
+  cachedAt: number;
+  activeSessionByRoute: ActiveSessionState;
+  sessionsByRoute: SessionsState;
+};
+
+type ConversationRuntimeInitialState = {
+  activeSessionByRoute: ActiveSessionState;
+  sessionsByRoute: SessionsState;
+};
+
+let conversationRuntimeCache: ConversationRuntimeCacheSnapshot | null = null;
+
+export function resetConversationRuntimeCache() {
+  conversationRuntimeCache = null;
+}
 
 type RuntimeSelection = {
   id: string;
@@ -429,6 +448,61 @@ function normalizeRouteSessions(routeKey: ConversationRoute, sessions: ChatSessi
     merged.set(session.id, session);
   });
   return Array.from(merged.values()).sort(compareSessions);
+}
+
+function cloneRuntimeTraceEvent(event: RuntimeTraceEvent): RuntimeTraceEvent {
+  return {
+    ...event,
+    provider: { ...event.provider },
+    blocks: event.blocks.map((block) => ({ ...block })),
+    action: event.action
+      ? {
+          ...event.action,
+          permission: event.action.permission ? { ...event.action.permission } : undefined,
+        }
+      : undefined,
+    error: event.error ? { ...event.error } : undefined,
+    raw: event.raw ? { ...event.raw } : undefined,
+  };
+}
+
+function cloneChatMessage(message: ChatMessage): ChatMessage {
+  return {
+    ...message,
+    attachments: message.attachments.map((attachment) => ({ ...attachment })),
+    processSteps: message.processSteps.map(cloneRuntimeTraceEvent),
+  };
+}
+
+function cloneChatSession(session: ChatSession): ChatSession {
+  return {
+    ...session,
+    target: { ...session.target },
+    toolIDs: [...session.toolIDs],
+    skillIDs: [...session.skillIDs],
+    mcpIDs: [...session.mcpIDs],
+    messages: session.messages.map(cloneChatMessage),
+  };
+}
+
+function trimChatSessionForRuntimeCache(session: ChatSession): ChatSession {
+  const next = cloneChatSession(session);
+  if (next.messages.length > CHAT_RUNTIME_CACHE_MESSAGE_LIMIT) {
+    next.messages = next.messages.slice(-CHAT_RUNTIME_CACHE_MESSAGE_LIMIT);
+  }
+  return next;
+}
+
+function cloneSessionsState(sessionsByRoute: SessionsState): SessionsState {
+  return {
+    chat: normalizeRouteSessions("chat", sessionsByRoute.chat.map(cloneChatSession)),
+  };
+}
+
+function trimSessionsStateForRuntimeCache(sessionsByRoute: SessionsState): SessionsState {
+  return {
+    chat: normalizeRouteSessions("chat", sessionsByRoute.chat.map(trimChatSessionForRuntimeCache)),
+  };
 }
 
 function codexRuntimeProvider(): ChatProvider {
@@ -790,6 +864,43 @@ function persistActiveSessionSnapshots(activeState: ActiveSessionState, sessions
   writeJSONStorage(RECENT_SESSION_SNAPSHOT_STORAGE_KEY, recentPayload);
 }
 
+function readConversationRuntimeCache(): ConversationRuntimeCacheSnapshot | null {
+  if (!conversationRuntimeCache) {
+    return null;
+  }
+  if (Date.now() - conversationRuntimeCache.cachedAt > CHAT_RUNTIME_CACHE_SESSION_TTL_MS) {
+    conversationRuntimeCache = null;
+    return null;
+  }
+  return {
+    cachedAt: conversationRuntimeCache.cachedAt,
+    activeSessionByRoute: { ...conversationRuntimeCache.activeSessionByRoute },
+    sessionsByRoute: cloneSessionsState(conversationRuntimeCache.sessionsByRoute),
+  };
+}
+
+function writeConversationRuntimeCache(activeSessionByRoute: ActiveSessionState, sessionsByRoute: SessionsState) {
+  conversationRuntimeCache = {
+    cachedAt: Date.now(),
+    activeSessionByRoute: { chat: normalizeText(activeSessionByRoute.chat) },
+    sessionsByRoute: trimSessionsStateForRuntimeCache(sessionsByRoute),
+  };
+}
+
+function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialState {
+  const cache = readConversationRuntimeCache();
+  if (cache) {
+    return {
+      activeSessionByRoute: cache.activeSessionByRoute,
+      sessionsByRoute: cache.sessionsByRoute,
+    };
+  }
+  return {
+    activeSessionByRoute: loadActiveSessionState(),
+    sessionsByRoute: loadActiveSessionSnapshots(),
+  };
+}
+
 function loadComposerDrafts(): ComposerDraftMap {
   const parsed = readJSONStorage<Record<string, string>>(COMPOSER_DRAFT_STORAGE_KEY, {});
   return Object.entries(parsed).reduce<ComposerDraftMap>((acc, [key, value]) => {
@@ -1125,12 +1236,18 @@ export function ConversationRuntimeProvider({
 }: ProviderProps) {
   const route = normalizeConversationRoute(rawRoute);
   const apiClient = useMemo(() => createAPIClient(), []);
-  const [sessionsByRoute, setSessionsByRoute] = useState<SessionsState>(() => loadActiveSessionSnapshots());
+  const initialRuntimeStateRef = useRef<ConversationRuntimeInitialState | null>(null);
+  if (!initialRuntimeStateRef.current) {
+    initialRuntimeStateRef.current = resolveInitialConversationRuntimeState();
+  }
+  const [sessionsByRoute, setSessionsByRoute] = useState<SessionsState>(() =>
+    initialRuntimeStateRef.current?.sessionsByRoute || { chat: [] },
+  );
   const [sessionsLoadedByRoute, setSessionsLoadedByRoute] = useState<Record<ConversationRoute, boolean>>({
     chat: false,
   });
   const [activeSessionByRoute, setActiveSessionByRoute] = useState<ActiveSessionState>(() =>
-    loadActiveSessionState(),
+    initialRuntimeStateRef.current?.activeSessionByRoute || { chat: CANONICAL_CHAT_SESSION_ID },
   );
   const [providers, setProviders] = useState<ChatProvider[]>([]);
   const [skills, setSkills] = useState<ChatCapability[]>([]);
@@ -1602,6 +1719,10 @@ export function ConversationRuntimeProvider({
 
   useEffect(() => {
     persistActiveSessionSnapshots(activeSessionByRoute, sessionsByRoute);
+  }, [activeSessionByRoute, sessionsByRoute]);
+
+  useEffect(() => {
+    writeConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
   }, [activeSessionByRoute, sessionsByRoute]);
 
   useEffect(() => {

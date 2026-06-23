@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-06-14
+> Last update: 2026-06-23
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `runtime.execution.cli-runtime`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -163,6 +163,7 @@
 - Terminal 四键阅读定位条按当前视口中的可见 turn 集合计算目标：`上一条` 固定指向最上可见 turn；`下一条` 在单条 turn 可见时指向真实下一条、在多条 turn 同屏可见时指向最下可见 turn；最后一条 turn 单独可见时隐藏 `下一条`。
 - Terminal 发送按钮首次点击必须立即进入 pending 反馈；若当前还没有 active session，前端允许先创建会话再继续发送，但首击期间按钮需同步切到 `Sending...` 与禁用态，避免重复点击和“第一次点击无反应”的错觉。
 - Terminal 刷新节奏需按会话状态自适配：执行中的会话保留实时刷新，空闲会话停止周期轮询并依靠页面激活补偿刷新；用户正在滚动阅读输出时，不得因明细轮询而打断当前滚动。
+- Chat / Terminal 在同一浏览器工作台内切换到其他页面后再返回时，前端需优先使用未过期的 8 小时运行态内存缓存恢复会话列表和当前活动会话的最近内容；`Chat` 缓存最新少量消息，`Terminal` 缓存最近 turns，接口返回后继续合并更新。缓存必须限制消息/turns 数量并设置过期时间，且不作为跨刷新、跨设备或服务端事实来源。
 - Terminal 窄屏消息页必须保持 `workbench-main -> chat-pane -> terminal-view -> terminal-chat-screen` 的闭合高度链，由 `terminal-chat-screen` 独立承担纵向滚动；外层容器不得因 `overflow: hidden` 或高度塌陷吃掉滚动。
 - Terminal 移动端在输入框聚焦且软键盘抬起后，Composer 必须按 `VisualViewport` 同步的键盘偏移直接贴住可见底边；长对话或长输出期间不得通过拉高 footer padding、改变滚动容器或破坏高度闭合链把输入区挤出屏幕。
 - Terminal 移动端的 `terminal-chat-screen` 必须继续按当前 Composer 的真实遮挡高度动态收口；会话空态、长输出与 Process 阅读都要稳定停在输入区上沿，不允许被 fixed Composer 覆盖。

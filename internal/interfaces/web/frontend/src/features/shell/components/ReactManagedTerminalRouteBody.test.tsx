@@ -1,6 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { ReactManagedTerminalRouteBody, resolveTerminalPollPlan } from "./ReactManagedTerminalRouteBody";
+import {
+  ReactManagedTerminalRouteBody,
+  resetTerminalRuntimeCache,
+  resolveTerminalPollPlan,
+  TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS,
+  TERMINAL_RUNTIME_CACHE_TURN_LIMIT,
+} from "./ReactManagedTerminalRouteBody";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../../app/WorkbenchContext";
 import { hashSessionIDShort } from "../../../shared/session/sessionHash";
 
@@ -126,6 +132,41 @@ function openTerminalSessionActions(sessionID: string): HTMLElement {
   const card = document.querySelector(`[data-runtime-session-card='${sessionID}']`) as HTMLElement;
   fireEvent.click(within(card).getByRole("button", { name: "Session actions", hidden: true }));
   return card;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+function terminalSessionFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "terminal-cache",
+    title: "Cached shell",
+    terminal_session_id: "terminal-cache",
+    status: "ready",
+    shell: "codex exec",
+    working_dir: "/workspace/alter0",
+    created_at: "2026-04-15T10:00:00Z",
+    updated_at: "2026-04-15T10:10:00Z",
+    ...overrides,
+  };
+}
+
+function terminalTurnFixtures(count: number, outputPrefix = "cached output"): TerminalTurnFixture[] {
+  return Array.from({ length: count }, (_, index) => {
+    const value = index + 1;
+    return {
+      id: `turn-${value}`,
+      prompt: `prompt-${value}`,
+      final_output: `${outputPrefix} ${value}`,
+    };
+  });
 }
 
 describe("ReactManagedTerminalRouteBody", () => {
@@ -328,6 +369,8 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   afterEach(() => {
+    resetTerminalRuntimeCache();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
     window.localStorage.clear();
@@ -609,6 +652,189 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
   });
 
+  it("keeps the Terminal runtime cache alive for longer single-device route gaps", () => {
+    expect(TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS).toBe(8 * 60 * 60 * 1000);
+  });
+
+  it("hydrates a fresh Terminal runtime cache immediately and refreshes after the API returns", async () => {
+    const cachedTurnCount = TERMINAL_RUNTIME_CACHE_TURN_LIMIT + 2;
+    const cachedTurns = terminalTurnFixtures(cachedTurnCount);
+    const cachedTurnPayloads = cachedTurns.map((turn, index) => ({
+      id: turn.id,
+      prompt: turn.prompt,
+      status: "completed",
+      started_at: `2026-04-15T10:${String(index + 1).padStart(2, "0")}:00Z`,
+      finished_at: `2026-04-15T10:${String(index + 1).padStart(2, "0")}:02Z`,
+      duration_ms: 2000,
+      final_output: turn.final_output,
+      steps: [],
+    }));
+
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [terminalSessionFixture()],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-cache" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: terminalSessionFixture({ turns: cachedTurnPayloads }),
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    const firstView = renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(screen.getByText(`cached output ${cachedTurnCount}`)).toBeInTheDocument();
+    });
+    expect(screen.getByText("cached output 1")).toBeInTheDocument();
+    firstView.unmount();
+
+    const listRequest = deferred<{ items?: unknown[] }>();
+    const sessionRequest = deferred<{ session?: unknown }>();
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return listRequest.promise.then((payload) => jsonResponse(payload));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-cache" && method === "GET") {
+        return sessionRequest.promise.then((payload) => jsonResponse(payload));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    expect(screen.getByRole("heading", { name: "Cached shell" })).toBeInTheDocument();
+    expect(screen.getByText(`cached output ${cachedTurnCount}`)).toBeInTheDocument();
+    expect(screen.queryByText("cached output 1")).not.toBeInTheDocument();
+
+    listRequest.resolve({
+      items: [terminalSessionFixture({
+        title: "Server shell",
+        updated_at: "2026-04-15T10:20:00Z",
+      })],
+    });
+    sessionRequest.resolve({
+      session: terminalSessionFixture({
+        title: "Server shell",
+        updated_at: "2026-04-15T10:20:00Z",
+        turns: [{
+          id: "turn-server",
+          prompt: "server prompt",
+          status: "completed",
+          started_at: "2026-04-15T10:20:00Z",
+          finished_at: "2026-04-15T10:20:02Z",
+          duration_ms: 2000,
+          final_output: "server output",
+          steps: [],
+        }],
+      }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("server output")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("heading", { name: "Server shell" })).toBeInTheDocument();
+  });
+
+  it("does not hydrate an expired Terminal runtime cache", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1000);
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [terminalSessionFixture()],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-cache" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: terminalSessionFixture({
+            turns: [{
+              id: "turn-cache",
+              prompt: "cached prompt",
+              status: "completed",
+              started_at: "2026-04-15T10:00:00Z",
+              finished_at: "2026-04-15T10:00:02Z",
+              duration_ms: 2000,
+              final_output: "cached output before expiry",
+              steps: [],
+            }],
+          }),
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    const firstView = renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(screen.getByText("cached output before expiry")).toBeInTheDocument();
+    });
+    firstView.unmount();
+
+    nowSpy.mockReturnValue(1000 + TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS + 1);
+    const listRequest = deferred<{ items?: unknown[] }>();
+    const sessionRequest = deferred<{ session?: unknown }>();
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return listRequest.promise.then((payload) => jsonResponse(payload));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-cache" && method === "GET") {
+        return sessionRequest.promise.then((payload) => jsonResponse(payload));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    expect(screen.queryByText("cached output before expiry")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cached shell" })).not.toBeInTheDocument();
+
+    listRequest.resolve({
+      items: [terminalSessionFixture({ title: "Server shell after expiry" })],
+    });
+    sessionRequest.resolve({
+      session: terminalSessionFixture({
+        title: "Server shell after expiry",
+        turns: [{
+          id: "turn-server",
+          prompt: "server prompt",
+          status: "completed",
+          started_at: "2026-04-15T10:20:00Z",
+          finished_at: "2026-04-15T10:20:02Z",
+          duration_ms: 2000,
+          final_output: "server output after expiry",
+          steps: [],
+        }],
+      }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("server output after expiry")).toBeInTheDocument();
+    });
+  });
+
   it("renders the terminal session list and active workspace in React", async () => {
     renderTerminalRouteBody();
 
@@ -800,7 +1026,7 @@ describe("ReactManagedTerminalRouteBody", () => {
         return Promise.resolve(jsonResponse({
           session: {
             id: "terminal-new-1",
-            title: "New",
+            title: "Server New",
             terminal_session_id: "terminal-new-1",
             status: "ready",
             shell: "codex exec",
@@ -853,6 +1079,14 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(fetchMock.mock.calls.some(([request, init]) =>
       String(request) === "/api/terminal/sessions/terminal-new-1/input"
       && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([request, init]) =>
+        String(request) === "/api/terminal/sessions/terminal-new-1"
+        && String(init?.method || "GET").toUpperCase() === "GET")).toBe(true);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Server New" })).toBeInTheDocument();
+    });
     expect(view.container.querySelector("[data-runtime-session-select='terminal-new-placeholder']")).not.toBeInTheDocument();
   });
 
