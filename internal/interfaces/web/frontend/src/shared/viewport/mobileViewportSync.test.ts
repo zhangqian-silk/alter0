@@ -1,4 +1,5 @@
 import { createMobileViewportSyncController } from "./mobileViewportSync";
+import { MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS } from "./mobileViewport";
 
 class MockVisualViewport extends EventTarget {
   width: number;
@@ -119,6 +120,39 @@ describe("shared viewport mobileViewportSync", () => {
 
     controller.destroy();
     input.remove();
+  });
+
+  it("rechecks focused full-height viewport reports after the keyboard alignment cooldown", () => {
+    vi.useFakeTimers();
+    const visualViewport = new MockVisualViewport(430, 932);
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    setWindowSize(430, 932);
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    });
+
+    const controller = createMobileViewportSyncController();
+
+    try {
+      input.focus();
+      visualViewport.height = 620;
+      visualViewport.dispatchEvent(new Event("resize"));
+      expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
+
+      visualViewport.height = 932;
+      visualViewport.dispatchEvent(new Event("resize"));
+      expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
+
+      vi.advanceTimersByTime(MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS + 16);
+      expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("932px");
+      expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("0px");
+    } finally {
+      controller.destroy();
+      input.remove();
+      vi.useRealTimers();
+    }
   });
 
   it("re-syncs the recovered mobile viewport when the page returns to the foreground", () => {

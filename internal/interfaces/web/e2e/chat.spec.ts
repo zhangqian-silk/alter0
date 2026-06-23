@@ -995,8 +995,8 @@ test.describe("Chat composer", () => {
     )).toBe("360px");
 
     const opened = await page.evaluate(() => {
-      const shell = document.querySelector(".composer-shell");
-      const inputNode = document.getElementById("composerInput");
+      const shell = document.querySelector("[data-runtime-composer-kind='chat']");
+      const inputNode = document.querySelector("[data-composer-input='conversation']");
       const viewport = window.visualViewport;
       if (!(shell instanceof HTMLElement) || !(inputNode instanceof HTMLElement) || !viewport) {
         return null;
@@ -1025,7 +1025,7 @@ test.describe("Chat composer", () => {
     )).toBe("980px");
 
     const closed = await page.evaluate(() => {
-      const shell = document.querySelector(".composer-shell");
+      const shell = document.querySelector("[data-runtime-composer-kind='chat']");
       const viewport = window.visualViewport;
       if (!(shell instanceof HTMLElement) || !viewport) {
         return null;
