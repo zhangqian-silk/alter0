@@ -495,6 +495,36 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.toggleSkill).toHaveBeenCalledWith("frontend-design", true);
   });
 
+  it("preserves the native mobile keyboard gesture when the Chat composer input is pressed", () => {
+    renderWorkspace({ isMobileViewport: true });
+
+    const input = document.querySelector("[data-runtime-composer-input='chat']") as HTMLTextAreaElement;
+    const focusMock = vi.fn();
+    Object.defineProperty(input, "focus", {
+      configurable: true,
+      value: focusMock,
+    });
+    const pointerEvent = new Event("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(pointerEvent, "pointerType", {
+      configurable: true,
+      value: "touch",
+    });
+    const touchEvent = new Event("touchstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    input.dispatchEvent(pointerEvent);
+    input.dispatchEvent(touchEvent);
+
+    expect(pointerEvent.defaultPrevented).toBe(false);
+    expect(touchEvent.defaultPrevented).toBe(false);
+    expect(focusMock).not.toHaveBeenCalled();
+  });
+
   it("shows only public skill selections provided by the runtime context", () => {
     runtimeMock.skills = [
       { id: "frontend-design", name: "Frontend Design", description: "UI guidance", kind: "skill", active: true },

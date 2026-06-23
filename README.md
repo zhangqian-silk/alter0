@@ -199,7 +199,7 @@ Agent 请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 - Web 前端所有时间展示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Chat、Terminal、Task、Cron 以及 Settings/Control 管理页都不再跟随浏览器本地时区漂移，Cron 表单默认时区固定为 `Asia/Shanghai`。
 - 移动端 `Chat` 输入区在软键盘弹起、收起与可视视口高度变化期间，会基于 `VisualViewport` 同步有效视口高度；App Shell 在键盘弹起时保持稳定基线高度，仅由输入区消费 `--keyboard-offset` 贴住可见底部，避免浏览器工具栏状态切换或输入聚焦把整个工作区一并顶起；仅在输入框实际聚焦且软键盘占位达到阈值时才追加键盘底部偏移，浏览器工具栏伸缩或键盘收起后不保留额外底部留白。
 - 移动端 `Chat / Terminal` 在页面从后台回到前台、浏览器重新激活当前标签页，或系统恢复当前 WebView 可见性时，会立刻重算共享 `--mobile-viewport-height` 与 `--keyboard-offset`；前台恢复后的第一帧不会继续沿用后台前的旧视口高度、旧键盘偏移或旧底部空白。
-- 移动端 `Chat` 的输入框首次触摸需与 `Terminal` 使用同一条聚焦链路：通过 `preventScroll` 聚焦 textarea，并在聚焦期间监听 `window.scroll + VisualViewport resize/scroll` 把页面锚定在 `scrollY = 0`，避免首次弹出键盘时把公共操作行顶出可视区或让页面分辨率/可视区域出现跳变。
+- 移动端 `Chat / Terminal` 的主输入框首次触摸保留浏览器原生聚焦与软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为或抢先调用 `focus()`；程序化回焦仅用于 slash command、创建新会话后回到 Composer 等非直接输入框触摸场景，并使用 `preventScroll` 避免页面跳动。输入框保持真实焦点期间，前端只监听 `window.scroll + VisualViewport resize/scroll` 同步 composer 与遮挡高度，不用程序化 `window.scrollTo` 抢占键盘动画，避免移动端浏览器取消焦点并收起软键盘。
 - 移动端 `Chat` 点击发送按钮时，会先让当前主输入框失焦，再沿原有提交流程发送当前草稿；软键盘回收阶段继续依赖 `VisualViewport` 的实际回弹逐步释放 `--keyboard-offset`，避免发送后键盘停留不收或 composer 悬空。
 - 移动端 `page-mode` 路由页会同步消费 `VisualViewport` 高度；`Terminal` 与其他信息页在浏览器底部工具栏伸缩、软键盘收起或可视视口回弹后，页面底边需立即回贴可见视口，不保留额外底部空白。
 - 移动端 `Terminal` 在输入框聚焦且软键盘抬起后，底部 Composer 会按 `VisualViewport` 推导出的 `--keyboard-offset` 直接上移到可见底边；Terminal 工作区主体保持原位，键盘弹起不会把页面整体向上推出；长历史输出继续留在 `terminal-chat-screen` 内独立滚动，不允许通过增大 footer padding 把输入区整体挤出屏幕。
