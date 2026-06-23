@@ -19,7 +19,7 @@ type stubCodexAccountService struct {
 	listStatuses      func(ctx context.Context) ([]codexapp.AccountStatus, *codexapp.CurrentStatus, error)
 	addFromRaw        func(name string, raw []byte, overwrite bool) (*codexapp.Record, error)
 	switchAccount     func(name string) (*codexapp.Record, string, error)
-	startLoginSession func(ctx context.Context, name string, overwrite bool) (codexapp.LoginSession, error)
+	startLoginSession func(ctx context.Context, request codexapp.LoginSessionStartRequest) (codexapp.LoginSession, error)
 	getLoginSession   func(id string) (codexapp.LoginSession, bool)
 	runtimeStatus     func() (*codexapp.RuntimeStatus, error)
 	updateSettings    func(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error)
@@ -46,9 +46,9 @@ func (s *stubCodexAccountService) Switch(name string) (*codexapp.Record, string,
 	return nil, "", nil
 }
 
-func (s *stubCodexAccountService) StartLoginSession(ctx context.Context, name string, overwrite bool) (codexapp.LoginSession, error) {
+func (s *stubCodexAccountService) StartLoginSession(ctx context.Context, request codexapp.LoginSessionStartRequest) (codexapp.LoginSession, error) {
 	if s.startLoginSession != nil {
-		return s.startLoginSession(ctx, name, overwrite)
+		return s.startLoginSession(ctx, request)
 	}
 	return codexapp.LoginSession{}, nil
 }
@@ -202,15 +202,24 @@ func TestCodexAccountCollectionHandlerCreatesAccountFromAuthFile(t *testing.T) {
 }
 
 func TestCodexAccountLoginSessionHandlersStartAndReadSession(t *testing.T) {
+	var gotLoginRequest codexapp.LoginSessionStartRequest
 	server := &Server{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		codexAccounts: &stubCodexAccountService{
-			startLoginSession: func(context.Context, string, bool) (codexapp.LoginSession, error) {
+			startLoginSession: func(_ context.Context, request codexapp.LoginSessionStartRequest) (codexapp.LoginSession, error) {
+				gotLoginRequest = request
 				return codexapp.LoginSession{
 					ID:          "login-1",
 					AccountName: "fresh",
+					AuthMethod:  codexapp.LoginAuthMethodDevice,
 					Status:      codexapp.LoginSessionStatusRunning,
 					StartedAt:   time.Date(2026, 4, 17, 10, 0, 0, 0, time.UTC),
+					Device: &codexapp.LoginDeviceInfo{
+						VerificationURI: "https://login.openai.com/activate",
+						UserCode:        "WDJB-MJHT",
+						ExpiresIn:       900,
+						Interval:        5,
+					},
 				}, nil
 			},
 			getLoginSession: func(id string) (codexapp.LoginSession, bool) {
@@ -220,19 +229,29 @@ func TestCodexAccountLoginSessionHandlersStartAndReadSession(t *testing.T) {
 				return codexapp.LoginSession{
 					ID:          "login-1",
 					AccountName: "fresh",
+					AuthMethod:  codexapp.LoginAuthMethodDevice,
 					Status:      codexapp.LoginSessionStatusSucceeded,
 					Logs:        "open browser",
+					Device: &codexapp.LoginDeviceInfo{
+						VerificationURI: "https://login.openai.com/activate",
+						UserCode:        "WDJB-MJHT",
+						ExpiresIn:       900,
+						Interval:        5,
+					},
 				}, true
 			},
 		},
 	}
 
-	startReq := httptest.NewRequest(http.MethodPost, "/api/control/codex/accounts/login-sessions", strings.NewReader(`{"name":"fresh","overwrite":false}`))
+	startReq := httptest.NewRequest(http.MethodPost, "/api/control/codex/accounts/login-sessions", strings.NewReader(`{"name":"fresh","overwrite":false,"auth_method":"device_auth"}`))
 	startRec := httptest.NewRecorder()
 	server.codexAccountLoginSessionCollectionHandler(startRec, startReq)
 
 	if startRec.Code != http.StatusAccepted {
 		t.Fatalf("expected status 202, got %d: %s", startRec.Code, startRec.Body.String())
+	}
+	if gotLoginRequest.Name != "fresh" || gotLoginRequest.Overwrite || gotLoginRequest.AuthMethod != codexapp.LoginAuthMethodDevice {
+		t.Fatalf("login request = %+v, want fresh device auth without overwrite", gotLoginRequest)
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/api/control/codex/accounts/login-sessions/login-1", nil)
@@ -248,6 +267,12 @@ func TestCodexAccountLoginSessionHandlersStartAndReadSession(t *testing.T) {
 	}
 	if session.Status != codexapp.LoginSessionStatusSucceeded {
 		t.Fatalf("session.Status = %q, want %q", session.Status, codexapp.LoginSessionStatusSucceeded)
+	}
+	if session.AuthMethod != codexapp.LoginAuthMethodDevice {
+		t.Fatalf("session.AuthMethod = %q, want %q", session.AuthMethod, codexapp.LoginAuthMethodDevice)
+	}
+	if session.Device == nil || session.Device.VerificationURI != "https://login.openai.com/activate" || session.Device.UserCode != "WDJB-MJHT" {
+		t.Fatalf("session.Device = %+v", session.Device)
 	}
 }
 

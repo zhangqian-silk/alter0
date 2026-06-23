@@ -3,10 +3,10 @@
 ## 覆盖范围
 
 - 登录保护、Chat 页面、静态资源、Terminal session input、Skill 消息入口。
-- Control API：Channel、Capability、Skill、MCP、Skill、Cron、Environment、Runtime、LLM Provider、Codex Accounts、Maintenance。
+- Control API：Channel、Capability、Skill、MCP、Skill、Cron、Environment、Runtime、LLM Provider、Codex Accounts、Codex device-code login sessions、Maintenance。
 - Workspace service 网关：`/api/control/workspace-services` 注册表、短哈希 Host 命中的 `frontend_dist` 构建分发，以及默认 `web` / 其他服务的 `http` 类型反向代理。
 - Session、Task、Memory Task、Terminal API 与产物下载/预览；Session 置顶接口、Terminal 会话置顶接口、维护会话清理接口、Terminal 自动清理、置顶跳过、queued/running 任务保护、Terminal busy 保护、workspace 删除、维护执行器不可用和清理资源删除失败。
-- 前端模板/静态资源中的移动端、侧边栏、Composer、Terminal、Cron 可观测标识。
+- 前端模板/静态资源中的移动端、侧边栏、Composer、Terminal、Cron 可观测标识，以及 Runtime 页 Codex device-code 登录、Claude Code Provider Console 多 Provider 连续注册、查看、编辑和服务重启确认。
 
 ## 边界
 

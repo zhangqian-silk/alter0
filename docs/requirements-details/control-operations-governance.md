@@ -1,6 +1,6 @@
 # Control, Operations & Governance Requirements
 
-> Last update: 2026-06-08
+> Last update: 2026-06-23
 
 ## 领域边界
 
@@ -19,7 +19,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 | `ModelProvider` | Claude Code provider profile 的模型、base URL、凭据状态与健康状态 |
 | `ClaudeProviderProfile` | 启动 Claude Code 时使用的 provider/profile、环境变量和模型选择 |
 | `CodexAccount` | 托管的 Codex `auth.json` 快照与活动账号映射 |
-| `CodexLoginSession` | 独立 `codex login` 会话状态、日志与结果 |
+| `CodexLoginSession` | 独立 `codex login` 会话状态、device-code 关键信息、日志与结果 |
 | `RuntimeInstance` | 当前在线实例、启动时间与 commit hash |
 | `WorkspaceServiceRegistration` | Session 短哈希域名到前端构建或 HTTP 测试服务的绑定关系 |
 | `DeploymentBaseline` | systemd、Nginx、HOME、PATH、凭据与工具链要求 |
@@ -63,6 +63,8 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - Schedules 控制面展示系统内置维护任务的运行状态，不提供复杂配置项。内置任务包括每日记忆维护和每日会话清理；前端提供状态、上次运行、下次运行、失败信息、手动运行和失败重试。记忆维护执行器不可用时必须返回失败状态，不得记录为空运行成功。
 - 会话清理固定使用超过 7 天不活跃的默认阈值，覆盖 Chat/Agent Session history 与 Terminal session store，跳过置顶会话、仍有关联 queued/running 任务的会话，以及 Terminal 中仍处于 busy/starting 的运行态会话；手动 `Clean up now` 与自动清理走同一后端服务，并返回扫描数量、删除数量、置顶跳过数量、保护跳过数量和 Terminal 专属明细统计。清理 Session history 后，关联任务、运行时 registry 或工作区删除失败时，本次维护状态必须标记为失败并返回错误信息；清理 Terminal 会话时复用 Terminal 删除服务同步移除状态文件与独立工作区，删除失败同样标记本次维护失败。
 - Codex Runtime 控制面负责展示服务运行账户当前 Codex 身份、额度、profile、活动 model、思考深度与 LLM Provider 注册状态，并允许直接更新当前 Codex 配置中的 model 与思考深度。首屏加载时，运行时状态与 LLM Provider 状态必须并行读取，避免互不依赖的接口串行拖慢 Settings Runtime 分区。
+- Codex Runtime 控制面支持启动 `device_auth` 登录会话；后端必须以独立登录目录运行 `codex login --device-auth`，并从登录输出中提取验证链接、完整验证链接、用户码、过期秒数、轮询秒数与原始日志。前端需在 Runtime 面板内展示这些关键信息并轮询会话状态，成功后刷新当前 Runtime 身份与额度。该能力仅辅助当前服务运行账户完成无头登录，不恢复多账号导入、切换或账号管理侧栏。
+- Codex Runtime 控制面支持通过 Claude Code Provider Console 连续注册和编辑多个 OpenAI-compatible Provider；桌面端 registry 与 editor 在同一容器内左右分栏，窄屏单列展开。前端收集 Provider 名称、base URL、API key 与 models，models 使用全宽多行编辑区，支持换行或逗号分隔并按输入顺序去重，提交到 `POST /api/control/llm/providers` 或 `PUT /api/control/llm/providers/{id}`，默认使用 `openai-completions` API type，写入启用状态、多个启用模型和首个默认模型，并在成功后刷新 LLM Provider 注册状态。已注册 Provider 列表需展示名称、base URL、默认 model、模型数量、模型列表与启用/默认状态；点击编辑时将 Provider 当前 base URL 与 models 载入表单，API key 输入留空表示保留已保存密钥。每次成功后表单清空 base URL、API key 与 models，并自动准备下一个未占用的 `Claude Code N` 默认名称；用户已手动填写的非空表单不会被后台刷新覆盖。该入口复用 Model Provider 注册表与凭据遮蔽语义，不单独维护 Claude Code 私有配置源。
 - Web Shell 由 `/settings` 单页承接 Runtime、Skills、Memory 与 Schedules 能力的读取、加载、空态与错误态渲染；这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Runtime / Skills / Memory / Schedules` 分区切换。桌面端分区切换作为左侧设置索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有设置分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Settings 作用域下的扁平 route surface：列表、表格、筛选表单、主从详情、空态与错误态共享白底、浅灰辅助层、必要分割线和紧凑字段行，不再默认使用外层卡片边框、厚圆角或重阴影表达层级。控制台页面中的描述、Cron 输入、Skill 说明与 Codex 运行时说明按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
 
 ## 接口边界
@@ -76,6 +78,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `GET /api/control/runtime` 读取在线实例信息。
 - `POST /api/control/runtime/restart` 请求 supervisor 重启。
 - `GET /api/control/codex/runtime` 查询当前服务运行账户的 Codex 身份、额度、profile、model、思考深度与可选 model 能力；`PUT /api/control/codex/runtime` 更新当前 Codex 配置中的 `model` 与 `model_reasoning_effort`。
+- `POST /api/control/codex/accounts/login-sessions` 创建 Codex 登录会话；请求体支持 `auth_method=device_auth`，返回 `LoginSession`。`GET /api/control/codex/accounts/login-sessions/{session_id}` 查询登录会话状态、device-code 关键信息、日志、错误与成功后的账号快照。
 - `GET /api/control/llm/providers`、`POST /api/control/llm/providers`、`GET /api/control/llm/providers/{provider_id}`、`PUT /api/control/llm/providers/{provider_id}`、`POST /api/control/llm/providers/{provider_id}`、`DELETE /api/control/llm/providers/{provider_id}` 管理 Model Provider。
 - `GET /api/control/cron/jobs` 返回普通 Cron Job 与内置维护 Job；内置维护 Job 不允许 `DELETE`，允许通过 `PUT /api/control/cron/jobs/{job_id}` 的 `enabled` 字段停用或重新启用。
 - `POST /api/sessions/{session_id}/pin` 更新会话置顶状态，body 使用 `{"pinned": true|false}`。
@@ -88,6 +91,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - 支持 OpenAI Compatible Provider。
 - 支持 OpenRouter Provider。
 - Provider 支持启用、禁用、默认切换、模型列表、base URL、API type、Claude Code profile 名称和健康状态。
+- Runtime 页的 Claude Code Provider 快速注册创建或更新 OpenAI Compatible Provider，支持连续维护多个 Provider，并把每个 Provider 填写的 models 同步为启用模型列表，首个 model 作为默认模型。
 - 启用且健康的默认 Provider 作为 Agent 请求的 Claude Code 首选运行来源。
 
 ### API type
@@ -142,14 +146,14 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ### 运行目录
 
 - 当前活动 `CODEX_HOME` 优先读取环境变量；未显式设置时，默认使用 `$HOME/.codex`。
-- 当前活动账号以 `<active_codex_home>/auth.json` 为准；前端 Runtime 页面不提供多账号导入、登录或切换入口。
+- 当前活动账号以 `<active_codex_home>/auth.json` 为准；前端 Runtime 页面不提供多账号导入或切换入口。
 - 当前 Codex 运行时管理通过 Codex app-server 读取与更新用户配置；稳定支持 `model` 与 `model_reasoning_effort` 两项运行时能力，实际可选值必须来自 Codex 返回的能力列表。
 
 ### 身份、额度与配置
 
 - 控制面默认展示单一 Runtime 面板：上方展示当前 Codex 身份快照、邮箱、计划、认证模式与 profile，下方展示可编辑 model / 思考深度和 hourly / weekly 额度。
 - 额度展示必须来自当前 `auth.json` 的 quota 刷新结果；quota 成功返回时即可展示具体剩余额度与 reset 时间，前端不再依赖旧账号列表接口。
-- 页面不展示 Account ID / User ID、保存名称、多账号管理动作、导入/登录操作侧栏、CLI 命令、auth/config 路径、独立就绪侧栏、诊断面板或由 auth/config 文件存在性推导的 Ready/Status 文案。
+- 页面不展示 Account ID / User ID、保存名称、多账号管理动作、导入/切换操作侧栏、CLI 命令、auth/config 路径、独立就绪侧栏、诊断面板或由 auth/config 文件存在性推导的 Ready/Status 文案；device-code 登录只作为当前运行账户的认证辅助动作展示。
 - 当前 Codex 管理接口需返回活动 `auth.json`、当前 `auth.json` 身份快照、实时刷新后的 quota 信息、`config.toml`、当前 profile、活动 model、思考深度、配置来源与可选 model 列表，供前端直接展示身份、额度和真实可选项。
 - 当前 Codex 管理区需允许直接切换活动 model 与思考深度，选择变更后立即写回当前用户配置；前端只允许提交当前所选 model 实际支持的思考深度。
 

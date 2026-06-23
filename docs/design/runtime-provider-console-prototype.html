@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Runtime Provider Console Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7f8;
+      --surface: #ffffff;
+      --surface-soft: #f7fafb;
+      --text: #14202b;
+      --muted: #64717f;
+      --line: rgba(22, 34, 46, 0.1);
+      --accent: #0f9f8f;
+      --accent-soft: rgba(15, 159, 143, 0.1);
+      --warn: #b7791f;
+      --radius: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "IBM Plex Sans", sans-serif;
+    }
+
+    main {
+      width: min(1280px, calc(100vw - 48px));
+      margin: 34px auto;
+      display: grid;
+      gap: 12px;
+    }
+
+    .runtime-provider-console {
+      display: grid;
+      gap: 14px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    .console-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      font-family: "Sora", sans-serif;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    h2 {
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .console-head p,
+    .editor-copy p,
+    .provider-meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .console-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid rgba(15, 159, 143, 0.24);
+      border-radius: 8px;
+      background: #f8fbfc;
+      color: #17655e;
+      font: 700 13px/1 "IBM Plex Sans", sans-serif;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .console-grid {
+      display: grid;
+      grid-template-columns: minmax(260px, 0.82fr) minmax(0, 1.35fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .registry,
+    .editor {
+      min-width: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .provider-row {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid rgba(15, 159, 143, 0.24);
+      border-radius: 9px;
+      background: linear-gradient(180deg, #ffffff 0%, #f4fbfa 100%);
+    }
+
+    .provider-title {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .provider-title strong {
+      min-width: 0;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .badge-row,
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .badge,
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: rgba(20, 32, 43, 0.07);
+      color: #394654;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .badge.is-accent {
+      background: var(--accent-soft);
+      color: #087f73;
+    }
+
+    .endpoint {
+      min-width: 0;
+      padding: 9px 10px;
+      border-radius: 8px;
+      background: var(--surface-soft);
+      color: #536170;
+      font-family: "IBM Plex Sans", sans-serif;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .provider-row footer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 8px;
+    }
+
+    .editor-panel {
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface-soft);
+    }
+
+    .editor-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.2fr) minmax(180px, 1fr);
+      gap: 10px;
+    }
+
+    label {
+      min-width: 0;
+      display: grid;
+      gap: 6px;
+      color: #5a6675;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid rgba(20, 32, 43, 0.12);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      font: 700 13px/1.35 "IBM Plex Sans", sans-serif;
+    }
+
+    input {
+      height: 38px;
+      padding: 0 10px;
+    }
+
+    textarea {
+      min-height: 132px;
+      padding: 10px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .models-field {
+      grid-column: 1 / -1;
+    }
+
+    .field-help {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0;
+      line-height: 1.4;
+      text-transform: none;
+    }
+
+    .model-preview {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px dashed rgba(15, 159, 143, 0.32);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .model-preview strong {
+      font-size: 12px;
+    }
+
+    @media (max-width: 820px) {
+      main {
+        width: min(100vw - 24px, 720px);
+        margin: 18px auto;
+      }
+
+      .console-head,
+      .console-grid,
+      .editor-head,
+      .provider-row footer,
+      .model-preview {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .form-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .console-actions,
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="runtime-provider-console">
+      <header class="console-head">
+        <div>
+          <h1>Runtime Provider Console</h1>
+          <p>Manage provider endpoints and model lists from one focused workspace.</p>
+        </div>
+        <div class="console-actions">
+          <button>New provider</button>
+          <button class="primary">Update provider</button>
+        </div>
+      </header>
+
+      <div class="console-grid">
+        <aside class="registry" aria-label="Provider registry">
+          <h2>Registered Providers</h2>
+          <article class="provider-row">
+            <div class="provider-title">
+              <strong>deepseek</strong>
+              <button>Edit</button>
+            </div>
+            <div class="badge-row">
+              <span class="badge is-accent">Enabled</span>
+              <span class="badge">Default</span>
+              <span class="badge">1 model</span>
+            </div>
+            <div class="endpoint">https://api.deepseek.com/anthropic</div>
+            <footer>
+              <div>
+                <p class="provider-meta">Default model</p>
+                <strong>deepseek-v4-pro</strong>
+              </div>
+              <span class="chip">deepseek-v4-pro</span>
+            </footer>
+          </article>
+        </aside>
+
+        <section class="editor" aria-label="Provider editor">
+          <div class="editor-panel">
+            <header class="editor-head">
+              <div class="editor-copy">
+                <h2>Provider Details</h2>
+                <p>Edit URL, API key, and models without leaving Runtime settings.</p>
+              </div>
+              <span class="badge is-accent">Editing deepseek</span>
+            </header>
+
+            <div class="form-grid">
+              <label>
+                Provider Name
+                <input value="deepseek" />
+              </label>
+              <label>
+                Base URL
+                <input value="https://api.deepseek.com/anthropic" />
+              </label>
+              <label>
+                API Key
+                <input value="" placeholder="Leave blank to keep stored key" />
+                <span class="field-help">Stored key is preserved unless a new value is entered.</span>
+              </label>
+              <label class="models-field">
+                Provider Models
+                <textarea>deepseek-v4-pro
+deepseek-chat
+deepseek-coder</textarea>
+                <span class="field-help">One model per line, or comma-separated. The first entry becomes the default model.</span>
+              </label>
+            </div>
+
+            <div class="model-preview">
+              <div class="chip-row">
+                <span class="chip">deepseek-v4-pro</span>
+                <span class="chip">deepseek-chat</span>
+                <span class="chip">deepseek-coder</span>
+              </div>
+              <strong>Default: deepseek-v4-pro</strong>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -150,7 +150,7 @@ type codexAccountService interface {
 	ListStatuses(ctx context.Context) ([]codexapp.AccountStatus, *codexapp.CurrentStatus, error)
 	AddFromRaw(name string, raw []byte, overwrite bool) (*codexapp.Record, error)
 	Switch(name string) (*codexapp.Record, string, error)
-	StartLoginSession(ctx context.Context, name string, overwrite bool) (codexapp.LoginSession, error)
+	StartLoginSession(ctx context.Context, request codexapp.LoginSessionStartRequest) (codexapp.LoginSession, error)
 	GetLoginSession(id string) (codexapp.LoginSession, bool)
 	RuntimeStatus() (*codexapp.RuntimeStatus, error)
 	UpdateRuntimeSettings(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error)
@@ -182,8 +182,9 @@ type codexAccountCreateRequest struct {
 }
 
 type codexAccountLoginSessionCreateRequest struct {
-	Name      string `json:"name"`
-	Overwrite bool   `json:"overwrite"`
+	Name       string                   `json:"name"`
+	Overwrite  bool                     `json:"overwrite"`
+	AuthMethod codexapp.LoginAuthMethod `json:"auth_method,omitempty"`
 }
 
 type codexRuntimeUpdateRequest struct {
@@ -1825,7 +1826,11 @@ func (s *Server) codexAccountLoginSessionCollectionHandler(w http.ResponseWriter
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
-	session, err := s.codexAccounts.StartLoginSession(r.Context(), strings.TrimSpace(req.Name), req.Overwrite)
+	session, err := s.codexAccounts.StartLoginSession(r.Context(), codexapp.LoginSessionStartRequest{
+		Name:       strings.TrimSpace(req.Name),
+		Overwrite:  req.Overwrite,
+		AuthMethod: req.AuthMethod,
+	})
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

@@ -300,6 +300,505 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(screen.getByText("Failure reason: candidate runtime exited before ready: flag provided but not defined")).toBeInTheDocument();
   });
 
+  it("starts a Codex device-code login session and shows the key handoff details", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture({ has_auth: false, auth_path: "" })))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            id: "login-device",
+            account_name: "runtime",
+            auth_method: "device_auth",
+            status: "running",
+            logs: "Open https://login.openai.com/activate and enter code WDJB-MJHT",
+            device: {
+              verification_uri: "https://login.openai.com/activate",
+              user_code: "WDJB-MJHT",
+              expires_in: 900,
+              interval: 5,
+            },
+          },
+          { status: 202 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "login-device",
+          account_name: "runtime",
+          auth_method: "device_auth",
+          status: "running",
+          logs: "Open https://login.openai.com/activate and enter code WDJB-MJHT",
+          device: {
+            verification_uri: "https://login.openai.com/activate",
+            user_code: "WDJB-MJHT",
+            expires_in: 900,
+            interval: 5,
+          },
+        }),
+      );
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Start device login" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Start device login" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        4,
+        "/api/control/codex/accounts/login-sessions",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ name: "runtime-device", overwrite: true, auth_method: "device_auth" }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        5,
+        "/api/control/codex/accounts/login-sessions/login-device",
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+
+    expect(screen.getByText("Device Code Login")).toBeInTheDocument();
+    expect(screen.getByText("https://login.openai.com/activate")).toBeInTheDocument();
+    expect(screen.getByText("WDJB-MJHT")).toBeInTheDocument();
+    expect(screen.getByText("Expires in 900s")).toBeInTheDocument();
+    expect(screen.getByText("Poll every 5s")).toBeInTheDocument();
+    expect(screen.getByText("Open https://login.openai.com/activate and enter code WDJB-MJHT")).toBeInTheDocument();
+  });
+
+  it("registers an OpenAI-compatible provider with multiple Claude Code models from the runtime page", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            id: "provider-claude-code",
+            name: "Claude Code",
+            provider_type: "openai-compatible",
+            api_type: "openai-completions",
+            base_url: "https://gateway.example.com/v1",
+            api_key: "sk-****cdef",
+            default_model: "claude-sonnet-4-20260601",
+            models: [
+              {
+                id: "claude-sonnet-4-20260601",
+                name: "claude-sonnet-4-20260601",
+                supports_tools: true,
+                supports_streaming: true,
+                is_enabled: true,
+              },
+              {
+                id: "claude-opus-4-20260601",
+                name: "claude-opus-4-20260601",
+                supports_tools: true,
+                supports_streaming: true,
+                is_enabled: true,
+              },
+              {
+                id: "claude-haiku-4-20260601",
+                name: "claude-haiku-4-20260601",
+                supports_tools: true,
+                supports_streaming: true,
+                is_enabled: true,
+              },
+            ],
+            is_enabled: true,
+          },
+          { status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ id: "provider-claude-code", name: "Claude Code", is_enabled: true }],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }));
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Register provider" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Provider Name"), { target: { value: "Claude Code" } });
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://gateway.example.com/v1" } });
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-test-abcdef" } });
+    fireEvent.change(screen.getByLabelText("Provider Models"), {
+      target: { value: "claude-sonnet-4-20260601\nclaude-opus-4-20260601, claude-haiku-4-20260601" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Register provider" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        4,
+        "/api/control/llm/providers",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            name: "Claude Code",
+            provider_type: "openai-compatible",
+            api_type: "openai-completions",
+            base_url: "https://gateway.example.com/v1",
+            api_key: "sk-test-abcdef",
+            default_model: "claude-sonnet-4-20260601",
+            models: [
+              {
+                id: "claude-sonnet-4-20260601",
+                name: "claude-sonnet-4-20260601",
+                supports_tools: true,
+                supports_vision: true,
+                supports_streaming: true,
+                is_enabled: true,
+              },
+              {
+                id: "claude-opus-4-20260601",
+                name: "claude-opus-4-20260601",
+                supports_tools: true,
+                supports_vision: true,
+                supports_streaming: true,
+                is_enabled: true,
+              },
+              {
+                id: "claude-haiku-4-20260601",
+                name: "claude-haiku-4-20260601",
+                supports_tools: true,
+                supports_vision: true,
+                supports_streaming: true,
+                is_enabled: true,
+              },
+            ],
+            is_enabled: true,
+          }),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Provider registered for Claude Code.")).toBeInTheDocument();
+      expect(screen.getByText("1 registered provider")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "/api/control/codex/runtime",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "/api/control/llm/providers",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("keeps the runtime provider form ready for registering additional Claude Code providers", async () => {
+    const fetchMock = vi.mocked(fetch);
+    const providers: Array<{ id: string; name: string; is_enabled: boolean }> = [];
+    const providerPosts: Array<Record<string, unknown>> = [];
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/control/codex/runtime") {
+        return Promise.resolve(jsonResponse(runtimeFixture()));
+      }
+      if (url === "/api/control/llm/providers" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: providers }));
+      }
+      if (url === "/api/control/runtime/restart" && method === "GET") {
+        return Promise.resolve(jsonResponse({ status: "idle" }));
+      }
+      if (url === "/api/control/llm/providers" && method === "POST") {
+        const payload = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+        providerPosts.push(payload);
+        providers.push({
+          id: `provider-${providerPosts.length}`,
+          name: String(payload.name || ""),
+          is_enabled: true,
+        });
+        return Promise.resolve(
+          jsonResponse({ ...payload, id: `provider-${providerPosts.length}`, is_enabled: true }, { status: 201 }),
+        );
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`));
+    });
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Register provider" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://gateway-a.example.com/v1" } });
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-provider-a" } });
+    fireEvent.change(screen.getByLabelText("Provider Models"), { target: { value: "claude-sonnet-4-a" } });
+    fireEvent.click(screen.getByRole("button", { name: "Register provider" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("1 registered provider")).toBeInTheDocument();
+      expect(screen.getByLabelText("Provider Name")).toHaveValue("Claude Code 2");
+    });
+    expect(screen.getByLabelText("Base URL")).toHaveValue("");
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.getByLabelText("Provider Models")).toHaveValue("");
+
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://gateway-b.example.com/v1" } });
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-provider-b" } });
+    fireEvent.change(screen.getByLabelText("Provider Models"), { target: { value: "claude-sonnet-4-b" } });
+    fireEvent.click(screen.getByRole("button", { name: "Register provider" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("2 registered providers")).toBeInTheDocument();
+    });
+    expect(providerPosts).toHaveLength(2);
+    expect(providerPosts[0]).toEqual(expect.objectContaining({ name: "Claude Code" }));
+    expect(providerPosts[1]).toEqual(expect.objectContaining({ name: "Claude Code 2" }));
+  });
+
+  it("shows registered provider details and loads one into the runtime provider edit form", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "provider-claude-code",
+              name: "Claude Code",
+              provider_type: "openai-compatible",
+              api_type: "openai-completions",
+              base_url: "https://gateway.example.com/v1",
+              api_key: "sk-****cdef",
+              default_model: "claude-sonnet-4",
+              models: [
+                { id: "claude-sonnet-4", name: "claude-sonnet-4", is_enabled: true },
+                { id: "claude-opus-4", name: "claude-opus-4", is_enabled: true },
+              ],
+              is_enabled: true,
+              is_default: true,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }));
+
+    const { container } = render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Configured Providers")).toBeInTheDocument();
+      expect(screen.getByText("https://gateway.example.com/v1")).toBeInTheDocument();
+      expect(screen.getByText("Default: claude-sonnet-4")).toBeInTheDocument();
+      expect(screen.getByText("2 models")).toBeInTheDocument();
+      expect(screen.getByText("claude-sonnet-4, claude-opus-4")).toBeInTheDocument();
+    });
+    const consolePanel = container.querySelector(".codex-runtime-provider-console");
+    expect(consolePanel).not.toBeNull();
+    expect(consolePanel?.querySelector(".codex-runtime-provider-registry")).not.toBeNull();
+    expect(consolePanel?.querySelector(".codex-runtime-provider-editor")).not.toBeNull();
+    expect(screen.getByLabelText("Provider Models")).toHaveAttribute("rows", "4");
+    expect(screen.getByLabelText("Provider Models").closest(".codex-runtime-text-field")).toHaveClass("codex-runtime-provider-models-field");
+    expect(screen.getByText("Use one model per line or separate models with commas. The first model becomes the default.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Claude Code" }));
+
+    expect(screen.getByLabelText("Provider Name")).toHaveValue("Claude Code");
+    expect(screen.getByLabelText("Base URL")).toHaveValue("https://gateway.example.com/v1");
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.getByText("Leave blank to keep the stored API key.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Provider Models")).toHaveValue("claude-sonnet-4\nclaude-opus-4");
+    expect(screen.getByRole("button", { name: "Update provider" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New provider" })).toBeInTheDocument();
+  });
+
+  it("updates an existing runtime provider with multiple models while preserving the stored api key", async () => {
+    const fetchMock = vi.mocked(fetch);
+    const providers = [
+      {
+        id: "provider-claude-code",
+        name: "Claude Code",
+        provider_type: "openai-compatible",
+        api_type: "openai-completions",
+        base_url: "https://gateway.example.com/v1",
+        api_key: "sk-****cdef",
+        default_model: "claude-sonnet-4",
+        models: [
+          { id: "claude-sonnet-4", name: "claude-sonnet-4", is_enabled: true },
+          { id: "claude-opus-4", name: "claude-opus-4", is_enabled: true },
+        ],
+        is_enabled: true,
+        is_default: true,
+      },
+    ];
+    const updates: Array<Record<string, unknown>> = [];
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/control/codex/runtime") {
+        return Promise.resolve(jsonResponse(runtimeFixture()));
+      }
+      if (url === "/api/control/llm/providers" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: providers }));
+      }
+      if (url === "/api/control/runtime/restart" && method === "GET") {
+        return Promise.resolve(jsonResponse({ status: "idle" }));
+      }
+      if (url === "/api/control/llm/providers/provider-claude-code" && method === "PUT") {
+        const payload = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+        updates.push(payload);
+        Object.assign(providers[0], {
+          ...payload,
+          api_key: "sk-****cdef",
+          is_default: true,
+        });
+        return Promise.resolve(jsonResponse(providers[0]));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`));
+    });
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit Claude Code" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Claude Code" }));
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://gateway-updated.example.com/v1" } });
+    fireEvent.change(screen.getByLabelText("Provider Models"), {
+      target: { value: "claude-sonnet-4\nclaude-opus-4, claude-haiku-4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update provider" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Provider updated for Claude Code.")).toBeInTheDocument();
+      expect(screen.getByText("3 models")).toBeInTheDocument();
+    });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toEqual(expect.objectContaining({
+      id: "provider-claude-code",
+      name: "Claude Code",
+      provider_type: "openai-compatible",
+      api_type: "openai-completions",
+      base_url: "https://gateway-updated.example.com/v1",
+      api_key: "",
+      default_model: "claude-sonnet-4",
+      is_enabled: true,
+    }));
+    expect(updates[0].models).toEqual([
+      {
+        id: "claude-sonnet-4",
+        name: "claude-sonnet-4",
+        supports_tools: true,
+        supports_vision: true,
+        supports_streaming: true,
+        is_enabled: true,
+      },
+      {
+        id: "claude-opus-4",
+        name: "claude-opus-4",
+        supports_tools: true,
+        supports_vision: true,
+        supports_streaming: true,
+        is_enabled: true,
+      },
+      {
+        id: "claude-haiku-4",
+        name: "claude-haiku-4",
+        supports_tools: true,
+        supports_vision: true,
+        supports_streaming: true,
+        is_enabled: true,
+      },
+    ]);
+    expect(screen.getByLabelText("Provider Name")).toHaveValue("Claude Code 2");
+    expect(screen.getByLabelText("Base URL")).toHaveValue("");
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.getByLabelText("Provider Models")).toHaveValue("");
+  });
+
+  it("refreshes the runtime identity after a device-code login succeeds", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture({ has_auth: false, auth_path: "" })))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            id: "login-device",
+            auth_method: "device_auth",
+            status: "running",
+            device: {
+              verification_uri: "https://login.openai.com/activate",
+              user_code: "WDJB-MJHT",
+            },
+          },
+          { status: 202 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "login-device",
+          auth_method: "device_auth",
+          status: "succeeded",
+          device: {
+            verification_uri: "https://login.openai.com/activate",
+            user_code: "WDJB-MJHT",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          runtimeFixture({
+            current: {
+              live: {
+                auth_mode: "oauth",
+                account_name: "Device Account",
+                email: "device@example.com",
+                plan: "team",
+              },
+              managed: { name: "runtime-device" },
+              quota: {
+                hourly: { remaining_percent: 88 },
+                weekly: { remaining_percent: 91 },
+                plan: "team",
+              },
+            },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }));
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Start device login" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Start device login" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Codex login succeeded. Runtime identity has been refreshed.")).toHaveLength(2);
+    });
+    expect(screen.getByText("Device Account")).toBeInTheDocument();
+    expect(screen.getByText("device@example.com")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "/api/control/codex/runtime",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("updates the active model and reasoning depth from the runtime-only endpoint", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
