@@ -32,6 +32,10 @@ func TestServiceBuildScriptsUseUnifiedFrontendAwareBuild(t *testing.T) {
 	assertNotContains(t, startScript, "go build -o")
 	assertNotContains(t, relaunchScript, "go build -o")
 	assertNotContains(t, relaunchScript, "git reset --hard")
+	assertNotContains(t, startScript, "-daily-memory-dir")
+	assertNotContains(t, startScript, "-long-term-memory-path")
+	assertNotContains(t, startScript, "-mandatory-context-file")
+	assertNotContains(t, startScript, "ALTER0_STORAGE_DIR")
 	assertContains(t, makefile, "build:")
 	assertContains(t, makefile, "scripts/build_alter0_service.sh")
 }

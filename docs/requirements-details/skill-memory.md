@@ -80,10 +80,10 @@ memory/
 ```
 
 - `AGENTS.md` 保存仓库/工作区运行规则、工具纪律、路径边界和交付约束；它是规则型上下文，不是事实型记忆。
-- `SOUL.md` 保存最高优先级强约束；启动参数 `mandatory-context-file` 可把该文件解析到自定义位置。
+- `SOUL.md` 保存最高优先级强约束；路径由服务配置内置解析，不再通过启动参数暴露。
 - `USER.md` 保存稳定用户偏好、身份信息、长期协作习惯和跨项目约束。
-- `MEMORY.md` 保存跨会话长期事实、常用约定、已确认偏好和可复用经验；实际路径可由 `long-term-memory-path` 覆盖。
-- `daily/<YYYY-MM-DD>.md` 保存当天重要上下文、阶段性进展和待整理事实；实际目录可由 `daily-memory-dir` 覆盖。天级记忆不是原始会话副本，只保留 CLI Runtime 筛选后的活跃上下文、候选事实和待验证事项，不保存逐轮 transcript、日志或任务输出原文。
+- `MEMORY.md` 保存跨会话长期事实、常用约定、已确认偏好和可复用经验；路径由服务配置内置解析。
+- `daily/<YYYY-MM-DD>.md` 保存当天重要上下文、阶段性进展和待整理事实；目录由服务配置内置解析。天级记忆不是原始会话副本，只保留 CLI Runtime 筛选后的活跃上下文、候选事实和待验证事项，不保存逐轮 transcript、日志或任务输出原文。
 - `projects/<project>.md` 保存项目级规则与阶段性上下文。
 - `conversations/<conversation_id>/summary.md` 保存会话归档摘要。
 
@@ -92,7 +92,7 @@ memory/
 ### 注入协议
 
 - 执行前根据会话、项目、用户输入和选中 Skill 解析 `MemoryContext`。
-- 执行注入、Web Memory 只读页面、任务摘要运行时和系统维护任务使用同一组已解析 root instructions、`daily-memory-dir`、`long-term-memory-path` 与 `mandatory-context-file`。
+- 执行注入、Web Memory 只读页面、会话摘要运行时和系统维护任务使用同一组内置解析后的 root instructions、天级记忆、长期记忆与 mandatory context 路径。
 - 注入内容包含文件路径、存在状态、可写性、内容摘要、召回片段和截断标记。
 - 单文件与总注入体积必须设置上限；超出预算时优先注入摘要、最近事实、强相关片段和项目关键约束。
 - 本轮命中长期记忆时，执行前生成 Active Recall 摘要，作为隐藏上下文注入 CLI runtime。
