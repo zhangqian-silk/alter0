@@ -731,22 +731,6 @@ function ConversationComposerSection({
     node.blur();
   };
 
-  const handleComposerPointerDownCapture = (event: PointerEvent<HTMLTextAreaElement>) => {
-    if (!workbench.isMobileViewport || event.pointerType === "mouse" || inputFocused) {
-      return;
-    }
-    event.preventDefault();
-    focusComposerInputWithoutScroll();
-  };
-
-  const handleComposerTouchStartCapture = (event: TouchEvent<HTMLTextAreaElement>) => {
-    if (!workbench.isMobileViewport || inputFocused) {
-      return;
-    }
-    event.preventDefault();
-    focusComposerInputWithoutScroll();
-  };
-
   const submitDraft = () => {
     if (composerBusy) {
       return;
@@ -1057,8 +1041,6 @@ function ConversationComposerSection({
       onInputChange={composerRuntime.setDraft}
       onInputFocus={() => onInputFocusedChange(true)}
       onInputBlur={() => onInputFocusedChange(false)}
-      onInputPointerDownCapture={handleComposerPointerDownCapture}
-      onInputTouchStartCapture={handleComposerTouchStartCapture}
       utilityButtons={[
         {
           key: "session",

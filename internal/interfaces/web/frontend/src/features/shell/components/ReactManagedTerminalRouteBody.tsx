@@ -926,22 +926,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     );
   };
 
-  const handleComposerPointerDownCapture = (event: PointerEvent<HTMLTextAreaElement>) => {
-    if (!workbench.isMobileViewport || event.pointerType === "mouse" || inputFocused) {
-      return;
-    }
-    event.preventDefault();
-    focusComposerInputWithoutScroll();
-  };
-
-  const handleComposerTouchStartCapture = (event: TouchEvent<HTMLTextAreaElement>) => {
-    if (!workbench.isMobileViewport || inputFocused) {
-      return;
-    }
-    event.preventDefault();
-    focusComposerInputWithoutScroll();
-  };
-
   const releaseMobileSubmitGestureLock = () => {
     window.setTimeout(() => {
       mobileSubmitGestureLockRef.current = false;
@@ -1958,8 +1942,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       onInputChange: setInputValue,
       onInputFocus: () => setInputFocused(true),
       onInputBlur: () => setInputFocused(false),
-      onInputPointerDownCapture: handleComposerPointerDownCapture,
-      onInputTouchStartCapture: handleComposerTouchStartCapture,
       utilityButtons: [
         {
           key: "session",

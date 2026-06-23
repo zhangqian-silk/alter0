@@ -3196,7 +3196,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(document.querySelector("[data-runtime-session-pane='terminal']")).not.toHaveClass("is-open");
   });
 
-  it("uses preventScroll focus when the mobile composer is touched", async () => {
+  it("preserves the native mobile keyboard gesture when the terminal composer input is pressed", async () => {
     renderTerminalRouteBody({
       isMobileViewport: true,
     });
@@ -3211,9 +3211,24 @@ describe("ReactManagedTerminalRouteBody", () => {
       configurable: true,
       value: focusMock,
     });
+    const pointerEvent = new Event("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(pointerEvent, "pointerType", {
+      configurable: true,
+      value: "touch",
+    });
+    const touchEvent = new Event("touchstart", {
+      bubbles: true,
+      cancelable: true,
+    });
 
-    fireEvent.pointerDown(input, { pointerType: "touch" });
+    input.dispatchEvent(pointerEvent);
+    input.dispatchEvent(touchEvent);
 
-    expect(focusMock).toHaveBeenCalledWith({ preventScroll: true });
+    expect(pointerEvent.defaultPrevented).toBe(false);
+    expect(touchEvent.defaultPrevented).toBe(false);
+    expect(focusMock).not.toHaveBeenCalled();
   });
 });
