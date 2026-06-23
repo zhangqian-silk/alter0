@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   ConversationRuntimeProvider,
-  resolveChatTaskPollPlan,
+  resolveChatSessionPollPlan,
   useConversationRuntime,
   useConversationRuntimeComposer,
   useConversationRuntimeWorkspace,
@@ -265,16 +265,16 @@ describe("ConversationRuntimeProvider", () => {
     window.history.replaceState({}, "", "/");
   });
 
-  it("pauses pending task polling while the page is hidden", () => {
-    expect(resolveChatTaskPollPlan({ pendingCount: 0, pageHidden: false })).toEqual({
+  it("pauses recoverable session polling while the page is hidden", () => {
+    expect(resolveChatSessionPollPlan({ sessionCount: 0, pageHidden: false })).toEqual({
       enabled: false,
       interval: 0,
     });
-    expect(resolveChatTaskPollPlan({ pendingCount: 1, pageHidden: false })).toEqual({
+    expect(resolveChatSessionPollPlan({ sessionCount: 1, pageHidden: false })).toEqual({
       enabled: true,
       interval: 3000,
     });
-    expect(resolveChatTaskPollPlan({ pendingCount: 1, pageHidden: true })).toEqual({
+    expect(resolveChatSessionPollPlan({ sessionCount: 1, pageHidden: true })).toEqual({
       enabled: false,
       interval: 0,
     });

@@ -46,7 +46,7 @@ func TestAuthMiddlewareRejectsAPIWithoutSession(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/messages", strings.NewReader(`{"content":"hello"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-1/input?scope=chat", strings.NewReader(`{"input":"hello"}`))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 

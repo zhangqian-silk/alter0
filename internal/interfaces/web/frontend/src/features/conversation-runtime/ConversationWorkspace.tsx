@@ -93,7 +93,6 @@ function resolveConversationSessionSignalTone(session: {
     role?: string;
     status?: string;
     error?: boolean;
-    taskPending?: boolean;
   }>;
 } | null | undefined): ConversationSessionSignalTone {
   const messages = Array.isArray(session?.messages) ? session.messages : [];
@@ -106,7 +105,7 @@ function resolveConversationSessionSignalTone(session: {
     if (message.error || ["error", "failed", "canceled", "cancelled"].includes(status)) {
       return "failed";
     }
-    if (message.taskPending || ["streaming", "queued", "running", "in_progress", "inprogress"].includes(status)) {
+    if (["streaming", "queued", "running", "in_progress", "inprogress"].includes(status)) {
       return "busy";
     }
     return "ready";

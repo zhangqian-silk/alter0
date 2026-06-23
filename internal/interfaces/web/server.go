@@ -19,7 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +32,6 @@ import (
 	schedulerapp "alter0/internal/scheduler/application"
 	schedulerdomain "alter0/internal/scheduler/domain"
 	sessionapp "alter0/internal/session/application"
-	sessiondomain "alter0/internal/session/domain"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 	"alter0/internal/shared/infrastructure/observability"
@@ -47,23 +45,16 @@ import (
 var webStaticFS embed.FS
 
 const (
-	canonicalChatSessionID                        = sessiondomain.CanonicalChatSessionID
-	codexSandboxMetadataKey                       = "codex_sandbox"
-	codexSandboxDangerFullAccess                  = "danger-full-access"
-	maxTaskArtifactCount                          = 128
-	webLoginCookieName                            = "alter0_web_session_host"
-	legacySharedWebLoginCookieName                = "alter0_web_session"
-	webLoginCookieTTL                             = 24 * time.Hour
-	webPageCacheControl                           = "no-cache"
-	bridgeStaticAssetCacheControl                 = "no-cache"
-	immutableStaticAssetCacheControl              = "public, max-age=31536000, immutable"
-	frontendDevOriginEnvKey                       = "ALTER0_WEB_FRONTEND_DEV_ORIGIN"
-	conversationRuntimeExecutionEngineMetadataKey = "alter0.execution.engine"
-	conversationRuntimeExecutionEngineCodex       = "codex"
-	conversationRuntimeLLMProviderMetadataKey     = "alter0.llm.provider_id"
-	conversationRuntimeLLMModelMetadataKey        = "alter0.llm.model"
-	conversationRuntimeCodexProviderID            = "alter0-codex"
-	conversationRuntimeCodexModelID               = "codex"
+	codexSandboxMetadataKey          = "codex_sandbox"
+	codexSandboxDangerFullAccess     = "danger-full-access"
+	maxTaskArtifactCount             = 128
+	webLoginCookieName               = "alter0_web_session_host"
+	legacySharedWebLoginCookieName   = "alter0_web_session"
+	webLoginCookieTTL                = 24 * time.Hour
+	webPageCacheControl              = "no-cache"
+	bridgeStaticAssetCacheControl    = "no-cache"
+	immutableStaticAssetCacheControl = "public, max-age=31536000, immutable"
+	frontendDevOriginEnvKey          = "ALTER0_WEB_FRONTEND_DEV_ORIGIN"
 )
 
 var workbenchPagePaths = map[string]struct{}{
@@ -81,32 +72,31 @@ type intentInspector interface {
 }
 
 type Server struct {
-	addr                        string
-	orchestrator                Orchestrator
-	telemetry                   *observability.Telemetry
-	idGenerator                 sharedapp.IDGenerator
-	control                     *controlapp.Service
-	scheduler                   *schedulerapp.Manager
-	sessions                    sessionHistoryService
-	tasks                       taskService
-	terminals                   terminalService
-	runtime                     runtimeRestarter
-	runtimeInfo                 runtimeInfoProvider
-	memory                      *memoryContextService
-	llm                         llmService
-	logger                      *slog.Logger
-	webLoginPassword            string
-	webSessionToken             string
-	webLoginEnabled             bool
-	webBindLocalhost            bool
-	workspaceRoot               string
-	frontendDevOrigin           string
-	frontendDevProxy            http.Handler
-	workspaceService            *workspaceServiceRegistry
-	conversationRuntimeSessions *conversationRuntimeSessionRegistry
-	workspaceRuntime            workspaceServiceRuntime
-	codexAccounts               codexAccountService
-	maintenance                 *maintenanceService
+	addr              string
+	orchestrator      Orchestrator
+	telemetry         *observability.Telemetry
+	idGenerator       sharedapp.IDGenerator
+	control           *controlapp.Service
+	scheduler         *schedulerapp.Manager
+	sessions          sessionHistoryService
+	tasks             taskService
+	terminals         terminalService
+	runtime           runtimeRestarter
+	runtimeInfo       runtimeInfoProvider
+	memory            *memoryContextService
+	llm               llmService
+	logger            *slog.Logger
+	webLoginPassword  string
+	webSessionToken   string
+	webLoginEnabled   bool
+	webBindLocalhost  bool
+	workspaceRoot     string
+	frontendDevOrigin string
+	frontendDevProxy  http.Handler
+	workspaceService  *workspaceServiceRegistry
+	workspaceRuntime  workspaceServiceRuntime
+	codexAccounts     codexAccountService
+	maintenance       *maintenanceService
 }
 
 type llmService interface {
@@ -129,10 +119,7 @@ type sessionHistoryService interface {
 
 type taskService interface {
 	List(query taskapp.ListQuery) taskapp.TaskPage
-	Get(taskID string) (taskdomain.Task, bool)
 	ListBySession(sessionID string) []taskdomain.Task
-	ListLogs(taskID string, cursor int, limit int) (taskapp.TaskLogPage, error)
-	ListArtifacts(taskID string) ([]taskdomain.TaskArtifact, error)
 	DeleteBySession(sessionID string) error
 }
 
@@ -204,16 +191,6 @@ type codexRuntimeUpdateRequest struct {
 	ReasoningEffort string `json:"reasoning_effort"`
 }
 
-type messageRequest struct {
-	SessionID     string                     `json:"session_id"`
-	UserID        string                     `json:"user_id,omitempty"`
-	ChannelID     string                     `json:"channel_id,omitempty"`
-	CorrelationID string                     `json:"correlation_id,omitempty"`
-	Content       string                     `json:"content"`
-	Attachments   []messageAttachmentRequest `json:"attachments,omitempty"`
-	Metadata      map[string]string          `json:"metadata,omitempty"`
-}
-
 type messageAttachmentRequest struct {
 	ID             string `json:"id,omitempty"`
 	Name           string `json:"name"`
@@ -222,78 +199,6 @@ type messageAttachmentRequest struct {
 	PreviewDataURL string `json:"preview_data_url,omitempty"`
 	AssetURL       string `json:"asset_url,omitempty"`
 	PreviewURL     string `json:"preview_url,omitempty"`
-}
-
-type messageResponse struct {
-	Result shareddomain.OrchestrationResult `json:"result"`
-	Error  string                           `json:"error,omitempty"`
-}
-
-type conversationRuntimeRoute string
-
-const (
-	conversationRuntimeRouteChat       conversationRuntimeRoute = "chat"
-	conversationRuntimeTitleMaxRunes                            = 32
-	conversationRuntimeSessionPageSize                          = 200
-)
-
-type conversationRuntimeSessionCollectionResponse struct {
-	Items []conversationRuntimeSessionResponse `json:"items"`
-}
-
-type conversationRuntimeSessionItemResponse struct {
-	Session conversationRuntimeSessionResponse `json:"session"`
-}
-
-type conversationRuntimeSessionPatchRequest struct {
-	Title           *string   `json:"title"`
-	ModelProviderID *string   `json:"model_provider_id"`
-	ModelID         *string   `json:"model_id"`
-	ToolIDs         *[]string `json:"tool_ids"`
-	SkillIDs        *[]string `json:"skill_ids"`
-	MCPIDs          *[]string `json:"mcp_ids"`
-}
-
-type conversationRuntimeSessionResponse struct {
-	ID              string                               `json:"id"`
-	Status          string                               `json:"status,omitempty"`
-	Title           string                               `json:"title"`
-	TitleAuto       bool                                 `json:"title_auto"`
-	TitleScore      int                                  `json:"title_score"`
-	Pinned          bool                                 `json:"pinned,omitempty"`
-	CreatedAt       time.Time                            `json:"created_at"`
-	TargetType      string                               `json:"target_type"`
-	TargetID        string                               `json:"target_id,omitempty"`
-	TargetName      string                               `json:"target_name,omitempty"`
-	ModelProviderID string                               `json:"model_provider_id,omitempty"`
-	ModelID         string                               `json:"model_id,omitempty"`
-	ToolIDs         []string                             `json:"tool_ids,omitempty"`
-	SkillIDs        []string                             `json:"skill_ids,omitempty"`
-	MCPIDs          []string                             `json:"mcp_ids,omitempty"`
-	Messages        []conversationRuntimeMessageResponse `json:"messages,omitempty"`
-}
-
-type conversationRuntimeMessageResponse struct {
-	ID           string                          `json:"id"`
-	Role         string                          `json:"role"`
-	Text         string                          `json:"text"`
-	Attachments  []conversationRuntimeAttachment `json:"attachments,omitempty"`
-	Route        string                          `json:"route,omitempty"`
-	Source       string                          `json:"source,omitempty"`
-	Error        bool                            `json:"error"`
-	Status       string                          `json:"status"`
-	At           time.Time                       `json:"at"`
-	ProcessSteps []shareddomain.ProcessStep      `json:"process_steps,omitempty"`
-	TaskID       string                          `json:"task_id,omitempty"`
-	TaskStatus   string                          `json:"task_status,omitempty"`
-}
-
-type conversationRuntimeAttachment struct {
-	ID          string `json:"id,omitempty"`
-	Name        string `json:"name,omitempty"`
-	ContentType string `json:"content_type,omitempty"`
-	AssetURL    string `json:"asset_url,omitempty"`
-	PreviewURL  string `json:"preview_url,omitempty"`
 }
 
 type taskArtifactResponse struct {
@@ -377,37 +282,6 @@ type cronJobRunResponse struct {
 	Status    string    `json:"status"`
 }
 
-type memoryTaskSummaryItem struct {
-	TaskID     string                `json:"task_id"`
-	TaskType   string                `json:"task_type"`
-	Goal       string                `json:"goal"`
-	Result     string                `json:"result"`
-	Status     taskdomain.TaskStatus `json:"status"`
-	FinishedAt time.Time             `json:"finished_at"`
-	UpdatedAt  time.Time             `json:"updated_at"`
-	Tags       []string              `json:"tags,omitempty"`
-}
-
-type memoryTaskMeta struct {
-	TaskID          string                `json:"task_id"`
-	SessionID       string                `json:"session_id"`
-	SourceMessageID string                `json:"source_message_id"`
-	Status          taskdomain.TaskStatus `json:"status"`
-	CreatedAt       time.Time             `json:"created_at"`
-	UpdatedAt       time.Time             `json:"updated_at"`
-	FinishedAt      time.Time             `json:"finished_at,omitempty"`
-	TaskType        string                `json:"task_type"`
-}
-
-type memoryTaskListQuery struct {
-	Status   taskdomain.TaskStatus
-	TaskType string
-	StartAt  time.Time
-	EndAt    time.Time
-	Page     int
-	PageSize int
-}
-
 type WebSecurityOptions struct {
 	LoginPassword string
 	BindLocalhost bool
@@ -446,34 +320,28 @@ func NewServer(
 	if err != nil && logger != nil {
 		logger.Error("failed to initialize workspace service registry", slog.String("error", err.Error()))
 	}
-	conversationRuntimeRegistryPath := filepath.Join(workspaceRoot, ".alter0", conversationRuntimeSessionRegistryFilename)
-	conversationRuntimeRegistry, err := newFileConversationRuntimeSessionRegistry(conversationRuntimeRegistryPath)
-	if err != nil && logger != nil {
-		logger.Error("failed to initialize conversation runtime session registry", slog.String("error", err.Error()))
-	}
 	server := &Server{
-		addr:                        addr,
-		orchestrator:                orchestrator,
-		telemetry:                   telemetry,
-		idGenerator:                 idGenerator,
-		control:                     control,
-		scheduler:                   scheduler,
-		sessions:                    sessions,
-		tasks:                       tasks,
-		terminals:                   terminals,
-		memory:                      newMemoryContextService(memoryOptions),
-		llm:                         llm,
-		logger:                      logger,
-		webLoginPassword:            resolvedPassword,
-		webSessionToken:             webSessionToken,
-		webLoginEnabled:             resolvedPassword != "",
-		webBindLocalhost:            resolvedBindLocalhost,
-		workspaceRoot:               workspaceRoot,
-		frontendDevOrigin:           frontendDevOrigin,
-		frontendDevProxy:            newFrontendDevProxy(frontendDevOrigin, logger),
-		workspaceService:            workspaceServiceRegistry,
-		conversationRuntimeSessions: conversationRuntimeRegistry,
-		workspaceRuntime:            newWorkspaceServiceRuntime(logger),
+		addr:              addr,
+		orchestrator:      orchestrator,
+		telemetry:         telemetry,
+		idGenerator:       idGenerator,
+		control:           control,
+		scheduler:         scheduler,
+		sessions:          sessions,
+		tasks:             tasks,
+		terminals:         terminals,
+		memory:            newMemoryContextService(memoryOptions),
+		llm:               llm,
+		logger:            logger,
+		webLoginPassword:  resolvedPassword,
+		webSessionToken:   webSessionToken,
+		webLoginEnabled:   resolvedPassword != "",
+		webBindLocalhost:  resolvedBindLocalhost,
+		workspaceRoot:     workspaceRoot,
+		frontendDevOrigin: frontendDevOrigin,
+		frontendDevProxy:  newFrontendDevProxy(frontendDevOrigin, logger),
+		workspaceService:  workspaceServiceRegistry,
+		workspaceRuntime:  newWorkspaceServiceRuntime(logger),
 	}
 	server.ensureMaintenanceService()
 	server.registerMaintenanceSchedulerJobs()
@@ -519,14 +387,9 @@ func (s *Server) Run(ctx context.Context) error {
 	for path := range workbenchPagePaths {
 		mux.HandleFunc(path, s.chatPageHandler)
 	}
-	mux.HandleFunc("/api/messages", s.messageHandler)
-	mux.HandleFunc("/api/conversation-runtime/sessions", s.conversationRuntimeSessionCollectionHandler)
-	mux.HandleFunc("/api/conversation-runtime/sessions/", s.conversationRuntimeSessionItemHandler)
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
 	mux.HandleFunc("/api/memory/context", s.memoryContextHandler)
-	mux.HandleFunc("/api/memory/tasks", s.memoryTaskCollectionHandler)
-	mux.HandleFunc("/api/memory/tasks/", s.memoryTaskItemHandler)
 	mux.HandleFunc("/api/control/workspace-services", s.workspaceServiceCollectionHandler)
 	mux.HandleFunc("/api/control/workspace-services/", s.workspaceServiceItemHandler)
 	mux.HandleFunc("/api/control/runtime", s.runtimeInfoHandler)
@@ -1087,47 +950,6 @@ func (s *Server) readyHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"ready"}`))
 }
 
-func (s *Server) messageHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-
-	msg, statusCode, err := s.prepareMessage(r)
-	if err != nil {
-		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-		return
-	}
-	s.markConversationRuntimeSessionStarted(conversationRuntimeRouteChat, msg)
-	s.touchSessionActivityAt(msg.SessionID, msg.ReceivedAt)
-
-	result, err := s.orchestrator.Handle(r.Context(), msg)
-	if err != nil {
-		s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusFailed)
-		s.touchSessionActivity(msg.SessionID)
-		statusCode := http.StatusBadRequest
-		switch result.ErrorCode {
-		case "command_failed", "agent_execution_failed":
-			statusCode = http.StatusInternalServerError
-		}
-		writeJSON(w, statusCode, messageResponse{
-			Result: result,
-			Error:  err.Error(),
-		})
-		return
-	}
-	s.markConversationRuntimeSessionFinished(conversationRuntimeRouteChat, msg, conversationRuntimeSessionStatusReady)
-	s.touchSessionActivity(msg.SessionID)
-
-	writeJSON(w, http.StatusOK, messageResponse{
-		Result: result,
-	})
-}
-
-func (s *Server) messageStreamHandler(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusGone, map[string]string{"error": "chat stream endpoint removed; use POST /api/messages"})
-}
-
 func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
 	if s.sessions == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
@@ -1144,190 +966,6 @@ func (s *Server) sessionListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.sessions.ListSessions(query))
-}
-
-func (s *Server) conversationRuntimeSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
-	if s.sessions == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-
-	route, ok := parseConversationRuntimeRoute(r.URL.Query().Get("route"))
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid runtime route"})
-		return
-	}
-
-	page := s.sessions.ListSessions(sessionapp.SessionQuery{
-		TriggerType: shareddomain.TriggerTypeUser,
-		ChannelType: shareddomain.ChannelTypeWeb,
-		Page:        1,
-		PageSize:    conversationRuntimeSessionPageSize,
-	})
-	itemsByID := make(map[string]conversationRuntimeSessionResponse, len(page.Items))
-	for _, summary := range page.Items {
-		detail, ok, err := s.loadConversationRuntimeSession(route, summary.SessionID)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		if ok {
-			detail.Pinned = summary.Pinned
-			itemsByID[detail.ID] = s.mergeConversationRuntimeSessionWithRegistry(route, detail)
-		}
-	}
-	for _, entry := range s.listConversationRuntimeRegistryEntries(route) {
-		if _, ok := itemsByID[entry.SessionID]; ok {
-			continue
-		}
-		itemsByID[entry.SessionID] = s.conversationRuntimeSessionResponseFromRegistryEntry(entry)
-	}
-	items := make([]conversationRuntimeSessionResponse, 0, len(itemsByID))
-	for _, item := range itemsByID {
-		items = append(items, item)
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].Pinned != items[j].Pinned {
-			return items[i].Pinned
-		}
-		left := conversationRuntimeSessionSortTime(items[i])
-		right := conversationRuntimeSessionSortTime(items[j])
-		if left.Equal(right) {
-			return items[i].ID < items[j].ID
-		}
-		return left.After(right)
-	})
-	writeJSON(w, http.StatusOK, conversationRuntimeSessionCollectionResponse{Items: items})
-}
-
-func (s *Server) conversationRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Request) {
-	if s.sessions == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "session history unavailable"})
-		return
-	}
-	if r.Method != http.MethodGet && r.Method != http.MethodPatch {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-
-	sessionID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/conversation-runtime/sessions/"))
-	if sessionID == "" || strings.Contains(sessionID, "/") {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid runtime session path"})
-		return
-	}
-	route, ok := parseConversationRuntimeRoute(r.URL.Query().Get("route"))
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid runtime route"})
-		return
-	}
-	if r.Method == http.MethodPatch {
-		s.patchConversationRuntimeSession(w, r, route, sessionID)
-		return
-	}
-
-	session, matched, err := s.loadConversationRuntimeSession(route, sessionID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	if !matched {
-		registryEntry, ok := s.resolveConversationRuntimeRegistryEntry(route, sessionID)
-		if !ok {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "runtime session not found"})
-			return
-		}
-		s.touchSessionActivity(sessionID)
-		writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{
-			Session: s.conversationRuntimeSessionResponseFromRegistryEntry(registryEntry),
-		})
-		return
-	}
-	s.touchSessionActivity(sessionID)
-	writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{
-		Session: s.mergeConversationRuntimeSessionWithRegistry(route, session),
-	})
-}
-
-func (s *Server) patchConversationRuntimeSession(w http.ResponseWriter, r *http.Request, route conversationRuntimeRoute, sessionID string) {
-	if s.conversationRuntimeSessions == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "runtime session registry unavailable"})
-		return
-	}
-	defer r.Body.Close()
-
-	var req conversationRuntimeSessionPatchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
-		return
-	}
-
-	entry := conversationRuntimeSessionRegistryEntry{
-		SessionID:  sessionID,
-		Route:      route,
-		Status:     conversationRuntimeSessionStatusReady,
-		Title:      "New",
-		TitleAuto:  true,
-		CreatedAt:  time.Now().UTC(),
-		TargetType: "model",
-		TargetID:   "raw-model",
-		TargetName: "Raw Model",
-	}
-	if current, ok := s.resolveConversationRuntimeRegistryEntry(route, sessionID); ok {
-		entry = current
-	} else if session, matched, err := s.loadConversationRuntimeSession(route, sessionID); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	} else if matched {
-		entry = conversationRuntimeRegistryEntryFromSessionResponse(route, session)
-	}
-
-	if req.Title != nil {
-		title := strings.TrimSpace(*req.Title)
-		if title == "" {
-			title = "New"
-		}
-		entry.Title = title
-		entry.TitleAuto = false
-		entry.TitleScore = 1
-	}
-	if req.ModelProviderID != nil {
-		entry.ModelProviderID = strings.TrimSpace(*req.ModelProviderID)
-	}
-	if req.ModelID != nil {
-		entry.ModelID = strings.TrimSpace(*req.ModelID)
-	}
-	if req.ToolIDs != nil {
-		entry.ToolIDs = normalizeConversationRuntimeRegistryList(*req.ToolIDs)
-		if entry.ToolIDs == nil {
-			entry.ToolIDs = []string{}
-		}
-	}
-	if req.SkillIDs != nil {
-		entry.SkillIDs = normalizeConversationRuntimeRegistryList(*req.SkillIDs)
-		if entry.SkillIDs == nil {
-			entry.SkillIDs = []string{}
-		}
-	}
-	if req.MCPIDs != nil {
-		entry.MCPIDs = normalizeConversationRuntimeRegistryList(*req.MCPIDs)
-		if entry.MCPIDs == nil {
-			entry.MCPIDs = []string{}
-		}
-	}
-	entry.UpdatedAt = time.Now().UTC()
-
-	patched, err := s.conversationRuntimeSessions.Upsert(entry)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, conversationRuntimeSessionItemResponse{
-		Session: s.conversationRuntimeSessionResponseFromRegistryEntry(patched),
-	})
 }
 
 func (s *Server) touchSessionActivity(sessionID string) {
@@ -1366,10 +1004,6 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 			}
 		}
 		if err := s.sessions.DeleteSession(sessionID); err != nil && !errors.Is(err, sessionapp.ErrSessionNotFound) {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		if err := s.deleteConversationRuntimeSessionRegistryEntry(sessionID); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -1442,10 +1076,8 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if err := pinService.SetSessionPinned(sessionID, *request.Pinned); err != nil {
-			if !errors.Is(err, sessionapp.ErrSessionNotFound) || !s.setConversationRuntimeSessionPinned(sessionID, *request.Pinned) {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-				return
-			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"session_id": sessionID,
@@ -1466,366 +1098,6 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (s *Server) loadConversationRuntimeSession(
-	route conversationRuntimeRoute,
-	sessionID string,
-) (conversationRuntimeSessionResponse, bool, error) {
-	page := s.sessions.ListMessages(sessionapp.MessageQuery{
-		SessionID: strings.TrimSpace(sessionID),
-		Page:      1,
-		PageSize:  conversationRuntimeSessionPageSize,
-	})
-	if len(page.Items) == 0 {
-		return conversationRuntimeSessionResponse{}, false, nil
-	}
-	session, ok := buildConversationRuntimeSession(route, page.Items)
-	if !ok {
-		return conversationRuntimeSessionResponse{}, false, nil
-	}
-	return session, true, nil
-}
-
-func (s *Server) listConversationRuntimeRegistryEntries(route conversationRuntimeRoute) []conversationRuntimeSessionRegistryEntry {
-	if s == nil || s.conversationRuntimeSessions == nil {
-		return nil
-	}
-	return s.conversationRuntimeSessions.List(route)
-}
-
-func (s *Server) resolveConversationRuntimeRegistryEntry(route conversationRuntimeRoute, sessionID string) (conversationRuntimeSessionRegistryEntry, bool) {
-	if s == nil || s.conversationRuntimeSessions == nil {
-		return conversationRuntimeSessionRegistryEntry{}, false
-	}
-	return s.conversationRuntimeSessions.Resolve(route, sessionID)
-}
-
-func (s *Server) setConversationRuntimeSessionPinned(sessionID string, pinned bool) bool {
-	if s == nil || s.conversationRuntimeSessions == nil {
-		return false
-	}
-	_, err := s.conversationRuntimeSessions.SetPinned(conversationRuntimeRouteChat, sessionID, pinned)
-	return err == nil
-}
-
-func (s *Server) conversationRuntimeSessionResponseFromRegistryEntry(entry conversationRuntimeSessionRegistryEntry) conversationRuntimeSessionResponse {
-	return conversationRuntimeSessionResponse{
-		ID:              entry.SessionID,
-		Status:          normalizeConversationRuntimeSessionStatus(entry.Status),
-		Title:           entry.Title,
-		TitleAuto:       entry.TitleAuto,
-		TitleScore:      entry.TitleScore,
-		Pinned:          entry.Pinned,
-		CreatedAt:       entry.CreatedAt.UTC(),
-		TargetType:      entry.TargetType,
-		TargetID:        entry.TargetID,
-		TargetName:      entry.TargetName,
-		ModelProviderID: entry.ModelProviderID,
-		ModelID:         entry.ModelID,
-		ToolIDs:         append([]string(nil), entry.ToolIDs...),
-		SkillIDs:        append([]string(nil), entry.SkillIDs...),
-		MCPIDs:          append([]string(nil), entry.MCPIDs...),
-	}
-}
-
-func conversationRuntimeRegistryEntryFromSessionResponse(route conversationRuntimeRoute, session conversationRuntimeSessionResponse) conversationRuntimeSessionRegistryEntry {
-	return conversationRuntimeSessionRegistryEntry{
-		SessionID:       strings.TrimSpace(session.ID),
-		Route:           route,
-		Status:          normalizeConversationRuntimeSessionStatus(session.Status),
-		Title:           strings.TrimSpace(session.Title),
-		TitleAuto:       session.TitleAuto,
-		TitleScore:      session.TitleScore,
-		Pinned:          session.Pinned,
-		CreatedAt:       session.CreatedAt.UTC(),
-		UpdatedAt:       time.Now().UTC(),
-		TargetType:      session.TargetType,
-		TargetID:        session.TargetID,
-		TargetName:      session.TargetName,
-		ModelProviderID: session.ModelProviderID,
-		ModelID:         session.ModelID,
-		ToolIDs:         append([]string(nil), session.ToolIDs...),
-		SkillIDs:        append([]string(nil), session.SkillIDs...),
-		MCPIDs:          append([]string(nil), session.MCPIDs...),
-	}
-}
-
-func (s *Server) mergeConversationRuntimeSessionWithRegistry(route conversationRuntimeRoute, session conversationRuntimeSessionResponse) conversationRuntimeSessionResponse {
-	entry, ok := s.resolveConversationRuntimeRegistryEntry(route, session.ID)
-	if !ok {
-		return session
-	}
-	merged := s.conversationRuntimeSessionResponseFromRegistryEntry(entry)
-	merged.Messages = session.Messages
-	if merged.Title == "" {
-		merged.Title = session.Title
-		merged.TitleAuto = session.TitleAuto
-		merged.TitleScore = session.TitleScore
-	}
-	if merged.CreatedAt.IsZero() {
-		merged.CreatedAt = session.CreatedAt
-	}
-	if merged.TargetType == "" {
-		merged.TargetType = session.TargetType
-		merged.TargetID = session.TargetID
-		merged.TargetName = session.TargetName
-	}
-	if merged.ModelProviderID == "" {
-		merged.ModelProviderID = session.ModelProviderID
-	}
-	if merged.ModelID == "" {
-		merged.ModelID = session.ModelID
-	}
-	if len(merged.ToolIDs) == 0 {
-		merged.ToolIDs = append([]string(nil), session.ToolIDs...)
-	}
-	if len(merged.SkillIDs) == 0 {
-		merged.SkillIDs = append([]string(nil), session.SkillIDs...)
-	}
-	if len(merged.MCPIDs) == 0 {
-		merged.MCPIDs = append([]string(nil), session.MCPIDs...)
-	}
-	if merged.Status == "" {
-		merged.Status = session.Status
-	}
-	merged.Pinned = session.Pinned
-	return merged
-}
-
-func (s *Server) markConversationRuntimeSessionStarted(route conversationRuntimeRoute, msg shareddomain.UnifiedMessage) {
-	if s == nil || s.conversationRuntimeSessions == nil {
-		return
-	}
-	entry := buildConversationRuntimeRegistryEntryFromMessage(route, msg, conversationRuntimeSessionStatusBusy)
-	if _, err := s.conversationRuntimeSessions.Upsert(entry); err != nil && s.logger != nil {
-		s.logger.Error("failed to persist conversation runtime session start",
-			slog.String("session_id", msg.SessionID),
-			slog.String("route", string(route)),
-			slog.String("error", err.Error()),
-		)
-	}
-}
-
-func (s *Server) markConversationRuntimeSessionFinished(route conversationRuntimeRoute, msg shareddomain.UnifiedMessage, status string) {
-	if s == nil || s.conversationRuntimeSessions == nil {
-		return
-	}
-	entry := buildConversationRuntimeRegistryEntryFromMessage(route, msg, status)
-	if _, err := s.conversationRuntimeSessions.Upsert(entry); err != nil && s.logger != nil {
-		s.logger.Error("failed to persist conversation runtime session finish",
-			slog.String("session_id", msg.SessionID),
-			slog.String("route", string(route)),
-			slog.String("status", normalizeConversationRuntimeSessionStatus(status)),
-			slog.String("error", err.Error()),
-		)
-	}
-}
-
-func (s *Server) deleteConversationRuntimeSessionRegistryEntry(sessionID string) error {
-	if s == nil || s.conversationRuntimeSessions == nil {
-		return nil
-	}
-	return s.conversationRuntimeSessions.Delete(sessionID)
-}
-
-func conversationRuntimeSessionSortTime(item conversationRuntimeSessionResponse) time.Time {
-	if !item.CreatedAt.IsZero() {
-		return item.CreatedAt.UTC()
-	}
-	return time.Time{}
-}
-
-func parseConversationRuntimeRoute(raw string) (conversationRuntimeRoute, bool) {
-	switch conversationRuntimeRoute(strings.TrimSpace(raw)) {
-	case conversationRuntimeRouteChat:
-		return conversationRuntimeRouteChat, true
-	default:
-		return "", false
-	}
-}
-
-func parseStoredConversationRuntimeRoute(raw string) (conversationRuntimeRoute, bool, bool) {
-	switch strings.TrimSpace(raw) {
-	case string(conversationRuntimeRouteChat):
-		return conversationRuntimeRouteChat, false, true
-	default:
-		return "", false, false
-	}
-}
-
-func buildConversationRuntimeSession(
-	route conversationRuntimeRoute,
-	records []sessiondomain.MessageRecord,
-) (conversationRuntimeSessionResponse, bool) {
-	if len(records) == 0 {
-		return conversationRuntimeSessionResponse{}, false
-	}
-
-	sessionID := strings.TrimSpace(records[0].SessionID)
-	targetType, targetID, targetName := resolveConversationRuntimeTarget(records)
-
-	title := deriveConversationRuntimeTitle(records)
-	modelProviderID, modelID := resolveConversationRuntimeModel(records)
-	toolIDs, skillIDs, mcpIDs := resolveConversationRuntimeCapabilities(records)
-	messages := make([]conversationRuntimeMessageResponse, 0, len(records))
-	for _, record := range records {
-		messages = append(messages, buildConversationRuntimeMessage(record))
-	}
-
-	return conversationRuntimeSessionResponse{
-		ID:              sessionID,
-		Status:          deriveConversationRuntimeSessionStatus(records),
-		Title:           title,
-		TitleAuto:       false,
-		TitleScore:      1,
-		CreatedAt:       records[0].Timestamp.UTC(),
-		TargetType:      targetType,
-		TargetID:        targetID,
-		TargetName:      targetName,
-		ModelProviderID: modelProviderID,
-		ModelID:         modelID,
-		ToolIDs:         toolIDs,
-		SkillIDs:        skillIDs,
-		MCPIDs:          mcpIDs,
-		Pinned:          conversationRuntimeSessionPinned(records),
-		Messages:        messages,
-	}, true
-}
-
-func conversationRuntimeSessionPinned(records []sessiondomain.MessageRecord) bool {
-	for _, record := range records {
-		switch strings.ToLower(strings.TrimSpace(record.Metadata["alter0.session.pinned"])) {
-		case "true", "1", "yes", "on":
-			return true
-		}
-	}
-	return false
-}
-
-func deriveConversationRuntimeSessionStatus(records []sessiondomain.MessageRecord) string {
-	for idx := len(records) - 1; idx >= 0; idx-- {
-		record := records[idx]
-		if record.Role != sessiondomain.MessageRoleAssistant {
-			continue
-		}
-		if strings.TrimSpace(record.RouteResult.ErrorCode) != "" {
-			return conversationRuntimeSessionStatusFailed
-		}
-		return conversationRuntimeSessionStatusReady
-	}
-	return conversationRuntimeSessionStatusReady
-}
-
-func buildConversationRuntimeMessage(record sessiondomain.MessageRecord) conversationRuntimeMessageResponse {
-	status := "done"
-	isError := strings.TrimSpace(record.RouteResult.ErrorCode) != ""
-	if isError {
-		status = "error"
-	}
-	attachments := execdomain.DecodeUserAttachments(record.Metadata)
-	items := make([]conversationRuntimeAttachment, 0, len(attachments))
-	for _, attachment := range attachments {
-		items = append(items, conversationRuntimeAttachment{
-			ID:          strings.TrimSpace(attachment.ID),
-			Name:        strings.TrimSpace(attachment.Name),
-			ContentType: strings.TrimSpace(attachment.ContentType),
-			AssetURL:    strings.TrimSpace(attachment.AssetURL),
-			PreviewURL:  strings.TrimSpace(attachment.PreviewURL),
-		})
-	}
-	return conversationRuntimeMessageResponse{
-		ID:           strings.TrimSpace(record.MessageID),
-		Role:         string(record.Role),
-		Text:         strings.TrimSpace(record.Content),
-		Attachments:  items,
-		Route:        string(record.RouteResult.Route),
-		Source:       strings.TrimSpace(record.Source.JobName),
-		Error:        isError,
-		Status:       status,
-		At:           record.Timestamp.UTC(),
-		ProcessSteps: append([]shareddomain.ProcessStep(nil), record.RouteResult.ProcessSteps...),
-		TaskID:       strings.TrimSpace(record.RouteResult.TaskID),
-		TaskStatus:   status,
-	}
-}
-
-func resolveConversationRuntimeTarget(records []sessiondomain.MessageRecord) (string, string, string) {
-	return "model", "raw-model", "Raw Model"
-}
-
-func resolveConversationRuntimeModel(records []sessiondomain.MessageRecord) (string, string) {
-	for idx := len(records) - 1; idx >= 0; idx-- {
-		metadata := records[idx].Metadata
-		if strings.TrimSpace(metadata[conversationRuntimeExecutionEngineMetadataKey]) == conversationRuntimeExecutionEngineCodex {
-			return conversationRuntimeCodexProviderID, conversationRuntimeCodexModelID
-		}
-		providerID := strings.TrimSpace(metadata[conversationRuntimeLLMProviderMetadataKey])
-		modelID := strings.TrimSpace(metadata[conversationRuntimeLLMModelMetadataKey])
-		if providerID != "" || modelID != "" {
-			return providerID, modelID
-		}
-	}
-	return "", ""
-}
-
-func resolveConversationRuntimeCapabilities(records []sessiondomain.MessageRecord) ([]string, []string, []string) {
-	for idx := len(records) - 1; idx >= 0; idx-- {
-		metadata := records[idx].Metadata
-		if len(metadata) == 0 {
-			continue
-		}
-		return nil,
-			normalizeConversationRuntimeIDs(metadata["alter0.skills.include"]),
-			normalizeConversationRuntimeIDs(metadata["alter0.mcp.request.enable"])
-	}
-	return nil, nil, nil
-}
-
-func normalizeConversationRuntimeIDs(raw string) []string {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return nil
-	}
-	var items []string
-	if err := json.Unmarshal([]byte(trimmed), &items); err != nil {
-		return nil
-	}
-	deduped := make([]string, 0, len(items))
-	seen := make(map[string]struct{}, len(items))
-	for _, item := range items {
-		value := strings.TrimSpace(item)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		deduped = append(deduped, value)
-	}
-	if len(deduped) == 0 {
-		return nil
-	}
-	return deduped
-}
-
-func deriveConversationRuntimeTitle(records []sessiondomain.MessageRecord) string {
-	for _, record := range records {
-		if record.Role != sessiondomain.MessageRoleUser {
-			continue
-		}
-		title := strings.TrimSpace(record.Content)
-		if title == "" {
-			continue
-		}
-		runes := []rune(title)
-		if len(runes) > conversationRuntimeTitleMaxRunes {
-			runes = runes[:conversationRuntimeTitleMaxRunes]
-		}
-		return string(runes)
-	}
-	return "New"
-}
-
 func (s *Server) memoryContextHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -1836,306 +1108,6 @@ func (s *Server) memoryContextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.memory.Snapshot())
-}
-
-func (s *Server) memoryTaskCollectionHandler(w http.ResponseWriter, r *http.Request) {
-	if s.tasks == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-
-	query, statusCode, err := parseMemoryTaskListQuery(r)
-	if err != nil {
-		writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-		return
-	}
-
-	tasks := s.collectTasksForMemory(query.Status)
-	items := make([]memoryTaskSummaryItem, 0, len(tasks))
-	for _, item := range tasks {
-		if !matchMemoryTaskFilters(item, query) {
-			continue
-		}
-		items = append(items, resolveMemoryTaskSummary(item))
-	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].FinishedAt.Equal(items[j].FinishedAt) {
-			return items[i].TaskID > items[j].TaskID
-		}
-		return items[i].FinishedAt.After(items[j].FinishedAt)
-	})
-
-	from, to := memoryTaskPageBounds(len(items), query.Page, query.PageSize)
-	pageItems := make([]memoryTaskSummaryItem, 0, to-from)
-	pageItems = append(pageItems, items[from:to]...)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"items": pageItems,
-		"pagination": taskapp.Pagination{
-			Page:     query.Page,
-			PageSize: query.PageSize,
-			Total:    len(items),
-			HasNext:  to < len(items),
-		},
-	})
-}
-
-func (s *Server) memoryTaskItemHandler(w http.ResponseWriter, r *http.Request) {
-	if s.tasks == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "task service unavailable"})
-		return
-	}
-	taskID, action, ok := memoryTaskResourceID(r.URL.Path)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid memory task path"})
-		return
-	}
-
-	switch {
-	case action == "" && r.Method == http.MethodGet:
-		item, exists := s.tasks.Get(taskID)
-		if !exists {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-			return
-		}
-		refs := []any{}
-		if s.memory != nil {
-			runtimeRefs := s.memory.TaskSummaryRefs(taskID)
-			refs = make([]any, 0, len(runtimeRefs))
-			for _, ref := range runtimeRefs {
-				refs = append(refs, ref)
-			}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"meta":         resolveMemoryTaskMeta(item),
-			"summary_refs": refs,
-		})
-	case action == "logs" && r.Method == http.MethodGet:
-		cursor, limit, statusCode, err := parseTaskLogQuery(r)
-		if err != nil {
-			writeJSON(w, statusCode, map[string]string{"error": err.Error()})
-			return
-		}
-		page, err := s.tasks.ListLogs(taskID, cursor, limit)
-		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{
-				"items":        []taskdomain.TaskLog{},
-				"cursor":       cursor,
-				"next_cursor":  cursor,
-				"has_more":     false,
-				"error_code":   "task_logs_unavailable",
-				"rebuild_hint": "日志缺失或文件损坏，可执行摘要重建",
-			})
-			return
-		}
-		writeJSON(w, http.StatusOK, page)
-	case action == "artifacts" && r.Method == http.MethodGet:
-		items, err := s.tasks.ListArtifacts(taskID)
-		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-			return
-		}
-		artifactItems, errCode, errMessage, statusCode := mapTaskArtifacts(items)
-		if statusCode != 0 {
-			writeJSON(w, statusCode, map[string]string{"error": errMessage, "error_code": errCode})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": artifactItems})
-	case action == "rebuild-summary" && r.Method == http.MethodPost:
-		if s.memory == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "memory context unavailable"})
-			return
-		}
-		item, exists := s.tasks.Get(taskID)
-		if !exists {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
-			return
-		}
-		refs, err := s.memory.RebuildTaskSummary(item)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"task_id":      taskID,
-			"status":       "rebuilt",
-			"summary_refs": refs,
-		})
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func (s *Server) collectTasksForMemory(status taskdomain.TaskStatus) []taskdomain.Task {
-	items := make([]taskdomain.Task, 0, 64)
-	page := 1
-	for {
-		result := s.tasks.List(taskapp.ListQuery{
-			Status:   status,
-			Page:     page,
-			PageSize: 200,
-		})
-		if len(result.Items) == 0 {
-			break
-		}
-		items = append(items, result.Items...)
-		if !result.Pagination.HasNext {
-			break
-		}
-		page++
-		if page > 10000 {
-			break
-		}
-	}
-	return items
-}
-
-func matchMemoryTaskFilters(task taskdomain.Task, query memoryTaskListQuery) bool {
-	if strings.TrimSpace(string(query.Status)) != "" && task.Status != query.Status {
-		return false
-	}
-	if strings.TrimSpace(query.TaskType) != "" {
-		if !strings.EqualFold(resolveMemoryTaskType(task), strings.TrimSpace(query.TaskType)) {
-			return false
-		}
-	}
-	at := resolveMemoryTaskTime(task)
-	if !query.StartAt.IsZero() && at.Before(query.StartAt) {
-		return false
-	}
-	if !query.EndAt.IsZero() && at.After(query.EndAt) {
-		return false
-	}
-	return true
-}
-
-func resolveMemoryTaskSummary(task taskdomain.Task) memoryTaskSummaryItem {
-	summary := task.TaskSummary
-	if summary.IsZero() {
-		finished := task.FinishedAt
-		if finished.IsZero() {
-			finished = task.UpdatedAt
-		}
-		if finished.IsZero() {
-			finished = task.CreatedAt
-		}
-		if finished.IsZero() {
-			finished = time.Now().UTC()
-		}
-		summary = taskdomain.TaskSummary{
-			TaskID:     strings.TrimSpace(task.ID),
-			TaskType:   resolveMemoryTaskType(task),
-			Goal:       strings.TrimSpace(task.RequestContent),
-			Result:     strings.TrimSpace(task.Summary),
-			Status:     task.Status,
-			FinishedAt: finished,
-			Tags:       []string{"task", strings.ToLower(strings.TrimSpace(string(task.Status))), resolveMemoryTaskType(task)},
-		}
-	}
-	if summary.FinishedAt.IsZero() {
-		summary.FinishedAt = resolveMemoryTaskTime(task)
-	}
-	if strings.TrimSpace(summary.Result) == "" {
-		summary.Result = strings.TrimSpace(task.Summary)
-	}
-	if strings.TrimSpace(summary.Result) == "" {
-		summary.Result = strings.TrimSpace(task.Result.Output)
-	}
-	if strings.TrimSpace(summary.Result) == "" {
-		summary.Result = strings.TrimSpace(task.ErrorMessage)
-	}
-	if strings.TrimSpace(summary.Result) == "" {
-		summary.Result = "-"
-	}
-	if strings.TrimSpace(summary.Goal) == "" {
-		summary.Goal = strings.TrimSpace(task.RequestContent)
-	}
-	if strings.TrimSpace(summary.Goal) == "" {
-		summary.Goal = "-"
-	}
-	if !summary.Status.IsValid() {
-		summary.Status = task.Status
-	}
-	return memoryTaskSummaryItem{
-		TaskID:     strings.TrimSpace(summary.TaskID),
-		TaskType:   strings.TrimSpace(summary.TaskType),
-		Goal:       strings.TrimSpace(summary.Goal),
-		Result:     strings.TrimSpace(summary.Result),
-		Status:     summary.Status,
-		FinishedAt: summary.FinishedAt.UTC(),
-		UpdatedAt:  task.UpdatedAt.UTC(),
-		Tags:       append([]string(nil), summary.Tags...),
-	}
-}
-
-func resolveMemoryTaskMeta(task taskdomain.Task) memoryTaskMeta {
-	return memoryTaskMeta{
-		TaskID:          strings.TrimSpace(task.ID),
-		SessionID:       strings.TrimSpace(task.SessionID),
-		SourceMessageID: strings.TrimSpace(task.SourceMessageID),
-		Status:          task.Status,
-		CreatedAt:       task.CreatedAt.UTC(),
-		UpdatedAt:       task.UpdatedAt.UTC(),
-		FinishedAt:      task.FinishedAt.UTC(),
-		TaskType:        resolveMemoryTaskType(task),
-	}
-}
-
-func resolveMemoryTaskType(task taskdomain.Task) string {
-	if value := strings.TrimSpace(task.TaskSummary.TaskType); value != "" {
-		return strings.ToLower(value)
-	}
-	if value := strings.TrimSpace(task.TaskType); value != "" {
-		return strings.ToLower(value)
-	}
-	if value := strings.TrimSpace(task.RequestMetadata[taskapp.MetadataTaskTypeKey]); value != "" {
-		return strings.ToLower(value)
-	}
-	if value := strings.TrimSpace(string(task.Result.Route)); value != "" {
-		return strings.ToLower(value)
-	}
-	return "task"
-}
-
-func resolveMemoryTaskTime(task taskdomain.Task) time.Time {
-	if !task.TaskSummary.FinishedAt.IsZero() {
-		return task.TaskSummary.FinishedAt.UTC()
-	}
-	if !task.FinishedAt.IsZero() {
-		return task.FinishedAt.UTC()
-	}
-	if !task.UpdatedAt.IsZero() {
-		return task.UpdatedAt.UTC()
-	}
-	if !task.CreatedAt.IsZero() {
-		return task.CreatedAt.UTC()
-	}
-	return time.Now().UTC()
-}
-
-func memoryTaskPageBounds(total int, page int, pageSize int) (int, int) {
-	if total <= 0 {
-		return 0, 0
-	}
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	offset := (page - 1) * pageSize
-	if offset >= total {
-		return total, total
-	}
-	end := offset + pageSize
-	if end > total {
-		end = total
-	}
-	return offset, end
 }
 
 func (s *Server) runtimeInfoHandler(w http.ResponseWriter, r *http.Request) {
@@ -3253,31 +2225,6 @@ func sanitizeWorkspaceSegment(value string) string {
 	return strings.ToLower(sanitized)
 }
 
-func memoryTaskResourceID(path string) (string, string, bool) {
-	const prefix = "/api/memory/tasks/"
-	if !strings.HasPrefix(path, prefix) {
-		return "", "", false
-	}
-	trimmed := strings.Trim(strings.TrimPrefix(path, prefix), "/")
-	parts := strings.Split(trimmed, "/")
-	if len(parts) == 1 {
-		taskID := strings.TrimSpace(parts[0])
-		if taskID == "" {
-			return "", "", false
-		}
-		return taskID, "", true
-	}
-	if len(parts) == 2 {
-		taskID := strings.TrimSpace(parts[0])
-		action := strings.TrimSpace(parts[1])
-		if taskID == "" || action == "" {
-			return "", "", false
-		}
-		return taskID, action, true
-	}
-	return "", "", false
-}
-
 func typedResourceID(path, prefix string) (controldomain.CapabilityType, string, bool) {
 	if !strings.HasPrefix(path, prefix) {
 		return "", "", false
@@ -3363,46 +2310,6 @@ func parseMessageQuery(r *http.Request, sessionID string) (sessionapp.MessageQue
 	}, http.StatusOK, nil
 }
 
-func parseMemoryTaskListQuery(r *http.Request) (memoryTaskListQuery, int, error) {
-	page, err := parsePositiveInt(r.URL.Query().Get("page"))
-	if err != nil {
-		return memoryTaskListQuery{}, http.StatusBadRequest, errors.New("page must be a positive integer")
-	}
-	pageSize, err := parsePositiveInt(r.URL.Query().Get("page_size"))
-	if err != nil {
-		return memoryTaskListQuery{}, http.StatusBadRequest, errors.New("page_size must be a positive integer")
-	}
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 200 {
-		pageSize = 200
-	}
-	startAt, endAt, statusCode, err := parseTimeRangeQuery(r)
-	if err != nil {
-		return memoryTaskListQuery{}, statusCode, err
-	}
-	query := memoryTaskListQuery{
-		TaskType: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("task_type"))),
-		StartAt:  startAt,
-		EndAt:    endAt,
-		Page:     page,
-		PageSize: pageSize,
-	}
-	rawStatus := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
-	if rawStatus != "" {
-		status := taskdomain.TaskStatus(rawStatus)
-		if status != taskdomain.TaskStatusSuccess && status != taskdomain.TaskStatusFailed && status != taskdomain.TaskStatusCanceled {
-			return memoryTaskListQuery{}, http.StatusBadRequest, errors.New("status must be success/failed/canceled")
-		}
-		query.Status = status
-	}
-	return query, http.StatusOK, nil
-}
-
 func parseTaskLogQuery(r *http.Request) (int, int, int, error) {
 	cursor, err := parseNonNegativeInt(r.URL.Query().Get("cursor"))
 	if err != nil {
@@ -3479,80 +2386,6 @@ func parseRFC3339Time(raw string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return parsed.UTC(), nil
-}
-
-func (s *Server) prepareMessage(r *http.Request) (shareddomain.UnifiedMessage, int, error) {
-	defer r.Body.Close()
-
-	var req messageRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("invalid json body")
-	}
-	return s.prepareMessageFromRequest(req, canonicalChatSessionID)
-}
-
-func (s *Server) prepareMessageFromRequest(req messageRequest, defaultSessionID string) (shareddomain.UnifiedMessage, int, error) {
-	sessionID := strings.TrimSpace(req.SessionID)
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(defaultSessionID)
-	}
-	if sessionID == "" {
-		sessionID = s.idGenerator.NewID()
-	}
-	attachments, err := s.normalizeConversationMessageAttachments(sessionID, req.Attachments)
-	if err != nil {
-		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, err
-	}
-	content := strings.TrimSpace(req.Content)
-	if content == "" && len(attachments) == 0 {
-		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("content or attachments are required")
-	}
-	if content == "" && len(attachments) > 0 {
-		content = defaultAttachmentContent(attachments)
-	}
-
-	channelID := strings.TrimSpace(req.ChannelID)
-	if channelID == "" {
-		channelID = "web-default"
-	}
-
-	channelType := shareddomain.ChannelTypeWeb
-	if s.control != nil {
-		channel, ok := s.control.ResolveChannel(channelID)
-		if !ok {
-			return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("channel not found")
-		}
-		if !channel.Enabled {
-			return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("channel is disabled")
-		}
-		channelType = channel.Type
-	}
-	metadata := cloneStringMap(req.Metadata)
-	if rawAttachments, err := execdomain.EncodeUserAttachments(attachments); err != nil {
-		return shareddomain.UnifiedMessage{}, http.StatusBadRequest, errors.New("invalid attachments")
-	} else if rawAttachments != "" {
-		if metadata == nil {
-			metadata = map[string]string{}
-		}
-		metadata[execdomain.UserAttachmentsMetadataKey] = rawAttachments
-		if rawImages, imageErr := execdomain.EncodeUserImageAttachments(execdomain.FilterUserImageAttachments(attachments)); imageErr == nil && rawImages != "" {
-			metadata[execdomain.UserImageAttachmentsMetadataKey] = rawImages
-		}
-	}
-
-	return shareddomain.UnifiedMessage{
-		MessageID:     s.idGenerator.NewID(),
-		SessionID:     sessionID,
-		UserID:        req.UserID,
-		ChannelID:     channelID,
-		ChannelType:   channelType,
-		TriggerType:   shareddomain.TriggerTypeUser,
-		Content:       content,
-		Metadata:      metadata,
-		TraceID:       s.idGenerator.NewID(),
-		CorrelationID: strings.TrimSpace(req.CorrelationID),
-		ReceivedAt:    time.Now().UTC(),
-	}, http.StatusOK, nil
 }
 
 func defaultAttachmentContent(attachments []execdomain.UserAttachment) string {

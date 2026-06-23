@@ -9,7 +9,6 @@ import { MessageMarkdownHTML } from "./MessageMarkdownShell";
 import { renderMessageMarkdownToHTML } from "./MessageMarkdown";
 import {
   DEFAULT_RUNTIME_EVENT_FILTER,
-  processStepToRuntimeTraceEvent,
   runtimeTraceEventVisibleByFilter,
   type RuntimeBlock,
   type RuntimeEventFilterID,
@@ -35,16 +34,8 @@ export type ChatMessageSnapshot = {
   error: boolean;
   status: string;
   at: number;
-  processSteps: ChatMessageProcessStepSnapshot[];
+  processSteps: RuntimeTraceEvent[];
   processCollapsed?: boolean;
-};
-
-export type ChatMessageProcessStepSnapshot = {
-  id: string;
-  kind: string;
-  title: string;
-  detail: string;
-  status: string;
 };
 
 type MessageCopy = {
@@ -63,7 +54,6 @@ type MessageCopy = {
 };
 
 const TIMELINE_ITEM_CACHE_LIMIT = 384;
-const LEGACY_LOCAL_PROCESS_STEP_ID = "local-stream-start";
 const timelineItemCache = new Map<string, { signature: string; item: RuntimeTimelineItem }>();
 const messageSignatureCache = new WeakMap<ChatMessageSnapshot, string>();
 const callbackCacheIDs = new WeakMap<Function, number>();
@@ -207,7 +197,6 @@ function trimTimelineItemCache() {
     timelineItemCache.delete(oldest);
   }
 }
-
 function chatProcessStepKey(messageID: string, stepID: string) {
   return `${messageID}:${stepID}`;
 }
@@ -248,13 +237,7 @@ function buildChatTimelineItemSignature(message: ChatMessageSnapshot) {
     source: message.source,
     error: message.error,
     status: message.status,
-    processSteps: message.processSteps.map((step) => ({
-      id: step.id,
-      kind: step.kind,
-      title: step.title,
-      detail: step.detail,
-      status: step.status,
-    })),
+    processSteps: message.processSteps,
     processCollapsed: message.processCollapsed,
   });
 }
@@ -336,15 +319,9 @@ function buildChatTimelineItem(
     };
   }
 
-  const legacyLocalPlaceholderOnly =
-    message.status.trim().toLowerCase() === "streaming"
-    && parsed.steps.length === 1
-    && parsed.steps[0]?.id === LEGACY_LOCAL_PROCESS_STEP_ID;
   const collapsed =
     typeof message.processCollapsed === "boolean"
       ? message.processCollapsed
-      : legacyLocalPlaceholderOnly
-        ? true
       : Boolean(parsed.answer.trim()) && message.status !== "streaming";
 
   return {
@@ -458,19 +435,9 @@ function resolveExecutionContent(
   language: LegacyShellLanguage,
   runtimeEventFilter: RuntimeEventFilterID[] = DEFAULT_RUNTIME_EVENT_FILTER,
 ) {
+  void language;
   if (message.processSteps.length) {
     const steps = message.processSteps
-      .map((step, index) => processStepToRuntimeTraceEvent(step, {
-        turnID: message.id,
-        seq: index + 1,
-        provider: {
-          engine: "codex",
-          adapter: "codex_cli_json",
-          event_type: "item.completed",
-          item_type: "agent_message",
-          channel: !step.kind || step.kind === "analysis" || step.kind === "commentary" ? "commentary" : undefined,
-        },
-      }))
       .filter((event) => runtimeTraceEventVisibleByFilter(event, runtimeEventFilter));
     return {
       steps,
@@ -478,24 +445,10 @@ function resolveExecutionContent(
       hadProcess: true,
     };
   }
-  const parsed = parseExecutionText(message.text, language);
-  if (!parsed.steps.length) {
-    return parsed;
-  }
   return {
-    ...parsed,
-    hadProcess: true,
-    steps: parsed.steps
-      .map((step, index) => processStepToRuntimeTraceEvent(step, {
-        turnID: message.id,
-        seq: index + 1,
-        provider: {
-          engine: "alter0",
-          adapter: "alter0",
-          event_type: "legacy_text_marker",
-        },
-      }))
-      .filter((event) => runtimeTraceEventVisibleByFilter(event, runtimeEventFilter)),
+    steps: [] as RuntimeTraceEvent[],
+    answer: message.text.trim(),
+    hadProcess: false,
   };
 }
 
@@ -530,88 +483,4 @@ function runtimeBlockMarkdown(block: RuntimeBlock): string {
     default:
       return "";
   }
-}
-
-function parseExecutionText(value: string, language: LegacyShellLanguage) {
-  const copy = MESSAGE_COPY[language];
-  const normalized = value.replace(/\r\n?/g, "\n");
-  if (!normalized.trim()) {
-    return { steps: [] as ChatMessageProcessStepSnapshot[], answer: "", hadProcess: false };
-  }
-
-  const lines = normalized.split("\n");
-  const steps: ChatMessageProcessStepSnapshot[] = [];
-  const answerLines: string[] = [];
-  let currentStep: ChatMessageProcessStepSnapshot | null = null;
-  let index = 0;
-
-  const pushCurrentStep = () => {
-    if (!currentStep) {
-      return;
-    }
-    if (!currentStep.title.trim() && !currentStep.detail.trim()) {
-      currentStep = null;
-      return;
-    }
-    steps.push(currentStep);
-    currentStep = null;
-  };
-
-  while (index < lines.length) {
-    const line = lines[index];
-    const trimmed = line.trim();
-    if (trimmed.startsWith("[process] action:")) {
-      pushCurrentStep();
-      currentStep = {
-        id: "",
-        kind: "action",
-        title: trimmed.slice("[process] action:".length).trim(),
-        detail: "",
-        status: "",
-      };
-      index += 1;
-      continue;
-    }
-    if (trimmed === "[process] observation:") {
-      const detailLines: string[] = [];
-      index += 1;
-      while (index < lines.length) {
-        const nextLine = lines[index];
-        const nextTrimmed = nextLine.trim();
-        if (nextTrimmed.startsWith("[process] action:") || nextTrimmed === "[process] observation:") {
-          break;
-        }
-        detailLines.push(nextLine);
-        index += 1;
-      }
-      const detail = detailLines.join("\n").trim();
-      if (currentStep) {
-        currentStep.detail = [currentStep.detail, detail].filter(Boolean).join("\n\n");
-      } else {
-        currentStep = {
-          id: "",
-          kind: "observation",
-          title: copy.processObservation,
-          detail,
-          status: "",
-        };
-        pushCurrentStep();
-      }
-      continue;
-    }
-    if (currentStep) {
-      currentStep.detail = [currentStep.detail, line].filter(Boolean).join("\n");
-      index += 1;
-      continue;
-    }
-    answerLines.push(line);
-    index += 1;
-  }
-
-  pushCurrentStep();
-  return {
-    steps,
-    answer: answerLines.join("\n").trim(),
-    hadProcess: steps.length > 0,
-  };
 }

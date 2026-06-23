@@ -231,10 +231,6 @@ func TestChatPagesDefaultToEnglishDocumentLanguage(t *testing.T) {
 		t.Fatalf("expected embedded chat page to default document language to English")
 	}
 
-	legacyHTML := readWorkspaceFile(t, "static/chat.html")
-	if !strings.Contains(legacyHTML, `<html lang="en">`) {
-		t.Fatalf("expected legacy chat page to default document language to English")
-	}
 }
 
 func TestLoginPageDefaultsToEnglishDocumentLanguage(t *testing.T) {

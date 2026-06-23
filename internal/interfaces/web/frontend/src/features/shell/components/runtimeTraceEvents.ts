@@ -202,14 +202,6 @@ export const RUNTIME_EVENT_FILTER_OPTIONS: Array<{
   },
 ];
 
-export type LegacyProcessStep = {
-  id?: string;
-  kind?: string;
-  title?: string;
-  detail?: string;
-  status?: string;
-};
-
 export type TerminalStepBlockLike = {
   type?: string;
   title?: string;
@@ -288,35 +280,6 @@ function normalizeRuntimeStatus(status: string): RuntimeStatus {
   }
 }
 
-function normalizeLegacyKind(kind: string, provider: RuntimeProviderRef): RuntimeEventKind {
-  const normalized = normalizeText(kind).toLowerCase();
-  if (normalized === "analysis" || normalized === "commentary") {
-    return "assistant_commentary";
-  }
-  if (normalized === "plan") {
-    return "plan";
-  }
-  if (normalized === "reasoning" || normalized === "thinking") {
-    return "reasoning";
-  }
-  if (normalized === "action") {
-    return "tool_call";
-  }
-  if (normalized === "observation") {
-    return "tool_result";
-  }
-  if (normalized === "command" || normalized === "command_execution") {
-    return "shell_command";
-  }
-  if (provider.channel === "commentary") {
-    return "assistant_commentary";
-  }
-  if (normalized === "") {
-    return "assistant_commentary";
-  }
-  return "unknown_provider_event";
-}
-
 function eventVisibility(kind: RuntimeEventKind): RuntimeVisibility {
   switch (kind) {
     case "assistant_final":
@@ -335,36 +298,6 @@ function eventVisibility(kind: RuntimeEventKind): RuntimeVisibility {
     default:
       return "developer";
   }
-}
-
-export function processStepToRuntimeTraceEvent(
-  step: LegacyProcessStep,
-  context: RuntimeTraceEventContext,
-): RuntimeTraceEvent {
-  const kind = normalizeLegacyKind(step.kind || "", context.provider);
-  const status = normalizeRuntimeStatus(step.status || "");
-  const title = normalizeText(step.title) || defaultEventTitle(kind);
-  const detail = normalizeText(step.detail);
-  return {
-    id: normalizeText(step.id) || `${context.turnID}:step:${context.seq}`,
-    session_id: context.sessionID,
-    turn_id: context.turnID,
-    seq: context.seq,
-    source: "adapter",
-    provider: context.provider,
-    role: kind === "tool_result" ? "tool" : "assistant",
-    kind,
-    lifecycle: normalizeLifecycle(step.status || ""),
-    status,
-    title,
-    summary: detail || title,
-    blocks: detail ? [{ type: "markdown", text: detail }] : [],
-    action: kind === "tool_call" ? {
-      family: "runtime",
-      name: title,
-    } : undefined,
-    visibility: eventVisibility(kind),
-  };
 }
 
 export function terminalStepToRuntimeTraceEvent(

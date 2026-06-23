@@ -127,35 +127,6 @@ describe("ChatMessageRegion", () => {
     expect(screen.queryByText("MODEL")).not.toBeInTheDocument();
   });
 
-  it("keeps the legacy local process placeholder collapsed until real process content arrives", () => {
-    render(
-      <ChatMessageRegion
-        sessionId="session-1"
-        language="en"
-        messages={[
-          buildAssistantMessage({
-            text: "",
-            status: "streaming",
-            processSteps: [
-              {
-                id: "local-stream-start",
-                kind: "commentary",
-                title: "Thinking",
-                detail: "",
-                status: "running",
-              },
-            ],
-          }),
-        ]}
-      />,
-    );
-
-    const process = document.querySelector("[data-conversation-process-shell='message-1']") as HTMLElement;
-    expect(process).toHaveClass("is-collapsed");
-    expect(process.querySelector(".terminal-process-body")).toHaveAttribute("hidden");
-    expect(document.querySelector(".status-pill")).not.toBeInTheDocument();
-  });
-
   it("hides user prompt timestamps in the shared conversation timeline", () => {
     render(
       <ChatMessageRegion
@@ -444,33 +415,4 @@ describe("ChatMessageRegion", () => {
     expect(JSON.stringify(expandedItems)).toContain("内部推理摘要。");
   });
 
-  it("filters legacy inline process markers through runtime event types", () => {
-    const message = buildAssistantMessage({
-      id: "legacy-runtime-markers",
-      text: [
-        "[process] action: Read file",
-        "cat package.json",
-        "[process] observation:",
-        "package content",
-        "Final answer.",
-      ].join("\n"),
-      processSteps: [],
-    });
-
-    const defaultItems = buildChatTimelineItems({
-      cacheScope: "legacy-runtime-filter-default",
-      language: "en",
-      messages: [message],
-    });
-    expect(JSON.stringify(defaultItems)).toContain("cat package.json");
-    expect(JSON.stringify(defaultItems)).not.toContain("[process] action");
-
-    const toolItems = buildChatTimelineItems({
-      cacheScope: "legacy-runtime-filter-tools",
-      language: "en",
-      messages: [message],
-      runtimeEventFilter: ["important_text", "tools"],
-    });
-    expect(JSON.stringify(toolItems)).toContain("cat package.json");
-  });
 });

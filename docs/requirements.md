@@ -62,7 +62,7 @@
 - 刷新页面时，`Chat` 必须优先保住当前活动会话：若服务端会话列表暂时尚未返回该 `session_id`，前端先从浏览器侧活动会话快照恢复当前条目与最近消息，再按 `session_id` 单独回源详情；若集合接口返回的消息历史短于本地已追加历史，且本地仍有未完成助手消息或更新中的本轮消息，前端不得用较短远端历史覆盖本地时间线；在确认服务端不存在该会话前，不得直接把当前活动会话替换成新的空白 `New` 会话。
 - 刷新页面或切到其他会话后，`Chat` 仍需保住最近已知会话列表：浏览器侧最近会话快照至少覆盖当前活动会话之外的最近若干条会话；当服务端集合接口暂时漏掉其中某条会话时，左侧会话列表不得立刻把该会话删除，而应继续保留本地条目并等待单会话详情或后续集合结果确认。
 - `Chat` 的会话存在性、配置与恢复状态需由 Terminal session store 承担第一责任：输入入口在请求开始、完成、失败时分别写入 `busy / ready / failed` 等稳定状态；会话置顶、删除、列表、详情与恢复均复用 Terminal session API。前端展示、计数和发送 payload 需以当前可用公有 Skill 目录过滤后的有效选择为准，避免因浏览器刷新、请求断开、前端本地状态丢失或 Skill 目录变化导致会话“消失”、失效 Skill 继续注入或直接 `load failed`。
-- 运行时执行过程需以统一 `RuntimeTraceEvent` 数据模型承载，并覆盖 Chat 兼容 `process_steps`、Terminal turn steps、Terminal input 结果与会话历史持久化。事件类型、来源、角色、生命周期、状态、block 与 action 信息只能来自底层 provider、工程 adapter 或 alter0 自身确定生成的字段，不允许通过自然语言内容 heuristic 猜测。历史 `process_steps` 与 Terminal step 摘要在读取或渲染时转换为当前结构；前端优先消费结构化事件而不是依赖解析 `[runtime] action / observation` 文本。
+- 运行时执行过程需以统一 `RuntimeTraceEvent` 数据模型承载，并覆盖 Terminal turn steps、Terminal input 结果与会话历史持久化。事件类型、来源、角色、生命周期、状态、block 与 action 信息只能来自底层 provider、工程 adapter 或 alter0 自身确定生成的字段，不允许通过自然语言内容 heuristic 猜测。前端优先消费结构化事件，不依赖解析自然语言过程文本。
 - 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新；Chat / Terminal 最终输出统一使用稳定的 `MessageMarkdownShell` 承载，正文先于复制工具栏渲染，不安装脚本长按选区、假选中态或编辑态兜底，且父级无关重渲染不得重写相同 markdown 的文本 DOM；React 托管的普通页面也需对正文型字段提供同一安全 Markdown 渲染能力，覆盖 Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Skill 说明、Codex 运行时说明与 Session Profile 非等宽字段。Markdown 视觉需保持正文阅读节奏：ATX/Setext 标题紧凑、段落自然、删除线和自动链接按正文渲染、嵌套列表按 Markdown 缩进保留真实层级，列表项内允许继续承载引用与代码块，普通链接显示外链箭头，代码块保留浅灰弱边界；Markdown 表格需渲染为真实表格结构并保留列对齐，只保留横向分割线、无外框卡片和表头灰底，短表格至少铺满消息宽度，普通长文本在单元格内自动换行，链接、URL 与代码保持不硬断开，只有真实不可断内容超宽时才在消息容器内滚动；ID、路径、密钥、配置值、时间戳等元数据字段继续按纯文本或等宽字段展示。
 - Chat 允许通过显式预览参数 `/chat?markdown_demo=1` 临时覆盖当前时间线视图并展示一条非持久化 assistant Markdown 语法覆盖样例；样例覆盖 ATX/Setext 标题、段落换行、强调、删除线、自动链接、图片、引用、嵌套列表、任务项、列表内引用与代码块、分割线、代码块、对齐表格与 raw HTML 转义。表格样例覆盖短字符、长中文、长 URL/代码和混合内容场景；折叠示例中的 HTML 标签按代码块展示，折叠内容本身按普通 Markdown 展示。该入口只用于渲染验收，不写入会话历史，也不替代真实 Chat 会话恢复规则。
 - `Chat / Terminal` 的消息阅读结构统一采用轻量 IM 式消息流：用户消息右对齐且使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制；助手消息左对齐并弱化为无边框正文阅读流，Chat 正文工作区使用白底无框阅读面，不在消息区叠加明显面板边框、背景分界或卡片容器；`Process` 默认收敛为 `Thinking / 已思考` 内联轻量披露行，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情，移动端也保持同页内联展开，最终 Markdown、图片与复制动作都收敛在对应消息区域内。模型与 Skill 配置面板需提供过程披露过滤勾选，默认只勾选 `important_text`；`reasoning / plan / tools / commands / system` 等事件只有在用户显式勾选后展示。Terminal 最终输出的 Markdown 正文必须是静态可选中文本，复制动作位于助手正文下方，代码块作为独立浅灰内容块呈现；消息正文区不显示逐条时间，只有进行中、排队、失败等状态保留紧凑状态标签；长历史默认优先渲染最新上下文，用户滚到顶部或点击 `Load earlier messages / 加载更早消息` 后按批次渐进加载更早消息。后续新增运行页若呈现用户/助手消息，也必须复用同一 `runtime-message-*` 消息外壳与 `RuntimeTimeline` block model，不再自建页面私有气泡系统。
@@ -140,7 +140,7 @@
 - Context Files 支持根级 `AGENTS.md`、`SOUL.md`、`USER.md`、长期 `MEMORY.md`、`daily/<YYYY-MM-DD>.md`、`projects/<project>.md`、`conversations/<conversation_id>/summary.md`，并支持启动参数解析后的长期记忆文件与天级记忆目录。`AGENTS.md` 是运行规则上下文，`SOUL.md` 是强约束上下文，其余为事实型记忆。用户可见记忆文件保持 Markdown 主存，不在正文中暴露 confidence、source、status、sensitivity 等附加元数据。所有持久记忆 Markdown 均由 CLI Runtime 维护，服务侧不直接把会话轮次、压缩片段或任务摘要写入 Daily/Long-term Markdown。
 - 记忆更新由三条路径触发：用户显式要求记住时由当前 CLI Runtime 写入目标记忆文件；会话结束或归档时服务生成 `ConversationSummary`；系统维护任务每日启动同一 CLI Runtime 并加载 `memory-maintenance` Skill，把会话摘要、日记忆和长期记忆合并整理。
 - 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理；alter0 保存原始消息、运行日志、结果与摘要，用于恢复、审计、跨会话召回和定时记忆整理。
-- `Skill -> Memory` 页面提供长期记忆、天级记忆、项目记忆、会话摘要与任务历史的只读可视化入口，并支持摘要重建。
+- `Skill -> Memory` 页面提供长期记忆、天级记忆、项目记忆、会话摘要与运行说明的只读可视化入口。
 
 ## Task, Terminal & Workspace
 
@@ -149,7 +149,6 @@
 稳定需求：
 
 - Terminal 页面 Composer 支持最多 5 个附件，稳定覆盖图片与常见文本/文档文件：图片继续提供缩略图预览、纯图片发送与图片回显，并支持 PC 输入框内直接粘贴剪贴板图片；图片先写入当前 Session 工作区附件目录后仅提交 `asset_url / preview_url` 引用；缩略位使用预览图，但 turn 历史与后续预览弹层再次查看时必须优先读取原图资源。普通文件同样先落到同一附件目录并只提交稳定附件引用，执行前再写入当前 Terminal 工作区 `input-attachments/<turn_id>/` 供 Codex 按路径读取。Terminal 当前活动会话的 shell 明确为 Codex 时，输入 `/` 需显示 Web 适用的 Codex CLI 斜线命令候选并支持点击补全；候选按命令作用分组顺序展示，并使用短动作说明；权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选，普通 shell 会话不显示 Codex 候选。Terminal 输出正文、Markdown 正文与代码结果必须保留浏览器原生文本选择能力，用户可直接手动选中并复制局部输出；移动端最终输出不得安装脚本长按选区、假选中态、浮动复制层、`contenteditable`、隐藏输入框或键盘编辑态兜底；阅读定位 overlay 不得截获正文拖选或长按选中。Terminal `Details` 面板支持选择控制面中启用且非私有的公有 Skill；新 Terminal 会话首次加载时默认勾选全部可用公有 Skill，仅排除 `memory`，并在发送输入时把当前 `skill_ids` 编译进 Terminal 工作区的原生 Codex Runtime。该运行时同样必须通过托管 `AGENTS.md` 与 `runtime_context` 约束 Codex 仅操作当前 Terminal 工作区及其派生文件，不得顺带修改其他会话、服务或工作区外仓库。
-- Memory 任务视图支持既有任务摘要、任务详情、日志下钻、产物引用元数据与摘要重建，用于把历史任务纳入长期上下文召回；任务历史默认以表格承载摘要元数据，再通过详情侧栏查看长文本与日志/产物入口。
 - Web 会话不直接暴露本地文件路径。
 - 默认工作区按执行上下文隔离：Chat 使用 `.alter0/workspaces/sessions/<session_id>`，其中 Chat 的逻辑 `session_id` 固定为 `alter0-chat`；Task 使用其会话下的 `tasks/<task_id>`，Terminal 使用 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
 - Chat 的会话图片资产需要随 Session 工作区落盘：用户上传图片的原图与预览图统一写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，前端持久化与消息请求默认复用 `asset_url / preview_url` 引用；其中 `preview_url` 只服务缩略位，消息回显与再次查看统一优先读取 `asset_url` 原图。assistant 最终回复里的外链 markdown 图片也应在会话返回与落库前改写到同一路径下的本地附件 URL。
@@ -169,7 +168,7 @@
 - Terminal 移动端的 `terminal-chat-screen` 必须继续按当前 Composer 的真实遮挡高度动态收口；会话空态、长输出与 Process 阅读都要稳定停在输入区上沿，不允许被 fixed Composer 覆盖。
 - Terminal 移动端的命令与 prompt 气泡需保持自然整词换行；路径、flag 和短 shell 片段优先按空格或真实长单词边界断行，不允许因窄屏收缩把命令压成逐字或逐 token 的碎行。
 - Terminal `Process` 的步骤头必须保持稳定三列：左侧独立展开图标列、中间标题主列、右侧耗时与状态列。标题只能在中间主列内截断，不允许因为节点缺失、DOM 顺序错误或 grid 列错位把标题挤进图标列，导致移动端只显示单个字符。
-- Terminal `Process` 展开后的自然语言步骤详情需与 Chat 的 `process_steps` 共用同一套阅读修正：`reasoning / plan / message / text` 等说明类内容优先按 markdown 正文块整列换行，展示前移除零宽断行字符，并把“每字一行”的病态段落归一回可读正文；仅终端输出、diff 与代码类块继续保留预格式化渲染。
+- Terminal `Process` 展开后的自然语言步骤详情需使用同一套阅读修正：`reasoning / plan / message / text` 等说明类内容优先按 markdown 正文块整列换行，展示前移除零宽断行字符，并把“每字一行”的病态段落归一回可读正文；仅终端输出、diff 与代码类块继续保留预格式化渲染。
 - Terminal 移动端的四键阅读定位条只按静态 Composer footprint 停靠，不跟随软键盘位移动态上移；输入框聚焦且键盘弹起时按钮组主动隐藏，键盘收起或浏览器视口回弹后再恢复到 Composer 上沿之上，不得留下悬空残影。
 
 ## Control, Operations & Governance

@@ -20,61 +20,39 @@ describe("ReactManagedMemoryRouteBody", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads task history and long-term memory tabs from the unified memory APIs", async () => {
+  it("loads memory document tabs from the unified memory API", async () => {
     const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          long_term: {
-            exists: true,
-            path: "/memory/MEMORY.md",
-            updated_at: "2026-03-04T08:00:00Z",
-            content: "# Long-Term Memory\n- key: value",
-          },
-          root_instructions: {
-            exists: true,
-            path: "/workspace/AGENTS.md",
-            updated_at: "2026-03-04T08:00:00Z",
-            content: "# AGENTS\n- run tests",
-          },
-          daily: {
-            directory: "/memory/daily",
-            items: [],
-          },
-          mandatory: {
-            exists: false,
-          },
-          specification: {
-            exists: false,
-          },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [
-            {
-              task_id: "task-1",
-              task_type: "release",
-              goal: "Ship the release notes",
-              result: "Published release notes",
-              status: "success",
-              updated_at: "2026-03-04T09:00:00Z",
-              finished_at: "2026-03-04T09:05:00Z",
-              tags: ["task", "release"],
-            },
-          ],
-          pagination: {
-            page: 1,
-            total: 1,
-            has_next: false,
-          },
-        }),
-      );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        long_term: {
+          exists: true,
+          path: "/memory/MEMORY.md",
+          updated_at: "2026-03-04T08:00:00Z",
+          content: "# Long-Term Memory\n- key: value",
+        },
+        root_instructions: {
+          exists: true,
+          path: "/workspace/AGENTS.md",
+          updated_at: "2026-03-04T08:00:00Z",
+          content: "# AGENTS\n- run tests",
+        },
+        daily: {
+          directory: "/memory/daily",
+          items: [],
+        },
+        mandatory: {
+          exists: false,
+        },
+        specification: {
+          exists: false,
+        },
+      }),
+    );
 
     render(<ReactManagedMemoryRouteBody language="en" />);
 
     await waitFor(() => {
-      expect(screen.getByText("task-1")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Long-Term" })).toBeInTheDocument();
     });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -82,11 +60,8 @@ describe("ReactManagedMemoryRouteBody", () => {
       "/api/memory/context",
       expect.objectContaining({ method: "GET" }),
     );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "/api/memory/tasks?page=1&page_size=10",
-      expect.objectContaining({ method: "GET" }),
-    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/memory/tasks"), expect.anything());
 
     fireEvent.click(screen.getByRole("tab", { name: "Long-Term" }));
 
@@ -101,135 +76,21 @@ describe("ReactManagedMemoryRouteBody", () => {
     expect(screen.getByText("/workspace/AGENTS.md")).toBeInTheDocument();
   });
 
-  it("opens task detail from the table and loads logs and artifacts on demand", async () => {
-    const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          long_term: { exists: false },
-          daily: { items: [] },
-          mandatory: { exists: false },
-          specification: { exists: false },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [
-            {
-              task_id: "task-1",
-              task_type: "release",
-              goal: "Ship the release notes",
-              result: "Published release notes",
-              status: "success",
-              updated_at: "2026-03-04T09:00:00Z",
-              finished_at: "2026-03-04T09:05:00Z",
-              tags: ["task", "release"],
-            },
-          ],
-          pagination: {
-            page: 1,
-            total: 1,
-            has_next: false,
-          },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          meta: {
-            task_id: "task-1",
-            task_type: "release",
-            session_id: "session-task-1",
-            source_message_id: "msg-1",
-            status: "success",
-            progress: 100,
-            retry_count: 0,
-            updated_at: "2026-03-04T09:00:00Z",
-            finished_at: "2026-03-04T09:05:00Z",
-          },
-          summary_refs: [
-            {
-              tier: "daily",
-              date: "2026-03-04",
-              path: "/memory/daily/2026-03-04.md",
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [
-            {
-              seq: 1,
-              stage: "run",
-              level: "success",
-              created_at: "2026-03-04T09:00:00Z",
-              message: "completed release generation",
-            },
-          ],
-          has_more: false,
-          next_cursor: 1,
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [
-            {
-              artifact_id: "artifact-1",
-              artifact_type: "markdown",
-              summary: "Release note markdown",
-              created_at: "2026-03-04T09:06:00Z",
-            },
-          ],
-        }),
-      );
-
-    render(<ReactManagedMemoryRouteBody language="en" />);
-
-    await waitFor(() => {
-      expect(screen.getByText("task-1")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "task-1" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Task Detail")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Load Logs" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("completed release generation")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Load Artifacts" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Release note markdown")).toBeInTheDocument();
-    });
-  });
-
   it("renders specification markdown sections inside the specification tab", async () => {
     const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          long_term: { exists: false },
-          daily: { items: [] },
-          mandatory: { exists: false },
-          specification: {
-            exists: true,
-            path: "/docs/memory/spec.md",
-            updated_at: "2026-03-04T08:00:00Z",
-            content: "# Mapping\n- USER.md\n## Rules\n- Keep memory concise",
-          },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [],
-          pagination: { page: 1, total: 0, has_next: false },
-        }),
-      );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        long_term: { exists: false },
+        daily: { items: [] },
+        mandatory: { exists: false },
+        specification: {
+          exists: true,
+          path: "/docs/memory/spec.md",
+          updated_at: "2026-03-04T08:00:00Z",
+          content: "# Mapping\n- USER.md\n## Rules\n- Keep memory concise",
+        },
+      }),
+    );
 
     render(<ReactManagedMemoryRouteBody language="en" />);
 
@@ -246,39 +107,32 @@ describe("ReactManagedMemoryRouteBody", () => {
 
   it("renders memory documents as markdown instead of raw preformatted text", async () => {
     const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          long_term: {
-            exists: true,
-            path: "/memory/MEMORY.md",
-            updated_at: "2026-03-04T08:00:00Z",
-            content: "## Memory Rules\n- **Ship** durable notes\n- [Workspace](/chat)",
-          },
-          daily: {
-            directory: "/memory/daily",
-            items: [
-              {
-                date: "2026-03-04",
-                path: "/memory/daily/2026-03-04.md",
-                content: "### Daily\n- Follow up with [Tasks](/tasks)",
-              },
-            ],
-          },
-          mandatory: {
-            exists: false,
-          },
-          specification: {
-            exists: false,
-          },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [],
-          pagination: { page: 1, total: 0, has_next: false },
-        }),
-      );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        long_term: {
+          exists: true,
+          path: "/memory/MEMORY.md",
+          updated_at: "2026-03-04T08:00:00Z",
+          content: "## Memory Rules\n- **Ship** durable notes\n- [Workspace](/chat)",
+        },
+        daily: {
+          directory: "/memory/daily",
+          items: [
+            {
+              date: "2026-03-04",
+              path: "/memory/daily/2026-03-04.md",
+              content: "### Daily\n- Follow up with [Tasks](/tasks)",
+            },
+          ],
+        },
+        mandatory: {
+          exists: false,
+        },
+        specification: {
+          exists: false,
+        },
+      }),
+    );
 
     const { container } = render(<ReactManagedMemoryRouteBody language="en" />);
 

@@ -1,10 +1,14 @@
 package web
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	shareddomain "alter0/internal/shared/domain"
 )
 
 func readEmbeddedAssetRaw(t *testing.T, assetPath string) string {
@@ -49,4 +53,37 @@ func readWorkspaceFile(t *testing.T, relativePath string) string {
 		t.Fatalf("read workspace file %s: %v", relativePath, err)
 	}
 	return string(content)
+}
+
+type sequenceIDGenerator struct {
+	ids  []string
+	next int
+}
+
+func (g *sequenceIDGenerator) NewID() string {
+	if g.next >= len(g.ids) {
+		id := "generated-" + strconv.Itoa(g.next)
+		g.next++
+		return id
+	}
+	id := g.ids[g.next]
+	g.next++
+	return id
+}
+
+type stubOrchestrator struct {
+	result shareddomain.OrchestrationResult
+	err    error
+	last   shareddomain.UnifiedMessage
+}
+
+func (s *stubOrchestrator) Handle(_ context.Context, msg shareddomain.UnifiedMessage) (shareddomain.OrchestrationResult, error) {
+	s.last = msg
+	if s.result.MessageID == "" {
+		s.result.MessageID = msg.MessageID
+	}
+	if s.result.SessionID == "" {
+		s.result.SessionID = msg.SessionID
+	}
+	return s.result, s.err
 }

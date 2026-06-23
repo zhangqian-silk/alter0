@@ -23,7 +23,9 @@ import {
 import {
   DEFAULT_RUNTIME_EVENT_FILTER,
   RUNTIME_EVENT_FILTER_OPTIONS,
+  terminalStepToRuntimeTraceEvent,
   type RuntimeEventFilterID,
+  type RuntimeTraceEvent,
 } from "../shell/components/runtimeTraceEvents";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
@@ -37,7 +39,7 @@ const TERMINAL_SESSION_COLLECTION_ENDPOINT = "/api/terminal/sessions";
 const CHAT_TERMINAL_SESSION_SCOPE_QUERY = "scope=chat";
 const NEW_CHAT_DRAFT_KEY = "__chat_new__";
 const MAX_COMPOSER_CHARS = 10000;
-const CHAT_TASK_POLL_INTERVAL_MS = 3000;
+const CHAT_SESSION_RECOVERY_POLL_INTERVAL_MS = 3000;
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
@@ -50,13 +52,13 @@ function chatTerminalSessionEndpoint(path: string = ""): string {
   return `${TERMINAL_SESSION_COLLECTION_ENDPOINT}${suffix}?${CHAT_TERMINAL_SESSION_SCOPE_QUERY}`;
 }
 
-type ChatTaskPollPlan = {
+type ChatSessionPollPlan = {
   enabled: boolean;
   interval: number;
 };
 
-export function resolveChatTaskPollPlan(options: { pendingCount: number; pageHidden: boolean }): ChatTaskPollPlan {
-  if (options.pendingCount <= 0 || options.pageHidden) {
+export function resolveChatSessionPollPlan(options: { sessionCount: number; pageHidden: boolean }): ChatSessionPollPlan {
+  if (options.sessionCount <= 0 || options.pageHidden) {
     return {
       enabled: false,
       interval: 0,
@@ -64,7 +66,7 @@ export function resolveChatTaskPollPlan(options: { pendingCount: number; pageHid
   }
   return {
     enabled: true,
-    interval: CHAT_TASK_POLL_INTERVAL_MS,
+    interval: CHAT_SESSION_RECOVERY_POLL_INTERVAL_MS,
   };
 }
 
@@ -74,14 +76,6 @@ type ChatTarget = {
   type: "model";
   id: string;
   name: string;
-};
-
-type ChatProcessStep = {
-  id: string;
-  kind: string;
-  title: string;
-  detail: string;
-  status: string;
 };
 
 export type ChatMessage = {
@@ -94,13 +88,8 @@ export type ChatMessage = {
   error: boolean;
   status: string;
   at: number;
-  processSteps: ChatProcessStep[];
+  processSteps: RuntimeTraceEvent[];
   processCollapsed?: boolean;
-  taskID: string;
-  taskStatus: string;
-  taskPending: boolean;
-  taskResultDelivered: boolean;
-  taskResultFor: string;
 };
 
 type ChatSession = {
@@ -234,6 +223,16 @@ type TerminalStepPayload = {
   title?: string;
   status?: string;
   preview?: string;
+  blocks?: Array<{
+    type?: string;
+    title?: string;
+    content?: string;
+    language?: string;
+    file?: string;
+    start_line?: number;
+    status?: string;
+    exit_code?: number | null;
+  }>;
 };
 
 type ConversationRuntimeContextValue = {
@@ -462,7 +461,7 @@ function normalizeSelectionIDs(values: unknown): string[] {
   return Array.from(new Set(values.map((item) => normalizeText(item)).filter(Boolean)));
 }
 
-function normalizeProcessSteps(values: unknown): ChatProcessStep[] {
+function normalizeRuntimeTraceEvents(values: unknown): RuntimeTraceEvent[] {
   if (!Array.isArray(values)) {
     return [];
   }
@@ -471,21 +470,13 @@ function normalizeProcessSteps(values: unknown): ChatProcessStep[] {
       if (!item || typeof item !== "object") {
         return null;
       }
-      const detail = item as Record<string, unknown>;
-      const title = normalizeText(detail.title);
-      const body = normalizeText(detail.detail);
-      if (!title && !body) {
+      const record = item as RuntimeTraceEvent;
+      if (!normalizeText(record.id) || !normalizeText(record.kind) || !Array.isArray(record.blocks)) {
         return null;
       }
-      return {
-        id: normalizeText(detail.id),
-        kind: normalizeText(detail.kind),
-        title,
-        detail: body,
-        status: normalizeText(detail.status),
-      };
+      return record;
     })
-    .filter((item): item is ChatProcessStep => item !== null);
+    .filter((item): item is RuntimeTraceEvent => item !== null);
 }
 
 function isStreamingPlaceholderText(text: string): boolean {
@@ -497,7 +488,7 @@ function isRecoverableAssistantMessage(message: ChatMessage): boolean {
   if (message.role !== "assistant") {
     return false;
   }
-  return message.taskPending || message.error || normalizeTaskStatus(message.status) === "streaming" || isStreamingPlaceholderText(message.text);
+  return message.error || normalizeTaskStatus(message.status) === "streaming" || isStreamingPlaceholderText(message.text);
 }
 
 function hasRecoverableAssistantState(messages: ChatMessage[]): boolean {
@@ -535,9 +526,6 @@ function hasPersistedAssistantState(messages: ChatMessage[]): boolean {
   return messages.some((message) => {
     if (message.role !== "assistant") {
       return false;
-    }
-    if (message.taskID) {
-      return true;
     }
     return normalizeTaskStatus(message.status) !== "streaming" && !isStreamingPlaceholderText(message.text);
   });
@@ -588,16 +576,11 @@ function normalizeStoredMessage(item: unknown): ChatMessage | null {
     error: Boolean(record.error),
     status: normalizeText(record.status) || (role === "assistant" ? "done" : ""),
     at: Number.isFinite(Number(record.at)) ? Number(record.at) : Date.now(),
-    processSteps: normalizeProcessSteps(record.process_steps),
+    processSteps: normalizeRuntimeTraceEvents(record.runtime_trace_events),
     processCollapsed:
       typeof record.process_collapsed === "boolean"
         ? record.process_collapsed
         : undefined,
-    taskID: normalizeText(record.task_id),
-    taskStatus: normalizeText(record.task_status),
-    taskPending: Boolean(record.task_pending),
-    taskResultDelivered: Boolean(record.task_result_delivered),
-    taskResultFor: normalizeText(record.task_result_for),
   };
 }
 
@@ -701,13 +684,8 @@ function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
     error: message.error,
     status: message.status,
     at: message.at,
-    process_steps: message.processSteps,
+    runtime_trace_events: message.processSteps,
     process_collapsed: message.processCollapsed,
-    task_id: message.taskID,
-    task_status: message.taskStatus,
-    task_pending: message.taskPending,
-    task_result_delivered: message.taskResultDelivered,
-    task_result_for: message.taskResultFor,
   };
 }
 
@@ -880,12 +858,12 @@ function normalizeTerminalAttachment(item: TerminalAttachmentPayload): ComposerA
   };
 }
 
-function normalizeTerminalProcessSteps(values: unknown): ChatProcessStep[] {
+function normalizeTerminalProcessSteps(sessionID: string, turnID: string, values: unknown): RuntimeTraceEvent[] {
   if (!Array.isArray(values)) {
     return [];
   }
   return values
-    .map((item) => {
+    .map((item, index) => {
       if (!item || typeof item !== "object") {
         return null;
       }
@@ -895,18 +873,21 @@ function normalizeTerminalProcessSteps(values: unknown): ChatProcessStep[] {
       if (!title && !detail) {
         return null;
       }
-      return {
-        id: normalizeText(step.id) || title,
-        kind: normalizeText(step.type),
-        title,
-        detail,
-        status: normalizeText(step.status),
-      };
+      return terminalStepToRuntimeTraceEvent(step, {
+        sessionID,
+        turnID,
+        seq: index + 1,
+        provider: {
+          engine: "codex",
+          adapter: "terminal_turn",
+          event_type: normalizeText(step.type),
+        },
+      });
     })
-    .filter((item): item is ChatProcessStep => item !== null);
+    .filter((item): item is RuntimeTraceEvent => item !== null);
 }
 
-function normalizeTerminalTurnMessages(turn: TerminalTurnPayload): ChatMessage[] {
+function normalizeTerminalTurnMessages(sessionID: string, turn: TerminalTurnPayload): ChatMessage[] {
   const id = normalizeText(turn.id);
   if (!id) {
     return [];
@@ -929,16 +910,11 @@ function normalizeTerminalTurnMessages(turn: TerminalTurnPayload): ChatMessage[]
       status: "",
       at,
       processSteps: [],
-      taskID: "",
-      taskStatus: "",
-      taskPending: false,
-      taskResultDelivered: false,
-      taskResultFor: "",
     });
   }
   const status = normalizeTaskStatus(turn.status || "");
   const finalOutput = typeof turn.final_output === "string" ? turn.final_output : "";
-  const processSteps = normalizeTerminalProcessSteps(turn.steps);
+  const processSteps = normalizeTerminalProcessSteps(sessionID, id, turn.steps);
   if (finalOutput || processSteps.length > 0 || status === "running" || status === "queued") {
     messages.push({
       id: `${id}:response`,
@@ -952,11 +928,6 @@ function normalizeTerminalTurnMessages(turn: TerminalTurnPayload): ChatMessage[]
       at: normalizeDateValue(turn.finished_at || turn.started_at),
       processSteps,
       processCollapsed: finalOutput ? undefined : false,
-      taskID: "",
-      taskStatus: status,
-      taskPending: status === "running" || status === "queued",
-      taskResultDelivered: false,
-      taskResultFor: "",
     });
   }
   return messages;
@@ -972,7 +943,7 @@ function normalizeTerminalSession(
     return null;
   }
   const parsedMessages = Array.isArray(item.turns)
-    ? item.turns.flatMap(normalizeTerminalTurnMessages)
+    ? item.turns.flatMap((turn) => normalizeTerminalTurnMessages(id, turn))
     : null;
   const messages = parsedMessages
     ? (previous?.messages.length && item.turns_paging?.has_more_before
@@ -1251,11 +1222,6 @@ export function ConversationRuntimeProvider({
     at: patch.at || Date.now(),
     processSteps: patch.processSteps || [],
     processCollapsed: patch.processCollapsed,
-    taskID: patch.taskID || "",
-    taskStatus: patch.taskStatus || "",
-    taskPending: Boolean(patch.taskPending),
-    taskResultDelivered: Boolean(patch.taskResultDelivered),
-    taskResultFor: patch.taskResultFor || "",
   });
 
   const appendMessage = useCallback((routeKey: ConversationRoute, sessionID: string, message: ChatMessage) => {
@@ -1263,7 +1229,7 @@ export function ConversationRuntimeProvider({
       ...session,
       status: message.role === "assistant" && message.error
         ? "failed"
-        : message.role === "assistant" && (message.taskPending || isConversationBusyStatus(message.status))
+        : message.role === "assistant" && isConversationBusyStatus(message.status)
           ? "busy"
           : session.status,
       title: session.titleAuto && message.role === "user"
@@ -1286,7 +1252,7 @@ export function ConversationRuntimeProvider({
         ? "failed"
         : normalizeText(patch.status) === "interrupted"
           ? "interrupted"
-          : patch.taskPending || isConversationBusyStatus(patch.taskStatus || patch.status || "")
+          : isConversationBusyStatus(patch.status || "")
           ? "busy"
           : normalizeText(patch.status) === "done"
             ? "ready"
@@ -1805,8 +1771,8 @@ export function ConversationRuntimeProvider({
     if (!recoverableSessions.length) {
       return;
     }
-    const pollPlan = resolveChatTaskPollPlan({
-      pendingCount: recoverableSessions.length,
+    const pollPlan = resolveChatSessionPollPlan({
+      sessionCount: recoverableSessions.length,
       pageHidden,
     });
     if (!pollPlan.enabled) {
