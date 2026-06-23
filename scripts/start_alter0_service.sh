@@ -20,7 +20,6 @@ WEB_LOGIN_PASSWORD="${ALTER0_WEB_LOGIN_PASSWORD:-}"
 RUN_AS="${ALTER0_RUN_AS:-alter0}"
 
 RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-/var/lib/alter0}"
-STORAGE_DIR="${ALTER0_STORAGE_DIR:-${RUNTIME_ROOT}/storage}"
 HOME_DIR="${ALTER0_HOME:-}"
 if [[ -z "${HOME_DIR}" ]]; then
   case "${HOME:-}" in
@@ -45,9 +44,9 @@ if [[ -z "${CODEX_COMMAND}" && -x /usr/local/bin/codex ]]; then
   CODEX_COMMAND="/usr/local/bin/codex"
 fi
 
-mkdir -p "${RUNTIME_ROOT}" "${STORAGE_DIR}" "${HOME_DIR}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0" "$(dirname "${BUILD_OUTPUT}")"
+mkdir -p "${RUNTIME_ROOT}" "${HOME_DIR}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0" "$(dirname "${BUILD_OUTPUT}")"
 chmod 750 "${RUNTIME_ROOT}" "${HOME_DIR}" || true
-chmod 700 "${STORAGE_DIR}" "${REPO_DIR}/.alter0" || true
+chmod 700 "${REPO_DIR}/.alter0" || true
 touch "${LOG_FILE}"
 chmod 640 "${LOG_FILE}" || true
 export HOME="${HOME_DIR}"
@@ -82,9 +81,7 @@ ALTER0_CODEX_COMMAND='${CODEX_COMMAND}' \
 '${BUILD_OUTPUT}' \
 -codex-command '${CODEX_COMMAND}' \
 -web-addr '${WEB_ADDR}' \
--web-bind-localhost-only='${WEB_BIND_LOCALHOST_ONLY}' \
--daily-memory-dir '${STORAGE_DIR}/memory' \
--long-term-memory-path '${STORAGE_DIR}/memory/long-term/MEMORY.md'"
+-web-bind-localhost-only='${WEB_BIND_LOCALHOST_ONLY}'"
 
 cd "${REPO_DIR}"
 exec bash -lc "${CMD} >>'${LOG_FILE}' 2>&1"
