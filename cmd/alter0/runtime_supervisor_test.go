@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -67,6 +68,32 @@ func TestSupervisorClientRestarterReturnsDetailedError(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), "auth failed") {
 		t.Fatalf("expected detailed error, got %v", err)
+	}
+}
+
+func TestSupervisorClientRestarterPreservesRestartErrorCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"code":"runtime_restart_discard_confirmation_required","error":"tracked changes exist"}`))
+	}))
+	defer server.Close()
+
+	restarter := &supervisorClientRestarter{
+		addr:   server.URL,
+		token:  "secret",
+		client: server.Client(),
+	}
+	accepted, err := restarter.RequestRestart(web.RuntimeRestartOptions{SyncRemoteMaster: true})
+	if accepted {
+		t.Fatalf("expected restart request rejected")
+	}
+	var restartErr *web.RuntimeRestartError
+	if !errors.As(err, &restartErr) {
+		t.Fatalf("expected runtime restart error, got %T %v", err, err)
+	}
+	if restartErr.Code != web.RuntimeRestartDiscardConfirmationRequired {
+		t.Fatalf("expected discard confirmation code, got %q", restartErr.Code)
 	}
 }
 

@@ -219,6 +219,41 @@ func TestRuntimeRestartEndpointAcceptsSyncRemoteMasterOption(t *testing.T) {
 	}
 }
 
+func TestRuntimeRestartEndpointReturnsDiscardConfirmationCode(t *testing.T) {
+	restarter := &stubRuntimeRestarter{
+		err: NewRuntimeRestartError(
+			RuntimeRestartDiscardConfirmationRequired,
+			"sync remote master requires discard confirmation because tracked working tree changes exist: M README.md",
+		),
+	}
+	server := &Server{
+		runtime: restarter,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/runtime/restart", strings.NewReader(`{"sync_remote_master":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.runtimeRestartHandler(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected conflict status, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode restart error failed: %v", err)
+	}
+	if payload.Code != RuntimeRestartDiscardConfirmationRequired {
+		t.Fatalf("expected discard confirmation code, got %q", payload.Code)
+	}
+	if !strings.Contains(payload.Error, "tracked working tree changes") {
+		t.Fatalf("expected detailed tracked changes error, got %q", payload.Error)
+	}
+}
+
 func TestRuntimeRestartEndpointReturnsLastStatus(t *testing.T) {
 	updatedAt := time.Date(2026, time.June, 23, 5, 20, 0, 0, time.UTC)
 	restarter := &stubRuntimeRestarter{

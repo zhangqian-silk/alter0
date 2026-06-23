@@ -221,7 +221,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     });
   });
 
-  it("restarts the service from the runtime controls and preserves the update checkbox flow", async () => {
+  it("defaults to updating from remote master and restarts immediately when no tracked changes require confirmation", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
@@ -240,7 +240,8 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restart service" }));
     expect(document.querySelector(".runtime-restart-overlay")).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Restart service?" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /Update from remote master/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Update from remote master/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Update from remote master/ }));
     fireEvent.click(screen.getByRole("button", { name: "Restart" }));
 
     await waitFor(() => {
@@ -256,14 +257,64 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(screen.getByText("Restart accepted. The service will come back online shortly.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Restart service" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Update from remote master/ }));
+    expect(screen.getByRole("checkbox", { name: /Update from remote master/ })).toBeChecked();
     expect(screen.getByText("Fetch and fast-forward when the working tree has no tracked changes, rebuild, then restart.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Restart" }));
 
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        5,
+        "/api/control/runtime/restart",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ sync_remote_master: true, confirm_discard_tracked_changes: false }),
+        }),
+      );
+    });
+    expect(screen.queryByRole("dialog", { name: "Discard local tracked changes?" })).not.toBeInTheDocument();
+  });
+
+  it("asks to discard tracked changes only after the restart API requires confirmation", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            code: "runtime_restart_discard_confirmation_required",
+            error: "sync remote master requires discard confirmation because tracked working tree changes exist: M README.md",
+          },
+          { status: 409 },
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: true }, { status: 202 }));
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Service controls")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart service" }));
+    expect(screen.getByRole("checkbox", { name: /Update from remote master/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        4,
+        "/api/control/runtime/restart",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ sync_remote_master: true, confirm_discard_tracked_changes: false }),
+        }),
+      );
+    });
     expect(screen.getByRole("dialog", { name: "Discard local tracked changes?" })).toBeInTheDocument();
     expect(screen.getByText("Updating from remote master will discard tracked local changes before rebuilding. Untracked files are kept.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Discard and restart" }));
 
+    fireEvent.click(screen.getByRole("button", { name: "Discard and restart" }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
         5,

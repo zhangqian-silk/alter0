@@ -123,7 +123,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ## Runtime Service Controls
 
 - 旧运行参数配置页和对应接口不再提供；运行时路径、记忆文件、队列、终端 shell 等参数由源码内置默认值或启动配置控制，不在 Settings 中持久化为用户配置。
-- Runtime 面板提供服务重启入口。更新远端 master 默认不勾选；用户勾选更新且工作区存在 Git 已跟踪本地改动时，前端必须进入二次确认。只有二次确认后才传入 `confirm_discard_tracked_changes=true` 并允许后端丢弃已跟踪改动；未跟踪文件保留。
+- Runtime 面板提供服务重启入口。更新远端 master 默认勾选；用户保持同步选项并确认重启后，前端先提交 `sync_remote_master=true` 请求。仅当后端检测到 Git 已跟踪本地改动并返回确认要求时，前端才进入二次确认。只有二次确认后才传入 `confirm_discard_tracked_changes=true` 并允许后端丢弃已跟踪改动；未跟踪文件保留。
 - Runtime 面板展示当前在线实例最近启动时间和 commit hash，用于确认重启切换后的版本。
 - 工具栏展示当前在线实例对应 commit hash。
 - 页面重连到新实例后以站内成功弹窗提示。
@@ -177,7 +177,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ### 同步远端
 
 - `sync_remote_master=false` 时，基于当前仓库状态构建候选二进制并切换。
-- `sync_remote_master=true` 时，先校验当前分支为 `master`；若存在 Git 已跟踪的本地改动，必须要求用户二次确认后才允许丢弃这些改动；未确认时拒绝重启同步。
+- `sync_remote_master=true` 时，先校验当前分支为 `master`；无 Git 已跟踪本地改动时直接拉取、快进、构建并切换；若存在 Git 已跟踪本地改动，后端必须返回稳定确认错误，前端据此进入二次确认。未确认时拒绝重启同步且不清理本地内容。
 - Git、构建或快进失败直接返回到 Web 控制台，便于定位权限与凭据问题。
 
 ### 切换与回滚

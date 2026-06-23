@@ -94,14 +94,12 @@ func (r *supervisorClientRestarter) RequestRestart(options web.RuntimeRestartOpt
 
 	var payloadResp struct {
 		Accepted bool   `json:"accepted"`
+		Code     string `json:"code"`
 		Error    string `json:"error"`
 	}
 	_ = json.Unmarshal(body, &payloadResp)
 	if resp.StatusCode == http.StatusAccepted {
 		return true, nil
-	}
-	if resp.StatusCode == http.StatusConflict {
-		return false, nil
 	}
 	message := strings.TrimSpace(payloadResp.Error)
 	if message == "" {
@@ -109,6 +107,12 @@ func (r *supervisorClientRestarter) RequestRestart(options web.RuntimeRestartOpt
 	}
 	if message == "" {
 		message = fmt.Sprintf("supervisor returned HTTP %d", resp.StatusCode)
+	}
+	if code := strings.TrimSpace(payloadResp.Code); code != "" {
+		return false, web.NewRuntimeRestartError(code, message)
+	}
+	if resp.StatusCode == http.StatusConflict {
+		return false, nil
 	}
 	return false, errors.New(message)
 }
@@ -341,6 +345,15 @@ func (s *runtimeSupervisor) handleRestart(w http.ResponseWriter, r *http.Request
 
 	accepted, err := s.RequestRestart(req)
 	if err != nil {
+		var restartErr *web.RuntimeRestartError
+		if errors.As(err, &restartErr) && restartErr.Code != "" {
+			status := http.StatusInternalServerError
+			if restartErr.Code == web.RuntimeRestartDiscardConfirmationRequired {
+				status = http.StatusConflict
+			}
+			writeSupervisorJSON(w, status, map[string]string{"code": restartErr.Code, "error": restartErr.Error()})
+			return
+		}
 		writeSupervisorJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
