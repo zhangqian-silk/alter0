@@ -2003,6 +2003,41 @@ body {
   background: #087f73;
 }
 
+.codex-runtime-restart-status {
+  display: grid;
+  gap: 3px;
+  max-width: min(100%, 520px);
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 159, 143, 0.18);
+  border-radius: 8px;
+  background: rgba(15, 159, 143, 0.07);
+}
+
+.codex-runtime-restart-status strong {
+  color: #101828;
+  font-size: 12px;
+}
+
+.codex-runtime-restart-status span,
+.codex-runtime-restart-status small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #475467;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.codex-runtime-restart-status.is-error {
+  border-color: rgba(240, 68, 56, 0.2);
+  background: rgba(254, 243, 242, 0.92);
+}
+
+.codex-runtime-restart-status.is-error span {
+  color: #b42318;
+  font-weight: 700;
+}
+
 .runtime-restart-overlay {
   position: fixed;
   inset: 0;

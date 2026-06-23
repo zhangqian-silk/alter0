@@ -21,6 +21,7 @@ type stubRuntimeRestarter struct {
 	err      error
 	called   int
 	options  RuntimeRestartOptions
+	status   RuntimeRestartStatus
 }
 
 type stubRuntimeInfoProvider struct {
@@ -31,6 +32,13 @@ func (s *stubRuntimeRestarter) RequestRestart(options RuntimeRestartOptions) (bo
 	s.called++
 	s.options = options
 	return s.accepted, s.err
+}
+
+func (s *stubRuntimeRestarter) GetRestartStatus() RuntimeRestartStatus {
+	if s == nil || s.status.Status == "" {
+		return RuntimeRestartStatus{Status: "idle"}
+	}
+	return s.status
 }
 
 func (s *stubRuntimeInfoProvider) GetRuntimeInfo() RuntimeInfo {
@@ -208,6 +216,47 @@ func TestRuntimeRestartEndpointAcceptsSyncRemoteMasterOption(t *testing.T) {
 	}
 	if !restarter.options.ConfirmDiscardTrackedChanges {
 		t.Fatalf("expected confirm_discard_tracked_changes forwarded to runtime restarter")
+	}
+}
+
+func TestRuntimeRestartEndpointReturnsLastStatus(t *testing.T) {
+	updatedAt := time.Date(2026, time.June, 23, 5, 20, 0, 0, time.UTC)
+	restarter := &stubRuntimeRestarter{
+		status: RuntimeRestartStatus{
+			Status:                       "failed",
+			Error:                        "candidate runtime exited before ready: flag provided but not defined",
+			SyncRemoteMaster:             true,
+			ConfirmDiscardTrackedChanges: true,
+			UpdatedAt:                    updatedAt,
+		},
+	}
+	server := &Server{
+		runtime: restarter,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/control/runtime/restart", nil)
+	rec := httptest.NewRecorder()
+	server.runtimeRestartHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok status, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload RuntimeRestartStatus
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode restart status failed: %v", err)
+	}
+	if payload.Status != "failed" {
+		t.Fatalf("expected failed status, got %q", payload.Status)
+	}
+	if !payload.SyncRemoteMaster || !payload.ConfirmDiscardTrackedChanges {
+		t.Fatalf("expected restart options in status: %+v", payload)
+	}
+	if !strings.Contains(payload.Error, "flag provided") {
+		t.Fatalf("unexpected restart error %q", payload.Error)
+	}
+	if !payload.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("unexpected updated_at %s", payload.UpdatedAt)
 	}
 }
 

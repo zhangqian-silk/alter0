@@ -36,6 +36,7 @@ const (
 
 type runtimeRestartClient interface {
 	RequestRestart(options web.RuntimeRestartOptions) (bool, error)
+	GetRestartStatus() web.RuntimeRestartStatus
 }
 
 type supervisorClientRestarter struct {
@@ -112,6 +113,48 @@ func (r *supervisorClientRestarter) RequestRestart(options web.RuntimeRestartOpt
 	return false, errors.New(message)
 }
 
+func (r *supervisorClientRestarter) GetRestartStatus() web.RuntimeRestartStatus {
+	if r == nil {
+		return web.RuntimeRestartStatus{Status: "idle"}
+	}
+	endpoint, err := url.Parse(r.addr)
+	if err != nil {
+		return web.RuntimeRestartStatus{Status: "failed", Error: fmt.Sprintf("parse supervisor address: %v", err)}
+	}
+	endpoint.Path = "/restart"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return web.RuntimeRestartStatus{Status: "failed", Error: fmt.Sprintf("create supervisor status request: %v", err)}
+	}
+	req.Header.Set(supervisorTokenHeader, r.token)
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return web.RuntimeRestartStatus{Status: "failed", Error: fmt.Sprintf("request supervisor restart status: %v", err)}
+	}
+	defer resp.Body.Close()
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 32*1024))
+	if readErr != nil {
+		return web.RuntimeRestartStatus{Status: "failed", Error: fmt.Sprintf("read supervisor status response: %v", readErr)}
+	}
+	if resp.StatusCode != http.StatusOK {
+		message := strings.TrimSpace(string(body))
+		if message == "" {
+			message = fmt.Sprintf("supervisor returned HTTP %d", resp.StatusCode)
+		}
+		return web.RuntimeRestartStatus{Status: "failed", Error: message}
+	}
+	var status web.RuntimeRestartStatus
+	if err := json.Unmarshal(body, &status); err != nil {
+		return web.RuntimeRestartStatus{Status: "failed", Error: fmt.Sprintf("decode supervisor status response: %v", err)}
+	}
+	if strings.TrimSpace(status.Status) == "" {
+		status.Status = "idle"
+	}
+	return status
+}
+
 type managedChild struct {
 	executable string
 	args       []string
@@ -148,10 +191,11 @@ type runtimeSupervisor struct {
 	probeClient        *http.Client
 	childChanged       chan struct{}
 
-	mu           sync.RWMutex
-	child        *managedChild
-	updating     bool
-	shuttingDown bool
+	mu            sync.RWMutex
+	child         *managedChild
+	updating      bool
+	shuttingDown  bool
+	restartStatus web.RuntimeRestartStatus
 }
 
 func newRuntimeSupervisor(logger *slog.Logger, appArgs []string, rawWebAddr string, rawBindLocalhost bool) (*runtimeSupervisor, error) {
@@ -251,15 +295,18 @@ func (s *runtimeSupervisor) RequestRestart(options web.RuntimeRestartOptions) (b
 		return false, errors.New("runtime child is unavailable")
 	}
 	s.updating = true
+	s.restartStatus = newRestartStatus("preparing", options, "")
 	s.mu.Unlock()
 
 	candidate, err := s.prepareCandidate(options)
 	if err != nil {
+		s.setRestartStatus("failed", options, err)
 		s.finishUpdate()
 		return false, err
 	}
+	s.setRestartStatus("switching", options, nil)
 
-	go s.cutover(current, candidate)
+	go s.cutover(current, candidate, options)
 	return true, nil
 }
 
@@ -270,12 +317,16 @@ func (s *runtimeSupervisor) controlMux() http.Handler {
 }
 
 func (s *runtimeSupervisor) handleRestart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		writeSupervisorJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 	if strings.TrimSpace(r.Header.Get(supervisorTokenHeader)) != s.supervisorToken {
 		writeSupervisorJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	if r.Method == http.MethodGet {
+		writeSupervisorJSON(w, http.StatusOK, s.GetRestartStatus())
 		return
 	}
 
@@ -325,7 +376,7 @@ func (s *runtimeSupervisor) prepareCandidate(options web.RuntimeRestartOptions) 
 	return candidate, nil
 }
 
-func (s *runtimeSupervisor) cutover(previous *managedChild, candidateExecutable string) {
+func (s *runtimeSupervisor) cutover(previous *managedChild, candidateExecutable string, options web.RuntimeRestartOptions) {
 	defer s.finishUpdate()
 
 	if err := s.stopChild(previous, runtimeRestartStopTimeout); err != nil && s.logger != nil {
@@ -334,23 +385,24 @@ func (s *runtimeSupervisor) cutover(previous *managedChild, candidateExecutable 
 
 	next, err := s.startChild(candidateExecutable)
 	if err != nil {
-		s.restorePrevious(previous, fmt.Errorf("start candidate child: %w", err))
+		s.restorePrevious(previous, options, fmt.Errorf("start candidate child: %w", err))
 		return
 	}
 
 	readyAddr, err := s.resolveProbeAddr()
 	if err != nil {
 		_ = s.stopChild(next, runtimeRestartStopTimeout)
-		s.restorePrevious(previous, fmt.Errorf("resolve runtime probe address: %w", err))
+		s.restorePrevious(previous, options, fmt.Errorf("resolve runtime probe address: %w", err))
 		return
 	}
 	if err := s.waitUntilReady(next, readyAddr, runtimeReadyTimeout); err != nil {
 		_ = s.stopChild(next, runtimeRestartStopTimeout)
-		s.restorePrevious(previous, err)
+		s.restorePrevious(previous, options, err)
 		return
 	}
 
 	s.setChild(next)
+	s.setRestartStatus("completed", options, nil)
 	if s.logger != nil {
 		s.logger.Info(
 			"runtime restart completed",
@@ -360,7 +412,8 @@ func (s *runtimeSupervisor) cutover(previous *managedChild, candidateExecutable 
 	}
 }
 
-func (s *runtimeSupervisor) restorePrevious(previous *managedChild, cause error) {
+func (s *runtimeSupervisor) restorePrevious(previous *managedChild, options web.RuntimeRestartOptions, cause error) {
+	s.setRestartStatus("failed", options, cause)
 	if s.logger != nil && cause != nil {
 		s.logger.Error("runtime restart failed, restoring previous child", slog.String("error", cause.Error()))
 	}
@@ -384,6 +437,35 @@ func (s *runtimeSupervisor) restorePrevious(previous *managedChild, cause error)
 		s.logger.Error("restored runtime child did not become ready", slog.String("error", waitErr.Error()))
 	}
 	s.setChild(restored)
+}
+
+func (s *runtimeSupervisor) GetRestartStatus() web.RuntimeRestartStatus {
+	if s == nil {
+		return web.RuntimeRestartStatus{Status: "idle"}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.restartStatus.Status == "" {
+		return web.RuntimeRestartStatus{Status: "idle"}
+	}
+	return s.restartStatus
+}
+
+func (s *runtimeSupervisor) setRestartStatus(status string, options web.RuntimeRestartOptions, cause error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.restartStatus.StartedAt.IsZero() {
+		s.restartStatus = newRestartStatus(status, options, "")
+	}
+	s.restartStatus.Status = status
+	s.restartStatus.SyncRemoteMaster = options.SyncRemoteMaster
+	s.restartStatus.ConfirmDiscardTrackedChanges = options.ConfirmDiscardTrackedChanges
+	s.restartStatus.UpdatedAt = time.Now().UTC()
+	if cause != nil {
+		s.restartStatus.Error = cause.Error()
+	} else {
+		s.restartStatus.Error = ""
+	}
 }
 
 func (s *runtimeSupervisor) startChild(executable string) (*managedChild, error) {
@@ -586,44 +668,74 @@ func buildRuntimeProbeAddr(listenAddr string) (string, error) {
 }
 
 func filterInternalRuntimeArgs(args []string) []string {
+	return whitelistRuntimeArgs(args)
+}
+
+func whitelistRuntimeArgs(args []string) []string {
+	allowedValueFlags := map[string]bool{
+		"codex-command":      true,
+		"web-addr":           true,
+		"web-login-password": true,
+	}
+	allowedBoolFlags := map[string]bool{
+		"web-bind-localhost-only": true,
+	}
 	filtered := make([]string, 0, len(args))
-	skipNextValue := false
-	for _, arg := range args {
-		if skipNextValue {
-			skipNextValue = false
+	for i := 0; i < len(args); i++ {
+		arg := strings.TrimSpace(args[i])
+		if arg == "" {
 			continue
 		}
-		trimmed := strings.TrimSpace(arg)
-		switch {
-		case trimmed == "-"+runtimeChildFlag:
+		name, hasValue := splitRuntimeFlagName(arg)
+		if name == "" {
 			continue
-		case trimmed == "-"+relaunchHelperFlag:
+		}
+		if allowedBoolFlags[name] {
+			if hasValue || !strings.Contains(arg, "=") {
+				filtered = append(filtered, arg)
+			}
 			continue
-		case strings.HasPrefix(trimmed, "-"+relaunchParentPIDFlag+"="):
+		}
+		if !allowedValueFlags[name] {
 			continue
-		case trimmed == "-"+relaunchParentPIDFlag:
-			skipNextValue = true
-			continue
-		case strings.HasPrefix(trimmed, "-"+relaunchExecPathFlag+"="):
-			continue
-		case trimmed == "-"+relaunchExecPathFlag:
-			skipNextValue = true
-			continue
-		case strings.HasPrefix(trimmed, "-"+relaunchArgsFlag+"="):
-			continue
-		case trimmed == "-"+relaunchArgsFlag:
-			skipNextValue = true
-			continue
-		case strings.HasPrefix(trimmed, "-"+relaunchWorkingDirFlag+"="):
-			continue
-		case trimmed == "-"+relaunchWorkingDirFlag:
-			skipNextValue = true
-			continue
-		default:
+		}
+		if hasValue {
 			filtered = append(filtered, arg)
+			continue
+		}
+		if i+1 < len(args) && !strings.HasPrefix(strings.TrimSpace(args[i+1]), "-") {
+			filtered = append(filtered, arg, args[i+1])
+			i++
 		}
 	}
 	return filtered
+}
+
+func splitRuntimeFlagName(arg string) (string, bool) {
+	trimmed := strings.TrimSpace(arg)
+	if !strings.HasPrefix(trimmed, "-") {
+		return "", false
+	}
+	trimmed = strings.TrimLeft(trimmed, "-")
+	if trimmed == "" {
+		return "", false
+	}
+	if idx := strings.Index(trimmed, "="); idx >= 0 {
+		return trimmed[:idx], true
+	}
+	return trimmed, false
+}
+
+func newRestartStatus(status string, options web.RuntimeRestartOptions, message string) web.RuntimeRestartStatus {
+	now := time.Now().UTC()
+	return web.RuntimeRestartStatus{
+		Status:                       status,
+		Error:                        strings.TrimSpace(message),
+		SyncRemoteMaster:             options.SyncRemoteMaster,
+		ConfirmDiscardTrackedChanges: options.ConfirmDiscardTrackedChanges,
+		StartedAt:                    now,
+		UpdatedAt:                    now,
+	}
 }
 
 func randomSupervisorToken() (string, error) {
