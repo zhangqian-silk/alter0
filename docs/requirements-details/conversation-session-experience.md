@@ -241,7 +241,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 ### 输入与键盘
 
 - Chat 输入区基于 `VisualViewport` 同步有效视口高度。
-- 移动端 App Shell 与 workbench 高度链以 `VisualViewport` 驱动的 `--mobile-viewport-height` 加键盘占位保持稳定基线高度，根文档禁止页面级滚动，`body / #frontend-root / app-shell` 固定到视口，避免浏览器工具栏状态切换、输入聚焦或键盘动画造成底部留白、内容裁切或整页位移；除浮层最大高度这类可见区约束外，主工作区容器不得直接消费实时 `--mobile-viewport-height` 改变高度。
+- 移动端 App Shell 与 workbench 高度链以 `VisualViewport` 驱动的 `--mobile-viewport-height` 加键盘占位保持稳定基线高度，根文档禁止页面级滚动，避免浏览器工具栏状态切换、输入聚焦或键盘动画造成底部留白、内容裁切或整页位移；除浮层最大高度这类可见区约束外，主工作区容器不得直接消费实时 `--mobile-viewport-height` 改变高度。
 - `Chat / Terminal` 的移动端会话列表共用左侧主导航抽屉：运行页顶部只保留 `Menu` 抽屉入口，并在抽屉中直接展示主工作流入口与当前运行页会话列表；点击遮罩、切换路由、切换会话或新建会话后，不保留旧的抽屉展开态。
 - `Chat` 的移动端左侧抽屉在真机上优先保证稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不再叠加多层位移、条目级顺序动画或生硬的整板平推过渡。
 - 输入区在软键盘弹起、收起、浏览器工具栏伸缩时持续贴住可见底部；键盘事实使用 `--keyboard-offset` 记录，只有 Composer 贴底使用 `--keyboard-composer-offset`，正文滚动区、空态、命令候选和配置面板不消费键盘偏移。

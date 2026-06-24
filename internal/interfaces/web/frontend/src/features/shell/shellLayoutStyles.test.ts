@@ -401,18 +401,6 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /@media \(max-width: 1100px\) \{[\s\S]*?html,\s*body,\s*#frontend-root\s*\{[\s\S]*?height:\s*100%;[\s\S]*?overflow:\s*hidden;[\s\S]*?overscroll-behavior:\s*none;/,
     );
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 1100px\) \{[\s\S]*?body,\s*#frontend-root\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?inset:\s*0;/,
-    );
-  });
-
-  it("pins the mobile app shell to the viewport so input focus cannot animate the whole page", () => {
-    const currentDirectory = dirname(fileURLToPath(import.meta.url));
-    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
-
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 1100px\) \{[\s\S]*?\.app-shell,\s*\.app-shell\.info-mode,\s*\.app-shell\.nav-collapsed,\s*\.app-shell\.nav-collapsed\.info-mode\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?inset:\s*0;/,
-    );
   });
 
   it("keeps desktop chrome panels visible and only exposes header drawer buttons at narrow breakpoints", () => {
