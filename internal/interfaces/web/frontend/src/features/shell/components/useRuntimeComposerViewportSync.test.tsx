@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { useRef } from "react";
 import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
 
@@ -57,7 +57,9 @@ function Harness({
           }
         }}
         data-testid="composer-shell"
-      />
+      >
+        <textarea data-runtime-composer-input="terminal" data-testid="composer-input" />
+      </footer>
     </div>
   );
 }
@@ -185,6 +187,50 @@ describe("useRuntimeComposerViewportSync", () => {
         Object.defineProperty(window, "scrollY", originalScrollY);
       }
       input.remove();
+    }
+  });
+
+  it("restores the scroll anchor captured before the mobile composer input receives focus", () => {
+    const originalScrollX = Object.getOwnPropertyDescriptor(window, "scrollX");
+    const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
+    let scrollY = 0;
+    Object.defineProperty(window, "scrollX", {
+      configurable: true,
+      value: 0,
+    });
+    Object.defineProperty(window, "scrollY", {
+      configurable: true,
+      get: () => scrollY,
+    });
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+
+    try {
+      const { rerender } = render(<Harness isMobileViewport inputFocused={false} />);
+      const workspaceBody = document.querySelector("[data-testid='workspace-body']") as HTMLDivElement;
+      const workspaceScreen = document.querySelector("[data-testid='workspace-screen']") as HTMLElement;
+      const input = document.querySelector("[data-testid='composer-input']") as HTMLTextAreaElement;
+
+      fireEvent.pointerDown(input, { pointerType: "touch" });
+      scrollY = 72;
+      workspaceBody.scrollTop = 96;
+      workspaceScreen.scrollTop = 144;
+      rerender(<Harness isMobileViewport inputFocused />);
+
+      expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 0, behavior: "auto" });
+      expect(workspaceBody.scrollTop).toBe(0);
+      expect(workspaceScreen.scrollTop).toBe(0);
+    } finally {
+      if (originalScrollX) {
+        Object.defineProperty(window, "scrollX", originalScrollX);
+      }
+      if (originalScrollY) {
+        Object.defineProperty(window, "scrollY", originalScrollY);
+      }
     }
   });
 });

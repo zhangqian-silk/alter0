@@ -248,7 +248,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 仅在输入框实际聚焦且软键盘占位达到阈值时追加键盘底部偏移。
 - 键盘收起或视口回弹后不保留额外底部空白。
 - `Chat / Terminal` 在页面恢复前台可见、浏览器重新激活当前标签页或系统恢复当前 WebView 时，必须立刻重算共享 `--mobile-viewport-height` 与 `--keyboard-offset`；第一帧不得沿用后台前遗留的旧视口高度、旧键盘偏移或旧底部遮挡量。
-- `Chat / Terminal` 首次触摸主输入框时需保留浏览器原生聚焦与软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为或抢先手动 `focus()`；程序化 `preventScroll` 聚焦仅用于 slash command、创建新会话后回到 Composer 等非直接输入框触摸场景。输入框保持真实焦点期间，键盘动画里的 `window.scroll` 与 `VisualViewport resize/scroll` 除驱动 composer/遮挡高度同步外，还必须把页面级滚动、运行页祖先容器和正文滚动容器锚回聚焦前位置，并在键盘动画窗口内短延迟复核，避免 iOS Safari 把整个工作台顶起。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
+- `Chat / Terminal` 首次触摸主输入框时需保留浏览器原生聚焦与软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为或抢先手动 `focus()`；触摸捕获阶段只允许记录页面级滚动、运行页祖先容器和正文滚动容器的聚焦前锚点。程序化 `preventScroll` 聚焦仅用于 slash command、创建新会话后回到 Composer 等非直接输入框触摸场景。输入框保持真实焦点期间，键盘动画里的 `window.scroll` 与 `VisualViewport resize/scroll` 除驱动 composer/遮挡高度同步外，还必须把页面级滚动、运行页祖先容器和正文滚动容器锚回聚焦前位置，并在键盘动画窗口内短延迟复核，避免 iOS Safari 把整个工作台顶起。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
 - `Chat` 在移动端触摸发送按钮时，必须先 blur 当前主输入框，再继续原有发送链路；键盘收起期间 composer 继续按 `VisualViewport` 的真实回弹过程逐步释放 `--keyboard-offset`，不能在发送后继续维持聚焦态或把输入区悬停在空白带上。
 - `Chat` 的 fixed composer 在移动端只保留静态 Composer footprint；`.conversation-chat-screen` 与空态欢迎区在软键盘弹起期间保持原高度和原位置，不能因键盘高度变化出现压缩、回弹或位移动画。
 - `Chat` 在键盘收起和 composer 回弹到底边时，工作区滚动面保持原位；最后一屏消息、空态说明和阅读定位控件都不能在底边留下额外空白或残留占位。
