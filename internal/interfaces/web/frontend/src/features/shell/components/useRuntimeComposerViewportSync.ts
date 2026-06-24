@@ -1,4 +1,4 @@
-import { useLayoutEffect, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 
 type UseRuntimeComposerViewportSyncProps = {
   isMobileViewport: boolean;
@@ -46,29 +46,57 @@ function collectScrollAnchors(workspaceBodyNode: HTMLElement | null): ScrollAnch
   }));
 }
 
+function restoreScrollAnchors(scrollAnchors: ScrollAnchor[]) {
+  if (window.scrollX !== 0 || window.scrollY !== 0) {
+    window.scrollTo({ left: 0, top: 0, behavior: "auto" });
+  }
+  scrollAnchors.forEach(({ node, top, left }) => {
+    if (node.scrollTop !== top) {
+      node.scrollTop = top;
+    }
+    if (node.scrollLeft !== left) {
+      node.scrollLeft = left;
+    }
+  });
+}
+
 export function useRuntimeComposerViewportSync({
   isMobileViewport,
   inputFocused,
   workspaceBodyRef,
   composerShellRef,
 }: UseRuntimeComposerViewportSyncProps) {
+  const pendingInputFocusAnchorsRef = useRef<ScrollAnchor[] | null>(null);
+
+  useLayoutEffect(() => {
+    const composerShellNode = composerShellRef.current;
+    if (!isMobileViewport || !composerShellNode) {
+      pendingInputFocusAnchorsRef.current = null;
+      return;
+    }
+    const captureInputFocusAnchor = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest("[data-runtime-composer-input]")) {
+        return;
+      }
+      pendingInputFocusAnchorsRef.current = collectScrollAnchors(workspaceBodyRef.current);
+    };
+    composerShellNode.addEventListener("pointerdown", captureInputFocusAnchor, true);
+    composerShellNode.addEventListener("touchstart", captureInputFocusAnchor, true);
+    return () => {
+      composerShellNode.removeEventListener("pointerdown", captureInputFocusAnchor, true);
+      composerShellNode.removeEventListener("touchstart", captureInputFocusAnchor, true);
+    };
+  }, [composerShellRef, isMobileViewport, workspaceBodyRef]);
+
   useLayoutEffect(() => {
     if (!isMobileViewport || !inputFocused) {
       return;
     }
-    const scrollAnchors = collectScrollAnchors(workspaceBodyRef.current);
+    const scrollAnchors = pendingInputFocusAnchorsRef.current ?? collectScrollAnchors(workspaceBodyRef.current);
+    pendingInputFocusAnchorsRef.current = null;
     const keepViewportAnchored = () => {
-      if (window.scrollX !== 0 || window.scrollY !== 0) {
-        window.scrollTo({ left: 0, top: 0, behavior: "auto" });
-      }
-      scrollAnchors.forEach(({ node, top, left }) => {
-        if (node.scrollTop !== top) {
-          node.scrollTop = top;
-        }
-        if (node.scrollLeft !== left) {
-          node.scrollLeft = left;
-        }
-      });
+      restoreScrollAnchors(scrollAnchors);
     };
     const frameID = window.requestAnimationFrame(keepViewportAnchored);
     const lateFrameIDs = [96, 180, 280].map((delayMS) =>
