@@ -19,4 +19,10 @@ body,
     overflow: hidden;
     overscroll-behavior: none;
   }
+
+  body,
+  #frontend-root {
+    position: fixed;
+    inset: 0;
+  }
 }

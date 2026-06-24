@@ -5415,6 +5415,8 @@ body::after {
   .app-shell.info-mode,
   .app-shell.nav-collapsed,
   .app-shell.nav-collapsed.info-mode {
+    position: fixed;
+    inset: 0;
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
     padding: 0;
