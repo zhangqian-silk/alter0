@@ -52,10 +52,6 @@ type terminalSessionListEnvelope struct {
 	Items []any `json:"items"`
 }
 
-type terminalStepEnvelope struct {
-	Step any `json:"step"`
-}
-
 type terminalTurnPagingEnvelope struct {
 	Limit            int    `json:"limit"`
 	Total            int    `json:"total"`
@@ -231,17 +227,17 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusOK, map[string]any{"items": items})
 			return
 		}
-		if len(parts) == 5 && parts[3] == "steps" {
+		if len(parts) == 5 && parts[3] == "events" {
 			if r.Method != http.MethodGet {
 				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 				return
 			}
-			detail, err := s.terminals.GetStepDetail(ownerID, sessionID, strings.TrimSpace(parts[2]), strings.TrimSpace(parts[4]))
+			detail, err := s.terminals.GetRuntimeTraceEventDetail(ownerID, sessionID, strings.TrimSpace(parts[2]), strings.TrimSpace(parts[4]))
 			if err != nil {
 				s.writeTerminalError(w, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"step": detail})
+			writeJSON(w, http.StatusOK, map[string]any{"event": detail})
 			return
 		}
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})
@@ -537,7 +533,7 @@ func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
 			"error":      err.Error(),
 			"error_code": "terminal_turn_not_found",
 		})
-	case errors.Is(err, terminalapp.ErrStepNotFound):
+	case errors.Is(err, terminalapp.ErrRuntimeEventNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error":      err.Error(),
 			"error_code": "terminal_step_not_found",

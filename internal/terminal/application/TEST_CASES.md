@@ -3,7 +3,7 @@
 ## 覆盖范围
 
 - Codex command/args/options 解析。
-- Terminal create/recover 工作区分配、状态、会话共享和 persisted session 加载。
+- Terminal create/recover 工作区分配、状态、会话共享、persisted session 加载和旧 `steps / next_step_id` 到 `runtime_events / next_event_id` 的读取迁移写回。
 - 输入启动/恢复 Codex 线程、标题升级、并发拒绝、busy snapshot、认证失败。
 - close/delete、置顶持久化、置顶优先排序、shutdown interrupted notice、last output 排序、helper process。
 

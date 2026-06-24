@@ -20,6 +20,33 @@ import {
 import { terminalCommandPreview, terminalSessionWorkspace } from "./helpers/support/terminal-env";
 import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
+function terminalRuntimeEventFixture(overrides: Record<string, unknown> = {}) {
+  const kind = String(overrides.kind || "assistant_commentary");
+  const id = String(overrides.id || "event-1");
+  return {
+    id,
+    turn_id: String(overrides.turn_id || "turn-1"),
+    seq: Number(overrides.seq || 1),
+    source: "adapter",
+    provider: { engine: "codex", adapter: "codex_cli_json", event_type: overrides.raw_type || "message", item_id: id },
+    role: "assistant",
+    kind,
+    lifecycle: String(overrides.lifecycle || "completed"),
+    status: String(overrides.status || "completed"),
+    title: String(overrides.title || "Progress"),
+    summary: String(overrides.summary || overrides.preview || "Progress"),
+    blocks: Array.isArray(overrides.blocks) ? overrides.blocks : [],
+    visibility: "collapsed",
+    duration_ms: Number(overrides.duration_ms || 1000),
+    raw: {
+      ref: id,
+      type: String(overrides.raw_type || "message"),
+      has_detail: Boolean(overrides.has_detail),
+    },
+    ...overrides,
+  };
+}
+
 test.describe("Terminal route", () => {
   test.beforeEach(async ({ request }) => {
     await closeTrackedTerminalSessions(request);
@@ -271,7 +298,7 @@ test.describe("Terminal route", () => {
         "",
         "Use the bottom composer to continue.",
       ].join("\n"),
-      steps: [],
+      runtime_trace_events: [],
     }));
 
     await bindTerminalClient(page, clientID);
@@ -425,7 +452,7 @@ test.describe("Terminal route", () => {
         "",
         "Keep the jump controls above the composer.",
       ].join("\n"),
-      steps: [],
+      runtime_trace_events: [],
     }));
 
     await bindTerminalClient(page, clientID);
@@ -805,11 +832,11 @@ test.describe("Terminal route", () => {
           longCodeLine,
           "```",
         ].join("\n"),
-        steps: [],
+        runtime_trace_events: [],
       }],
       process_collapsed: {},
       output_collapsed: {},
-      expanded_steps: {},
+      expanded_events: {},
       step_details: {},
       step_errors: {},
       step_loading: {},
@@ -1019,12 +1046,12 @@ test.describe("Terminal route", () => {
     }
   });
 
-  test("renders process and plain output with lazy-loaded step details", async ({ page, request }) => {
+  test("renders process and plain output with lazy-loaded event details", async ({ page, request }) => {
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "structure" });
     const composer = terminalPage.composer();
     let stepDetailRequests = 0;
     page.on("request", (requestEvent) => {
-      if (requestEvent.method() === "GET" && requestEvent.url().includes("/steps/")) {
+      if (requestEvent.method() === "GET" && requestEvent.url().includes("/events/")) {
         stepDetailRequests += 1;
       }
     });
@@ -1047,7 +1074,7 @@ test.describe("Terminal route", () => {
     await expect(visibleStepToggles.nth(1)).toContainText(terminalCommandPreview);
 
     const stepDetailResponse = page.waitForResponse(
-      (response) => response.request().method() === "GET" && response.ok() && response.url().includes("/steps/"),
+      (response) => response.request().method() === "GET" && response.ok() && response.url().includes("/events/"),
     );
     await Promise.all([
       stepDetailResponse,
@@ -1095,7 +1122,7 @@ test.describe("Terminal route", () => {
           "turn-1": false,
         },
         output_collapsed: {},
-        expanded_steps: {},
+        expanded_events: {},
         step_details: {},
         step_loading: {},
         step_errors: {},
@@ -1109,16 +1136,17 @@ test.describe("Terminal route", () => {
             finished_at: 0,
             duration_ms: 0,
             final_output: "",
-            steps: [
-              {
-                id: "step-1",
+            runtime_trace_events: [
+              terminalRuntimeEventFixture({
+                id: "event-1",
                 title: "Waiting for Codex",
-                preview: "running",
+                summary: "running",
                 status: "running",
+                lifecycle: "started",
                 started_at: now - 4500,
-                finished_at: 0,
+                completed_at: 0,
                 duration_ms: 0,
-              },
+              }),
             ],
           },
         ],
@@ -1168,7 +1196,7 @@ test.describe("Terminal route", () => {
             finished_at: now - 1200,
             duration_ms: 2000,
             final_output: `${Array.from({ length: 18 }, (_, index) => `line ${index + 1}`).join("\n")}\n\n- [requirements.md](/srv/alter0/app/alter0/docs/requirements.md)`,
-            steps: [],
+            runtime_trace_events: [],
           },
         ],
       },
@@ -1403,7 +1431,7 @@ test.describe("Terminal route", () => {
           "turn-2": true
         },
         output_collapsed: {},
-        expanded_steps: {},
+        expanded_events: {},
         step_details: {},
         step_loading: {},
         step_errors: {},
@@ -1416,14 +1444,17 @@ test.describe("Terminal route", () => {
           finished_at: now - 3200 + index * 200,
           duration_ms: 1000,
           final_output: Array.from({ length: 48 }, (_, lineIndex) => `turn ${index + 1} line ${lineIndex + 1}`).join("\n"),
-          steps: index === 1 ? Array.from({ length: 8 }, (_value, stepIndex) => ({
-            id: `turn-2-step-${stepIndex + 1}`,
+          runtime_trace_events: index === 1 ? Array.from({ length: 8 }, (_value, stepIndex) => terminalRuntimeEventFixture({
+            id: `turn-2-event-${stepIndex + 1}`,
+            turn_id: "turn-2",
+            seq: stepIndex + 1,
+            kind: "shell_command",
+            raw_type: "command",
             title: `Shell step ${stepIndex + 1}`,
-            preview: `pwsh -NoProfile -Command "Get-ChildItem step-${stepIndex + 1}"`,
-            status: "completed",
+            summary: `pwsh -NoProfile -Command "Get-ChildItem step-${stepIndex + 1}"`,
             duration_ms: 1000 + stepIndex * 10,
             started_at: now - 3800 + stepIndex * 20,
-            finished_at: now - 3400 + stepIndex * 20,
+            completed_at: now - 3400 + stepIndex * 20,
           })) : [],
         })),
       },
@@ -1497,7 +1528,7 @@ test.describe("Terminal route", () => {
         last_output_at: now - 1000,
         process_collapsed: {},
         output_collapsed: { "turn-1": false },
-        expanded_steps: {},
+        expanded_events: {},
         step_details: {},
         step_loading: {},
         step_errors: {},
@@ -1511,7 +1542,7 @@ test.describe("Terminal route", () => {
             finished_at: now - 1200,
             duration_ms: 2000,
             final_output: Array.from({ length: 120 }, (_, index) => `line ${index + 1}`).join("\n"),
-            steps: [],
+            runtime_trace_events: [],
           },
         ],
       },
@@ -1569,7 +1600,7 @@ test.describe("Terminal route", () => {
         last_output_at: now - 1000,
         process_collapsed: {},
         output_collapsed: { "turn-sticky": false },
-        expanded_steps: {},
+        expanded_events: {},
         step_details: {},
         step_loading: {},
         step_errors: {},
@@ -1583,14 +1614,15 @@ test.describe("Terminal route", () => {
             finished_at: now - 1200,
             duration_ms: 2000,
             final_output: Array.from({ length: 120 }, (_, index) => `line ${index + 1}`).join("\n"),
-            steps: Array.from({ length: 12 }, (_, index) => ({
-              id: `step-${index + 1}`,
+            runtime_trace_events: Array.from({ length: 12 }, (_, index) => terminalRuntimeEventFixture({
+              id: `event-${index + 1}`,
+              turn_id: "turn-sticky",
+              seq: index + 1,
               title: `Step ${index + 1}`,
-              preview: `preview ${index + 1}`,
-              status: "completed",
+              summary: `preview ${index + 1}`,
               duration_ms: 1000 + index * 10,
               started_at: now - 3000 + index * 20,
-              finished_at: now - 2000 + index * 20,
+              completed_at: now - 2000 + index * 20,
             })),
           },
         ],
@@ -1697,7 +1729,7 @@ test.describe("Terminal route", () => {
         last_output_at: now - 1000,
         process_collapsed: { "turn-long-wrap": false },
         output_collapsed: { "turn-long-wrap": false },
-        expanded_steps: {},
+        expanded_events: {},
         step_details: {},
         step_loading: {},
         step_errors: {},
@@ -1714,16 +1746,18 @@ test.describe("Terminal route", () => {
               "现在实现最小生产代码：为 Chat 的 Codex thread 解析增加路径迁移。",
               `2026-05-25T15:41:01.670264Z ERROR codex_core::tools::router: apply_patch verification failed: Failed to find expected lines in ${longPath}: func TestCodexCLIProcessorProcessStreamPersistThreadForFallbackSkill(*testing.T)`,
             ].join("\n\n"),
-            steps: [
-              {
-                id: "step-long-path",
-                title: `apply_patch ${longPath}`,
-                preview: `Failed to find expected lines in ${longPath}`,
+            runtime_trace_events: [
+              terminalRuntimeEventFixture({
+                id: "event-long-path",
+                turn_id: "turn-long-wrap",
+                lifecycle: "failed",
                 status: "failed",
+                title: `apply_patch ${longPath}`,
+                summary: `Failed to find expected lines in ${longPath}`,
                 duration_ms: 1200,
                 started_at: now - 3000,
-                finished_at: now - 1800,
-              },
+                completed_at: now - 1800,
+              }),
             ],
           },
         ],

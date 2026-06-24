@@ -23,7 +23,7 @@ import {
 import {
   DEFAULT_RUNTIME_EVENT_FILTER,
   RUNTIME_EVENT_FILTER_OPTIONS,
-  terminalStepToRuntimeTraceEvent,
+  normalizeRuntimeTraceEvents,
   type RuntimeEventFilterID,
   type RuntimeTraceEvent,
 } from "../shell/components/runtimeTraceEvents";
@@ -90,7 +90,7 @@ export type ChatMessage = {
   error: boolean;
   status: string;
   at: number;
-  processSteps: RuntimeTraceEvent[];
+  processEvents: RuntimeTraceEvent[];
   processCollapsed?: boolean;
 };
 
@@ -225,7 +225,7 @@ type TerminalTurnPayload = {
   started_at?: string | number;
   finished_at?: string | number;
   final_output?: string;
-  steps?: TerminalStepPayload[];
+  runtime_trace_events?: RuntimeTraceEvent[];
 };
 
 type TerminalAttachmentPayload = {
@@ -234,24 +234,6 @@ type TerminalAttachmentPayload = {
   content_type?: string;
   asset_url?: string;
   preview_url?: string;
-};
-
-type TerminalStepPayload = {
-  id?: string;
-  type?: string;
-  title?: string;
-  status?: string;
-  preview?: string;
-  blocks?: Array<{
-    type?: string;
-    title?: string;
-    content?: string;
-    language?: string;
-    file?: string;
-    start_line?: number;
-    status?: string;
-    exit_code?: number | null;
-  }>;
 };
 
 type ConversationRuntimeContextValue = {
@@ -470,7 +452,7 @@ function cloneChatMessage(message: ChatMessage): ChatMessage {
   return {
     ...message,
     attachments: message.attachments.map((attachment) => ({ ...attachment })),
-    processSteps: message.processSteps.map(cloneRuntimeTraceEvent),
+    processEvents: message.processEvents.map(cloneRuntimeTraceEvent),
   };
 }
 
@@ -533,24 +515,6 @@ function normalizeSelectionIDs(values: unknown): string[] {
     return [];
   }
   return Array.from(new Set(values.map((item) => normalizeText(item)).filter(Boolean)));
-}
-
-function normalizeRuntimeTraceEvents(values: unknown): RuntimeTraceEvent[] {
-  if (!Array.isArray(values)) {
-    return [];
-  }
-  return values
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const record = item as RuntimeTraceEvent;
-      if (!normalizeText(record.id) || !normalizeText(record.kind) || !Array.isArray(record.blocks)) {
-        return null;
-      }
-      return record;
-    })
-    .filter((item): item is RuntimeTraceEvent => item !== null);
 }
 
 function isStreamingPlaceholderText(text: string): boolean {
@@ -650,12 +614,19 @@ function normalizeStoredMessage(item: unknown): ChatMessage | null {
     error: Boolean(record.error),
     status: normalizeText(record.status) || (role === "assistant" ? "done" : ""),
     at: Number.isFinite(Number(record.at)) ? Number(record.at) : Date.now(),
-    processSteps: normalizeRuntimeTraceEvents(record.runtime_trace_events),
+    processEvents: normalizeRuntimeTraceEvents(record.runtime_trace_events),
     processCollapsed:
       typeof record.process_collapsed === "boolean"
         ? record.process_collapsed
         : undefined,
   };
+}
+
+function resolveProcessCollapsed(message: ChatMessage): boolean {
+  if (typeof message.processCollapsed === "boolean") {
+    return message.processCollapsed;
+  }
+  return Boolean(message.text.trim()) && normalizeTaskStatus(message.status) !== "streaming";
 }
 
 function normalizeStoredAttachments(value: unknown): ComposerAttachment[] {
@@ -758,7 +729,7 @@ function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
     error: message.error,
     status: message.status,
     at: message.at,
-    runtime_trace_events: message.processSteps,
+    runtime_trace_events: message.processEvents,
     process_collapsed: message.processCollapsed,
   };
 }
@@ -969,33 +940,8 @@ function normalizeTerminalAttachment(item: TerminalAttachmentPayload): ComposerA
   };
 }
 
-function normalizeTerminalProcessSteps(sessionID: string, turnID: string, values: unknown): RuntimeTraceEvent[] {
-  if (!Array.isArray(values)) {
-    return [];
-  }
-  return values
-    .map((item, index) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const step = item as TerminalStepPayload;
-      const title = normalizeText(step.title) || normalizeText(step.type);
-      const detail = normalizeText(step.preview);
-      if (!title && !detail) {
-        return null;
-      }
-      return terminalStepToRuntimeTraceEvent(step, {
-        sessionID,
-        turnID,
-        seq: index + 1,
-        provider: {
-          engine: "codex",
-          adapter: "terminal_turn",
-          event_type: normalizeText(step.type),
-        },
-      });
-    })
-    .filter((item): item is RuntimeTraceEvent => item !== null);
+function normalizeTerminalProcessEvents(sessionID: string, turnID: string, turn: TerminalTurnPayload): RuntimeTraceEvent[] {
+  return normalizeRuntimeTraceEvents(turn.runtime_trace_events, { sessionID, turnID });
 }
 
 function normalizeTerminalTurnMessages(sessionID: string, turn: TerminalTurnPayload): ChatMessage[] {
@@ -1020,13 +966,13 @@ function normalizeTerminalTurnMessages(sessionID: string, turn: TerminalTurnPayl
       error: false,
       status: "",
       at,
-      processSteps: [],
+      processEvents: [],
     });
   }
   const status = normalizeTaskStatus(turn.status || "");
   const finalOutput = typeof turn.final_output === "string" ? turn.final_output : "";
-  const processSteps = normalizeTerminalProcessSteps(sessionID, id, turn.steps);
-  if (finalOutput || processSteps.length > 0 || status === "running" || status === "queued") {
+  const processEvents = normalizeTerminalProcessEvents(sessionID, id, turn);
+  if (finalOutput || processEvents.length > 0 || status === "running" || status === "queued") {
     messages.push({
       id: `${id}:response`,
       role: "assistant",
@@ -1037,7 +983,7 @@ function normalizeTerminalTurnMessages(sessionID: string, turn: TerminalTurnPayl
       error: status === "failed" || status === "canceled",
       status: status === "success" ? "done" : status || "done",
       at: normalizeDateValue(turn.finished_at || turn.started_at),
-      processSteps,
+      processEvents,
       processCollapsed: finalOutput ? undefined : false,
     });
   }
@@ -1337,7 +1283,7 @@ export function ConversationRuntimeProvider({
     error: Boolean(patch.error),
     status: patch.status || (role === "assistant" ? "done" : ""),
     at: patch.at || Date.now(),
-    processSteps: patch.processSteps || [],
+    processEvents: patch.processEvents || [],
     processCollapsed: patch.processCollapsed,
   });
 
@@ -2104,7 +2050,7 @@ export function ConversationRuntimeProvider({
         ...session,
         messages: session.messages.map((message) =>
           message.id === messageID
-            ? { ...message, processCollapsed: !message.processCollapsed }
+            ? { ...message, processCollapsed: !resolveProcessCollapsed(message) }
             : message,
         ),
       }));

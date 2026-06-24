@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { ConversationWorkspace } from "./ConversationWorkspace";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../app/WorkbenchContext";
@@ -245,6 +245,51 @@ describe("ConversationWorkspace", () => {
     }));
   });
 
+  it("clears opened process event details when toggling the outer Thinking disclosure", () => {
+    runtimeMock.activeSession = {
+      ...runtimeMock.activeSession,
+      messages: [
+        {
+          id: "assistant-1",
+          role: "assistant",
+          text: "",
+          attachments: [],
+          route: "chat",
+          source: "terminal",
+          error: false,
+          status: "running",
+          at: Date.parse("2026-04-23T09:01:00Z"),
+          processEvents: [
+            { id: "step-1", title: "Message", detail: "Progress note." },
+            { id: "step-2", title: "Shell", detail: "git status" },
+          ],
+          processCollapsed: false,
+        },
+      ],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+
+    renderWorkspace({ isMobileViewport: true });
+
+    let timelineOptions = buildChatTimelineItemsMock.mock.calls[buildChatTimelineItemsMock.mock.calls.length - 1][0];
+    expect(timelineOptions.expandedProcessEvents).toEqual({});
+
+    act(() => {
+      timelineOptions.onToggleProcessEvent("assistant-1", "step-1");
+    });
+
+    timelineOptions = buildChatTimelineItemsMock.mock.calls[buildChatTimelineItemsMock.mock.calls.length - 1][0];
+    expect(timelineOptions.expandedProcessEvents).toEqual({ "assistant-1:step-1": true });
+
+    act(() => {
+      timelineOptions.onToggleProcess("assistant-1");
+    });
+
+    expect(runtimeMock.toggleProcess).toHaveBeenCalledWith("assistant-1");
+    timelineOptions = buildChatTimelineItemsMock.mock.calls[buildChatTimelineItemsMock.mock.calls.length - 1][0];
+    expect(timelineOptions.expandedProcessEvents).toEqual({});
+  });
+
   it("renders process disclosure checkboxes in the model inspector", () => {
     runtimeMock.inspectorOpen = true;
     runtimeMock.inspectorTab = "model";
@@ -275,7 +320,7 @@ describe("ConversationWorkspace", () => {
           error: false,
           status: "done",
           at: Date.parse("2026-04-23T09:00:00Z"),
-          processSteps: [],
+          processEvents: [],
         },
       ],
     };

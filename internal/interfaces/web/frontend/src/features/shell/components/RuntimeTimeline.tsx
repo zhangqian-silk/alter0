@@ -9,7 +9,7 @@ function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-export type RuntimeTimelineProcessStep = {
+export type RuntimeTimelineProcessEvent = {
   id: string;
   itemClassName?: string;
   itemProps?: ComponentPropsWithoutRef<"article">;
@@ -76,7 +76,7 @@ export type RuntimeTimelineBlock =
       bodyClassName?: string;
       bodyProps?: ComponentPropsWithoutRef<"div">;
       emptyState?: ReactNode;
-      steps: RuntimeTimelineProcessStep[];
+      events: RuntimeTimelineProcessEvent[];
     };
 
 export type RuntimeTimelineItem = {
@@ -217,30 +217,30 @@ function RuntimeTimelineBlockNode({ block }: { block: RuntimeTimelineBlock }) {
             {block.meta ? <span>{block.meta}</span> : null}
           </button>
           <div className={block.bodyClassName} hidden={!block.expanded} {...block.bodyProps}>
-            {block.steps.length ? block.steps.map((step) => (
-              <article key={step.id} className={step.itemClassName} {...step.itemProps}>
-                {step.toggleable === false ? (
-                  <div className={step.toggleClassName}>
-                    {step.meta ? <span>{step.meta}</span> : null}
-                    <span className={step.titleClassName}>{step.title}</span>
+            {block.events.length ? block.events.map((event) => (
+              <article key={event.id} className={event.itemClassName} {...event.itemProps}>
+                {event.toggleable === false ? (
+                  <div className={event.toggleClassName}>
+                    {event.meta ? <span>{event.meta}</span> : null}
+                    <span className={event.titleClassName}>{event.title}</span>
                   </div>
                 ) : (
                   <button
-                    className={step.toggleClassName}
+                    className={event.toggleClassName}
                     type="button"
-                    aria-expanded={step.expanded}
-                    onClick={step.onToggle}
-                    {...step.toggleProps}
+                    aria-expanded={event.expanded}
+                    onClick={event.onToggle}
+                    {...event.toggleProps}
                   >
                     <span className="terminal-step-toggle-icon" aria-hidden="true">
-                      {step.expanded ? "v" : ">"}
+                      {event.expanded ? "v" : ">"}
                     </span>
-                    <span className={step.titleClassName}>{step.title}</span>
-                    {step.meta ? <span>{step.meta}</span> : null}
+                    <span className={event.titleClassName}>{event.title}</span>
+                    {event.meta ? <span>{event.meta}</span> : null}
                   </button>
                 )}
-                <div className={step.bodyClassName} hidden={!step.expanded} {...step.bodyProps}>
-                  {step.detail}
+                <div className={event.bodyClassName} hidden={!event.expanded} {...event.bodyProps}>
+                  {event.detail}
                 </div>
               </article>
             )) : block.emptyState}

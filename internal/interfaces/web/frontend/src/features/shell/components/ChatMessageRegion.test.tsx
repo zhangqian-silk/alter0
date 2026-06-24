@@ -13,34 +13,41 @@ function buildAssistantMessage(overrides: Partial<ChatMessageSnapshot> = {}): Ch
     error: false,
     status: "done",
     at: Date.parse("2026-04-21T02:20:00Z"),
-    processSteps: [],
+    processEvents: [],
     ...overrides,
   };
 }
 
-function buildProcessSteps(): ChatMessageSnapshot["processSteps"] {
+function buildProcessSteps(): ChatMessageSnapshot["processEvents"] {
   return [
-    {
-      id: "step-1",
-      title: "Inspect workspace",
-      detail: "Repository root detected.",
-    },
-    {
-      id: "step-2",
-      title: "Review runtime styles",
-      detail: "Located the mobile Thinking disclosure rules in `shell.css`.",
-    },
-    {
-      id: "step-3",
-      title: "Update inline expansion",
-      detail: "Kept process details inside the current assistant message flow.",
-    },
-    {
-      id: "step-4",
-      title: "Verify regression coverage",
-      detail: "Confirmed the style contract rejects fixed overlay Thinking panels.",
-    },
+    buildProcessEvent("step-1", "Inspect workspace", "Repository root detected."),
+    buildProcessEvent("step-2", "Review runtime styles", "Located the mobile Thinking disclosure rules in `shell.css`."),
+    buildProcessEvent("step-3", "Update inline expansion", "Kept process details inside the current assistant message flow."),
+    buildProcessEvent("step-4", "Verify regression coverage", "Confirmed the style contract rejects fixed overlay Thinking panels."),
   ];
+}
+
+function buildProcessEvent(
+  id: string,
+  title: string,
+  text: string,
+  kind: ChatMessageSnapshot["processEvents"][number]["kind"] = "assistant_commentary",
+): ChatMessageSnapshot["processEvents"][number] {
+  return {
+    id,
+    turn_id: "turn-1",
+    seq: 1,
+    source: "adapter",
+    provider: { engine: "codex", adapter: "codex_cli_json" },
+    role: "assistant",
+    kind,
+    lifecycle: "completed",
+    status: "completed",
+    title,
+    summary: title,
+    blocks: [{ type: "markdown", text }],
+    visibility: "collapsed",
+  };
 }
 
 describe("ChatMessageRegion", () => {
@@ -285,7 +292,7 @@ describe("ChatMessageRegion", () => {
               "",
               "Final answer with `details`.",
             ].join("\n"),
-            processSteps: buildProcessSteps(),
+            processEvents: buildProcessSteps(),
           }),
         ]}
       />,
@@ -315,11 +322,11 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
   });
 
-  it("renders chat process steps with the same collapsible rows as terminal", async () => {
-    const onToggleProcessStep = vi.fn();
+  it("renders chat process events with the same collapsible rows as terminal", async () => {
+    const onToggleProcessEvent = vi.fn();
     const message = buildAssistantMessage({
       text: "Final answer.",
-      processSteps: buildProcessSteps(),
+      processEvents: buildProcessSteps(),
       processCollapsed: false,
     });
     const { rerender } = render(
@@ -327,8 +334,8 @@ describe("ChatMessageRegion", () => {
         sessionId="session-1"
         language="en"
         messages={[message]}
-        expandedProcessSteps={{}}
-        onToggleProcessStep={onToggleProcessStep}
+        expandedProcessEvents={{}}
+        onToggleProcessEvent={onToggleProcessEvent}
       />,
     );
 
@@ -341,20 +348,189 @@ describe("ChatMessageRegion", () => {
     expect(step.querySelector(".terminal-step-detail")).toBeInTheDocument();
 
     fireEvent.click(toggle);
-    expect(onToggleProcessStep).toHaveBeenCalledWith("message-1", "step-1");
+    expect(onToggleProcessEvent).toHaveBeenCalledWith("message-1", "step-1");
 
     rerender(
       <ChatMessageRegion
         sessionId="session-1"
         language="en"
         messages={[message]}
-        expandedProcessSteps={{ "message-1:step-1": true }}
-        onToggleProcessStep={onToggleProcessStep}
+        expandedProcessEvents={{ "message-1:step-1": true }}
+        onToggleProcessEvent={onToggleProcessEvent}
       />,
     );
     const expandedToggle = document.querySelector("[data-terminal-step-toggle='step-1']") as HTMLButtonElement;
     expect(expandedToggle).toHaveAttribute("aria-expanded", "true");
     expect(document.querySelector("[data-terminal-step-item='step-1'] .terminal-step-body")).not.toHaveAttribute("hidden");
+  });
+
+  it("renders shell process event details as terminal blocks on the first expanded frame", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "",
+            processEvents: [
+              {
+                id: "shell-step",
+                session_id: "session-1",
+                turn_id: "turn-1",
+                seq: 1,
+                source: "adapter",
+                provider: { engine: "codex", adapter: "codex_cli_json" },
+                role: "assistant",
+                kind: "shell_command",
+                lifecycle: "completed",
+                status: "completed",
+                title: "Shell",
+                summary: "sed -n '1,120p' AGENTS.md",
+                blocks: [
+                  {
+                    type: "terminal",
+                    command: "sed -n '1,120p' AGENTS.md",
+                    output: "# Rule\n\n## Collaboration",
+                    language: "shell",
+                    exit_code: 0,
+                  },
+                ],
+                visibility: "collapsed",
+              },
+            ],
+            processCollapsed: false,
+          }),
+        ]}
+        expandedProcessEvents={{ "message-1:shell-step": true }}
+        runtimeEventFilter={["commands"]}
+      />,
+    );
+
+    const step = document.querySelector("[data-terminal-step-item='shell-step']") as HTMLElement;
+    const content = step.querySelector(".terminal-step-content code") as HTMLElement;
+    expect(content).toBeInTheDocument();
+    expect(content.textContent).toBe("sed -n '1,120p' AGENTS.md\n\n# Rule\n\n## Collaboration");
+    expect(step.querySelector(".terminal-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
+  });
+
+  it("renders markdown process event details through the final rich block on the first expanded frame", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "",
+            processEvents: [
+              {
+                id: "commentary-step",
+                session_id: "session-1",
+                turn_id: "turn-1",
+                seq: 1,
+                source: "provider",
+                provider: { engine: "codex", adapter: "codex_cli_json" },
+                role: "assistant",
+                kind: "assistant_commentary",
+                lifecycle: "completed",
+                status: "completed",
+                title: "Message",
+                summary: "Ready.",
+                blocks: [
+                  {
+                    type: "markdown",
+                    text: "Review **state** before rendering.",
+                  },
+                ],
+                visibility: "collapsed",
+              },
+            ],
+            processCollapsed: false,
+          }),
+        ]}
+        expandedProcessEvents={{ "message-1:commentary-step": true }}
+        runtimeEventFilter={["important_text"]}
+      />,
+    );
+
+    const step = document.querySelector("[data-terminal-step-item='commentary-step']") as HTMLElement;
+    const block = step.querySelector(".terminal-rich-block.type-markdown") as HTMLElement;
+    expect(block).toBeInTheDocument();
+    expect(block.querySelector(".terminal-step-content.terminal-step-richtext")).toBeInTheDocument();
+    expect(block.querySelector(".message-markdown-rendered")).toHaveTextContent("Review state before rendering.");
+    expect(step.querySelector(".terminal-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
+  });
+
+  it("renders runtime code process details with the terminal rich header", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "",
+            processEvents: [
+              {
+                id: "code-step",
+                session_id: "session-1",
+                turn_id: "turn-1",
+                seq: 1,
+                source: "adapter",
+                provider: { engine: "codex", adapter: "codex_cli_json" },
+                role: "assistant",
+                kind: "file_read",
+                lifecycle: "completed",
+                status: "completed",
+                title: "Read source",
+                summary: "src/features/runtime.ts",
+                blocks: [
+                  {
+                    type: "code",
+                    content: "export const enabled = true;\n",
+                    language: "ts",
+                    file: "src/features/runtime.ts",
+                    start_line: 7,
+                  },
+                ],
+                visibility: "collapsed",
+              },
+            ],
+            processCollapsed: false,
+          }),
+        ]}
+        expandedProcessEvents={{ "message-1:code-step": true }}
+        runtimeEventFilter={["tools"]}
+      />,
+    );
+
+    const step = document.querySelector("[data-terminal-step-item='code-step']") as HTMLElement;
+    const block = step.querySelector(".terminal-rich-block.type-code") as HTMLElement;
+    expect(block).toBeInTheDocument();
+    expect(block.querySelector(".terminal-rich-head")).toHaveTextContent("src/features/runtime.ts:7");
+    expect(block.querySelector(".terminal-rich-pre.terminal-step-content code")).toHaveTextContent("export const enabled = true;");
+  });
+
+  it("renders process event detail through the final rich block on the first expanded frame", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "Final answer.",
+            processEvents: buildProcessSteps(),
+            processCollapsed: false,
+          }),
+        ]}
+        expandedProcessEvents={{ "message-1:step-1": true }}
+      />,
+    );
+
+    const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
+    const block = step.querySelector(".terminal-rich-block.type-markdown") as HTMLElement;
+    expect(block).toBeInTheDocument();
+    expect(block.querySelector(".terminal-step-content.terminal-step-richtext")).toBeInTheDocument();
+    expect(block.querySelector(".message-markdown-rendered")).toHaveTextContent("Repository root detected.");
+    expect(step.querySelector(".terminal-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
   });
 
   it("uses a compact localized thought disclosure for completed skill process details", () => {
@@ -365,11 +541,11 @@ describe("ChatMessageRegion", () => {
         messages={[
           buildAssistantMessage({
             text: "最终答案。",
-            processSteps: [
-              { id: "step-1", title: "检索资料", detail: "确认当前会话输入。" },
-              { id: "step-2", title: "检查样式", detail: "定位移动端展开规则。" },
-              { id: "step-3", title: "补充测试", detail: "覆盖多步骤思考过程。" },
-              { id: "step-4", title: "完成验证", detail: "确认折叠态文案稳定。" },
+            processEvents: [
+              buildProcessEvent("step-1", "检索资料", "确认当前会话输入。"),
+              buildProcessEvent("step-2", "检查样式", "定位移动端展开规则。"),
+              buildProcessEvent("step-3", "补充测试", "覆盖多步骤思考过程。"),
+              buildProcessEvent("step-4", "完成验证", "确认折叠态文案稳定。"),
             ],
             processCollapsed: true,
           }),
@@ -391,9 +567,9 @@ describe("ChatMessageRegion", () => {
   it("filters chat process disclosure by runtime event type", () => {
     const message = buildAssistantMessage({
       text: "最终答案。",
-      processSteps: [
-        { id: "commentary", kind: "analysis", title: "执行过程", detail: "正在处理重要进度。" },
-        { id: "reasoning", kind: "reasoning", title: "Reasoning", detail: "内部推理摘要。" },
+      processEvents: [
+        buildProcessEvent("commentary", "执行过程", "正在处理重要进度。", "assistant_commentary"),
+        buildProcessEvent("reasoning", "Reasoning", "内部推理摘要。", "reasoning"),
       ],
     });
 
@@ -413,6 +589,75 @@ describe("ChatMessageRegion", () => {
     });
     expect(JSON.stringify(expandedItems)).toContain("正在处理重要进度。");
     expect(JSON.stringify(expandedItems)).toContain("内部推理摘要。");
+  });
+
+  it("discloses runtime event categories on chat process events", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[buildAssistantMessage({
+          processCollapsed: false,
+          processEvents: [
+            {
+              id: "plan-step",
+              turn_id: "turn-1",
+              seq: 1,
+              source: "provider",
+              provider: { engine: "codex", adapter: "codex_cli_json" },
+              role: "assistant",
+              kind: "plan",
+              lifecycle: "completed",
+              status: "completed",
+              title: "Route build",
+              blocks: [{ type: "markdown", text: "Plan detail." }],
+              visibility: "collapsed",
+            },
+          ],
+        })]}
+      />,
+    );
+
+    const step = document.querySelector("[data-terminal-step-item='plan-step']") as HTMLElement;
+    expect(step.querySelector(".terminal-step-kind")).toHaveTextContent("Plan");
+  });
+
+  it("uses the shared terminal step meta for runtime chat process rows", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[buildAssistantMessage({
+          processCollapsed: false,
+          processEvents: [
+            {
+              id: "command-step",
+              turn_id: "turn-1",
+              seq: 1,
+              source: "adapter",
+              provider: { engine: "codex", adapter: "codex_cli_json" },
+              role: "assistant",
+              kind: "shell_command",
+              lifecycle: "completed",
+              status: "completed",
+              duration_ms: 18200,
+              title: "sed -n '1,120p' internal/terminal/application/session.go",
+              blocks: [{ type: "terminal", command: "sed -n '1,120p' internal/terminal/application/session.go" }],
+              visibility: "collapsed",
+            },
+          ],
+        })]}
+        runtimeEventFilter={["commands"]}
+      />,
+    );
+
+    const step = document.querySelector("[data-terminal-step-item='command-step']") as HTMLElement;
+    const meta = step.querySelector(".terminal-step-meta") as HTMLElement;
+    expect(meta).toBeInTheDocument();
+    expect(meta.querySelector(".terminal-step-kind")).toHaveTextContent("Commands");
+    expect(meta.querySelector(".terminal-step-duration")).toHaveTextContent("18s");
+    expect(meta.querySelector(".terminal-step-status")).toHaveTextContent("Ready");
+    expect(meta.querySelector(".terminal-step-status")).toHaveClass("status-success");
   });
 
 });

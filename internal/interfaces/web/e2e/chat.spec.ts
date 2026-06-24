@@ -1437,7 +1437,7 @@ test.describe("Chat composer", () => {
     })).toBe(true);
   });
 
-  test("renders structured process steps from chat message results", async ({ page }) => {
+  test("renders structured process events from chat message results", async ({ page }) => {
     await page.addInitScript(() => {
       const originalFetch = window.fetch.bind(window);
       window.fetch = async (input, init) => {
@@ -1458,12 +1458,27 @@ test.describe("Chat composer", () => {
                 prompt: "帮我检查仓库状态",
                 status: "success",
                 final_output: "任务已完成",
-                steps: [
-                  { id: "step-1", type: "action", title: "读取运行状态", preview: "检查仓库状态、当前分支和工作区清洁度。", status: "completed" },
-                  { id: "step-2", type: "action", title: "定位 Thinking 样式", preview: "确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。", status: "completed" },
-                  { id: "step-3", type: "action", title: "调整展开方式", preview: "将过程详情保持在当前消息内联展开，不再脱离消息流。", status: "completed" },
-                  { id: "step-4", type: "action", title: "回归验证", preview: "补充样式断言并确认最终回复仍独立展示。", status: "completed" }
-                ]
+                runtime_trace_events: [
+                  ["event-1", "读取运行状态", "检查仓库状态、当前分支和工作区清洁度。"],
+                  ["event-2", "定位 Thinking 样式", "确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。"],
+                  ["event-3", "调整展开方式", "将过程详情保持在当前消息内联展开，不再脱离消息流。"],
+                  ["event-4", "回归验证", "补充样式断言并确认最终回复仍独立展示。"],
+                ].map(([id, title, summary], index) => ({
+                  id,
+                  turn_id: "turn-process",
+                  seq: index + 1,
+                  source: "adapter",
+                  provider: { engine: "codex", adapter: "codex_cli_json", event_type: "message", item_id: id },
+                  role: "assistant",
+                  kind: "assistant_commentary",
+                  lifecycle: "completed",
+                  status: "completed",
+                  title,
+                  summary,
+                  blocks: [{ type: "markdown", text: summary }],
+                  visibility: "collapsed",
+                  raw: { ref: id, type: "message", has_detail: true },
+                }))
               }]
             },
           }), {
@@ -1518,14 +1533,29 @@ test.describe("Chat composer", () => {
                 prompt: "帮我检查仓库同步情况",
                 status: "success",
                 final_output: "任务已完成",
-                steps: [
-                  { id: "mobile-step-1", type: "action", title: "确认目标工作区", preview: "需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。", status: "completed" },
-                  { id: "mobile-step-2", type: "action", title: "读取前端契约", preview: "检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。", status: "completed" },
-                  { id: "mobile-step-3", type: "action", title: "调整移动端展开", preview: "移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。", status: "completed" },
-                  { id: "mobile-step-4", type: "action", title: "同步静态产物", preview: "重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。", status: "completed" },
-                  { id: "mobile-step-5", type: "action", title: "部署预览服务", preview: "通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。", status: "completed" },
-                  { id: "mobile-step-6", type: "action", title: "补充测试数据", preview: "增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。", status: "completed" }
-                ]
+                runtime_trace_events: [
+                  ["mobile-event-1", "确认目标工作区", "需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。"],
+                  ["mobile-event-2", "读取前端契约", "检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。"],
+                  ["mobile-event-3", "调整移动端展开", "移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。"],
+                  ["mobile-event-4", "同步静态产物", "重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。"],
+                  ["mobile-event-5", "部署预览服务", "通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。"],
+                  ["mobile-event-6", "补充测试数据", "增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。"],
+                ].map(([id, title, summary], index) => ({
+                  id,
+                  turn_id: "turn-mobile-process",
+                  seq: index + 1,
+                  source: "adapter",
+                  provider: { engine: "codex", adapter: "codex_cli_json", event_type: "message", item_id: id },
+                  role: "assistant",
+                  kind: "assistant_commentary",
+                  lifecycle: "completed",
+                  status: "completed",
+                  title,
+                  summary,
+                  blocks: [{ type: "markdown", text: summary }],
+                  visibility: "collapsed",
+                  raw: { ref: id, type: "message", has_detail: true },
+                }))
               }]
             },
           }), {
@@ -1610,9 +1640,22 @@ test.describe("Chat composer", () => {
                 prompt: "详细介绍下 node 和 go 的差异",
                 status: "success",
                 final_output: "Node 更偏应用层与生态速度，Go 更偏并发效率与部署稳定性。",
-                steps: [
-                  { type: "action", title: "codex_exec", preview: "整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。", status: "completed" }
-                ]
+                runtime_trace_events: [{
+                  id: "event-node-go",
+                  turn_id: "turn-node-go",
+                  seq: 1,
+                  source: "adapter",
+                  provider: { engine: "codex", adapter: "codex_cli_json", event_type: "message", item_id: "event-node-go" },
+                  role: "assistant",
+                  kind: "assistant_commentary",
+                  lifecycle: "completed",
+                  status: "completed",
+                  title: "codex_exec",
+                  summary: "整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。",
+                  blocks: [{ type: "markdown", text: "整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。" }],
+                  visibility: "collapsed",
+                  raw: { ref: "event-node-go", type: "message", has_detail: true },
+                }]
               }]
             },
           }), {

@@ -15,41 +15,43 @@ import (
 const terminalStateDirectoryName = "state"
 
 type persistedSessionRecord struct {
-	Summary      terminaldomain.Session `json:"summary"`
-	TitleManual  *bool                  `json:"title_manual,omitempty"`
-	TitleAuto    *bool                  `json:"title_auto,omitempty"`
-	TitleScore   int                    `json:"title_score,omitempty"`
-	Entries      []terminaldomain.Entry `json:"entries,omitempty"`
-	Turns        []persistedTurnRecord  `json:"turns,omitempty"`
-	NextID       int                    `json:"next_id,omitempty"`
-	NextTurnID   int                    `json:"next_turn_id,omitempty"`
-	NextStepID   int                    `json:"next_step_id,omitempty"`
-	ThreadID     string                 `json:"thread_id,omitempty"`
-	ClosedByUser bool                   `json:"closed_by_user,omitempty"`
+	Summary           terminaldomain.Session `json:"summary"`
+	TitleManual       *bool                  `json:"title_manual,omitempty"`
+	TitleAuto         *bool                  `json:"title_auto,omitempty"`
+	TitleScore        int                    `json:"title_score,omitempty"`
+	Entries           []terminaldomain.Entry `json:"entries,omitempty"`
+	Turns             []persistedTurnRecord  `json:"turns,omitempty"`
+	NextID            int                    `json:"next_id,omitempty"`
+	NextTurnID        int                    `json:"next_turn_id,omitempty"`
+	NextEventID       int                    `json:"next_event_id,omitempty"`
+	LegacyNextEventID int                    `json:"next_step_id,omitempty"`
+	ThreadID          string                 `json:"thread_id,omitempty"`
+	ClosedByUser      bool                   `json:"closed_by_user,omitempty"`
 }
 
 type persistedTurnRecord struct {
-	ID          string                `json:"id"`
-	Prompt      string                `json:"prompt,omitempty"`
-	Attachments []TurnAttachment      `json:"attachments,omitempty"`
-	Status      string                `json:"status,omitempty"`
-	StartedAt   time.Time             `json:"started_at,omitempty"`
-	FinishedAt  time.Time             `json:"finished_at,omitempty"`
-	FinalOutput string                `json:"final_output,omitempty"`
-	Steps       []persistedStepRecord `json:"steps,omitempty"`
+	ID            string                        `json:"id"`
+	Prompt        string                        `json:"prompt,omitempty"`
+	Attachments   []TurnAttachment              `json:"attachments,omitempty"`
+	Status        string                        `json:"status,omitempty"`
+	StartedAt     time.Time                     `json:"started_at,omitempty"`
+	FinishedAt    time.Time                     `json:"finished_at,omitempty"`
+	FinalOutput   string                        `json:"final_output,omitempty"`
+	RuntimeEvents []persistedRuntimeEventRecord `json:"runtime_events,omitempty"`
+	LegacyEvents  []persistedRuntimeEventRecord `json:"steps,omitempty"`
 }
 
-type persistedStepRecord struct {
-	ID         string            `json:"id"`
-	ItemID     string            `json:"item_id,omitempty"`
-	Type       string            `json:"type,omitempty"`
-	Title      string            `json:"title,omitempty"`
-	Status     string            `json:"status,omitempty"`
-	Preview    string            `json:"preview,omitempty"`
-	StartedAt  time.Time         `json:"started_at,omitempty"`
-	FinishedAt time.Time         `json:"finished_at,omitempty"`
-	Blocks     []StepDetailBlock `json:"blocks,omitempty"`
-	Searchable bool              `json:"searchable,omitempty"`
+type persistedRuntimeEventRecord struct {
+	ID         string               `json:"id"`
+	ItemID     string               `json:"item_id,omitempty"`
+	Type       string               `json:"type,omitempty"`
+	Title      string               `json:"title,omitempty"`
+	Status     string               `json:"status,omitempty"`
+	Preview    string               `json:"preview,omitempty"`
+	StartedAt  time.Time            `json:"started_at,omitempty"`
+	FinishedAt time.Time            `json:"finished_at,omitempty"`
+	Blocks     []RuntimeDetailBlock `json:"blocks,omitempty"`
+	Searchable bool                 `json:"searchable,omitempty"`
 }
 
 func (s *Service) loadPersistedSessions() {
@@ -68,8 +70,8 @@ func (s *Service) loadPersistedSessions() {
 	}
 
 	now := time.Now().UTC()
+	needsMigration := make([]*runtimeSession, 0)
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	for _, entry := range items {
 		if entry.IsDir() || strings.ToLower(filepath.Ext(entry.Name())) != ".json" {
 			continue
@@ -85,11 +87,20 @@ func (s *Service) loadPersistedSessions() {
 			s.logger.Warn("decode terminal session record failed", "path", recordPath, "error", err.Error())
 			continue
 		}
+		legacyRuntimeEventFields := persistedSessionRecordHasLegacyRuntimeEventFields(data)
 		session := restorePersistedSession(record, now, s.options.WorkingDir)
 		if session == nil {
 			continue
 		}
 		s.sessions[session.summary.ID] = session
+		if legacyRuntimeEventFields {
+			needsMigration = append(needsMigration, session)
+		}
+	}
+	s.mu.Unlock()
+
+	for _, session := range needsMigration {
+		s.persistSession(session)
 	}
 }
 
@@ -168,23 +179,32 @@ func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string)
 		s.logger.Warn("decode terminal session record failed", "path", path, "error", err.Error())
 		return nil, ErrSessionNotFound
 	}
+	legacyRuntimeEventFields := persistedSessionRecordHasLegacyRuntimeEventFields(data)
 	session := restorePersistedSession(record, time.Now().UTC(), s.options.WorkingDir)
 	if session == nil || strings.TrimSpace(session.summary.OwnerID) != ownerID {
 		return nil, ErrSessionNotFound
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if existing, ok := s.sessions[sessionID]; ok {
 		existing.mu.RLock()
 		matched := existing.summary.OwnerID == ownerID
 		existing.mu.RUnlock()
 		if !matched {
+			s.mu.Unlock()
 			return nil, ErrSessionNotFound
+		}
+		s.mu.Unlock()
+		if legacyRuntimeEventFields {
+			s.persistSession(existing)
 		}
 		return existing, nil
 	}
 	s.sessions[sessionID] = session
+	s.mu.Unlock()
+	if legacyRuntimeEventFields {
+		s.persistSession(session)
+	}
 	return session, nil
 }
 
@@ -203,7 +223,7 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 		Entries:      append([]terminaldomain.Entry{}, item.entries...),
 		NextID:       item.nextID,
 		NextTurnID:   item.nextTurnID,
-		NextStepID:   item.nextStepID,
+		NextEventID:  item.nextEventID,
 		ThreadID:     strings.TrimSpace(item.threadID),
 		ClosedByUser: item.closedByUser,
 		Turns:        make([]persistedTurnRecord, 0, len(item.turns)),
@@ -213,20 +233,20 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 			continue
 		}
 		persistedTurn := persistedTurnRecord{
-			ID:          turn.ID,
-			Prompt:      turn.Prompt,
-			Attachments: cloneTurnAttachments(turn.Attachments),
-			Status:      turn.Status,
-			StartedAt:   turn.StartedAt,
-			FinishedAt:  turn.FinishedAt,
-			FinalOutput: turn.FinalOutput,
-			Steps:       make([]persistedStepRecord, 0, len(turn.steps)),
+			ID:            turn.ID,
+			Prompt:        turn.Prompt,
+			Attachments:   cloneTurnAttachments(turn.Attachments),
+			Status:        turn.Status,
+			StartedAt:     turn.StartedAt,
+			FinishedAt:    turn.FinishedAt,
+			FinalOutput:   turn.FinalOutput,
+			RuntimeEvents: make([]persistedRuntimeEventRecord, 0, len(turn.events)),
 		}
-		for _, step := range turn.steps {
+		for _, step := range turn.events {
 			if step == nil {
 				continue
 			}
-			persistedTurn.Steps = append(persistedTurn.Steps, persistedStepRecord{
+			persistedTurn.RuntimeEvents = append(persistedTurn.RuntimeEvents, persistedRuntimeEventRecord{
 				ID:         step.ID,
 				ItemID:     step.ItemID,
 				Type:       step.Type,
@@ -235,7 +255,7 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 				Preview:    step.Preview,
 				StartedAt:  step.StartedAt,
 				FinishedAt: step.FinishedAt,
-				Blocks:     append([]StepDetailBlock{}, step.Blocks...),
+				Blocks:     append([]RuntimeDetailBlock{}, step.Blocks...),
 				Searchable: step.Searchable,
 			})
 		}
@@ -277,7 +297,7 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 		entries:      append([]terminaldomain.Entry{}, record.Entries...),
 		nextID:       record.NextID,
 		nextTurnID:   record.NextTurnID,
-		nextStepID:   record.NextStepID,
+		nextEventID:  restoredNextRuntimeEventID(record),
 		threadID:     threadID,
 		closedByUser: record.ClosedByUser,
 		turns:        make([]*runtimeTurn, 0, len(record.Turns)),
@@ -302,10 +322,10 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 			StartedAt:   turnRecord.StartedAt,
 			FinishedAt:  turnRecord.FinishedAt,
 			FinalOutput: turnRecord.FinalOutput,
-			steps:       make([]*runtimeStep, 0, len(turnRecord.Steps)),
+			events:      make([]*runtimeEventRecord, 0, len(restoredPersistedRuntimeEvents(turnRecord))),
 		}
-		for _, stepRecord := range turnRecord.Steps {
-			turn.steps = append(turn.steps, &runtimeStep{
+		for _, stepRecord := range restoredPersistedRuntimeEvents(turnRecord) {
+			turn.events = append(turn.events, &runtimeEventRecord{
 				ID:         stepRecord.ID,
 				ItemID:     stepRecord.ItemID,
 				Type:       stepRecord.Type,
@@ -314,7 +334,7 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 				Preview:    stepRecord.Preview,
 				StartedAt:  stepRecord.StartedAt,
 				FinishedAt: stepRecord.FinishedAt,
-				Blocks:     append([]StepDetailBlock{}, stepRecord.Blocks...),
+				Blocks:     append([]RuntimeDetailBlock{}, stepRecord.Blocks...),
 				Searchable: stepRecord.Searchable,
 			})
 		}
@@ -322,6 +342,41 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	}
 	normalizeRestoredSessionState(session, now)
 	return session
+}
+
+func restoredNextRuntimeEventID(record persistedSessionRecord) int {
+	if record.NextEventID > 0 {
+		return record.NextEventID
+	}
+	return record.LegacyNextEventID
+}
+
+func restoredPersistedRuntimeEvents(record persistedTurnRecord) []persistedRuntimeEventRecord {
+	if len(record.RuntimeEvents) > 0 {
+		return record.RuntimeEvents
+	}
+	return record.LegacyEvents
+}
+
+func persistedSessionRecordHasLegacyRuntimeEventFields(data []byte) bool {
+	raw := struct {
+		LegacyNextEventID json.RawMessage `json:"next_step_id"`
+		Turns             []struct {
+			LegacyEvents json.RawMessage `json:"steps"`
+		} `json:"turns"`
+	}{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return false
+	}
+	if len(raw.LegacyNextEventID) > 0 {
+		return true
+	}
+	for _, turn := range raw.Turns {
+		if len(turn.LegacyEvents) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func boolPointer(value bool) *bool {
@@ -356,12 +411,12 @@ func normalizeRestoredSessionState(session *runtimeSession, now time.Time) {
 			}
 			liveStatus = true
 		}
-		for _, step := range turn.steps {
+		for _, step := range turn.events {
 			if step == nil {
 				continue
 			}
-			if step.ID != "" && parseRuntimeOrdinal(step.ID, "step-") > session.nextStepID {
-				session.nextStepID = parseRuntimeOrdinal(step.ID, "step-")
+			if eventOrdinal := maxRuntimeOrdinal(step.ID, "event-", "step-"); eventOrdinal > session.nextEventID {
+				session.nextEventID = eventOrdinal
 			}
 			if step.Status == "running" {
 				step.Status = "interrupted"
@@ -404,6 +459,16 @@ func parseRuntimeOrdinal(value string, prefix string) int {
 		return 0
 	}
 	return ordinal
+}
+
+func maxRuntimeOrdinal(value string, prefixes ...string) int {
+	maxOrdinal := 0
+	for _, prefix := range prefixes {
+		if ordinal := parseRuntimeOrdinal(value, prefix); ordinal > maxOrdinal {
+			maxOrdinal = ordinal
+		}
+	}
+	return maxOrdinal
 }
 
 func resolveTerminalSessionStateDir(baseDir string) (string, error) {
