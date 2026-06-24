@@ -1,6 +1,7 @@
 import {
   MOBILE_KEYBOARD_MIN_OFFSET_PX,
   MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS,
+  MOBILE_VIEWPORT_COMPOSER_OFFSET_HOLD_MS,
   createDefaultMobileViewportState,
   deriveMobileViewportState,
   isMobileViewportWidth,
@@ -41,6 +42,12 @@ export function createMobileViewportSyncController(
     win.clearTimeout(cooldownSyncTimeoutID);
     cooldownSyncTimeoutID = 0;
   };
+  const scheduleCooldownSync = (delayMS: number) => {
+    cooldownSyncTimeoutID = win.setTimeout(() => {
+      cooldownSyncTimeoutID = 0;
+      syncWhenVisible();
+    }, delayMS);
+  };
 
   const sync = () => {
     const activeInput = hasActiveInput();
@@ -56,6 +63,7 @@ export function createMobileViewportSyncController(
     state = result.state;
     root.style.setProperty("--mobile-viewport-height", result.cssVars.mobileViewportHeight);
     root.style.setProperty("--keyboard-offset", result.cssVars.keyboardOffset);
+    root.style.setProperty("--keyboard-composer-offset", result.cssVars.keyboardComposerOffset);
     clearCooldownSync();
     const reportedViewportHeight = Math.round(visualViewport?.height ?? win.innerHeight);
     const focusedFullHeightReport =
@@ -63,11 +71,15 @@ export function createMobileViewportSyncController(
       && result.state.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
       && result.state.baselineHeight > 0
       && reportedViewportHeight >= result.state.baselineHeight - 2;
-    if (focusedFullHeightReport) {
-      cooldownSyncTimeoutID = win.setTimeout(() => {
-        cooldownSyncTimeoutID = 0;
-        syncWhenVisible();
-      }, MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS + 16);
+    const composerOffsetHold =
+      activeInput
+      && result.state.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+      && (visualViewport?.offsetTop ?? 0) > 0
+      && result.cssVars.keyboardComposerOffset === `${result.state.keyboardOffset}px`;
+    if (composerOffsetHold) {
+      scheduleCooldownSync(MOBILE_VIEWPORT_COMPOSER_OFFSET_HOLD_MS + 16);
+    } else if (focusedFullHeightReport) {
+      scheduleCooldownSync(MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS + 16);
     }
   };
   const syncWhenVisible = () => {
@@ -101,6 +113,7 @@ export function createMobileViewportSyncController(
       doc.removeEventListener("focusout", sync);
       root.style.setProperty("--mobile-viewport-height", "100dvh");
       root.style.setProperty("--keyboard-offset", "0px");
+      root.style.setProperty("--keyboard-composer-offset", "0px");
     },
   };
 }
