@@ -61,6 +61,30 @@ describe("shared viewport mobileViewportSync", () => {
     input.remove();
   });
 
+  it("writes focused keyboard offset during the opening transition before the full keyboard threshold", () => {
+    const visualViewport = new MockVisualViewport(393, 852);
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    setWindowSize(393, 852);
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    });
+
+    const controller = createMobileViewportSyncController();
+
+    input.focus();
+    visualViewport.height = 780;
+    visualViewport.dispatchEvent(new Event("resize"));
+
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("780px");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("72px");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("72px");
+
+    controller.destroy();
+    input.remove();
+  });
+
   it("keeps the composer offset stable through transient visual viewport top shifts", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);

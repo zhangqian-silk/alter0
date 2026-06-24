@@ -123,14 +123,16 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("moves the mobile runtime composer with the visual-viewport-adjusted bottom offset instead of a transform layer", () => {
+  it("moves only the mobile runtime composer form with the keyboard offset", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?bottom:\s*var\(--keyboard-composer-offset, var\(--keyboard-offset, 0px\)\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[\s\S]*?position:\s*relative;[\s\S]*?bottom:\s*var\(--keyboard-composer-offset, var\(--keyboard-offset, 0px\)\);/,
     );
+    expect(stylesheet).not.toMatch(/\.runtime-composer-shell\s*\{[^}]*bottom:\s*var\(--keyboard-composer-offset/);
     expect(stylesheet).not.toMatch(/\.runtime-composer-shell\s*\{[^}]*transform:/);
+    expect(stylesheet).not.toMatch(/\.runtime-composer-form\s*\{[^}]*transform:/);
   });
 
   it("keeps conversation bubbles compact instead of heavy card-like gradients", () => {
@@ -367,7 +369,7 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("keeps mobile app shell height at the stable keyboard baseline while only the composer consumes keyboard offset", () => {
+  it("keeps mobile app shell height at the stable keyboard baseline while only the composer form consumes keyboard offset", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
@@ -375,11 +377,11 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("--keyboard-offset: 0px;");
     expect(stylesheet).toContain("--keyboard-composer-offset: 0px;");
     expect(stylesheet).toContain("height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px));");
-    expect(stylesheet).toContain(".chat-pane:not(.page-mode) {");
-    expect(stylesheet).toContain("height: min(100%, var(--mobile-viewport-height, 100dvh));");
+    expect(stylesheet).not.toContain("height: min(100%, var(--mobile-viewport-height, 100dvh));");
     expect(stylesheet).toContain(".chat-pane.page-mode {");
     expect(stylesheet).toContain("height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px)));");
     expect(stylesheet).toContain("bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px));");
+    expect(stylesheet).not.toMatch(/\.runtime-composer-shell\s*\{[^}]*bottom:\s*var\(--keyboard-composer-offset/);
   });
 
   it("locks document scrolling on narrow screens so keyboard focus cannot move the whole workbench", () => {
@@ -999,12 +1001,15 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("anchors the narrow-screen composer to the visual-viewport-adjusted keyboard offset instead of a fixed viewport bottom", () => {
+  it("anchors the narrow-screen composer form to the visual-viewport-adjusted keyboard offset instead of moving the shell", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toContain("@media (max-width: 760px)");
-    expect(stylesheet).toContain("bottom: var(--keyboard-composer-offset, var(--keyboard-offset));");
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-form\s*\{[\s\S]*?bottom:\s*var\(--keyboard-composer-offset, var\(--keyboard-offset, 0px\)\);/,
+    );
+    expect(stylesheet).not.toMatch(/\.runtime-composer-shell\s*\{[^}]*bottom:\s*var\(--keyboard-composer-offset/);
     expect(stylesheet).toContain("padding: 10px 12px calc(14px + env(safe-area-inset-bottom));");
   });
 

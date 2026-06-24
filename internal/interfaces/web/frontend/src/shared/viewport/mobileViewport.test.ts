@@ -73,7 +73,7 @@ describe("shared viewport mobileViewport", () => {
     });
   });
 
-  it("drops keyboard offset below the minimum threshold", () => {
+  it("keeps the focused keyboard offset below the full keyboard threshold to avoid shell height jumps", () => {
     const previous = {
       ...createDefaultMobileViewportState(),
       baselineHeight: 800,
@@ -92,8 +92,12 @@ describe("shared viewport mobileViewport", () => {
       hasActiveInput: true
     });
 
-    expect(next.state.keyboardOffset).toBe(0);
-    expect(next.cssVars.keyboardOffset).toBe("0px");
+    expect(next.state.keyboardOffset).toBe(80);
+    expect(next.cssVars).toEqual({
+      mobileViewportHeight: "720px",
+      keyboardOffset: "80px",
+      keyboardComposerOffset: "80px"
+    });
   });
 
   it("keeps the active keyboard inset through transient full-height visual viewport reports", () => {

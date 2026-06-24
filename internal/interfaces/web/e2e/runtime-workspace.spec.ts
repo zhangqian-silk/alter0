@@ -357,6 +357,65 @@ test.describe("Runtime workspace scaffold", () => {
       .toBeLessThanOrEqual(20);
   });
 
+  test("keeps the app shell baseline stable during early mobile keyboard opening", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+    await openRuntimeRoute(page, "chat");
+
+    const initialShellHeight = await page.locator(".app-shell").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().height),
+    );
+    const initialComposerShellTop = await page.locator(".runtime-composer-shell").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    const initialComposerFormTop = await page.locator(".runtime-composer-form").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    const conversationInput = page.locator("[data-composer-input='conversation']");
+    await conversationInput.click();
+    await setVisualViewport(page, { width: 430, height: 860, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("72px");
+    await expect.poll(async () => page.locator(".app-shell").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().height),
+    )).toBe(initialShellHeight);
+    await expect.poll(async () => page.locator(".runtime-composer-shell").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    )).toBe(initialComposerShellTop);
+    await expect.poll(async () => page.locator(".runtime-composer-form").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    )).toBe(initialComposerFormTop - 72);
+
+    await openTerminalRoute(page);
+    const terminalInitialShellHeight = await page.locator(".app-shell").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().height),
+    );
+    const terminalInitialComposerShellTop = await page.locator(".runtime-composer-shell").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    const terminalInitialComposerFormTop = await page.locator(".runtime-composer-form").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    );
+    const terminalInput = page.locator("[data-composer-input='terminal']");
+    await terminalInput.click();
+    await setVisualViewport(page, { width: 430, height: 860, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("72px");
+    await expect.poll(async () => page.locator(".app-shell").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().height),
+    )).toBe(terminalInitialShellHeight);
+    await expect.poll(async () => page.locator(".runtime-composer-shell").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    )).toBe(terminalInitialComposerShellTop);
+    await expect.poll(async () => page.locator(".runtime-composer-form").evaluate((node) =>
+      Math.round(node.getBoundingClientRect().top),
+    )).toBe(terminalInitialComposerFormTop - 72);
+  });
+
   test("holds keyboard offset until chat and terminal viewports actually recover after blur", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });

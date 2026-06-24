@@ -107,9 +107,17 @@ export function deriveMobileViewportState(
   const reportedViewportKeyboardOffset = previousState.baselineHeight > 0
     ? Math.max(0, previousState.baselineHeight - reportedViewportHeight)
     : 0;
+  const focusedViewportIsShrinking =
+    input.hasActiveInput
+    && !widthChanged
+    && previousState.baselineHeight > 0
+    && reportedViewportKeyboardOffset >= MOBILE_VIEWPORT_SYNC_THRESHOLD_PX;
   const viewportReportsKeyboard =
-    reportedViewportKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
-    && (input.hasActiveInput || previousKeyboardActive);
+    focusedViewportIsShrinking
+    || (
+      reportedViewportKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+      && (input.hasActiveInput || previousKeyboardActive)
+    );
   const effectiveHeight = viewportReportsKeyboard
     ? reportedViewportHeight
     : viewportBottomHeight;
@@ -168,7 +176,10 @@ export function deriveMobileViewportState(
   const rawKeyboardOffset = input.hasActiveInput || keyboardClosing
     ? Math.max(0, baselineHeight - effectiveHeight)
     : 0;
-  const keyboardOffset = rawKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+  const keyboardOffsetThreshold = input.hasActiveInput || keyboardClosing
+    ? MOBILE_VIEWPORT_SYNC_THRESHOLD_PX
+    : MOBILE_KEYBOARD_MIN_OFFSET_PX;
+  const keyboardOffset = rawKeyboardOffset >= keyboardOffsetThreshold
     ? rawKeyboardOffset
     : 0;
   const holdComposerOffset =
