@@ -1023,6 +1023,31 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("padding: 10px 12px calc(14px + env(safe-area-inset-bottom));");
   });
 
+  it("strips decorative motion effects from the mobile runtime composer during keyboard alignment", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const staticLayerMarker = "/* Mobile keyboard static runtime layer */";
+    const staticLayerIndex = stylesheet.lastIndexOf(staticLayerMarker);
+    const rulesBeforeStaticLayer = stylesheet.slice(0, staticLayerIndex);
+    const staticLayer = stylesheet.slice(staticLayerIndex);
+
+    expect(staticLayerIndex).toBeGreaterThan(
+      rulesBeforeStaticLayer.lastIndexOf("[data-runtime-view=\"conversation\"] .runtime-composer-shell"),
+    );
+    expect(staticLayer).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell,\s*\.runtime-composer-form,\s*\.runtime-workspace,\s*\.runtime-workspace-body,\s*\.runtime-workspace-head,\s*\.runtime-workspace-mobile-header,\s*\.runtime-workspace-panel,\s*\.runtime-workspace-screen,\s*\.chat-pane,\s*\.workbench-main\s*\{[\s\S]*?transition:\s*none;[\s\S]*?animation:\s*none;[\s\S]*?filter:\s*none;[\s\S]*?backdrop-filter:\s*none;/,
+    );
+    expect(staticLayer).toMatch(
+      /\.runtime-composer-shell,\s*\[data-runtime-view="conversation"\] \.runtime-composer-shell\s*\{[\s\S]*?background:\s*#ffffff;[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(staticLayer).toMatch(
+      /\.runtime-composer-form\s*\{[\s\S]*?box-shadow:\s*none;/,
+    );
+    expect(staticLayer).toMatch(
+      /\.runtime-session-signal,\s*\.runtime-session-signal::before,\s*\.runtime-session-signal::after\s*\{[\s\S]*?animation:\s*none;/,
+    );
+  });
+
   it("keeps mobile composer inputs at the iOS-safe 16px text size", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");

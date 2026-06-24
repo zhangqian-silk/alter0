@@ -11356,3 +11356,47 @@ body {
   transition: none;
   transform: none;
 }
+
+/* Mobile keyboard static runtime layer */
+@media (max-width: 760px) {
+  .runtime-composer-shell,
+  .runtime-composer-form,
+  .runtime-workspace,
+  .runtime-workspace-body,
+  .runtime-workspace-head,
+  .runtime-workspace-mobile-header,
+  .runtime-workspace-panel,
+  .runtime-workspace-screen,
+  .chat-pane,
+  .workbench-main {
+    transition: none;
+    animation: none;
+    filter: none;
+    backdrop-filter: none;
+    will-change: auto;
+  }
+
+  .runtime-composer-shell,
+  [data-runtime-view="conversation"] .runtime-composer-shell {
+    background: #ffffff;
+    box-shadow: none;
+  }
+
+  .runtime-composer-form {
+    box-shadow: none;
+  }
+
+  .runtime-session-signal,
+  .runtime-session-signal::before,
+  .runtime-session-signal::after {
+    animation: none;
+  }
+
+  .scroll-jump-control,
+  .terminal-jump-control {
+    transition: none;
+    animation: none;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+}

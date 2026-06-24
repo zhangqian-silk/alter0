@@ -99,7 +99,7 @@
 - `Chat` 的移动端发送按钮在触摸提交时，必须先让当前主输入框失焦，再提交当前草稿；键盘回收与 composer 回弹仍只沿 `VisualViewport` 的实际恢复过程释放 `--keyboard-offset`，不允许发送后键盘停留不收或残留悬空底部占位。
 - `Chat / Terminal` 在移动端采用固定底部 Composer 时，消息滚动区与空态工作区只保留静态 Composer footprint，不随软键盘高度动态压缩；对话、长输出与空态说明不得被键盘链路改写高度或位置。
 - `Chat / Terminal` 在移动端的 Composer 回弹到底边时，运行区保持原位；键盘收起、输入框失焦和视口回弹后，不允许遗留额外底部空白、悬空按钮或上一轮键盘高度对应的占位残影。
-- `Chat / Terminal` 在移动端键盘弹起与收回期间，只允许底部 Composer 按 `VisualViewport` 派生的 composer 专用偏移贴住可见底边；顶部操作行、紧凑 workspace header、正文滚动区、空态、命令候选与配置面板保持原位，不跟随键盘位移做额外动画。
+- `Chat / Terminal` 在移动端键盘弹起与收回期间，只允许底部 Composer 按 `VisualViewport` 派生的 composer 专用偏移贴住可见底边；顶部操作行、紧凑 workspace header、正文滚动区、空态、命令候选与配置面板保持原位，不跟随键盘位移做额外动画。键盘路径上的 runtime composer、workspace、mobile header、阅读定位条与状态信号不得保留装饰性 transition、animation、filter、backdrop-filter、阴影或脉冲效果，避免视觉层 motion 与软键盘动画叠加。
 - `Chat / Terminal` 在移动端软键盘弹起期间，底部 Composer 必须保持为运行页最上层交互层；消息阅读定位按钮与 Terminal 四键定位条在主输入框聚焦后必须主动隐藏，待输入框失焦、键盘收起后再恢复，不得压到输入框、附件条或键盘上方。
 - `Chat / Terminal` 的主输入框在移动端必须显式关闭系统自动填充、卡片、地址与密码类输入辅助条；键盘上沿不得再额外挂出会暴露底部残留页面层的系统输入助手。
 - `Chat / Terminal` 的移动端主输入框必须保持不低于 16px 的可编辑文本字号，避免 iOS Safari 聚焦输入法时触发页面自动缩放、横向裁切或分辨率突变。

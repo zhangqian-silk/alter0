@@ -138,7 +138,7 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 - Terminal 移动端的顶部操作行、prompt 气泡、`Process` 容器、最终输出和 Composer 都必须绑定到当前运行页宽度；长路径、超长错误日志、inline code、pre/code 与 diff 只能在自身内容块内换行或内部横向滚动，不得制造页面级横向滚动，也不得把 `Menu / 标题 / New` 或输入区挤出可视宽度。
 - Terminal 移动端的 `Menu` 与 `Sessions` 抽屉共用同一份当前面板状态：从顶部操作行或工作区工具栏打开会话列表时，主导航抽屉必须立即收起；重新打开 `Menu` 时，会话列表也必须立即关闭，避免双层覆盖和残留展开态。
 - Terminal 会话抽屉内的条目统一采用工作台列表项语义：头部展示当前态信号，正文展示标题与同一行中的时间信息、8 位短标识，删除入口固定在尾侧；列表容器保持独立滚动并输出稳定 `role="list"` 语义，视觉层级保持克制，不使用多余胶囊装饰；PC 端状态、详情、发送、上传、短标识与跳转控件统一使用平面化工具控件节奏。
-- Terminal 在移动端键盘弹起和收回期间，除 Composer 外的公共控件都保持原位；工作区头部、状态区、输出区、命令候选与配置面板不跟随键盘位移做额外动画，右侧四键定位条在输入框聚焦期间隐藏。浏览器在键盘抬起动画中临时回报正 `VisualViewport.offsetTop` 时，Composer 贴底偏移需先保持上一帧键盘占位，短过渡窗口结束或稳定事件到来后再扣除该位移，避免输入区突跳或被重复顶起。
+- Terminal 在移动端键盘弹起和收回期间，除 Composer 外的公共控件都保持原位；工作区头部、状态区、输出区、命令候选与配置面板不跟随键盘位移做额外动画，右侧四键定位条在输入框聚焦期间隐藏。键盘路径上的 runtime composer、workspace、mobile header、四键定位条与状态信号不保留装饰性 transition、animation、filter、backdrop-filter、阴影或脉冲效果。浏览器在键盘抬起动画中临时回报正 `VisualViewport.offsetTop` 时，Composer 贴底偏移需先保持上一帧键盘占位，短过渡窗口结束或稳定事件到来后再扣除该位移，避免输入区突跳或被重复顶起。
 - Terminal 的移动端发送按钮支持在软键盘保持打开时直接点按提交；首触发送需覆盖 `pointerdown(touch)` 与 `touchstart` 提交链路，并在同一次触摸内去重，立即进入 `submitInput`，不允许先触发键盘收起或焦点切换，再要求第二次点击。
 - Terminal 的 fixed Composer 不再额外叠加 `bottom` 过渡动画；键盘收起与输入区回弹阶段直接按 `VisualViewport` 实时位置回贴底边，避免明显卡顿。
 - Terminal 在输入框失焦后，若 `VisualViewport` 仍未恢复到最终高度，必须继续保留当前键盘偏移并随视口回弹逐步释放；不能先闪回到底边再被后续 resize 顶起。

@@ -256,6 +256,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 的主输入框在移动端必须按普通命令文本输入处理：关闭系统自动填充、卡片、地址与密码类输入辅助条，避免键盘上沿再挂出额外输入助手并露出底部残留页面层。
 - `Chat / Terminal` 的移动端主输入框需显式保持 16px 及以上可编辑文本字号；重新打开浏览器后首次聚焦输入法时，页面不得因 iOS Safari 自动输入框缩放而出现横向裁切、整体放大或分辨率突变。
 - `Chat` 在移动端键盘弹起和收回期间，仅允许 fixed composer form 输入 surface 跟随 `VisualViewport` 派生的 `--keyboard-composer-offset` 做贴底位移；Composer 外壳、顶部操作行、紧凑 workspace header、正文滚动区、空态、命令候选与配置面板保持原位，不跟随键盘做额外动画或跳变；阅读定位按钮在输入框聚焦期间隐藏。
+- `Chat / Terminal` 在真手机宽度的键盘链路中，runtime composer shell/form、workspace、mobile header、阅读定位条与状态信号必须退回静态表面：不保留装饰性 transition、animation、filter、backdrop-filter、阴影或脉冲效果，避免这些视觉效果与软键盘动画同帧叠加造成位移感。
 - `Chat` 的移动端发送按钮支持在键盘保持打开时直接点按提交；首触发送需覆盖 `pointerdown(touch)` 与 `touchstart` 提交链路，并在同一次触摸内去重，立即进入当前 `sendPrompt` 链路，不需要先收键盘或补第二次点击。
 - `Chat` 的 fixed composer 不额外叠加 `bottom` 过渡动画；键盘回弹与输入区回贴底边时只消费 `VisualViewport` 的实时位置，避免补间动画与视口收缩/回弹叠加造成拖滞。
 - `Chat` 在输入框失焦后，若 `VisualViewport` 仍处于收缩态，必须继续保留当前键盘偏移并随视口恢复逐步释放；不允许先把 composer 闪回到底边，再被后续 viewport resize 顶回去。
