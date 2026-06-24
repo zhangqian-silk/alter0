@@ -96,7 +96,7 @@ describe("useRuntimeComposerViewportSync", () => {
     expect(workspaceBody.style.getPropertyValue("--runtime-composer-inset")).toBe("0px");
   });
 
-  it("anchors page-level scroll while the mobile composer input remains focused", () => {
+  it("does not rewrite page-level scroll while the mobile composer input remains focused", () => {
     const originalScrollX = Object.getOwnPropertyDescriptor(window, "scrollX");
     const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
     const input = document.createElement("textarea");
@@ -121,7 +121,7 @@ describe("useRuntimeComposerViewportSync", () => {
       render(<Harness isMobileViewport inputFocused />);
       window.dispatchEvent(new Event("scroll"));
 
-      expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 0, behavior: "auto" });
+      expect(scrollTo).not.toHaveBeenCalled();
     } finally {
       if (originalScrollX) {
         Object.defineProperty(window, "scrollX", originalScrollX);
@@ -133,7 +133,7 @@ describe("useRuntimeComposerViewportSync", () => {
     }
   });
 
-  it("restores workspace scroll positions changed by mobile keyboard focus alignment", () => {
+  it("does not rewrite workspace scroll positions during mobile keyboard focus alignment", () => {
     render(<Harness isMobileViewport inputFocused />);
 
     const workspaceBody = document.querySelector("[data-testid='workspace-body']") as HTMLDivElement;
@@ -143,11 +143,11 @@ describe("useRuntimeComposerViewportSync", () => {
 
     window.dispatchEvent(new Event("scroll"));
 
-    expect(workspaceBody.scrollTop).toBe(0);
-    expect(workspaceScreen.scrollTop).toBe(0);
+    expect(workspaceBody.scrollTop).toBe(84);
+    expect(workspaceScreen.scrollTop).toBe(132);
   });
 
-  it("rechecks page-level scroll after delayed mobile keyboard focus alignment", () => {
+  it("does not schedule delayed page-level scroll rewrites during mobile keyboard focus alignment", () => {
     vi.useFakeTimers();
     const originalScrollX = Object.getOwnPropertyDescriptor(window, "scrollX");
     const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
@@ -175,7 +175,7 @@ describe("useRuntimeComposerViewportSync", () => {
       scrollY = 64;
       vi.advanceTimersByTime(96);
 
-      expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 0, behavior: "auto" });
+      expect(scrollTo).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
       if (originalScrollX) {

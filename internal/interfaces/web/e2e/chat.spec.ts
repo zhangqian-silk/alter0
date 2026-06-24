@@ -1058,6 +1058,7 @@ test.describe("Chat composer", () => {
       const workspaceBody = document.querySelector("[data-runtime-view='conversation'] .runtime-workspace-body");
       const workspaceScreen = document.querySelector("[data-runtime-view='conversation'] .runtime-workspace-screen");
       const composerShell = document.querySelector(".runtime-composer-shell");
+      const composerForm = document.querySelector(".runtime-composer-form");
       const viewport = window.visualViewport;
       if (
         !(appShell instanceof HTMLElement)
@@ -1067,6 +1068,7 @@ test.describe("Chat composer", () => {
         || !(workspaceBody instanceof HTMLElement)
         || !(workspaceScreen instanceof HTMLElement)
         || !(composerShell instanceof HTMLElement)
+        || !(composerForm instanceof HTMLElement)
         || !viewport
       ) {
         return null;
@@ -1078,6 +1080,7 @@ test.describe("Chat composer", () => {
       const workspaceHeaderRect = workspaceHeader.getBoundingClientRect();
       const workspaceScreenRect = workspaceScreen.getBoundingClientRect();
       const composerRect = composerShell.getBoundingClientRect();
+      const composerFormRect = composerForm.getBoundingClientRect();
       return {
         keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
         keyboardComposerOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-composer-offset").trim(),
@@ -1096,6 +1099,8 @@ test.describe("Chat composer", () => {
         workspaceScreenScrollTop: workspaceScreen.scrollTop,
         composerTop: composerRect.top,
         composerBottom: composerRect.bottom,
+        composerFormTop: composerFormRect.top,
+        composerFormBottom: composerFormRect.bottom,
       };
     });
 
@@ -1112,7 +1117,8 @@ test.describe("Chat composer", () => {
     const opened = await readMetrics();
     expect(opened).not.toBeNull();
     expect(opened?.keyboardOffset).toBe("312px");
-    expect((opened?.composerBottom ?? 0) - (opened?.viewportBottom ?? 0)).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.composerBottom ?? 0) - (baseline?.composerBottom ?? 0))).toBeLessThanOrEqual(2);
+    expect((opened?.composerFormBottom ?? 0) - (opened?.viewportBottom ?? 0)).toBeLessThanOrEqual(2);
     expect(Math.abs((opened?.windowScrollY ?? 0) - (baseline?.windowScrollY ?? 0))).toBeLessThanOrEqual(1);
     expect(Math.abs((opened?.appShellHeight ?? 0) - (baseline?.appShellHeight ?? 0))).toBeLessThanOrEqual(2);
     expect(Math.abs((opened?.chatPaneHeight ?? 0) - (baseline?.chatPaneHeight ?? 0))).toBeLessThanOrEqual(2);
@@ -1124,36 +1130,7 @@ test.describe("Chat composer", () => {
     expect(Math.abs((opened?.workspaceScreenTop ?? 0) - (baseline?.workspaceScreenTop ?? 0))).toBeLessThanOrEqual(2);
     expect(Math.abs((opened?.workspaceScreenHeight ?? 0) - (baseline?.workspaceScreenHeight ?? 0))).toBeLessThanOrEqual(2);
     expect(Math.abs((opened?.workspaceScreenScrollTop ?? 0) - (baseline?.workspaceScreenScrollTop ?? 0))).toBeLessThanOrEqual(1);
-    expect((baseline?.composerTop ?? 0) - (opened?.composerTop ?? 0)).toBeGreaterThan(120);
-
-    await page.evaluate(() => {
-      const selectors = [
-        "html",
-        "body",
-        ".app-shell",
-        ".chat-pane",
-        "[data-runtime-view='conversation'] .runtime-workspace-body",
-        "[data-runtime-view='conversation'] .runtime-workspace-screen",
-      ];
-      selectors.forEach((selector) => {
-        const node = document.querySelector(selector);
-        if (node instanceof HTMLElement) {
-          node.scrollTop = 88;
-        }
-      });
-      window.dispatchEvent(new Event("scroll"));
-    });
-    await expect.poll(async () => {
-      const current = await readMetrics();
-      if (!current || !baseline) {
-        return Number.POSITIVE_INFINITY;
-      }
-      return Math.max(
-        Math.abs(current.windowScrollY - baseline.windowScrollY),
-        Math.abs(current.workspaceBodyScrollTop - baseline.workspaceBodyScrollTop),
-        Math.abs(current.workspaceScreenScrollTop - baseline.workspaceScreenScrollTop),
-      );
-    }).toBeLessThanOrEqual(1);
+    expect((baseline?.composerFormTop ?? 0) - (opened?.composerFormTop ?? 0)).toBeGreaterThan(120);
 
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 312 });
     await expect.poll(async () => page.evaluate(() =>
@@ -1161,7 +1138,12 @@ test.describe("Chat composer", () => {
     )).toBe("312px");
     const transitioningOffset = await readMetrics();
     expect(transitioningOffset).not.toBeNull();
-    expect(Math.abs((transitioningOffset?.composerBottom ?? 0) - (transitioningOffset?.viewportHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((transitioningOffset?.composerBottom ?? 0) - (baseline?.composerBottom ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((transitioningOffset?.composerFormBottom ?? 0) - (transitioningOffset?.viewportHeight ?? 0))).toBeLessThanOrEqual(12);
+    expect(Math.abs((transitioningOffset?.mobileHeaderTop ?? 0) - (baseline?.mobileHeaderTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((transitioningOffset?.workspaceHeaderTop ?? 0) - (baseline?.workspaceHeaderTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((transitioningOffset?.workspaceScreenTop ?? 0) - (baseline?.workspaceScreenTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((transitioningOffset?.workspaceScreenHeight ?? 0) - (baseline?.workspaceScreenHeight ?? 0))).toBeLessThanOrEqual(2);
 
     await page.waitForTimeout(380);
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 312 });
@@ -1173,8 +1155,8 @@ test.describe("Chat composer", () => {
       if (!current) {
         return Number.POSITIVE_INFINITY;
       }
-      return Math.abs(current.composerBottom - current.viewportBottom);
-    }).toBeLessThanOrEqual(2);
+      return Math.abs(current.composerFormBottom - current.viewportBottom);
+    }).toBeLessThanOrEqual(12);
 
     await page.evaluate(() => {
       if (document.activeElement instanceof HTMLElement) {
@@ -1191,7 +1173,7 @@ test.describe("Chat composer", () => {
       if (!current) {
         return Number.POSITIVE_INFINITY;
       }
-      return Math.abs(current.composerBottom - current.viewportBottom);
+      return Math.abs(current.composerFormBottom - current.viewportBottom);
     }).toBeLessThanOrEqual(20);
 
     const closed = await readMetrics();

@@ -7,86 +7,11 @@ type UseRuntimeComposerViewportSyncProps = {
   composerShellRef: RefObject<HTMLElement | null>;
 };
 
-type ScrollAnchor = {
-  node: HTMLElement;
-  top: number;
-  left: number;
-};
-
-function collectScrollAnchors(workspaceBodyNode: HTMLElement | null): ScrollAnchor[] {
-  const nodes = new Set<HTMLElement>();
-  const scrollingElement = document.scrollingElement;
-  if (scrollingElement instanceof HTMLElement) {
-    nodes.add(scrollingElement);
-  }
-  if (document.body) {
-    nodes.add(document.body);
-  }
-  if (workspaceBodyNode) {
-    nodes.add(workspaceBodyNode);
-    let ancestor = workspaceBodyNode.parentElement;
-    while (ancestor) {
-      if (
-        ancestor.matches(
-          ".app-shell, .workbench-main, .workbench-pane-shell, .chat-pane, .runtime-workspace, .runtime-workspace-view",
-        )
-      ) {
-        nodes.add(ancestor);
-      }
-      ancestor = ancestor.parentElement;
-    }
-    workspaceBodyNode
-      .querySelectorAll<HTMLElement>(".runtime-workspace-panel, .runtime-workspace-screen")
-      .forEach((node) => nodes.add(node));
-  }
-  return Array.from(nodes, (node) => ({
-    node,
-    top: node.scrollTop,
-    left: node.scrollLeft,
-  }));
-}
-
 export function useRuntimeComposerViewportSync({
   isMobileViewport,
-  inputFocused,
   workspaceBodyRef,
   composerShellRef,
 }: UseRuntimeComposerViewportSyncProps) {
-  useLayoutEffect(() => {
-    if (!isMobileViewport || !inputFocused) {
-      return;
-    }
-    const scrollAnchors = collectScrollAnchors(workspaceBodyRef.current);
-    const keepViewportAnchored = () => {
-      if (window.scrollX !== 0 || window.scrollY !== 0) {
-        window.scrollTo({ left: 0, top: 0, behavior: "auto" });
-      }
-      scrollAnchors.forEach(({ node, top, left }) => {
-        if (node.scrollTop !== top) {
-          node.scrollTop = top;
-        }
-        if (node.scrollLeft !== left) {
-          node.scrollLeft = left;
-        }
-      });
-    };
-    const frameID = window.requestAnimationFrame(keepViewportAnchored);
-    const lateFrameIDs = [96, 180, 280].map((delayMS) =>
-      window.setTimeout(keepViewportAnchored, delayMS),
-    );
-    const visualViewport = window.visualViewport;
-    window.addEventListener("scroll", keepViewportAnchored, { passive: true });
-    visualViewport?.addEventListener("resize", keepViewportAnchored);
-    visualViewport?.addEventListener("scroll", keepViewportAnchored);
-    return () => {
-      window.cancelAnimationFrame(frameID);
-      lateFrameIDs.forEach((timeoutID) => window.clearTimeout(timeoutID));
-      window.removeEventListener("scroll", keepViewportAnchored);
-      visualViewport?.removeEventListener("resize", keepViewportAnchored);
-      visualViewport?.removeEventListener("scroll", keepViewportAnchored);
-    };
-  }, [inputFocused, isMobileViewport, workspaceBodyRef]);
-
   useLayoutEffect(() => {
     const workspaceBodyNode = workspaceBodyRef.current;
     const composerShellNode = composerShellRef.current;
@@ -166,5 +91,5 @@ export function useRuntimeComposerViewportSync({
       workspaceBodyNode.style.removeProperty("--runtime-composer-inset");
       workspaceBodyNode.style.removeProperty("--runtime-composer-rest-inset");
     };
-  }, [composerShellRef, inputFocused, isMobileViewport, workspaceBodyRef]);
+  }, [composerShellRef, isMobileViewport, workspaceBodyRef]);
 }
