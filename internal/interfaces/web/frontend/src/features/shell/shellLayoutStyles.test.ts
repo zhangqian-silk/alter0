@@ -384,6 +384,16 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toMatch(/\.runtime-composer-shell\s*\{[^}]*bottom:\s*var\(--keyboard-composer-offset/);
   });
 
+  it("keeps narrow-screen workbench containers off the raw visual viewport height during keyboard animation", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).not.toContain("min-height: calc(var(--mobile-viewport-height) - 24px);");
+    expect(stylesheet).toContain(
+      "min-height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px) - 24px);",
+    );
+  });
+
   it("locks document scrolling on narrow screens so keyboard focus cannot move the whole workbench", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/root.css"), "utf8");

@@ -9938,7 +9938,7 @@ body::after {
   }
 
   .workbench-main {
-    min-height: calc(var(--mobile-viewport-height) - 24px);
+    min-height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px) - 24px);
   }
 
   [data-runtime-view="conversation"] .runtime-workspace-screen,

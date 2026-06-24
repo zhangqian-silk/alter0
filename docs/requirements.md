@@ -90,7 +90,7 @@
 - `/chat` 与登录页的对外品牌文案统一使用 `Alter0`：浏览器标题、登录标题、导航品牌位、会话栏标题与欢迎区 tag 不再暴露小写服务名。
 - Terminal 路由页继续由 React 原生实现，会话栏、工作区头部、Process、输出区和 Composer 的状态与交互全部由 React 维护；旧版 Terminal 仅作为布局关系与 `terminal-*` DOM 契约参照，不恢复 legacy runtime 控制器或脚本接管。
 - 主导航、控制台与资产页默认以高密度信息架构呈现：主导航主工作流只保留 `Chat / Terminal` 三个入口，并用单个 `Management` 工具入口承接所有管理能力；控制面和资产能力在 Management 页内部用分组切换和高密度正文承载，长列表优先使用表格或主从视图，不再把大量配置和任务详情平铺为低密度信息矩阵。
-- 移动端 Web Shell 使用 `VisualViewport` 驱动的 `--mobile-viewport-height`、`--keyboard-offset` 与 `--keyboard-composer-offset` 协调壳体和输入区：浏览器工具栏切换时壳体继续贴合可视区域，软键盘弹起时主工作区保持稳定高度，底部 Composer 只有 form 输入 surface 按可见底边偏移移动；移动端根文档禁止页面级滚动，Composer 外壳、workspace header、正文滚动区、空态、阅读定位条、命令候选和配置面板不消费键盘偏移，不出现底部空白、内容裁切、整页上移或输入区重复上移。
+- 移动端 Web Shell 使用 `VisualViewport` 驱动的 `--mobile-viewport-height`、`--keyboard-offset` 与 `--keyboard-composer-offset` 协调壳体和输入区：浏览器工具栏切换时壳体继续贴合可视区域，软键盘弹起时主工作区保持可视高度加键盘占位形成的稳定高度，底部 Composer 只有 form 输入 surface 按可见底边偏移移动；移动端根文档禁止页面级滚动，Composer 外壳、workspace header、正文滚动区、空态、阅读定位条、命令候选和配置面板不消费键盘偏移，也不直接消费实时 `--mobile-viewport-height` 改变高度，不出现底部空白、内容裁切、整页上移或输入区重复上移。
 - 移动端运行页的左侧导航抽屉必须保持统一开合语义：`Chat / Terminal` 都只保留 `Menu` 作为抽屉入口。点击遮罩、切换路由、切换会话或创建新会话后不得残留旧的展开层。
 - 移动端运行页左侧导航抽屉需优先保证真机稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不叠加多层位移、淡出或条目级顺序动画；抽屉面板使用近白表面、平面菜单、细分割线和自然滚动的会话区，抽屉内置顶会话单独位于 `Pinned / 置顶` 分组，其余会话再按最近时间分组，并统一采用「标题 / 尾侧三点菜单」的紧凑导航列表结构，仅处理中会话在标题旁显示 loading，避免退回松散白色块、状态灯、元信息或过度胶囊化。
 - 共享运行时的短哈希预览 host 与主域工作台必须落在同一登录保护边界内：`/login` 可直接在预览 host 打开，登录态 cookie 需对 `*.alter0.cn` 生效，避免主域与预览子域重复维护独立会话。
