@@ -7,12 +7,43 @@ type UseRuntimeComposerViewportSyncProps = {
   composerShellRef: RefObject<HTMLElement | null>;
 };
 
-function hasFocusedEditableElement() {
-  const activeElement = document.activeElement;
-  if (activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement) {
-    return true;
+type ScrollAnchor = {
+  node: HTMLElement;
+  top: number;
+  left: number;
+};
+
+function collectScrollAnchors(workspaceBodyNode: HTMLElement | null): ScrollAnchor[] {
+  const nodes = new Set<HTMLElement>();
+  const scrollingElement = document.scrollingElement;
+  if (scrollingElement instanceof HTMLElement) {
+    nodes.add(scrollingElement);
   }
-  return activeElement instanceof HTMLElement && activeElement.isContentEditable;
+  if (document.body) {
+    nodes.add(document.body);
+  }
+  if (workspaceBodyNode) {
+    nodes.add(workspaceBodyNode);
+    let ancestor = workspaceBodyNode.parentElement;
+    while (ancestor) {
+      if (
+        ancestor.matches(
+          ".app-shell, .workbench-main, .workbench-pane-shell, .chat-pane, .runtime-workspace, .runtime-workspace-view",
+        )
+      ) {
+        nodes.add(ancestor);
+      }
+      ancestor = ancestor.parentElement;
+    }
+    workspaceBodyNode
+      .querySelectorAll<HTMLElement>(".runtime-workspace-panel, .runtime-workspace-screen")
+      .forEach((node) => nodes.add(node));
+  }
+  return Array.from(nodes, (node) => ({
+    node,
+    top: node.scrollTop,
+    left: node.scrollLeft,
+  }));
 }
 
 export function useRuntimeComposerViewportSync({
@@ -25,26 +56,36 @@ export function useRuntimeComposerViewportSync({
     if (!isMobileViewport || !inputFocused) {
       return;
     }
+    const scrollAnchors = collectScrollAnchors(workspaceBodyRef.current);
     const keepViewportAnchored = () => {
-      if (hasFocusedEditableElement()) {
-        return;
-      }
       if (window.scrollX !== 0 || window.scrollY !== 0) {
         window.scrollTo({ left: 0, top: 0, behavior: "auto" });
       }
+      scrollAnchors.forEach(({ node, top, left }) => {
+        if (node.scrollTop !== top) {
+          node.scrollTop = top;
+        }
+        if (node.scrollLeft !== left) {
+          node.scrollLeft = left;
+        }
+      });
     };
     const frameID = window.requestAnimationFrame(keepViewportAnchored);
+    const lateFrameIDs = [96, 180, 280].map((delayMS) =>
+      window.setTimeout(keepViewportAnchored, delayMS),
+    );
     const visualViewport = window.visualViewport;
     window.addEventListener("scroll", keepViewportAnchored, { passive: true });
     visualViewport?.addEventListener("resize", keepViewportAnchored);
     visualViewport?.addEventListener("scroll", keepViewportAnchored);
     return () => {
       window.cancelAnimationFrame(frameID);
+      lateFrameIDs.forEach((timeoutID) => window.clearTimeout(timeoutID));
       window.removeEventListener("scroll", keepViewportAnchored);
       visualViewport?.removeEventListener("resize", keepViewportAnchored);
       visualViewport?.removeEventListener("scroll", keepViewportAnchored);
     };
-  }, [inputFocused, isMobileViewport]);
+  }, [inputFocused, isMobileViewport, workspaceBodyRef]);
 
   useLayoutEffect(() => {
     const workspaceBodyNode = workspaceBodyRef.current;
@@ -59,20 +100,15 @@ export function useRuntimeComposerViewportSync({
     }
 
     const syncComposerInset = () => {
-      const workspaceRect = workspaceBodyNode.getBoundingClientRect();
       const composerRect = composerShellNode.getBoundingClientRect();
       const restInset = Math.max(0, Math.ceil(composerRect.height));
-      const overlapInset = Math.max(0, Math.ceil(workspaceRect.bottom - composerRect.top));
-      const activeInset = inputFocused
-        ? Math.max(0, overlapInset - restInset)
-        : 0;
       workspaceBodyNode.style.setProperty(
         "--runtime-composer-rest-inset",
         `${restInset}px`,
       );
       workspaceBodyNode.style.setProperty(
         "--runtime-composer-inset",
-        `${activeInset}px`,
+        "0px",
       );
     };
 

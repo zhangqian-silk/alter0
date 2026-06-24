@@ -1051,29 +1051,49 @@ test.describe("Chat composer", () => {
     const input = page.locator("[data-composer-input='conversation']");
 
     const readMetrics = async () => page.evaluate(() => {
+      const appShell = document.querySelector(".app-shell");
+      const chatPane = document.querySelector(".chat-pane");
       const mobileHeader = document.querySelector("[data-runtime-mobile-variant='conversation']");
       const workspaceHeader = document.querySelector("[data-runtime-workspace-header='true']");
+      const workspaceBody = document.querySelector("[data-runtime-view='conversation'] .runtime-workspace-body");
+      const workspaceScreen = document.querySelector("[data-runtime-view='conversation'] .runtime-workspace-screen");
       const composerShell = document.querySelector(".runtime-composer-shell");
       const viewport = window.visualViewport;
       if (
-        !(mobileHeader instanceof HTMLElement)
+        !(appShell instanceof HTMLElement)
+        || !(chatPane instanceof HTMLElement)
+        || !(mobileHeader instanceof HTMLElement)
         || !(workspaceHeader instanceof HTMLElement)
+        || !(workspaceBody instanceof HTMLElement)
+        || !(workspaceScreen instanceof HTMLElement)
         || !(composerShell instanceof HTMLElement)
         || !viewport
       ) {
         return null;
       }
 
+      const appShellRect = appShell.getBoundingClientRect();
+      const chatPaneRect = chatPane.getBoundingClientRect();
       const mobileHeaderRect = mobileHeader.getBoundingClientRect();
       const workspaceHeaderRect = workspaceHeader.getBoundingClientRect();
+      const workspaceScreenRect = workspaceScreen.getBoundingClientRect();
       const composerRect = composerShell.getBoundingClientRect();
       return {
         keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
+        keyboardComposerOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-composer-offset").trim(),
+        viewportHeight: viewport.height,
         viewportBottom: viewport.height + viewport.offsetTop,
+        windowScrollY: window.scrollY,
+        appShellHeight: appShellRect.height,
+        chatPaneHeight: chatPaneRect.height,
         mobileHeaderTop: mobileHeaderRect.top,
         mobileHeaderBottom: mobileHeaderRect.bottom,
         workspaceHeaderTop: workspaceHeaderRect.top,
         workspaceHeaderBottom: workspaceHeaderRect.bottom,
+        workspaceBodyScrollTop: workspaceBody.scrollTop,
+        workspaceScreenTop: workspaceScreenRect.top,
+        workspaceScreenHeight: workspaceScreenRect.height,
+        workspaceScreenScrollTop: workspaceScreen.scrollTop,
         composerTop: composerRect.top,
         composerBottom: composerRect.bottom,
       };
@@ -1089,22 +1109,72 @@ test.describe("Chat composer", () => {
     await expect.poll(async () => page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
     )).toBe("312px");
+    const opened = await readMetrics();
+    expect(opened).not.toBeNull();
+    expect(opened?.keyboardOffset).toBe("312px");
+    expect((opened?.composerBottom ?? 0) - (opened?.viewportBottom ?? 0)).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.windowScrollY ?? 0) - (baseline?.windowScrollY ?? 0))).toBeLessThanOrEqual(1);
+    expect(Math.abs((opened?.appShellHeight ?? 0) - (baseline?.appShellHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.chatPaneHeight ?? 0) - (baseline?.chatPaneHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.mobileHeaderTop ?? 0) - (baseline?.mobileHeaderTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.mobileHeaderBottom ?? 0) - (baseline?.mobileHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.workspaceHeaderTop ?? 0) - (baseline?.workspaceHeaderTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.workspaceHeaderBottom ?? 0) - (baseline?.workspaceHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.workspaceBodyScrollTop ?? 0) - (baseline?.workspaceBodyScrollTop ?? 0))).toBeLessThanOrEqual(1);
+    expect(Math.abs((opened?.workspaceScreenTop ?? 0) - (baseline?.workspaceScreenTop ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.workspaceScreenHeight ?? 0) - (baseline?.workspaceScreenHeight ?? 0))).toBeLessThanOrEqual(2);
+    expect(Math.abs((opened?.workspaceScreenScrollTop ?? 0) - (baseline?.workspaceScreenScrollTop ?? 0))).toBeLessThanOrEqual(1);
+    expect((baseline?.composerTop ?? 0) - (opened?.composerTop ?? 0)).toBeGreaterThan(120);
+
+    await page.evaluate(() => {
+      const selectors = [
+        "html",
+        "body",
+        ".app-shell",
+        ".chat-pane",
+        "[data-runtime-view='conversation'] .runtime-workspace-body",
+        "[data-runtime-view='conversation'] .runtime-workspace-screen",
+      ];
+      selectors.forEach((selector) => {
+        const node = document.querySelector(selector);
+        if (node instanceof HTMLElement) {
+          node.scrollTop = 88;
+        }
+      });
+      window.dispatchEvent(new Event("scroll"));
+    });
+    await expect.poll(async () => {
+      const current = await readMetrics();
+      if (!current || !baseline) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.max(
+        Math.abs(current.windowScrollY - baseline.windowScrollY),
+        Math.abs(current.workspaceBodyScrollTop - baseline.workspaceBodyScrollTop),
+        Math.abs(current.workspaceScreenScrollTop - baseline.workspaceScreenScrollTop),
+      );
+    }).toBeLessThanOrEqual(1);
+
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 312 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-composer-offset").trim()
+    )).toBe("312px");
+    const transitioningOffset = await readMetrics();
+    expect(transitioningOffset).not.toBeNull();
+    expect(Math.abs((transitioningOffset?.composerBottom ?? 0) - (transitioningOffset?.viewportHeight ?? 0))).toBeLessThanOrEqual(2);
+
+    await page.waitForTimeout(380);
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 312 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-composer-offset").trim()
+    )).toBe("0px");
     await expect.poll(async () => {
       const current = await readMetrics();
       if (!current) {
         return Number.POSITIVE_INFINITY;
       }
-      return current.composerBottom - current.viewportBottom;
+      return Math.abs(current.composerBottom - current.viewportBottom);
     }).toBeLessThanOrEqual(2);
-
-    const opened = await readMetrics();
-    expect(opened).not.toBeNull();
-    expect(opened?.keyboardOffset).toBe("312px");
-    expect(Math.abs((opened?.mobileHeaderTop ?? 0) - (baseline?.mobileHeaderTop ?? 0))).toBeLessThanOrEqual(2);
-    expect(Math.abs((opened?.mobileHeaderBottom ?? 0) - (baseline?.mobileHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
-    expect(Math.abs((opened?.workspaceHeaderTop ?? 0) - (baseline?.workspaceHeaderTop ?? 0))).toBeLessThanOrEqual(2);
-    expect(Math.abs((opened?.workspaceHeaderBottom ?? 0) - (baseline?.workspaceHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
-    expect((baseline?.composerTop ?? 0) - (opened?.composerTop ?? 0)).toBeGreaterThan(120);
 
     await page.evaluate(() => {
       if (document.activeElement instanceof HTMLElement) {
