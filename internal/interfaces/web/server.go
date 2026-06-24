@@ -129,7 +129,7 @@ type terminalService interface {
 	List(ownerID string) []terminaldomain.Session
 	Get(ownerID string, sessionID string) (terminaldomain.Session, bool)
 	ListTurns(ownerID string, sessionID string) ([]terminalapp.TurnSummary, error)
-	GetStepDetail(ownerID string, sessionID string, turnID string, stepID string) (terminalapp.StepDetail, error)
+	GetRuntimeTraceEventDetail(ownerID string, sessionID string, turnID string, eventID string) (terminalapp.RuntimeTraceEventDetail, error)
 	ListEntries(ownerID string, sessionID string, cursor int, limit int) (terminalapp.EntryPage, error)
 	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
 	InputWithAttachments(req terminalapp.InputRequest) (terminaldomain.Session, error)

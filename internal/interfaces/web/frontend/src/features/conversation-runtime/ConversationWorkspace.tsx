@@ -62,7 +62,7 @@ function buildConversationMarkdownSyntaxDemoMessage(language: LegacyShellLanguag
     error: false,
     status: "done",
     at: Date.parse("2026-06-08T00:00:00Z"),
-    processSteps: [],
+    processEvents: [],
   };
 }
 
@@ -166,7 +166,7 @@ function useConversationWorkspaceController(
     sessionID: "",
     visibleCount: INITIAL_VISIBLE_CHAT_MESSAGES,
   });
-  const [expandedProcessSteps, setExpandedProcessSteps] = useState<Record<string, boolean>>({});
+  const [expandedProcessEvents, setExpandedProcessSteps] = useState<Record<string, boolean>>({});
   const activeMessages = runtime.activeSession?.messages || [];
   const activeSessionID = runtime.activeSession?.id || "";
   const showMarkdownSyntaxDemo = shouldShowConversationMarkdownSyntaxDemo(runtime.route);
@@ -182,6 +182,19 @@ function useConversationWorkspaceController(
     toggleProcessRef.current = runtime.toggleProcess;
   }, [runtime.toggleProcess]);
   const toggleProcess = useCallback((messageID: string) => {
+    const processStepKeyPrefix = `${messageID}:`;
+    setExpandedProcessSteps((current) => {
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      Object.entries(current).forEach(([key, value]) => {
+        if (key.startsWith(processStepKeyPrefix)) {
+          changed = true;
+          return;
+        }
+        next[key] = value;
+      });
+      return changed ? next : current;
+    });
     toggleProcessRef.current(messageID);
   }, []);
   const toggleProcessStep = useCallback((messageID: string, stepID: string) => {
@@ -364,11 +377,11 @@ function useConversationWorkspaceController(
       messages: visibleMessages,
       language,
       onToggleProcess: toggleProcess,
-      expandedProcessSteps,
-      onToggleProcessStep: toggleProcessStep,
+      expandedProcessEvents,
+      onToggleProcessEvent: toggleProcessStep,
       runtimeEventFilter: runtime.runtimeEventFilter,
     }),
-    [expandedProcessSteps, language, runtime.runtimeEventFilter, timelineSessionID, toggleProcess, toggleProcessStep, visibleMessages],
+    [expandedProcessEvents, language, runtime.runtimeEventFilter, timelineSessionID, toggleProcess, toggleProcessStep, visibleMessages],
   );
   const loadEarlierMessages = useCallback(() => {
     if (!timelineSessionID || hiddenMessageCount <= 0) {

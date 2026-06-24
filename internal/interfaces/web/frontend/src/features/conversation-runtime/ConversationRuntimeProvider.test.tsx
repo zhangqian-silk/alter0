@@ -58,8 +58,8 @@ function RuntimeHarness() {
         send
       </button>
       <output data-testid="assistant-text">{assistantMessage?.text || ""}</output>
-      <output data-testid="assistant-process-count">{assistantMessage?.processSteps.length || 0}</output>
-      <output data-testid="assistant-process-status">{assistantMessage?.processSteps[0]?.status || ""}</output>
+      <output data-testid="assistant-process-count">{assistantMessage?.processEvents.length || 0}</output>
+      <output data-testid="assistant-process-status">{assistantMessage?.processEvents[0]?.status || ""}</output>
       <output data-testid="active-session-status">{runtime.activeSession?.status || ""}</output>
     </div>
   );
@@ -155,6 +155,19 @@ function SessionListHarness() {
       <output data-testid="sessions">
         {runtime.sessionItems.map((session) => `${session.title}:${session.shortHash}:${session.pinned ? "pinned" : "unpinned"}`).join("|")}
       </output>
+    </div>
+  );
+}
+
+function ProcessToggleHarness() {
+  const runtime = useConversationRuntimeWorkspace();
+  const assistantMessage = runtime.activeSession?.messages.find((message) => message.role === "assistant");
+  return (
+    <div>
+      <button type="button" onClick={() => assistantMessage ? runtime.toggleProcess(assistantMessage.id) : undefined}>
+        toggle process
+      </button>
+      <output data-testid="assistant-process-collapsed">{String(assistantMessage?.processCollapsed)}</output>
     </div>
   );
 }
@@ -312,6 +325,79 @@ describe("ConversationRuntimeProvider", () => {
 
   it("keeps the Chat runtime cache alive for long single-device route gaps", () => {
     expect(CHAT_RUNTIME_CACHE_SESSION_TTL_MS).toBe(8 * 60 * 60 * 1000);
+  });
+
+  it("opens a default-collapsed completed process on the first toggle", async () => {
+    const completedTurn = {
+      id: "turn-1",
+      prompt: "show process",
+      status: "success",
+      started_at: "2026-04-23T03:31:00Z",
+      finished_at: "2026-04-23T03:31:01Z",
+      final_output: "Done",
+      runtime_trace_events: [
+        {
+          id: "event-1",
+          turn_id: "turn-1",
+          seq: 1,
+          source: "adapter",
+          provider: { engine: "codex", adapter: "codex_cli_json", event_type: "message", item_id: "event-1" },
+          role: "assistant",
+          kind: "assistant_commentary",
+          lifecycle: "completed",
+          status: "completed",
+          title: "Progress",
+          summary: "Progress detail",
+          blocks: [{ type: "markdown", text: "Progress detail" }],
+          visibility: "collapsed",
+          raw: { ref: "event-1", type: "message", has_detail: true },
+        },
+      ],
+    };
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+        case "/api/terminal/sessions/alter0-chat?scope=chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Process session",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [completedTurn],
+            },
+            items: [{
+              id: "alter0-chat",
+              title: "Process session",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [completedTurn],
+            }],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ProcessToggleHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("undefined");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle process" }));
+    expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle process" }));
+    expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("true");
   });
 
   it("hydrates a fresh Chat runtime cache immediately and refreshes after the API returns", async () => {
@@ -966,7 +1052,7 @@ describe("ConversationRuntimeProvider", () => {
     ));
   });
 
-  it("marks the chat session busy without creating local stream process steps after sending a prompt", async () => {
+  it("marks the chat session busy without creating local stream process events after sending a prompt", async () => {
     vi.stubGlobal("fetch", vi.fn());
     apiClientMock.post.mockImplementation(async (path: string) => {
       if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {

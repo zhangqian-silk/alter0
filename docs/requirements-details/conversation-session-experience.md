@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-06-23
+> Last update: 2026-06-24
 
 ## 领域边界
 
@@ -48,7 +48,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 面向通用对话入口，默认直接通过 Claude Code CLI 或 Codex CLI 执行。
 - `Chat` 不再绑定内置 `main` Skill，也不再默认调度内置专项 Skill。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在 Chat 会话过程中调整，并作用于后续发送的消息；`Chat` 的 `Provider / Model` 选择器额外暴露内置 `Codex` 项，允许用户不经过常规 LLM Provider 直接切到 `Codex CLI` 执行链。Web `Chat` 不再提供独立空态、Skill 选择器、私有 Skill 面板或会话级目标切换；旧 Chat 会话加载时仅迁移为 Chat 会话并保留目标 Skill 名称作为历史元数据。
-- `Provider / Model` 与 `Skills` 配置面板同时提供过程披露过滤项：`important_text / plan / reasoning / tools / commands / system`。默认只勾选 `important_text`，其余类型需要用户显式开启；勾选只影响前端过程区展示，不改变底层会话消息、执行结果或历史持久化。
+- `Provider / Model` 与 `Skills` 配置面板同时提供过程披露过滤项：`important_text / plan / reasoning / tools / commands / system`。默认只勾选 `important_text`，其余类型需要用户显式开启；勾选只影响前端过程区展示，不改变底层会话消息、执行结果或历史持久化。`Thinking / 已思考` 展开后的步骤行需展示同一分类标签，便于用户判断当前可见步骤来自重要文本、计划、推理、工具、命令或系统事件。
 
 ### Settings 页面
 
@@ -82,7 +82,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Terminal` 页面 Composer 复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、缩略预览与历史回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`；其中缩略位继续使用 `preview_url`，再次查看时统一切回 `asset_url`。
 - assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
 - `GET /api/terminal/sessions?scope=chat` 返回 Chat 运行页会话摘要，至少包含标题、Skills 选择、创建时间、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。Terminal 默认 `/api/terminal/sessions` 不包含 Chat-scoped 会话。
-- `GET /api/terminal/sessions/{session_id}?scope=chat` 返回单个 Chat 运行页会话详情，至少包含 Terminal-compatible `turns`、用户附件引用、结构化 steps 与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
+- `GET /api/terminal/sessions/{session_id}?scope=chat` 返回单个 Chat 运行页会话详情，至少包含 Terminal-compatible `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
 - `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
 - `GET /api/sessions/{session_id}/messages` 查询会话消息。
 - `DELETE /api/sessions/{session_id}` 删除会话，并触发关联工作区和任务清理。
@@ -124,7 +124,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - Chat 前端统一调用 `POST /api/terminal/sessions/{session_id}/input?scope=chat`；不得调用 `/api/messages`、`/api/messages/stream`，不得依赖 SSE 增量、保活帧、浏览器读流状态或本地 `Thinking` 过程步骤驱动消息区。
 - Chat 发送后由 Terminal session 状态进入 `busy`；执行完成或失败后，用 input 返回结果或 Terminal session 详情恢复当前消息区。
 - 直连 Codex 的 `agent_message` 按输出频道区分正文与过程：`final` 或旧版无频道消息进入 assistant 最终正文，`commentary` 作为结构化过程事件进入消息内联 `Thinking / 已思考` 披露区，其他非最终频道不得作为最终 `output` 写入会话正文。
-- Chat 与 Terminal 的过程展示统一消费 `RuntimeTraceEvent`。事件 `kind/source/provider/role/status/lifecycle/blocks/action` 等字段只允许来自底层 SDK/CLI provider、工程 adapter 或 alter0 本地确定性注入，不允许用标题、正文、关键词或语言模式推断。Terminal step 摘要在读取或渲染前转换为当前结构。
+- Chat 与 Terminal 的过程展示统一消费 `RuntimeTraceEvent`。事件 `kind/source/provider/role/status/lifecycle/blocks/action/duration_ms` 等字段只允许来自底层 SDK/CLI provider、工程 adapter 或 alter0 本地确定性注入，不允许用标题、正文、关键词或语言模式推断。Terminal turn 摘要直接提供 `runtime_trace_events`，前端只按 `RuntimeTraceEvent.kind` 过滤展示类型；事件详情通过 `/turns/{turn_id}/events/{event_id}` 读取。
 - Chat 显式选择 `Codex` 且消息包含图片附件时，服务端需把已上传并落盘的原图路径传给 Codex CLI `-i` 参数；前端提示词不需要再描述“图片已存在”才能触发图片读取。
 
 ### 执行不中断
@@ -162,8 +162,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat / Terminal` 的移动端运行页头部按钮需直接响应首个 `touchstart` 或非鼠标 `pointerdown`：`Menu`、中间标题详情入口、`New` 会话入口以及保留的移动端会话入口都不得依赖后续合成 `click` 才触发；同一触摸产生的后续 `click` 需被去重，避免一次手势执行两次。移动端边缘操作以无边框图标按钮作为可见形态，`Menu / New` 文案保留为可访问标签。
 - Terminal 长输出复制按钮不得把完整输出写入 `data-*` 属性或其他 DOM 元数据；复制 payload 保留在组件闭包并通过剪贴板 API / document copy 兜底写出，避免长日志在 DOM 中重复放大并拖慢轮询、选择和点击。
 - Terminal 时间线渲染需按 `turns / 展开态 / step 详情 / 语言` 等稳定输入缓存，Composer 草稿、滚动活跃态、配置面板开关或复制状态变化不得触发整段输出重新解析 Markdown。
-- Skill 消息中的 `Process` 使用 Terminal turn steps 转换后的结构化事件渲染，不再保留文本解析兼容。
-- 结构化 steps 需要在 Terminal input 结果与会话历史恢复后保持一致，刷新页面不得把已完成消息重新退化为仅正文展示。
+- Skill 消息中的 `Process` 使用 Terminal turn `runtime_trace_events` 渲染，不再保留文本解析兼容。
+- 结构化 `RuntimeTraceEvent` 需要在 Terminal input 结果与会话历史恢复后保持一致，刷新页面不得把已完成消息重新退化为仅正文展示。
 - Process 披露过滤按 `RuntimeTraceEvent.kind` 执行：`assistant_commentary` 归入 `important_text`，`plan` 归入 `plan`，`reasoning` 归入 `reasoning`，tool/MCP/skill/hook/approval 归入 `tools`，shell command 归入 `commands`，runtime/system/unknown/error 归入 `system`。过滤器只隐藏或显示折叠区事件，不改变最终 assistant 正文。
 - `Chat / Terminal` 的消息输出结构统一收敛到轻量 IM 式消息流：用户输入右对齐并使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制，助手回复左对齐并弱化为无边框正文阅读流；Chat 消息阅读区使用白底无框正文面，视觉层级由阅读宽度、留白和角色对齐承担，不在对话区叠加明显边框、背景分界或卡片容器。Skill 与 Terminal 中间步骤默认按 `Thinking / 已思考` 轻量披露行展示，展开后在当前消息内进入步骤详情，移动端也保持同页内联展开；Chat / Terminal 助手最终答复统一使用稳定的运行页 markdown shell，正文先于复制工具栏渲染，复制动作位于正文下方，代码块独立呈现为浅灰内容块；消息正文区不显示逐条时间，仅在进行中、排队、失败等非稳定状态下保留状态标签。新增运行页若呈现用户输入与助手输出，必须复用 `RuntimeTimeline` 与 `runtime-message / runtime-message-user / runtime-message-assistant / runtime-message-bubble` 契约，避免继续产生页面私有气泡格式。
 - `Chat` 在显式访问 `/chat?markdown_demo=1` 时可临时覆盖当前时间线视图并注入一条非持久化 assistant Markdown 演示消息，用于预览环境验收 ATX/Setext 标题、段落换行、强调、删除线、自动链接、图片、引用、嵌套列表、任务项、列表内引用与代码块、分割线、代码块、对齐表格与 raw HTML 转义等当前支持语法；表格样例覆盖短字符、长中文、长 URL/代码和混合内容场景；折叠示例中的 HTML 标签按代码块展示，折叠内容本身按普通 Markdown 展示；普通 `/chat` 不显示该样例，也不把该消息写入 Session history。
@@ -206,7 +206,8 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 - Process action / observation 与 Terminal 执行细节在前端收敛为可折叠 Process，并统一在当前消息或 turn 内同页展开。
 - 最终答复出现后，Process 默认折叠，阅读焦点回到正文。
-- 用户手动展开或折叠后，在当前浏览器会话内保留状态。
+- 单个步骤详情由用户点开对应步骤后展示，并在当前浏览器会话内保留状态；外层 `Thinking / 已思考` 每次展开或折叠时需收起该消息下已打开的单步详情，使移动端先稳定进入步骤列表态，不把历史详情重新撑开视口。
+- Chat 与 Terminal 过程披露中的所有步骤详情都直接渲染为同一套最终 detail surface：`terminal / code / diff / tool_input` 与 JSON 类 `tool_output` 使用等宽内容块，`text / markdown / thinking / tool_output(text) / error` 以及历史 `step.detail` 使用富文本正文块；结构化 block 的标题、文件名和起始行号需在详情头部保留。即使只有 `RuntimeTraceEvent.blocks` 中的结构化摘要，也不得先按普通 Markdown 文本显示再切换为最终形态。步骤行的类型标签、耗时与状态需与 Terminal 同源渲染，类型标签需与过程披露过滤映射同源，不通过标题或自然语言内容推断，详情块不重复渲染状态 badge。
 
 ### 布局
 

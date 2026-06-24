@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import {
   ReactManagedTerminalRouteBody,
@@ -9,6 +9,7 @@ import {
 } from "./ReactManagedTerminalRouteBody";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../../app/WorkbenchContext";
 import { hashSessionIDShort } from "../../../shared/session/sessionHash";
+import type { RuntimeTraceEvent } from "./runtimeTraceEvents";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -25,6 +26,29 @@ type TerminalTurnFixture = {
   prompt?: string;
   final_output?: string;
 };
+
+function terminalRuntimeEventFixture(overrides: Partial<RuntimeTraceEvent> = {}): RuntimeTraceEvent {
+  const kind = overrides.kind || "shell_command";
+  return {
+    id: "step-1",
+    turn_id: "turn-1",
+    seq: 1,
+    source: "adapter",
+    provider: { engine: "codex", adapter: "codex_cli_json", event_type: "command", item_id: "step-1" },
+    role: "assistant",
+    kind,
+    lifecycle: "completed",
+    status: "completed",
+    title: "Inspect workspace",
+    summary: "pwd",
+    blocks: [],
+    action: kind === "shell_command" ? { family: "shell", name: "shell" } : undefined,
+    visibility: "collapsed",
+    duration_ms: 1000,
+    raw: { ref: "step-1", type: "command", has_detail: true },
+    ...overrides,
+  };
+}
 
 function installImmediateAnimationFrame() {
   vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
@@ -76,7 +100,7 @@ function stubTerminalTurnsFetch(turns: TerminalTurnFixture[], shell = "codex exe
             finished_at: `2026-04-15T10:0${index}:02Z`,
             duration_ms: 2000,
             final_output: turn.final_output || `output-${index + 1}`,
-            steps: [],
+            runtime_trace_events: [],
           })),
         },
       }));
@@ -263,31 +287,25 @@ describe("ReactManagedTerminalRouteBody", () => {
                   "",
                   "Use `pwd` to inspect the repo.",
                 ].join("\n"),
-                steps: [
-                  {
-                    id: "step-1",
-                    title: "Inspect workspace",
-                    type: "command",
-                    status: "completed",
-                    duration_ms: 1000,
-                    preview: "pwd",
-                    has_detail: true,
-                  },
+                runtime_trace_events: [
+                  terminalRuntimeEventFixture({ title: "Inspect workspace", summary: "pwd" }),
                 ],
               },
             ],
           },
         }));
       }
-      if (url === "/api/terminal/sessions/terminal-1/turns/turn-1/steps/step-1" && method === "GET") {
+      if (url === "/api/terminal/sessions/terminal-1/turns/turn-1/events/step-1" && method === "GET") {
         return Promise.resolve(jsonResponse({
-          step: {
+          event: {
             turn_id: "turn-1",
             blocks: [
               {
                 type: "terminal",
                 title: "Shell",
-                content: "pwd\n/workspace/alter0",
+                command: "pwd",
+                output: "/workspace/alter0",
+                language: "shell",
               },
             ],
           },
@@ -369,6 +387,7 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   afterEach(() => {
+    cleanup();
     resetTerminalRuntimeCache();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -667,7 +686,7 @@ describe("ReactManagedTerminalRouteBody", () => {
       finished_at: `2026-04-15T10:${String(index + 1).padStart(2, "0")}:02Z`,
       duration_ms: 2000,
       final_output: turn.final_output,
-      steps: [],
+      runtime_trace_events: [],
     }));
 
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -738,7 +757,7 @@ describe("ReactManagedTerminalRouteBody", () => {
           finished_at: "2026-04-15T10:20:02Z",
           duration_ms: 2000,
           final_output: "server output",
-          steps: [],
+          runtime_trace_events: [],
         }],
       }),
     });
@@ -773,7 +792,7 @@ describe("ReactManagedTerminalRouteBody", () => {
               finished_at: "2026-04-15T10:00:02Z",
               duration_ms: 2000,
               final_output: "cached output before expiry",
-              steps: [],
+              runtime_trace_events: [],
             }],
           }),
         }));
@@ -825,7 +844,7 @@ describe("ReactManagedTerminalRouteBody", () => {
           finished_at: "2026-04-15T10:20:02Z",
           duration_ms: 2000,
           final_output: "server output after expiry",
-          steps: [],
+          runtime_trace_events: [],
         }],
       }),
     });
@@ -1383,7 +1402,7 @@ describe("ReactManagedTerminalRouteBody", () => {
                 finished_at: "2026-04-15T10:05:02Z",
                 duration_ms: 2000,
                 final_output: "链路：`请求接入 -> 召回 -> 粗排 -> 精排 -> 返回广告`",
-                steps: [],
+                runtime_trace_events: [],
               },
             ],
           },
@@ -1445,7 +1464,7 @@ describe("ReactManagedTerminalRouteBody", () => {
                 finished_at: "2026-04-15T10:05:02Z",
                 duration_ms: 2000,
                 final_output: "Use Chat &gt; Details &gt; Model to switch runtime.",
-                steps: [],
+                runtime_trace_events: [],
               },
             ],
           },
@@ -1886,7 +1905,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(payload.attachments[0].data_url).toBeUndefined();
   });
 
-  it("loads step detail when expanding a process step", async () => {
+  it("loads event detail when expanding a process event", async () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
@@ -1897,7 +1916,265 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     await waitFor(() => {
       expect(document.querySelector(".terminal-step-content code")?.textContent).toBe(
-        "pwd\n/workspace/alter0",
+        "pwd\n\n/workspace/alter0",
+      );
+    });
+  });
+
+  it("renders terminal markdown event detail as readable rich text", async () => {
+    const defaultFetch = vi.mocked(fetch).getMockImplementation();
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "summarize",
+                status: "completed",
+                started_at: "2026-04-15T10:05:00Z",
+                finished_at: "2026-04-15T10:05:02Z",
+                duration_ms: 2000,
+                final_output: "done",
+                runtime_trace_events: [
+                  terminalRuntimeEventFixture({
+                    kind: "assistant_commentary",
+                    title: "Markdown detail",
+                    summary: "Markdown detail",
+                    raw: { ref: "step-1", type: "message", has_detail: true },
+                  }),
+                ],
+              },
+            ],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1/turns/turn-1/events/step-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          event: {
+            turn_id: "turn-1",
+            blocks: [
+              {
+                type: "markdown",
+                title: "Markdown contract",
+                text: "Render **markdown** as readable text.",
+              },
+            ],
+          },
+        }));
+      }
+      return defaultFetch?.(input, init) ?? Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    });
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-step-toggle='step-1']")).toBeInTheDocument();
+    });
+
+    fireEvent.click(document.querySelector("[data-terminal-step-toggle='step-1']")!);
+
+    await waitFor(() => {
+      const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
+      const block = step.querySelector(".terminal-rich-block.type-markdown") as HTMLElement;
+      expect(block).toBeInTheDocument();
+      expect(block.querySelector(".terminal-rich-head")).toHaveTextContent("Markdown contract");
+      expect(block.querySelector(".message-markdown-rendered")).toHaveTextContent("Render markdown as readable text.");
+      expect(block.querySelector(".terminal-step-content code")).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not repeat the step status inside expanded process detail blocks", async () => {
+    const defaultFetch = vi.mocked(fetch).getMockImplementation();
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "validate",
+                status: "completed",
+                started_at: "2026-04-15T10:05:00Z",
+                finished_at: "2026-04-15T10:05:02Z",
+                duration_ms: 2000,
+                final_output: "done",
+                runtime_trace_events: [
+                  terminalRuntimeEventFixture({
+                    kind: "system_event",
+                    lifecycle: "failed",
+                    status: "failed",
+                    title: "Error log",
+                    summary: "Simulated validation error",
+                    raw: { ref: "step-1", type: "log", has_detail: true },
+                  }),
+                ],
+              },
+            ],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1/turns/turn-1/events/step-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          event: {
+            turn_id: "turn-1",
+            blocks: [
+              {
+                type: "text",
+                title: "Error",
+                text: "Simulated validation error.",
+              },
+            ],
+          },
+        }));
+      }
+      return defaultFetch?.(input, init) ?? Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    });
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-step-toggle='step-1']")).toBeInTheDocument();
+    });
+
+    fireEvent.click(document.querySelector("[data-terminal-step-toggle='step-1']")!);
+
+    await waitFor(() => {
+      const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
+      expect(step).toBeInTheDocument();
+      expect(within(step).getAllByText("Failed")).toHaveLength(1);
+      expect(step.querySelector(".terminal-rich-head")).toHaveTextContent("Error");
+      expect(step.querySelector(".terminal-rich-meta")).not.toBeInTheDocument();
+    });
+  });
+
+  it("discloses runtime event categories on terminal process events", async () => {
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
+      expect(step).toBeInTheDocument();
+      expect(step.querySelector(".terminal-step-kind")).toHaveTextContent("Commands");
+    });
+  });
+
+  it("waits for shell event detail before expanding the step body", async () => {
+    let resolveEventDetail: ((value: Response) => void) | undefined;
+    const eventDetail = new Promise<Response>((resolve) => {
+      resolveEventDetail = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [
+            {
+              id: "terminal-1",
+              title: "Workspace shell",
+              terminal_session_id: "terminal-1",
+              status: "ready",
+              shell: "codex exec",
+              working_dir: "/workspace/alter0",
+              created_at: "2026-04-15T10:00:00Z",
+              updated_at: "2026-04-15T10:10:00Z",
+            },
+          ],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "inspect",
+                status: "completed",
+                started_at: "2026-04-15T10:05:00Z",
+                finished_at: "2026-04-15T10:05:02Z",
+                duration_ms: 2000,
+                final_output: "done",
+                runtime_trace_events: [
+                  terminalRuntimeEventFixture({
+                    title: "Shell",
+                    summary: "sed -n '1,120p' AGENTS.md",
+                  }),
+                ],
+              },
+            ],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1/turns/turn-1/events/step-1" && method === "GET") {
+        return eventDetail;
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-step-toggle='step-1']")).toBeInTheDocument();
+    });
+
+    fireEvent.click(document.querySelector("[data-terminal-step-toggle='step-1']")!);
+
+    expect(document.querySelector("[data-terminal-step-toggle='step-1']")).toHaveAttribute("aria-expanded", "false");
+    expect(document.querySelector("[data-terminal-step-item='step-1'] .terminal-step-body")).toHaveAttribute("hidden");
+
+    await act(async () => {
+      resolveEventDetail?.(jsonResponse({
+        event: {
+          turn_id: "turn-1",
+          blocks: [
+            {
+              type: "terminal",
+              title: "Shell",
+              command: "sed -n '1,120p' AGENTS.md",
+              output: "# Rule",
+              language: "shell",
+            },
+          ],
+        },
+      }));
+      await eventDetail;
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-step-toggle='step-1']")).toHaveAttribute("aria-expanded", "true");
+      expect(document.querySelector(".terminal-step-content code")?.textContent).toBe(
+        "sed -n '1,120p' AGENTS.md\n\n# Rule",
       );
     });
   });
@@ -1921,7 +2198,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(toggle.querySelector(".terminal-step-toggle-icon")).toHaveTextContent(">");
   });
 
-  it("renders terminal steps with runtime event metadata", async () => {
+  it("renders terminal events with runtime event metadata", async () => {
     renderTerminalRouteBody();
 
     await waitFor(() => {
@@ -1956,7 +2233,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
   });
 
-  it("renders terminal narrative step detail as readable text instead of preserving pathological per-glyph line breaks", async () => {
+  it("renders terminal narrative event detail as readable text instead of preserving pathological per-glyph line breaks", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = String(init?.method || "GET").toUpperCase();
@@ -1996,31 +2273,28 @@ describe("ReactManagedTerminalRouteBody", () => {
                 finished_at: "2026-04-15T10:05:02Z",
                 duration_ms: 2000,
                 final_output: "done",
-                steps: [
-                  {
-                    id: "step-1",
+                runtime_trace_events: [
+                  terminalRuntimeEventFixture({
+                    kind: "reasoning",
                     title: "Explain local runtime constraints",
-                    type: "reasoning",
-                    status: "completed",
-                    duration_ms: 1000,
-                    preview: "先\n读\n取\n本\n地\n运\n行\n约\n束",
-                    has_detail: true,
-                  },
+                    summary: "先\n读\n取\n本\n地\n运\n行\n约\n束",
+                    raw: { ref: "step-1", type: "reasoning", has_detail: true },
+                  }),
                 ],
               },
             ],
           },
         }));
       }
-      if (url === "/api/terminal/sessions/terminal-1/turns/turn-1/steps/step-1" && method === "GET") {
+      if (url === "/api/terminal/sessions/terminal-1/turns/turn-1/events/step-1" && method === "GET") {
         return Promise.resolve(jsonResponse({
-          step: {
+          event: {
             turn_id: "turn-1",
             blocks: [
               {
                 type: "text",
                 title: "Reasoning",
-                content: "先\n读\n取\n本\n地\n运\n行\n约\n束，\n然\n后\n直\n接\n给\n出\n方\n案",
+                text: "先\n读\n取\n本\n地\n运\n行\n约\n束，\n然\n后\n直\n接\n给\n出\n方\n案",
               },
             ],
           },
@@ -2106,7 +2380,7 @@ describe("ReactManagedTerminalRouteBody", () => {
                 finished_at: "2026-04-15T10:20:03Z",
                 duration_ms: 2000,
                 final_output: "/workspace/alter0/.alter0/workspaces/terminal/sessions/terminal-2",
-                steps: [],
+                runtime_trace_events: [],
               },
             ],
           },
@@ -2225,7 +2499,7 @@ describe("ReactManagedTerminalRouteBody", () => {
                 finished_at: "2026-04-15T10:20:03Z",
                 duration_ms: 2000,
                 final_output: "done",
-                steps: [],
+                runtime_trace_events: [],
               },
             ],
           },
@@ -2527,10 +2801,10 @@ describe("ReactManagedTerminalRouteBody", () => {
               newest_turn_id: "turn-2",
             },
             turns: sessionLoads > 1
-              ? [{ id: "turn-2", prompt: "newer", status: "completed", final_output: "newer updated", steps: [] }]
+              ? [{ id: "turn-2", prompt: "newer", status: "completed", final_output: "newer updated", runtime_trace_events: [] }]
               : [
-                  { id: "turn-1", prompt: "older", status: "completed", final_output: "older output", steps: [] },
-                  { id: "turn-2", prompt: "newer", status: "completed", final_output: "newer output", steps: [] },
+                  { id: "turn-1", prompt: "older", status: "completed", final_output: "older output", runtime_trace_events: [] },
+                  { id: "turn-2", prompt: "newer", status: "completed", final_output: "newer output", runtime_trace_events: [] },
                 ],
           },
         }));
@@ -3045,7 +3319,7 @@ describe("ReactManagedTerminalRouteBody", () => {
                 finished_at: "2026-04-15T10:00:02Z",
                 duration_ms: 2000,
                 final_output: "output-1",
-                steps: [],
+                runtime_trace_events: [],
               },
               {
                 id: "turn-2",
@@ -3055,7 +3329,7 @@ describe("ReactManagedTerminalRouteBody", () => {
                 finished_at: "2026-04-15T10:01:02Z",
                 duration_ms: 2000,
                 final_output: "output-2",
-                steps: [],
+                runtime_trace_events: [],
               },
               {
                 id: "turn-3",
@@ -3065,7 +3339,7 @@ describe("ReactManagedTerminalRouteBody", () => {
                 finished_at: "2026-04-15T10:02:02Z",
                 duration_ms: 2000,
                 final_output: "output-3",
-                steps: [],
+                runtime_trace_events: [],
               },
             ],
           },

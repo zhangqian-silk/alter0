@@ -22,25 +22,24 @@ import {
   isCodexShellSession,
 } from "./codexSlashCommands";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
-import type { RuntimeTimelineItem, RuntimeTimelineProcessStep } from "./RuntimeTimeline";
-import { MessageMarkdownHTML } from "./MessageMarkdownShell";
+import type { RuntimeTimelineItem, RuntimeTimelineProcessEvent } from "./RuntimeTimeline";
 import { normalizeText, RouteMarkdownContent } from "./RouteBodyPrimitives";
-import { renderMessageMarkdownToHTML } from "./MessageMarkdown";
+import {
+  RuntimeProcessDetailBlocks,
+  runtimeTraceEventToProcessDetailBlocks,
+} from "./RuntimeProcessDetailBlocks";
+import { RuntimeProcessStepMeta } from "./RuntimeProcessStepMeta";
 import { ScrollJumpStrip } from "./ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
-import { terminalStepToRuntimeTraceEvent } from "./runtimeTraceEvents";
+import {
+  normalizeRuntimeTraceEvents,
+  runtimeTraceEventDisclosureCategory,
+  runtimeTraceEventDetailID,
+  type RuntimeBlock,
+  type RuntimeTraceEvent,
+} from "./runtimeTraceEvents";
 
 type TerminalStatus = "ready" | "busy" | "exited" | "failed" | "interrupted";
-
-type TerminalStepSummary = {
-  id: string;
-  type: string;
-  title: string;
-  status: string;
-  duration_ms?: number;
-  preview?: string;
-  has_detail?: boolean;
-};
 
 type TerminalTurn = {
   id: string;
@@ -51,7 +50,7 @@ type TerminalTurn = {
   finished_at?: string | number;
   duration_ms?: number;
   final_output?: string;
-  steps?: TerminalStepSummary[];
+  runtime_trace_events?: RuntimeTraceEvent[];
 };
 
 type TerminalTurnPaging = {
@@ -97,17 +96,6 @@ type TerminalSessionResponse = {
   session?: TerminalSession;
 };
 
-type TerminalStepBlock = {
-  type?: string;
-  title?: string;
-  content?: string;
-  language?: string;
-  file?: string;
-  start_line?: number;
-  status?: string;
-  exit_code?: number | null;
-};
-
 function RuntimeSessionControlIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true">
@@ -119,15 +107,15 @@ function RuntimeSessionControlIcon() {
   );
 }
 
-type TerminalStepDetail = {
+type RuntimeTraceEventDetail = {
   turn_id?: string;
-  step?: TerminalStepSummary;
-  blocks?: TerminalStepBlock[];
+  event?: RuntimeTraceEvent;
+  blocks?: RuntimeBlock[];
   searchable?: boolean;
 };
 
-type TerminalStepDetailResponse = {
-  step?: TerminalStepDetail;
+type RuntimeTraceEventDetailResponse = {
+  event?: RuntimeTraceEventDetail;
 };
 
 type TerminalSkill = {
@@ -178,7 +166,7 @@ type TerminalCopy = {
   status: string;
   details: string;
   process: string;
-  processSteps: (count: number) => string;
+  processEvents: (count: number) => string;
   noProcess: string;
   noOutput: string;
   noOutputMeta: string;
@@ -235,7 +223,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     status: "Status",
     details: "Details",
     process: "Thinking",
-    processSteps: (count) => `${count} steps`,
+    processEvents: (count) => `${count} steps`,
     noProcess: "No execution details.",
     noOutput: "No output yet.",
     noOutputMeta: "No output yet.",
@@ -290,7 +278,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     status: "状态",
     details: "详情",
     process: "已思考",
-    processSteps: (count) => `${count} 步`,
+    processEvents: (count) => `${count} 步`,
     noProcess: "暂无执行细节。",
     noOutput: "暂时还没有输出。",
     noOutputMeta: "暂无输出。",
@@ -349,8 +337,6 @@ let terminalRuntimeCache: TerminalRuntimeCacheSnapshot | null = null;
 export function resetTerminalRuntimeCache() {
   terminalRuntimeCache = null;
 }
-
-const TERMINAL_NARRATIVE_BLOCK_TYPES = new Set(["text", "message", "reasoning", "plan", "log"]);
 
 function resolveLanguage(): "en" | "zh" {
   return document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en";
@@ -675,8 +661,11 @@ function cloneTerminalTurn(turn: TerminalTurn): TerminalTurn {
     attachments: Array.isArray(turn.attachments)
       ? turn.attachments.map((attachment) => ({ ...attachment }))
       : undefined,
-    steps: Array.isArray(turn.steps)
-      ? turn.steps.map((step) => ({ ...step }))
+    runtime_trace_events: Array.isArray(turn.runtime_trace_events)
+      ? turn.runtime_trace_events.map((event) => ({
+          ...event,
+          blocks: event.blocks.map((block) => ({ ...block })),
+        }))
       : undefined,
   };
 }
@@ -789,22 +778,8 @@ function mergeSessionSnapshot(
   return merged as TerminalSession;
 }
 
-function durationLabel(durationMS: number | undefined) {
-  const value = Number(durationMS || 0);
-  if (!Number.isFinite(value) || value <= 0) {
-    return "<1s";
-  }
-  const seconds = Math.max(1, Math.round(value / 1000));
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remain = seconds % 60;
-  return remain > 0 ? `${minutes}m ${remain}s` : `${minutes}m`;
-}
-
-function stepKey(turnID: string, stepID: string) {
-  return `${turnID}:${stepID}`;
+function eventKey(turnID: string, eventID: string) {
+  return `${turnID}:${eventID}`;
 }
 
 function runtimeNote(status: string, copy: TerminalCopy): string {
@@ -843,27 +818,6 @@ function sessionSignalTone(status: string): "ready" | "busy" | "failed" {
     default:
       return "failed";
   }
-}
-
-function stepStatusClassName(status: string) {
-  const normalized = normalizeText(status).toLowerCase();
-  if (["busy", "running", "starting"].includes(normalized)) {
-    return "status-running";
-  }
-  if (["failed", "error"].includes(normalized)) {
-    return "status-failed";
-  }
-  if (["interrupted", "cancelled", "canceled", "exited"].includes(normalized)) {
-    return "status-interrupted";
-  }
-  if (["completed", "success", "ready", "done"].includes(normalized) || !normalized || normalized === "-") {
-    return "status-success";
-  }
-  return "status-neutral";
-}
-
-function isTerminalNarrativeBlockType(blockType: string) {
-  return TERMINAL_NARRATIVE_BLOCK_TYPES.has(normalizeText(blockType).toLowerCase());
 }
 
 function sessionLastOutputLabel(
@@ -920,9 +874,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const [inputFocused, setInputFocused] = useState(false);
   const [pageHidden, setPageHidden] = useState(() => document.hidden);
   const [expandedTurns, setExpandedTurns] = useState<Record<string, boolean>>({});
-  const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
-  const [stepDetails, setStepDetails] = useState<Record<string, TerminalStepDetail>>({});
-  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
+  const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
+  const [eventDetails, setEventDetails] = useState<Record<string, RuntimeTraceEventDetail>>({});
+  const [eventErrors, setEventErrors] = useState<Record<string, string>>({});
   const chatScreenRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1194,9 +1148,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     closeMobileSessionPane();
     setMetaOpen(false);
     setExpandedTurns({});
-    setExpandedSteps({});
-    setStepDetails({});
-    setStepErrors({});
+    setExpandedEvents({});
+    setEventDetails({});
+    setEventErrors({});
     return nextSession;
   };
 
@@ -1205,9 +1159,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     closeMobileSessionPane();
     setMetaOpen(false);
     setExpandedTurns({});
-    setExpandedSteps({});
-    setStepDetails({});
-    setStepErrors({});
+    setExpandedEvents({});
+    setEventDetails({});
+    setEventErrors({});
     requestAnimationFrame(() => focusComposerInputWithoutScroll());
   };
 
@@ -1414,7 +1368,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
 
   useLayoutEffect(() => {
     restoreScrollSnapshot();
-  }, [activeSessionID, turns, expandedTurns, expandedSteps, stepDetails, metaOpen]);
+  }, [activeSessionID, turns, expandedTurns, expandedEvents, eventDetails, metaOpen]);
 
   useEffect(() => {
     return () => {
@@ -1469,9 +1423,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     closeMobileSessionPane();
     setMetaOpen(false);
     setExpandedTurns({});
-    setExpandedSteps({});
-    setStepDetails({});
-    setStepErrors({});
+    setExpandedEvents({});
+    setEventDetails({});
+    setEventErrors({});
     await refreshActiveSession(sessionID);
   };
 
@@ -1479,9 +1433,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     setActiveSessionID(sessionID);
     setMetaOpen(false);
     setExpandedTurns({});
-    setExpandedSteps({});
-    setStepDetails({});
-    setStepErrors({});
+    setExpandedEvents({});
+    setEventDetails({});
+    setEventErrors({});
     await refreshActiveSession(sessionID);
     setSessionDetailsOpen(true);
   };
@@ -1669,27 +1623,33 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     setExpandedTurns((current) => ({ ...current, [turnID]: !current[turnID] }));
   }, []);
 
-  const toggleStep = useCallback(async (turnID: string, stepID: string, hasDetail: boolean) => {
-    const key = stepKey(turnID, stepID);
-    const nextExpanded = !expandedSteps[key];
-    setExpandedSteps((current) => ({ ...current, [key]: nextExpanded }));
-    if (!nextExpanded || !hasDetail || stepDetails[key] || !activeSession) {
+  const toggleEvent = useCallback(async (turnID: string, eventID: string, hasDetail: boolean) => {
+    const key = eventKey(turnID, eventID);
+    const currentlyExpanded = Boolean(expandedEvents[key]);
+    if (currentlyExpanded) {
+      setExpandedEvents((current) => ({ ...current, [key]: false }));
+      return;
+    }
+    if (!hasDetail || eventDetails[key] || !activeSession) {
+      setExpandedEvents((current) => ({ ...current, [key]: true }));
       return;
     }
     try {
-      const payload = await apiClient.get<TerminalStepDetailResponse>(
-        `/api/terminal/sessions/${encodeURIComponent(activeSession.id)}/turns/${encodeURIComponent(turnID)}/steps/${encodeURIComponent(stepID)}`,
+      const payload = await apiClient.get<RuntimeTraceEventDetailResponse>(
+        `/api/terminal/sessions/${encodeURIComponent(activeSession.id)}/turns/${encodeURIComponent(turnID)}/events/${encodeURIComponent(eventID)}`,
       );
-      if (payload.step) {
-        setStepDetails((current) => ({ ...current, [key]: payload.step as TerminalStepDetail }));
+      if (payload.event) {
+        setEventDetails((current) => ({ ...current, [key]: payload.event as RuntimeTraceEventDetail }));
       }
+      setExpandedEvents((current) => ({ ...current, [key]: true }));
     } catch (error) {
-      setStepErrors((current) => ({
+      setEventErrors((current) => ({
         ...current,
         [key]: error instanceof Error ? error.message : "unknown error",
       }));
+      setExpandedEvents((current) => ({ ...current, [key]: true }));
     }
-  }, [activeSession, apiClient, expandedSteps, stepDetails]);
+  }, [activeSession, apiClient, expandedEvents, eventDetails]);
 
   const handleScroll = () => {
     setScrollingActive(true);
@@ -1814,20 +1774,22 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     sessionID: activeSession?.id,
     turns,
     expandedTurns,
-    expandedSteps,
-    stepDetails,
-    stepErrors,
+    expandedEvents,
+    eventDetails,
+    eventErrors,
     copy,
+    language,
     onToggleTurn: toggleTurn,
-    onToggleStep: (turnID, stepID, hasDetail) => void toggleStep(turnID, stepID, hasDetail),
+    onToggleEvent: (turnID, eventID, hasDetail) => void toggleEvent(turnID, eventID, hasDetail),
     onPreviewAttachment: setPreviewAttachment,
   }), [
     copy,
-    expandedSteps,
+    expandedEvents,
     expandedTurns,
-    stepDetails,
-    stepErrors,
-    toggleStep,
+    language,
+    eventDetails,
+    eventErrors,
+    toggleEvent,
     toggleTurn,
     turns,
     activeSession?.id,
@@ -2010,7 +1972,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
           containerRef={chatScreenRef}
           itemSelector="[data-terminal-turn]"
           itemAttribute="data-terminal-turn"
-          watchKey={`${activeSessionID}:${turns.length}:${Object.keys(expandedTurns).length}:${Object.keys(expandedSteps).length}:${Object.keys(stepDetails).length}:${metaOpen ? "meta" : "plain"}`}
+          watchKey={`${activeSessionID}:${turns.length}:${Object.keys(expandedTurns).length}:${Object.keys(expandedEvents).length}:${Object.keys(eventDetails).length}:${metaOpen ? "meta" : "plain"}`}
           suppressNextTarget={submitting}
           onControlPointerDown={handleJumpControlPointerDown}
         />
@@ -2094,35 +2056,72 @@ export function ReactManagedTerminalRouteBody() {
   return <RuntimeWorkspacePage controller={controller} />;
 }
 
+function terminalTurnRuntimeEvents(
+  sessionID: string,
+  turn: TerminalTurn,
+): RuntimeTraceEvent[] {
+  return normalizeRuntimeTraceEvents(turn.runtime_trace_events, {
+    sessionID,
+    turnID: turn.id,
+  });
+}
+
+function runtimeTraceEventDetailBlocks(detail: RuntimeTraceEventDetail | undefined) {
+  if (!detail) {
+    return [];
+  }
+  if (detail.event) {
+    return runtimeTraceEventToProcessDetailBlocks(detail.event);
+  }
+  if (Array.isArray(detail.blocks) && detail.blocks.length > 0) {
+    return runtimeTraceEventToProcessDetailBlocks({
+      id: "detail",
+      turn_id: detail.turn_id || "",
+      seq: 1,
+      source: "adapter",
+      provider: { engine: "codex", adapter: "codex_cli_json" },
+      role: "assistant",
+      kind: "unknown_provider_event",
+      lifecycle: "completed",
+      status: "completed",
+      blocks: detail.blocks,
+      visibility: "collapsed",
+    });
+  }
+  return [];
+}
+
 function buildTerminalTimelineItems({
   sessionID,
   turns,
   expandedTurns,
-  expandedSteps,
-  stepDetails,
-  stepErrors,
+  expandedEvents,
+  eventDetails,
+  eventErrors,
   copy,
+  language,
   onToggleTurn,
-  onToggleStep,
+  onToggleEvent,
   onPreviewAttachment,
 }: {
   sessionID?: string;
   turns: TerminalTurn[];
   expandedTurns: Record<string, boolean>;
-  expandedSteps: Record<string, boolean>;
-  stepDetails: Record<string, TerminalStepDetail>;
-  stepErrors: Record<string, string>;
+  expandedEvents: Record<string, boolean>;
+  eventDetails: Record<string, RuntimeTraceEventDetail>;
+  eventErrors: Record<string, string>;
   copy: TerminalCopy;
+  language: "en" | "zh";
   onToggleTurn: (turnID: string) => void;
-  onToggleStep: (turnID: string, stepID: string, hasDetail: boolean) => void;
+  onToggleEvent: (turnID: string, eventID: string, hasDetail: boolean) => void;
   onPreviewAttachment: (attachment: ComposerAttachment | null) => void;
 }): RuntimeTimelineItem[] {
   return turns.map((turn) => {
-    const steps = Array.isArray(turn.steps) ? turn.steps : [];
+    const runtimeEvents = terminalTurnRuntimeEvents(sessionID, turn);
     const turnAttachments = Array.isArray(turn.attachments) ? turn.attachments : [];
     const imageAttachments = turnAttachments.filter((attachment) => attachment.content_type.startsWith("image/"));
     const processOpen = expandedTurns[turn.id] ?? false;
-    const hasProcess = steps.length > 0 || normalizeStatus(turn.status || "") === "busy";
+    const hasProcess = runtimeEvents.length > 0 || normalizeStatus(turn.status || "") === "busy";
     const blocks = [];
 
     if (imageAttachments.length > 0) {
@@ -2173,116 +2172,55 @@ function buildTerminalTimelineItems({
     }
 
     if (hasProcess) {
-      const processSteps: RuntimeTimelineProcessStep[] = steps.map((step, index) => {
-        const key = stepKey(turn.id, step.id);
-        const detail = stepDetails[key];
-        const error = stepErrors[key];
-        const expanded = Boolean(expandedSteps[key]);
-        const runtimeEvent = terminalStepToRuntimeTraceEvent(step, {
-          sessionID,
-          turnID: turn.id,
-          seq: index,
-          provider: {
-            engine: "codex",
-            adapter: "codex_cli_json",
-            event_type: step.type,
-            item_id: step.id,
-          },
-        });
-        const fallbackContent = String(step.preview || "").trim();
-        const stepType = normalizeText(step.type || runtimeEvent.kind || "").toLowerCase();
+      const processEvents: RuntimeTimelineProcessEvent[] = runtimeEvents.map((runtimeEvent) => {
+        const eventID = runtimeTraceEventDetailID(runtimeEvent);
+        const key = eventKey(turn.id, eventID);
+        const detail = eventDetails[key];
+        const error = eventErrors[key];
+        const expanded = Boolean(expandedEvents[key]);
+        const fallbackBlocks = runtimeTraceEventToProcessDetailBlocks(runtimeEvent);
+        const detailBlocks = runtimeTraceEventDetailBlocks(detail);
+        const hasDetail = Boolean(runtimeEvent.raw?.has_detail ?? fallbackBlocks.length > 0);
+        const shouldFetchDetail = hasDetail && fallbackBlocks.length === 0;
+        const fallbackContent = String(runtimeEvent.summary || runtimeEvent.title || "").trim();
+        const eventType = normalizeText(runtimeEvent.raw?.type || runtimeEvent.kind || "").toLowerCase();
+        const stepCategory = runtimeTraceEventDisclosureCategory(runtimeEvent);
         return {
-          id: step.id,
+          id: eventID,
           itemClassName: "terminal-step-item",
           itemProps: {
-            "data-terminal-step-item": step.id,
+            "data-terminal-step-item": eventID,
             "data-runtime-event-kind": runtimeEvent.kind,
             "data-runtime-event-source": runtimeEvent.source,
+            "data-runtime-event-category": stepCategory,
           },
           toggleClassName: "terminal-step-toggle",
           toggleProps: {
-            "data-terminal-step-toggle": step.id,
-            onClick: () => onToggleStep(turn.id, step.id, Boolean(step.has_detail)),
+            "data-terminal-step-toggle": eventID,
+            onClick: () => onToggleEvent(turn.id, eventID, shouldFetchDetail),
           },
-          title: normalizeText(step.preview || step.title || step.type),
+          title: normalizeText(runtimeEvent.summary || runtimeEvent.title || runtimeEvent.kind),
           titleClassName: "terminal-step-title",
           meta: (
-            <span className="terminal-step-meta">
-              <span className="terminal-step-duration">
-                {durationLabel(step.duration_ms)}
-              </span>
-              <span className={`terminal-step-status ${stepStatusClassName(step.status || "")}`}>
-                {renderStatus(step.status || "", copy)}
-              </span>
-            </span>
+            <RuntimeProcessStepMeta
+              event={runtimeEvent}
+              language={language}
+            />
           ),
           expanded,
-          onToggle: () => onToggleStep(turn.id, step.id, Boolean(step.has_detail)),
+          onToggle: () => onToggleEvent(turn.id, eventID, shouldFetchDetail),
           bodyClassName: "terminal-step-body",
           detail: (
             <div className="terminal-step-detail">
               {error ? <div className="terminal-step-detail-state is-error">{error}</div> : null}
-              {!error && detail?.blocks?.map((block, index) => {
-                const blockType = String(block.type || "text").trim().toLowerCase();
-                const blockTitle = String(block.title || "").trim();
-                const blockFile = String(block.file || "").trim();
-                const blockStatus = String(block.status || "").trim();
-                const content = String(block.content || "");
-                const narrativeBlock = isTerminalNarrativeBlockType(blockType);
-                return (
-                  <section
-                    key={`${step.id}-${index}`}
-                    className={`route-surface-dark terminal-rich-block type-${blockType || "text"}`}
-                  >
-                    {blockTitle || blockFile || blockStatus ? (
-                      <div className="terminal-rich-head">
-                        <div className="terminal-rich-copy">
-                          {blockTitle ? <strong>{blockTitle}</strong> : null}
-                          {blockFile ? (
-                            <span>
-                              {blockFile}
-                              {block.start_line ? `:${block.start_line}` : ""}
-                            </span>
-                          ) : null}
-                        </div>
-                        {blockStatus ? (
-                          <div className="terminal-rich-meta">
-                            <span className={`terminal-step-status ${stepStatusClassName(blockStatus)}`}>
-                              {renderStatus(blockStatus, copy)}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {narrativeBlock ? (
-                      <MessageMarkdownHTML
-                        html={renderMessageMarkdownToHTML(content)}
-                        className="terminal-step-content terminal-step-richtext"
-                      />
-                    ) : (
-                      <pre className={`terminal-rich-pre terminal-step-content${blockType === "diff" ? " terminal-diff-block" : ""}`}>
-                        <code>{content}</code>
-                      </pre>
-                    )}
-                  </section>
-                );
-              })}
-              {!error && !detail?.blocks?.length && fallbackContent ? (
-                <section className={`route-surface-dark terminal-rich-block type-${stepType || "text"}`}>
-                  {isTerminalNarrativeBlockType(stepType) ? (
-                    <MessageMarkdownHTML
-                      html={renderMessageMarkdownToHTML(fallbackContent)}
-                      className="terminal-step-content terminal-step-richtext"
-                    />
-                  ) : (
-                    <pre className="terminal-rich-pre terminal-step-content">
-                      <code>{fallbackContent}</code>
-                    </pre>
-                  )}
-                </section>
-              ) : null}
-              {!error && !detail?.blocks?.length && !fallbackContent && !step.has_detail ? (
-                <div className="terminal-step-detail-state">{copy.noProcess}</div>
+              {!error ? (
+                <RuntimeProcessDetailBlocks
+                  blocks={detailBlocks.length > 0 ? detailBlocks : fallbackBlocks}
+                  fallbackContent={fallbackContent}
+                  fallbackType={eventType}
+                  blockKeyPrefix={eventID}
+                  emptyState={!hasDetail ? <div className="terminal-step-detail-state">{copy.noProcess}</div> : null}
+                />
               ) : null}
             </div>
           ),
@@ -2302,7 +2240,7 @@ function buildTerminalTimelineItems({
             </span>
             <span className="terminal-process-copy">
               <span className="terminal-process-title">{copy.process}</span>
-              <span className="terminal-process-summary">{copy.processSteps(steps.length)}</span>
+              <span className="terminal-process-summary">{copy.processEvents(runtimeEvents.length)}</span>
             </span>
           </>
         ),
@@ -2314,7 +2252,7 @@ function buildTerminalTimelineItems({
             {normalizeStatus(turn.status || "") === "busy" ? copy.loading : copy.noProcess}
           </div>
         ),
-        steps: processSteps,
+        events: processEvents,
       });
     }
 

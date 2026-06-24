@@ -38,7 +38,7 @@ export async function waitForTerminalPoll(page: Page, sessionID: string, timeout
     if (!url.includes(`/api/terminal/sessions/${encodedSessionID}`)) {
       return false;
     }
-    return !url.includes("/entries?") && !url.includes("/steps/");
+    return !url.includes("/entries?") && !url.includes("/events/");
   };
   await page.waitForResponse((response) => response.request().method() === "GET" && response.ok() && matchesSessionState(response.url()), { timeout });
 }

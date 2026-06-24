@@ -211,7 +211,7 @@
 边界：
 
 - 任务生命周期、复杂度分流、并发、心跳续租、retry/cancel、日志流和删除清理由 `internal/task/application` 与 Web 测试覆盖。
-- Terminal 会话态与 turn/step 领域规则由 `internal/terminal/domain` 和 `internal/terminal/application` 既有测试覆盖。
+- Terminal 会话态、turn/runtime event 规则和旧持久化状态迁移由 `internal/terminal/domain` 与 `internal/terminal/application` 既有测试覆盖。
 
 ## Conversation & Session Experience
 

@@ -35,7 +35,7 @@ type stubWebTerminalService struct {
 	deleteIDs   []string
 	turnsResp   []terminalapp.TurnSummary
 	turnsErr    error
-	stepResp    terminalapp.StepDetail
+	eventResp   terminalapp.RuntimeTraceEventDetail
 	stepErr     error
 	entryPage   terminalapp.EntryPage
 	entryErr    error
@@ -73,10 +73,10 @@ func (s *stubWebTerminalService) ListTurns(ownerID string, sessionID string) ([]
 	return append([]terminalapp.TurnSummary{}, s.turnsResp...), s.turnsErr
 }
 
-func (s *stubWebTerminalService) GetStepDetail(ownerID string, sessionID string, turnID string, stepID string) (terminalapp.StepDetail, error) {
+func (s *stubWebTerminalService) GetRuntimeTraceEventDetail(ownerID string, sessionID string, turnID string, eventID string) (terminalapp.RuntimeTraceEventDetail, error) {
 	s.lastOwnerID = ownerID
-	s.lastID = sessionID + ":" + turnID + ":" + stepID
-	return s.stepResp, s.stepErr
+	s.lastID = sessionID + ":" + turnID + ":" + eventID
+	return s.eventResp, s.stepErr
 }
 
 func (s *stubWebTerminalService) ListEntries(ownerID string, sessionID string, _ int, _ int) (terminalapp.EntryPage, error) {
@@ -780,28 +780,36 @@ func TestTerminalSessionItemHandlerCapsTurnPageByApproximatePayloadSize(t *testi
 	}
 }
 
-func TestTerminalSessionItemHandlerReturnsStepDetail(t *testing.T) {
+func TestTerminalSessionItemHandlerReturnsRuntimeTraceEventDetail(t *testing.T) {
 	service := &stubWebTerminalService{
-		stepResp: terminalapp.StepDetail{
+		eventResp: terminalapp.RuntimeTraceEventDetail{
 			TurnID: "turn-1",
-			Step: terminalapp.StepSummary{
-				ID:     "step-1",
-				Type:   "command",
-				Title:  "pwd",
-				Status: "completed",
+			Event: terminalapp.RuntimeTraceEvent{
+				ID:         "event-1",
+				TurnID:     "turn-1",
+				Seq:        1,
+				Source:     "adapter",
+				Provider:   terminalapp.RuntimeProviderRef{Engine: "codex", Adapter: "codex_cli_json"},
+				Role:       "assistant",
+				Kind:       "shell_command",
+				Lifecycle:  "completed",
+				Status:     "completed",
+				Title:      "pwd",
+				Blocks:     []terminalapp.RuntimeBlock{},
+				Visibility: "collapsed",
 			},
-			Blocks: []terminalapp.StepDetailBlock{{
+			Blocks: []terminalapp.RuntimeBlock{{
 				Type:    "terminal",
 				Title:   "Shell",
-				Content: "pwd\n\n/workspace/alter0",
-				Status:  "completed",
+				Command: "pwd",
+				Output:  "/workspace/alter0",
 			}},
 			Searchable: true,
 		},
 	}
 	server := &Server{terminals: service}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4/turns/turn-1/steps/step-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4/turns/turn-1/events/event-1", nil)
 	rec := httptest.NewRecorder()
 
 	server.terminalSessionItemHandler(rec, req)
@@ -809,20 +817,20 @@ func TestTerminalSessionItemHandlerReturnsStepDetail(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if service.lastID != "terminal-4:turn-1:step-1" {
-		t.Fatalf("expected step lookup path, got %q", service.lastID)
+	if service.lastID != "terminal-4:turn-1:event-1" {
+		t.Fatalf("expected event lookup path, got %q", service.lastID)
 	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	step, ok := payload["step"].(map[string]any)
+	event, ok := payload["event"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected step payload, got %v", payload)
+		t.Fatalf("expected event payload, got %v", payload)
 	}
-	if step["turn_id"] != "turn-1" {
-		t.Fatalf("expected turn_id turn-1, got %v", step["turn_id"])
+	if event["turn_id"] != "turn-1" {
+		t.Fatalf("expected turn_id turn-1, got %v", event["turn_id"])
 	}
 }
 

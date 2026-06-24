@@ -1187,6 +1187,51 @@
   padding-left: 0;
 }
 
+.terminal-step-kind {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 112px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(248, 250, 252, 0.92);
+  color: var(--terminal-text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.terminal-step-kind.kind-important_text,
+.terminal-step-kind.kind-plan {
+  color: #2563eb;
+  border-color: rgba(59, 130, 246, 0.22);
+  background: rgba(239, 246, 255, 0.94);
+}
+
+.terminal-step-kind.kind-reasoning {
+  color: #7c3aed;
+  border-color: rgba(139, 92, 246, 0.2);
+  background: rgba(245, 243, 255, 0.9);
+}
+
+.terminal-step-kind.kind-tools,
+.terminal-step-kind.kind-commands {
+  color: #0f766e;
+  border-color: rgba(20, 184, 166, 0.2);
+  background: rgba(240, 253, 250, 0.9);
+}
+
+.terminal-step-kind.kind-system {
+  color: #64748b;
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(248, 250, 252, 0.92);
+}
+
 .terminal-step-status {
   flex: 0 0 auto;
   display: inline-flex;
@@ -2477,6 +2522,12 @@
 
   .terminal-step-duration {
     font-size: 10px;
+  }
+
+  .terminal-step-kind {
+    max-width: 78px;
+    padding: 1px 6px;
+    font-size: 9px;
   }
 
   .terminal-step-status {

@@ -69,12 +69,13 @@ export type RuntimeProviderRef = {
 };
 
 export type RuntimeBlock =
-  | { type: "text" | "markdown"; text: string }
-  | { type: "thinking"; text: string; signature?: string }
+  | { type: "text" | "markdown"; text: string; title?: string }
+  | { type: "thinking"; text: string; title?: string; signature?: string }
   | { type: "tool_input"; json: unknown }
   | { type: "tool_output"; text?: string; json?: unknown; is_error?: boolean }
   | {
       type: "terminal";
+      title?: string;
       command?: string;
       output?: string;
       language?: "shell";
@@ -82,6 +83,7 @@ export type RuntimeBlock =
     }
   | {
       type: "code" | "diff";
+      title?: string;
       content: string;
       language?: string;
       file?: string;
@@ -143,7 +145,7 @@ export type RuntimeTraceEvent = {
   completed_at?: string;
   duration_ms?: number;
   error?: { message: string; code?: string };
-  raw?: { ref?: string; type?: string };
+  raw?: { ref?: string; type?: string; has_detail?: boolean };
 };
 
 export type RuntimeEventFilterID =
@@ -202,7 +204,11 @@ export const RUNTIME_EVENT_FILTER_OPTIONS: Array<{
   },
 ];
 
-export type TerminalStepBlockLike = {
+type RuntimeTraceEventKindLike = {
+  kind?: string;
+};
+
+export type RuntimeProcessDetailBlockLike = {
   type?: string;
   title?: string;
   content?: string;
@@ -213,233 +219,71 @@ export type TerminalStepBlockLike = {
   exit_code?: number | null;
 };
 
-export type TerminalStepLike = {
-  id?: string;
-  type?: string;
-  title?: string;
-  status?: string;
-  preview?: string;
-  blocks?: TerminalStepBlockLike[];
-};
-
-type RuntimeTraceEventContext = {
+type RuntimeTraceEventNormalizeContext = {
   sessionID?: string;
-  turnID: string;
-  seq: number;
-  provider: RuntimeProviderRef;
+  turnID?: string;
 };
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeLifecycle(status: string): RuntimeLifecycle {
-  switch (status.toLowerCase()) {
-    case "running":
-    case "queued":
-      return "started";
-    case "failed":
-    case "error":
-      return "failed";
-    case "interrupted":
-      return "interrupted";
-    case "canceled":
-    case "cancelled":
-      return "canceled";
-    default:
-      return "completed";
-  }
-}
-
-function normalizeRuntimeStatus(status: string): RuntimeStatus {
-  switch (status.toLowerCase()) {
-    case "queued":
-      return "queued";
-    case "running":
-    case "streaming":
-    case "in_progress":
-    case "inprogress":
-      return "running";
-    case "failed":
-    case "error":
-      return "failed";
-    case "interrupted":
-      return "interrupted";
-    case "canceled":
-    case "cancelled":
-      return "canceled";
-    case "requires_approval":
-      return "requires_approval";
-    case "completed":
-    case "success":
-    case "done":
-    case "":
-      return "completed";
-    default:
-      return "unknown";
-  }
-}
-
-function eventVisibility(kind: RuntimeEventKind): RuntimeVisibility {
-  switch (kind) {
-    case "assistant_final":
-    case "user_message":
-      return "user";
-    case "assistant_commentary":
-    case "plan":
-    case "reasoning":
-    case "tool_call":
-    case "tool_result":
-    case "shell_command":
-    case "mcp_call":
-    case "skill_use":
-    case "skill_context":
-      return "collapsed";
-    default:
-      return "developer";
-  }
-}
-
-export function terminalStepToRuntimeTraceEvent(
-  step: TerminalStepLike,
-  context: RuntimeTraceEventContext,
-): RuntimeTraceEvent {
-  const stepType = normalizeText(step.type).toLowerCase();
-  const kind = terminalStepKind(stepType);
-  const status = normalizeRuntimeStatus(step.status || "");
-  const title = normalizeText(step.title) || normalizeText(step.preview) || defaultEventTitle(kind);
-  const blocks = terminalBlocks(step.blocks || [], step.preview || "", kind);
-  return {
-    id: normalizeText(step.id) || `${context.turnID}:step:${context.seq}`,
-    session_id: context.sessionID,
-    turn_id: context.turnID,
-    seq: context.seq,
-    source: "adapter",
-    provider: context.provider,
-    role: kind === "tool_result" ? "tool" : "assistant",
-    kind,
-    lifecycle: normalizeLifecycle(step.status || ""),
-    status,
-    title,
-    summary: normalizeText(step.preview) || title,
-    blocks,
-    action: kind === "shell_command" ? {
-      family: "shell",
-      name: "shell",
-    } : undefined,
-    visibility: eventVisibility(kind),
-  };
-}
-
-function terminalStepKind(stepType: string): RuntimeEventKind {
-  switch (stepType) {
-    case "reasoning":
-      return "reasoning";
-    case "plan":
-      return "plan";
-    case "command":
-    case "command_execution":
-      return "shell_command";
-    case "log":
-    case "system":
-      return "system_event";
-    case "diff":
-      return "file_edit";
-    case "message":
-      return "assistant_commentary";
-    default:
-      return "unknown_provider_event";
-  }
-}
-
-function terminalBlocks(
-  blocks: TerminalStepBlockLike[],
-  preview: string,
-  kind: RuntimeEventKind,
-): RuntimeBlock[] {
-  const mapped = blocks
-    .map((block): RuntimeBlock | null => {
-      const blockType = normalizeText(block.type).toLowerCase();
-      const content = typeof block.content === "string" ? block.content : "";
-      if (blockType === "terminal") {
-        const [command, ...outputParts] = content.split(/\n\n/);
-        return {
-          type: "terminal",
-          command: normalizeText(command) || undefined,
-          output: outputParts.join("\n\n").trim() || undefined,
-          language: "shell",
-          exit_code: typeof block.exit_code === "number" ? block.exit_code : block.exit_code ?? null,
-        };
-      }
-      if (blockType === "diff") {
-        return {
-          type: "diff",
-          content,
-          language: normalizeText(block.language) || undefined,
-          file: normalizeText(block.file) || undefined,
-          start_line: block.start_line,
-        };
-      }
-      if (blockType === "code") {
-        return {
-          type: "code",
-          content,
-          language: normalizeText(block.language) || undefined,
-          file: normalizeText(block.file) || undefined,
-          start_line: block.start_line,
-        };
-      }
-      if (content) {
-        return { type: "markdown", text: content };
-      }
-      return null;
-    })
-    .filter((block): block is RuntimeBlock => block !== null);
-  if (mapped.length > 0) {
-    return mapped;
-  }
-  const fallback = normalizeText(preview);
-  if (!fallback) {
+export function normalizeRuntimeTraceEvents(
+  values: unknown,
+  context: RuntimeTraceEventNormalizeContext = {},
+): RuntimeTraceEvent[] {
+  if (!Array.isArray(values)) {
     return [];
   }
-  return kind === "shell_command"
-    ? [{ type: "terminal", command: fallback, language: "shell" }]
-    : [{ type: "markdown", text: fallback }];
+  return values
+    .map((item, index) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const record = item as RuntimeTraceEvent;
+      if (!normalizeText(record.id) || !normalizeText(record.kind) || !Array.isArray(record.blocks)) {
+        return null;
+      }
+      const seq = Number(record.seq);
+      return {
+        ...record,
+        session_id: record.session_id || context.sessionID,
+        turn_id: record.turn_id || context.turnID || "",
+        seq: Number.isFinite(seq) ? seq : index + 1,
+      };
+    })
+    .filter((item): item is RuntimeTraceEvent => item !== null);
 }
 
-function defaultEventTitle(kind: RuntimeEventKind): string {
-  switch (kind) {
-    case "assistant_commentary":
-      return "Progress";
-    case "reasoning":
-      return "Reasoning";
-    case "plan":
-      return "Plan";
-    case "shell_command":
-      return "Shell";
-    case "tool_call":
-      return "Tool";
-    case "tool_result":
-      return "Result";
-    case "system_event":
-      return "System";
-    default:
-      return "Event";
+export function runtimeTraceEventDetailID(event: RuntimeTraceEvent): string {
+  const rawRef = typeof event.raw?.ref === "string" ? event.raw.ref.trim() : "";
+  if (rawRef) {
+    return rawRef;
   }
+  const id = typeof event.id === "string" ? event.id.trim() : "";
+  return id || `${event.turn_id}:event:${event.seq}`;
 }
 
 export function runtimeTraceEventVisibleByFilter(
-  event: RuntimeTraceEvent,
+  event: RuntimeTraceEventKindLike,
   filter: RuntimeEventFilterID[],
 ): boolean {
   const selected = new Set(filter.length > 0 ? filter : DEFAULT_RUNTIME_EVENT_FILTER);
-  switch (event.kind) {
+  return selected.has(runtimeTraceEventDisclosureCategory(event));
+}
+
+export function runtimeTraceEventDisclosureCategory(event: RuntimeTraceEventKindLike): RuntimeEventFilterID {
+  switch (normalizeText(event.kind).toLowerCase()) {
     case "assistant_commentary":
-      return selected.has("important_text");
+    case "analysis":
+    case "commentary":
+    case "important_text":
+      return "important_text";
     case "plan":
-      return selected.has("plan");
+      return "plan";
     case "reasoning":
-      return selected.has("reasoning");
+    case "thinking":
+      return "reasoning";
     case "tool_call":
     case "tool_result":
     case "mcp_call":
@@ -447,15 +291,31 @@ export function runtimeTraceEventVisibleByFilter(
     case "skill_context":
     case "hook_event":
     case "approval_request":
-      return selected.has("tools");
+    case "file_read":
+    case "file_write":
+    case "file_edit":
+    case "web_search":
+    case "web_fetch":
+    case "subagent_start":
+    case "subagent_progress":
+    case "subagent_result":
+      return "tools";
     case "shell_command":
-      return selected.has("commands");
+      return "commands";
     case "system_event":
     case "rate_limit":
     case "unknown_provider_event":
     case "error":
-      return selected.has("system");
+      return "system";
     default:
-      return true;
+      return "system";
   }
+}
+
+export function runtimeTraceEventDisclosureLabel(
+  event: RuntimeTraceEventKindLike,
+  language: "en" | "zh",
+): string {
+  const category = runtimeTraceEventDisclosureCategory(event);
+  return RUNTIME_EVENT_FILTER_OPTIONS.find((option) => option.id === category)?.label[language] || category;
 }

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -417,6 +418,73 @@ func TestServiceInputWithAttachmentsPassesImageFlagsAndPersistsTurnAttachments(t
 	}
 }
 
+func TestServiceListTurnsIncludesRuntimeTraceEventBlocks(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-step-blocks",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	now := time.Date(2026, 6, 24, 4, 31, 0, 0, time.UTC)
+	service.mu.RLock()
+	item := service.sessions[session.ID]
+	service.mu.RUnlock()
+	if item == nil {
+		t.Fatalf("expected runtime session")
+	}
+
+	item.mu.Lock()
+	item.turns = append(item.turns, &runtimeTurn{
+		ID:          "turn-1",
+		Prompt:      "render process details",
+		Status:      "completed",
+		StartedAt:   now,
+		FinishedAt:  now.Add(2 * time.Second),
+		FinalOutput: "done",
+		events: []*runtimeEventRecord{{
+			ID:         "step-1",
+			Type:       "message",
+			Title:      "Mixed surfaces",
+			Status:     "completed",
+			Preview:    "Full detail contains code.",
+			StartedAt:  now,
+			FinishedAt: now.Add(time.Second),
+			Blocks: []RuntimeDetailBlock{{
+				Type:     "code",
+				Title:    "Fixture",
+				Content:  "const stable = true;",
+				Language: "ts",
+			}},
+			Searchable: true,
+		}},
+	})
+	item.mu.Unlock()
+
+	turns, err := service.ListTurns("owner-step-blocks", session.ID)
+	if err != nil {
+		t.Fatalf("list turns: %v", err)
+	}
+	if len(turns) != 1 || len(turns[0].RuntimeTraceEvents) != 1 {
+		t.Fatalf("expected runtime trace event projection, got %+v", turns[0])
+	}
+	event := turns[0].RuntimeTraceEvents[0]
+	if event.Kind != "assistant_commentary" {
+		t.Fatalf("expected message step to become assistant commentary, got %q", event.Kind)
+	}
+	if event.Raw.Ref != "step-1" || !event.Raw.HasDetail {
+		t.Fatalf("expected runtime trace event to keep step detail ref, got %+v", event.Raw)
+	}
+	if event.DurationMS != int64(time.Second/time.Millisecond) {
+		t.Fatalf("expected runtime trace event duration, got %d", event.DurationMS)
+	}
+	if len(event.Blocks) != 1 || event.Blocks[0].Type != "code" || event.Blocks[0].Content != "const stable = true;" {
+		t.Fatalf("expected runtime trace event code block, got %+v", event.Blocks)
+	}
+}
+
 func TestServiceInputUpgradesAutoTitleWhenLaterPromptIsMoreSpecific(t *testing.T) {
 	service := newTestService("success")
 
@@ -656,6 +724,172 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 	}
 }
 
+func TestServiceLoadPersistedSessionsMigratesLegacyRuntimeEvents(t *testing.T) {
+	baseDir := t.TempDir()
+	statePath, err := resolveTerminalSessionStateFilePath(baseDir, "legacy-runtime-events")
+	if err != nil {
+		t.Fatalf("resolve state path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatalf("prepare state dir: %v", err)
+	}
+	legacyRecord := `{
+  "summary": {
+    "id": "legacy-runtime-events",
+    "owner_id": "owner-legacy-runtime",
+    "title": "legacy runtime events",
+    "status": "ready"
+  },
+  "turns": [
+    {
+      "id": "turn-1",
+      "prompt": "inspect legacy trace",
+      "status": "completed",
+      "steps": [
+        {
+          "id": "step-1",
+          "type": "shell",
+          "title": "sed -n '1,20p' internal/terminal/application/store.go",
+          "status": "completed",
+          "preview": "package application",
+          "blocks": [
+            {
+              "type": "code",
+              "language": "go",
+              "content": "package application\n"
+            }
+          ],
+          "searchable": true
+        }
+      ]
+    }
+  ],
+  "next_step_id": 2,
+  "next_turn_id": 1
+}`
+	if err := os.WriteFile(statePath, []byte(legacyRecord), 0o644); err != nil {
+		t.Fatalf("write legacy state: %v", err)
+	}
+
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
+
+	turns, err := service.ListTurns("owner-legacy-runtime", "legacy-runtime-events")
+	if err != nil {
+		t.Fatalf("list migrated turns: %v", err)
+	}
+	if len(turns) != 1 || len(turns[0].RuntimeTraceEvents) != 1 {
+		t.Fatalf("expected restored runtime trace event, got %+v", turns)
+	}
+	if turns[0].RuntimeTraceEvents[0].ID != "step-1" {
+		t.Fatalf("expected legacy event id to stay stable, got %+v", turns[0].RuntimeTraceEvents[0])
+	}
+
+	migratedData, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read migrated state: %v", err)
+	}
+	migrated := map[string]any{}
+	if err := json.Unmarshal(migratedData, &migrated); err != nil {
+		t.Fatalf("decode migrated state: %v", err)
+	}
+	if _, ok := migrated["next_step_id"]; ok {
+		t.Fatalf("expected legacy next_step_id to be removed, got %s", string(migratedData))
+	}
+	if got := migrated["next_event_id"]; got != float64(2) {
+		t.Fatalf("expected next_event_id 2 after migration, got %#v in %s", got, string(migratedData))
+	}
+	rawTurns, ok := migrated["turns"].([]any)
+	if !ok || len(rawTurns) != 1 {
+		t.Fatalf("expected migrated turns, got %#v", migrated["turns"])
+	}
+	rawTurn, ok := rawTurns[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected migrated turn object, got %#v", rawTurns[0])
+	}
+	if _, ok := rawTurn["steps"]; ok {
+		t.Fatalf("expected legacy steps to be removed, got %s", string(migratedData))
+	}
+	rawEvents, ok := rawTurn["runtime_events"].([]any)
+	if !ok || len(rawEvents) != 1 {
+		t.Fatalf("expected runtime_events to be persisted, got %#v", rawTurn["runtime_events"])
+	}
+}
+
+func TestServiceGetMigratesLegacyRuntimeEventsFromPersistedState(t *testing.T) {
+	baseDir := t.TempDir()
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
+	statePath, err := resolveTerminalSessionStateFilePath(baseDir, "legacy-runtime-events-on-read")
+	if err != nil {
+		t.Fatalf("resolve state path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatalf("prepare state dir: %v", err)
+	}
+	legacyRecord := `{
+  "summary": {
+    "id": "legacy-runtime-events-on-read",
+    "owner_id": "owner-legacy-read",
+    "title": "legacy runtime events on read",
+    "status": "ready"
+  },
+  "turns": [
+    {
+      "id": "turn-1",
+      "prompt": "read legacy trace",
+      "status": "completed",
+      "steps": [
+        {
+          "id": "step-1",
+          "type": "message",
+          "title": "Legacy event",
+          "status": "completed",
+          "preview": "legacy preview",
+          "blocks": [
+            {
+              "type": "markdown",
+              "content": "legacy detail"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "next_step_id": 2,
+  "next_turn_id": 1
+}`
+	if err := os.WriteFile(statePath, []byte(legacyRecord), 0o644); err != nil {
+		t.Fatalf("write legacy state: %v", err)
+	}
+
+	snapshot, ok := service.Get("owner-legacy-read", "legacy-runtime-events-on-read")
+	if !ok {
+		t.Fatalf("expected legacy state to restore on read")
+	}
+	if snapshot.ID != "legacy-runtime-events-on-read" {
+		t.Fatalf("expected restored snapshot, got %+v", snapshot)
+	}
+
+	migratedData, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read migrated state: %v", err)
+	}
+	migrated := map[string]any{}
+	if err := json.Unmarshal(migratedData, &migrated); err != nil {
+		t.Fatalf("decode migrated state: %v", err)
+	}
+	if _, ok := migrated["next_step_id"]; ok {
+		t.Fatalf("expected legacy next_step_id to be removed, got %s", string(migratedData))
+	}
+	rawTurns := migrated["turns"].([]any)
+	rawTurn := rawTurns[0].(map[string]any)
+	if _, ok := rawTurn["steps"]; ok {
+		t.Fatalf("expected legacy steps to be removed, got %s", string(migratedData))
+	}
+	if got := migrated["next_event_id"]; got != float64(2) {
+		t.Fatalf("expected next_event_id 2 after read migration, got %#v", got)
+	}
+}
+
 func TestServiceKeepsIdleReadySessionReadyAfterRestart(t *testing.T) {
 	baseDir := t.TempDir()
 	service := newTestServiceWithBaseDir("success", baseDir)
@@ -738,9 +972,10 @@ func TestServiceInputRecoversPersistedSessionWhenRuntimeMissing(t *testing.T) {
 
 	service.mu.Lock()
 	delete(service.sessions, session.ID)
+	_, stillInRuntime := service.sessions[session.ID]
 	service.mu.Unlock()
 
-	if _, ok := service.Get("owner-missing-runtime", session.ID); ok {
+	if stillInRuntime {
 		t.Fatalf("expected runtime session to be removed before recovery")
 	}
 

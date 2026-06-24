@@ -48,7 +48,7 @@ var (
 	ErrSessionInputRequired     = errors.New("terminal input is required")
 	ErrSessionRecoverIDRequired = errors.New("terminal recovery session id is required")
 	ErrTurnNotFound             = errors.New("terminal turn not found")
-	ErrStepNotFound             = errors.New("terminal step not found")
+	ErrRuntimeEventNotFound     = errors.New("terminal runtime event not found")
 )
 
 const sharedTerminalOwnerID = "shared"
@@ -147,7 +147,7 @@ type runtimeSession struct {
 	turns        []*runtimeTurn
 	activeTurnID string
 	nextTurnID   int
-	nextStepID   int
+	nextEventID  int
 	threadID     string
 	turnRunning  bool
 	turnCancel   context.CancelFunc
@@ -163,10 +163,10 @@ type runtimeTurn struct {
 	StartedAt   time.Time
 	FinishedAt  time.Time
 	FinalOutput string
-	steps       []*runtimeStep
+	events      []*runtimeEventRecord
 }
 
-type runtimeStep struct {
+type runtimeEventRecord struct {
 	ID         string
 	ItemID     string
 	Type       string
@@ -175,7 +175,7 @@ type runtimeStep struct {
 	Preview    string
 	StartedAt  time.Time
 	FinishedAt time.Time
-	Blocks     []StepDetailBlock
+	Blocks     []RuntimeDetailBlock
 	Searchable bool
 }
 
@@ -356,7 +356,7 @@ func terminalSessionSortAt(session terminaldomain.Session) time.Time {
 }
 
 func (s *Service) Get(ownerID string, sessionID string) (terminaldomain.Session, bool) {
-	item, err := s.getOwnedSession(ownerID, sessionID)
+	item, err := s.getOrRestoreOwnedSession(ownerID, sessionID)
 	if err != nil {
 		return terminaldomain.Session{}, false
 	}
@@ -386,7 +386,7 @@ func (s *Service) SetPinned(ownerID string, sessionID string, pinned bool) (term
 }
 
 func (s *Service) ListTurns(ownerID string, sessionID string) ([]TurnSummary, error) {
-	item, err := s.getOwnedSession(ownerID, sessionID)
+	item, err := s.getOrRestoreOwnedSession(ownerID, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -399,15 +399,15 @@ func (s *Service) ListTurns(ownerID string, sessionID string) ([]TurnSummary, er
 		if turn == nil {
 			continue
 		}
-		items = append(items, turn.summary())
+		items = append(items, turn.summary(item.summary.ID))
 	}
 	return items, nil
 }
 
-func (s *Service) GetStepDetail(ownerID string, sessionID string, turnID string, stepID string) (StepDetail, error) {
-	item, err := s.getOwnedSession(ownerID, sessionID)
+func (s *Service) GetRuntimeTraceEventDetail(ownerID string, sessionID string, turnID string, eventID string) (RuntimeTraceEventDetail, error) {
+	item, err := s.getOrRestoreOwnedSession(ownerID, sessionID)
 	if err != nil {
-		return StepDetail{}, err
+		return RuntimeTraceEventDetail{}, err
 	}
 
 	item.mu.RLock()
@@ -415,17 +415,17 @@ func (s *Service) GetStepDetail(ownerID string, sessionID string, turnID string,
 
 	turn := item.turnByIDLocked(turnID)
 	if turn == nil {
-		return StepDetail{}, ErrTurnNotFound
+		return RuntimeTraceEventDetail{}, ErrTurnNotFound
 	}
-	step := turn.stepByID(stepID)
-	if step == nil {
-		return StepDetail{}, ErrStepNotFound
+	event, seq := turn.runtimeEventByID(eventID)
+	if event == nil {
+		return RuntimeTraceEventDetail{}, ErrRuntimeEventNotFound
 	}
-	return step.detail(turn.ID), nil
+	return event.runtimeTraceEventDetail(item.summary.ID, turn.ID, seq), nil
 }
 
 func (s *Service) ListEntries(ownerID string, sessionID string, cursor int, limit int) (EntryPage, error) {
-	item, err := s.getOwnedSession(ownerID, sessionID)
+	item, err := s.getOrRestoreOwnedSession(ownerID, sessionID)
 	if err != nil {
 		return EntryPage{}, err
 	}
@@ -780,7 +780,7 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 				item.mu.Unlock()
 				return
 			}
-			step := item.ensureCommandStepLocked(turn, event.Item.ID, command, time.Now().UTC())
+			step := item.ensureCommandEventLocked(turn, event.Item.ID, command, time.Now().UTC())
 			step.Status = "running"
 			item.appendEntryLocked("system", "running command: "+command)
 		}
@@ -805,11 +805,11 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 				item.mu.Unlock()
 				return
 			}
-			step := item.newStepLocked(turn, "message", deriveStepTitle("message", text), now)
+			step := item.newEventLocked(turn, "message", deriveRuntimeEventTitle("message", text), now)
 			step.Status = "completed"
 			step.FinishedAt = now
-			step.Preview = summarizeStepPreview(text)
-			step.Blocks = []StepDetailBlock{{
+			step.Preview = summarizeRuntimeEventSummary(text)
+			step.Blocks = []RuntimeDetailBlock{{
 				Type:    "text",
 				Title:   "Message",
 				Content: text,
@@ -823,11 +823,11 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 				item.mu.Unlock()
 				return
 			}
-			step := item.newStepLocked(turn, normalizeCodexItemType(event.Item.Type), deriveStepTitle(normalizeCodexItemType(event.Item.Type), text), now)
+			step := item.newEventLocked(turn, normalizeCodexItemType(event.Item.Type), deriveRuntimeEventTitle(normalizeCodexItemType(event.Item.Type), text), now)
 			step.Status = "completed"
 			step.FinishedAt = now
-			step.Preview = summarizeStepPreview(text)
-			step.Blocks = []StepDetailBlock{{
+			step.Preview = summarizeRuntimeEventSummary(text)
+			step.Blocks = []RuntimeDetailBlock{{
 				Type:    "text",
 				Title:   step.Title,
 				Content: text,
@@ -836,12 +836,12 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 			step.Searchable = true
 		case "command_execution":
 			command := strings.TrimSpace(event.Item.Command)
-			step := item.ensureCommandStepLocked(turn, event.Item.ID, command, now)
-			step.Status = normalizeStepStatus(strings.TrimSpace(event.Item.Status), event.Item.ExitCode)
+			step := item.ensureCommandEventLocked(turn, event.Item.ID, command, now)
+			step.Status = normalizeRuntimeEventStatus(strings.TrimSpace(event.Item.Status), event.Item.ExitCode)
 			step.FinishedAt = now
 			output := normalizeChunk(event.Item.AggregatedOutput)
-			step.Preview = summarizeStepPreview(strings.TrimSpace(command))
-			step.Blocks = []StepDetailBlock{{
+			step.Preview = summarizeRuntimeEventSummary(strings.TrimSpace(command))
+			step.Blocks = []RuntimeDetailBlock{{
 				Type:     "terminal",
 				Title:    "Shell",
 				Content:  strings.TrimSpace(strings.Join([]string{command, output}, "\n\n")),
@@ -930,7 +930,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		if turn != nil {
 			turn.Status = "failed"
 			turn.FinishedAt = now
-			item.newSystemStepLocked(turn, "Compaction failed", terminalCompactionRecoveryMessage, now, "failed")
+			item.newSystemEventLocked(turn, "Compaction failed", terminalCompactionRecoveryMessage, now, "failed")
 			turn.promoteFinalOutput()
 		}
 		item.mu.Unlock()
@@ -944,7 +944,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	if turn != nil {
 		turn.Status = "failed"
 		turn.FinishedAt = now
-		item.newSystemStepLocked(turn, "Request failed", message, now, "failed")
+		item.newSystemEventLocked(turn, "Request failed", message, now, "failed")
 		turn.promoteFinalOutput()
 	}
 	item.mu.Unlock()
@@ -973,8 +973,8 @@ func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtime
 		if turn.FinishedAt.IsZero() {
 			turn.FinishedAt = now
 		}
-		for _, step := range turn.steps {
-			if step == nil || !isRuntimeStepLive(step.Status) {
+		for _, step := range turn.events {
+			if step == nil || !isRuntimeEventLive(step.Status) {
 				continue
 			}
 			step.Status = "interrupted"
@@ -982,8 +982,8 @@ func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtime
 				step.FinishedAt = now
 			}
 		}
-		if !hasRuntimeTurnSystemStep(turn, "Interrupted", reason) {
-			item.newSystemStepLocked(turn, "Interrupted", reason, now, "failed")
+		if !hasRuntimeTurnSystemEvent(turn, "Interrupted", reason) {
+			item.newSystemEventLocked(turn, "Interrupted", reason, now, "failed")
 		}
 		turn.promoteFinalOutput()
 		return
@@ -994,8 +994,8 @@ func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtime
 	if turn.FinishedAt.IsZero() {
 		turn.FinishedAt = now
 	}
-	if !hasRuntimeTurnSystemStep(turn, "Request failed", message) {
-		item.newSystemStepLocked(turn, "Request failed", message, now, "failed")
+	if !hasRuntimeTurnSystemEvent(turn, "Request failed", message) {
+		item.newSystemEventLocked(turn, "Request failed", message, now, "failed")
 	}
 	turn.promoteFinalOutput()
 }
@@ -1008,7 +1008,7 @@ func (s *runtimeSession) beginTurnLocked(prompt string, attachments []TurnAttach
 		Attachments: cloneTurnAttachments(attachments),
 		Status:      "running",
 		StartedAt:   now,
-		steps:       []*runtimeStep{},
+		events:      []*runtimeEventRecord{},
 	}
 	s.turns = append(s.turns, turn)
 	s.activeTurnID = turn.ID
@@ -1024,36 +1024,36 @@ func (s *runtimeSession) turnByIDLocked(turnID string) *runtimeTurn {
 	return nil
 }
 
-func (s *runtimeSession) newStepLocked(turn *runtimeTurn, stepType string, title string, now time.Time) *runtimeStep {
+func (s *runtimeSession) newEventLocked(turn *runtimeTurn, stepType string, title string, now time.Time) *runtimeEventRecord {
 	if turn == nil {
 		return nil
 	}
-	s.nextStepID++
-	step := &runtimeStep{
-		ID:        fmt.Sprintf("step-%d", s.nextStepID),
+	s.nextEventID++
+	step := &runtimeEventRecord{
+		ID:        fmt.Sprintf("event-%d", s.nextEventID),
 		Type:      stepType,
 		Title:     strings.TrimSpace(title),
 		Status:    "running",
 		StartedAt: now,
 	}
-	turn.steps = append(turn.steps, step)
+	turn.events = append(turn.events, step)
 	return step
 }
 
-func (s *runtimeSession) ensureCommandStepLocked(turn *runtimeTurn, itemID string, command string, now time.Time) *runtimeStep {
+func (s *runtimeSession) ensureCommandEventLocked(turn *runtimeTurn, itemID string, command string, now time.Time) *runtimeEventRecord {
 	if turn == nil {
 		return nil
 	}
-	for _, step := range turn.steps {
+	for _, step := range turn.events {
 		if step != nil && step.Type == "command" && strings.TrimSpace(step.ItemID) == strings.TrimSpace(itemID) && strings.TrimSpace(itemID) != "" {
 			return step
 		}
 	}
-	step := s.newStepLocked(turn, "command", deriveStepTitle("command", command), now)
+	step := s.newEventLocked(turn, "command", deriveRuntimeEventTitle("command", command), now)
 	if step != nil {
 		step.ItemID = strings.TrimSpace(itemID)
-		step.Preview = summarizeStepPreview(command)
-		step.Blocks = []StepDetailBlock{{
+		step.Preview = summarizeRuntimeEventSummary(command)
+		step.Blocks = []RuntimeDetailBlock{{
 			Type:     "terminal",
 			Title:    "Shell",
 			Content:  strings.TrimSpace(command),
@@ -1064,15 +1064,15 @@ func (s *runtimeSession) ensureCommandStepLocked(turn *runtimeTurn, itemID strin
 	return step
 }
 
-func (s *runtimeSession) newSystemStepLocked(turn *runtimeTurn, title string, message string, now time.Time, status string) *runtimeStep {
-	step := s.newStepLocked(turn, "log", title, now)
+func (s *runtimeSession) newSystemEventLocked(turn *runtimeTurn, title string, message string, now time.Time, status string) *runtimeEventRecord {
+	step := s.newEventLocked(turn, "log", title, now)
 	if step == nil {
 		return nil
 	}
 	step.Status = normalizeFallbackStatus(status)
 	step.FinishedAt = now
-	step.Preview = summarizeStepPreview(message)
-	step.Blocks = []StepDetailBlock{{
+	step.Preview = summarizeRuntimeEventSummary(message)
+	step.Blocks = []RuntimeDetailBlock{{
 		Type:    "log",
 		Title:   title,
 		Content: message,
@@ -1082,43 +1082,51 @@ func (s *runtimeSession) newSystemStepLocked(turn *runtimeTurn, title string, me
 	return step
 }
 
-func (t *runtimeTurn) stepByID(stepID string) *runtimeStep {
-	for _, step := range t.steps {
-		if step != nil && step.ID == strings.TrimSpace(stepID) {
-			return step
-		}
-	}
-	return nil
-}
-
-func (t *runtimeTurn) summary() TurnSummary {
-	steps := make([]StepSummary, 0, len(t.steps))
-	for _, step := range t.steps {
-		if step == nil {
+func (t *runtimeTurn) runtimeEventByID(eventID string) (*runtimeEventRecord, int) {
+	normalized := strings.TrimSpace(eventID)
+	seq := 0
+	for _, event := range t.events {
+		if event == nil {
 			continue
 		}
-		steps = append(steps, step.summary())
+		seq++
+		if event.ID == normalized {
+			return event, seq
+		}
+	}
+	return nil, 0
+}
+
+func (t *runtimeTurn) summary(sessionID string) TurnSummary {
+	runtimeTraceEvents := make([]RuntimeTraceEvent, 0, len(t.events))
+	seq := 0
+	for _, event := range t.events {
+		if event == nil {
+			continue
+		}
+		seq++
+		runtimeTraceEvents = append(runtimeTraceEvents, terminalRuntimeTraceEvent(sessionID, t.ID, seq, event.summary()))
 	}
 	return TurnSummary{
-		ID:          t.ID,
-		Prompt:      t.Prompt,
-		Attachments: cloneTurnAttachments(t.Attachments),
-		Status:      normalizeFallbackStatus(t.Status),
-		StartedAt:   t.StartedAt,
-		FinishedAt:  t.FinishedAt,
-		DurationMS:  durationMilliseconds(t.StartedAt, t.FinishedAt),
-		FinalOutput: t.FinalOutput,
-		Steps:       steps,
+		ID:                 t.ID,
+		Prompt:             t.Prompt,
+		Attachments:        cloneTurnAttachments(t.Attachments),
+		Status:             normalizeFallbackStatus(t.Status),
+		StartedAt:          t.StartedAt,
+		FinishedAt:         t.FinishedAt,
+		DurationMS:         durationMilliseconds(t.StartedAt, t.FinishedAt),
+		FinalOutput:        t.FinalOutput,
+		RuntimeTraceEvents: runtimeTraceEvents,
 	}
 }
 
 func (t *runtimeTurn) promoteFinalOutput() {
-	if len(t.steps) == 0 {
+	if len(t.events) == 0 {
 		return
 	}
 	lastMessageIndex := -1
-	for index := len(t.steps) - 1; index >= 0; index-- {
-		if t.steps[index] != nil && t.steps[index].Type == "message" {
+	for index := len(t.events) - 1; index >= 0; index-- {
+		if t.events[index] != nil && t.events[index].Type == "message" {
 			lastMessageIndex = index
 			break
 		}
@@ -1126,18 +1134,18 @@ func (t *runtimeTurn) promoteFinalOutput() {
 	if lastMessageIndex < 0 {
 		return
 	}
-	messageStep := t.steps[lastMessageIndex]
+	messageStep := t.events[lastMessageIndex]
 	if messageStep == nil || len(messageStep.Blocks) == 0 {
 		return
 	}
 	t.FinalOutput = strings.TrimSpace(messageStep.Blocks[0].Content)
-	t.steps = append(append([]*runtimeStep{}, t.steps[:lastMessageIndex]...), t.steps[lastMessageIndex+1:]...)
+	t.events = append(append([]*runtimeEventRecord{}, t.events[:lastMessageIndex]...), t.events[lastMessageIndex+1:]...)
 }
 
-func (s *runtimeStep) summary() StepSummary {
-	return StepSummary{
+func (s *runtimeEventRecord) summary() runtimeEventSummary {
+	return runtimeEventSummary{
 		ID:         s.ID,
-		Type:       normalizeStepType(s.Type),
+		Type:       normalizeRuntimeEventType(s.Type),
 		Title:      s.Title,
 		Status:     normalizeFallbackStatus(s.Status),
 		StartedAt:  s.StartedAt,
@@ -1145,14 +1153,18 @@ func (s *runtimeStep) summary() StepSummary {
 		DurationMS: durationMilliseconds(s.StartedAt, s.FinishedAt),
 		Preview:    s.Preview,
 		HasDetail:  len(s.Blocks) > 0,
+		Blocks:     append([]RuntimeDetailBlock{}, s.Blocks...),
 	}
 }
 
-func (s *runtimeStep) detail(turnID string) StepDetail {
-	return StepDetail{
+func (s *runtimeEventRecord) runtimeTraceEventDetail(sessionID string, turnID string, seq int) RuntimeTraceEventDetail {
+	summary := s.summary()
+	event := terminalRuntimeTraceEvent(sessionID, turnID, seq, summary)
+	event.Blocks = terminalRuntimeBlocks(summary.Blocks, summary.Preview, event.Kind, false)
+	return RuntimeTraceEventDetail{
 		TurnID:     turnID,
-		Step:       s.summary(),
-		Blocks:     append([]StepDetailBlock{}, s.Blocks...),
+		Event:      event,
+		Blocks:     append([]RuntimeBlock{}, event.Blocks...),
 		Searchable: s.Searchable,
 	}
 }
@@ -1170,9 +1182,9 @@ func durationMilliseconds(start time.Time, finish time.Time) int64 {
 	return finish.Sub(start).Milliseconds()
 }
 
-func deriveStepTitle(stepType string, content string) string {
+func deriveRuntimeEventTitle(stepType string, content string) string {
 	text := strings.Join(strings.Fields(strings.TrimSpace(content)), " ")
-	switch normalizeStepType(stepType) {
+	switch normalizeRuntimeEventType(stepType) {
 	case "command":
 		if text == "" {
 			return "Run command"
@@ -1201,7 +1213,7 @@ func deriveStepTitle(stepType string, content string) string {
 	}
 }
 
-func summarizeStepPreview(content string) string {
+func summarizeRuntimeEventSummary(content string) string {
 	return shortenText(strings.Join(strings.Fields(strings.TrimSpace(content)), " "), 120)
 }
 
@@ -1227,7 +1239,7 @@ func normalizeFallbackStatus(value string) string {
 	}
 }
 
-func normalizeStepStatus(value string, exitCode *int) string {
+func normalizeRuntimeEventStatus(value string, exitCode *int) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "completed", "succeeded", "success":
 		if exitCode != nil && *exitCode != 0 {
@@ -1246,7 +1258,7 @@ func normalizeStepStatus(value string, exitCode *int) string {
 	}
 }
 
-func normalizeStepType(stepType string) string {
+func normalizeRuntimeEventType(stepType string) string {
 	switch strings.ToLower(strings.TrimSpace(stepType)) {
 	case "command", "command_execution":
 		return "command"
@@ -1696,6 +1708,17 @@ func (s *Service) getOwnedSession(ownerID string, sessionID string) (*runtimeSes
 	return item, nil
 }
 
+func (s *Service) getOrRestoreOwnedSession(ownerID string, sessionID string) (*runtimeSession, error) {
+	item, err := s.getOwnedSession(ownerID, sessionID)
+	if err == nil {
+		return item, nil
+	}
+	if !errors.Is(err, ErrSessionNotFound) {
+		return nil, err
+	}
+	return s.restorePersistedOwnedSession(ownerID, sessionID)
+}
+
 func normalizeTerminalOwnerID(ownerID string) string {
 	ownerID = strings.TrimSpace(ownerID)
 	if ownerID != "" {
@@ -1958,7 +1981,7 @@ func (s *runtimeSession) markInterruptedLocked(turn *runtimeTurn, now time.Time,
 		reason = terminalHostUnavailableMessage
 	}
 	summaryText := "terminal interrupted: " + reason
-	alreadyRecorded := hasRuntimeTurnSystemStep(turn, "Interrupted", reason)
+	alreadyRecorded := hasRuntimeTurnSystemEvent(turn, "Interrupted", reason)
 
 	s.summary.Status = terminaldomain.SessionStatusInterrupted
 	s.summary.ErrorMessage = reason
@@ -1978,8 +2001,8 @@ func (s *runtimeSession) markInterruptedLocked(turn *runtimeTurn, now time.Time,
 	if turn.FinishedAt.IsZero() {
 		turn.FinishedAt = now
 	}
-	for _, step := range turn.steps {
-		if step == nil || !isRuntimeStepLive(step.Status) {
+	for _, step := range turn.events {
+		if step == nil || !isRuntimeEventLive(step.Status) {
 			continue
 		}
 		step.Status = "interrupted"
@@ -1988,18 +2011,18 @@ func (s *runtimeSession) markInterruptedLocked(turn *runtimeTurn, now time.Time,
 		}
 	}
 	if !alreadyRecorded {
-		s.newSystemStepLocked(turn, "Interrupted", reason, now, "failed")
+		s.newSystemEventLocked(turn, "Interrupted", reason, now, "failed")
 	}
 	turn.promoteFinalOutput()
 }
 
-func hasRuntimeTurnSystemStep(turn *runtimeTurn, title string, message string) bool {
+func hasRuntimeTurnSystemEvent(turn *runtimeTurn, title string, message string) bool {
 	if turn == nil {
 		return false
 	}
 	targetTitle := strings.TrimSpace(title)
 	targetMessage := strings.TrimSpace(message)
-	for _, step := range turn.steps {
+	for _, step := range turn.events {
 		if step == nil || step.Type != "log" {
 			continue
 		}
@@ -2015,7 +2038,7 @@ func hasRuntimeTurnSystemStep(turn *runtimeTurn, title string, message string) b
 	return false
 }
 
-func isRuntimeStepLive(status string) bool {
+func isRuntimeEventLive(status string) bool {
 	normalized := strings.TrimSpace(strings.ToLower(status))
 	return normalized == "" || normalized == "running" || normalized == "starting"
 }

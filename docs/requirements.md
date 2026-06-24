@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-06-23
+> Last update: 2026-06-24
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `runtime.execution.cli-runtime`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -62,10 +62,10 @@
 - 刷新页面时，`Chat` 必须优先保住当前活动会话：若服务端会话列表暂时尚未返回该 `session_id`，前端先从浏览器侧活动会话快照恢复当前条目与最近消息，再按 `session_id` 单独回源详情；若集合接口返回的消息历史短于本地已追加历史，且本地仍有未完成助手消息或更新中的本轮消息，前端不得用较短远端历史覆盖本地时间线；在确认服务端不存在该会话前，不得直接把当前活动会话替换成新的空白 `New` 会话。
 - 刷新页面或切到其他会话后，`Chat` 仍需保住最近已知会话列表：浏览器侧最近会话快照至少覆盖当前活动会话之外的最近若干条会话；当服务端集合接口暂时漏掉其中某条会话时，左侧会话列表不得立刻把该会话删除，而应继续保留本地条目并等待单会话详情或后续集合结果确认。
 - `Chat` 的会话存在性、配置与恢复状态需由 Terminal session store 承担第一责任：输入入口在请求开始、完成、失败时分别写入 `busy / ready / failed` 等稳定状态；会话置顶、删除、列表、详情与恢复均复用 Terminal session API。前端展示、计数和发送 payload 需以当前可用公有 Skill 目录过滤后的有效选择为准，避免因浏览器刷新、请求断开、前端本地状态丢失或 Skill 目录变化导致会话“消失”、失效 Skill 继续注入或直接 `load failed`。
-- 运行时执行过程需以统一 `RuntimeTraceEvent` 数据模型承载，并覆盖 Terminal turn steps、Terminal input 结果与会话历史持久化。事件类型、来源、角色、生命周期、状态、block 与 action 信息只能来自底层 provider、工程 adapter 或 alter0 自身确定生成的字段，不允许通过自然语言内容 heuristic 猜测。前端优先消费结构化事件，不依赖解析自然语言过程文本。
+- 运行时执行过程需以统一 `RuntimeTraceEvent` 数据模型承载，并覆盖 Terminal turn、Terminal input 结果与会话历史持久化。Terminal turn 摘要需直接输出 `runtime_trace_events` 作为 Chat / Terminal 过程展示的 canonical 数据；事件详情通过 `session_id / turn_id / event_id` 索引。事件类型、来源、角色、生命周期、状态、block 与 action 信息只能来自底层 provider、工程 adapter 或 alter0 自身确定生成的字段，不允许通过自然语言内容 heuristic 猜测。前端优先消费结构化事件，并仅按 `RuntimeTraceEvent.kind` 执行过程披露过滤，不依赖解析自然语言过程文本。
 - 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新；Chat / Terminal 最终输出统一使用稳定的 `MessageMarkdownShell` 承载，正文先于复制工具栏渲染，不安装脚本长按选区、假选中态或编辑态兜底，且父级无关重渲染不得重写相同 markdown 的文本 DOM；React 托管的普通页面也需对正文型字段提供同一安全 Markdown 渲染能力，覆盖 Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Skill 说明、Codex 运行时说明与 Session Profile 非等宽字段。Markdown 视觉需保持正文阅读节奏：ATX/Setext 标题紧凑、段落自然、删除线和自动链接按正文渲染、嵌套列表按 Markdown 缩进保留真实层级，列表项内允许继续承载引用与代码块，普通链接显示外链箭头，代码块保留浅灰弱边界；Markdown 表格需渲染为真实表格结构并保留列对齐，只保留横向分割线、无外框卡片和表头灰底，短表格至少铺满消息宽度，普通长文本在单元格内自动换行，链接、URL 与代码保持不硬断开，只有真实不可断内容超宽时才在消息容器内滚动；ID、路径、密钥、配置值、时间戳等元数据字段继续按纯文本或等宽字段展示。
 - Chat 允许通过显式预览参数 `/chat?markdown_demo=1` 临时覆盖当前时间线视图并展示一条非持久化 assistant Markdown 语法覆盖样例；样例覆盖 ATX/Setext 标题、段落换行、强调、删除线、自动链接、图片、引用、嵌套列表、任务项、列表内引用与代码块、分割线、代码块、对齐表格与 raw HTML 转义。表格样例覆盖短字符、长中文、长 URL/代码和混合内容场景；折叠示例中的 HTML 标签按代码块展示，折叠内容本身按普通 Markdown 展示。该入口只用于渲染验收，不写入会话历史，也不替代真实 Chat 会话恢复规则。
-- `Chat / Terminal` 的消息阅读结构统一采用轻量 IM 式消息流：用户消息右对齐且使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制；助手消息左对齐并弱化为无边框正文阅读流，Chat 正文工作区使用白底无框阅读面，不在消息区叠加明显面板边框、背景分界或卡片容器；`Process` 默认收敛为 `Thinking / 已思考` 内联轻量披露行，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情，移动端也保持同页内联展开，最终 Markdown、图片与复制动作都收敛在对应消息区域内。模型与 Skill 配置面板需提供过程披露过滤勾选，默认只勾选 `important_text`；`reasoning / plan / tools / commands / system` 等事件只有在用户显式勾选后展示。Terminal 最终输出的 Markdown 正文必须是静态可选中文本，复制动作位于助手正文下方，代码块作为独立浅灰内容块呈现；消息正文区不显示逐条时间，只有进行中、排队、失败等状态保留紧凑状态标签；长历史默认优先渲染最新上下文，用户滚到顶部或点击 `Load earlier messages / 加载更早消息` 后按批次渐进加载更早消息。后续新增运行页若呈现用户/助手消息，也必须复用同一 `runtime-message-*` 消息外壳与 `RuntimeTimeline` block model，不再自建页面私有气泡系统。
+- `Chat / Terminal` 的消息阅读结构统一采用轻量 IM 式消息流：用户消息右对齐且使用浅灰低对比紧凑气泡，气泡高度需由较小纵向 padding 与独立消息行高控制；助手消息左对齐并弱化为无边框正文阅读流，Chat 正文工作区使用白底无框阅读面，不在消息区叠加明显面板边框、背景分界或卡片容器；`Process` 默认收敛为 `Thinking / 已思考` 内联轻量披露行，只显示步骤数量，不显示耗时，展开后在当前消息内展示步骤详情，步骤行需显示与过程披露过滤一致的类型标签、耗时与状态，移动端也保持同页内联展开，最终 Markdown、图片与复制动作都收敛在对应消息区域内。模型与 Skill 配置面板需提供过程披露过滤勾选，默认只勾选 `important_text`；`reasoning / plan / tools / commands / system` 等事件只有在用户显式勾选后展示。Terminal 最终输出的 Markdown 正文必须是静态可选中文本，复制动作位于助手正文下方，代码块作为独立浅灰内容块呈现；消息正文区不显示逐条时间，只有进行中、排队、失败等状态保留紧凑状态标签；长历史默认优先渲染最新上下文，用户滚到顶部或点击 `Load earlier messages / 加载更早消息` 后按批次渐进加载更早消息。后续新增运行页若呈现用户/助手消息，也必须复用同一 `runtime-message-*` 消息外壳与 `RuntimeTimeline` block model，不再自建页面私有气泡系统。
 - 专项 Skill 需显式声明 deliverables contract，作为底层 Skill 执行上下文中的最终交付物约束；Web Chat 不再提供独立 Chat 的 Deliverables 或 Session Profile 面板。
 - Skill 还需支持独立的 `completion_checks` 机器规则，用于把交付契约下沉为可执行的运行时产物检查。`deliverables` 负责用户可见契约与 prompt 约束，`completion_checks` 负责文件存在、公开 URL、workspace service 发布状态、Session 属性非空等确定性校验，并可在失败时声明一轮仅面向当前 Session 的 Codex 修复指令。
 - `Chat / Terminal` 的 `Process` 步骤在真机窄屏下仍需保持整列阅读宽度；步骤序号、展开图标、标题与状态信息需在同一行垂直居中；长中文说明、路径、错误日志、inline code、Markdown 表格和命令明细必须在消息容器内自然换行或仅在内容块内部横向滚动，不得塌缩成逐字竖排窄列，也不得制造页面级横向滚动；展示层还需容忍零宽断行字符和“每字一行”的异常历史文本，并在渲染前修正为可读段落。
@@ -144,7 +144,7 @@
 
 ## Task, Terminal & Workspace
 
-核心对象：`TaskSummary`、`TaskLog`、`ArtifactRef`、`TerminalSession`、`TerminalTurn`、`TerminalStep`、`Workspace`、`CodexThreadID`。
+核心对象：`TaskSummary`、`TaskLog`、`ArtifactRef`、`TerminalSession`、`TerminalTurn`、`RuntimeTraceEvent`、`Workspace`、`CodexThreadID`。
 
 稳定需求：
 
@@ -153,9 +153,10 @@
 - 默认工作区按执行上下文隔离：Chat 使用 `.alter0/workspaces/sessions/<session_id>`，其中 Chat 的逻辑 `session_id` 固定为 `alter0-chat`；Task 使用其会话下的 `tasks/<task_id>`，Terminal 使用 `.alter0/workspaces/terminal/sessions/<terminal_session_id>`。
 - Chat 的会话图片资产需要随 Session 工作区落盘：用户上传图片的原图与预览图统一写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，前端持久化与消息请求默认复用 `asset_url / preview_url` 引用；其中 `preview_url` 只服务缩略位，消息回显与再次查看统一优先读取 `asset_url` 原图。assistant 最终回复里的外链 markdown 图片也应在会话返回与落库前改写到同一路径下的本地附件 URL。
 - 直连 Codex 的 Chat 会话会在各自工作区下额外维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Chat 使用 `.alter0/codex-runtime/thread.json` 保存 Codex CLI thread id，Chat 使用 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json` 保存北京时间 05:00 归档日对应的 Codex CLI thread id；Terminal 会话会在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
-- Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与步骤视图索引。
-- Terminal API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/step 明细读取，前端可按步骤展开或检索执行细节。
-- Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/step 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
+- Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与 `RuntimeTraceEvent` 视图索引。
+- Terminal API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/runtime event 明细读取，前端可按事件展开或检索执行细节。
+- Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/runtime event 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
+- Terminal 与 Chat scope 会话状态持久化统一使用 `runtime_events` 与 `next_event_id`；读取旧 `steps / next_step_id` 状态文件时会同步迁移并写回新结构。
 - Terminal 恢复默认优先复用已持久化 Codex CLI 线程；若续写命中远端 compact 失败，则保留原会话历史、工作区和线程标识，下一次输入继续 resume 同一 Codex CLI 线程。
 - Terminal 会话删除统一从左侧会话列表触发，`Delete` 会同步清理状态文件和独立工作区；工作区头部不再提供单独的 `Close` 入口。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表所在的左侧导航抽屉都保持删除前的展开状态，便于继续清理其他会话；用户随后通过 `Menu` 或抽屉外部遮罩主动关闭时，抽屉必须正常收起。前端在后续列表刷新、轮询和 page-activation 补偿刷新中也不得把该会话重新补回，直到服务端列表稳定反映删除结果。
 - Terminal 历史在同一 Web 登录态下跨设备共享，不按浏览器 client 标识隔离；不设置产品级会话数量上限或固定超时淘汰。
@@ -170,6 +171,8 @@
 - Terminal 移动端的命令与 prompt 气泡需保持自然整词换行；路径、flag 和短 shell 片段优先按空格或真实长单词边界断行，不允许因窄屏收缩把命令压成逐字或逐 token 的碎行。
 - Terminal `Process` 的步骤头必须保持稳定三列：左侧独立展开图标列、中间标题主列、右侧耗时与状态列。标题只能在中间主列内截断，不允许因为节点缺失、DOM 顺序错误或 grid 列错位把标题挤进图标列，导致移动端只显示单个字符。
 - Terminal `Process` 展开后的自然语言步骤详情需使用同一套阅读修正：`reasoning / plan / message / text` 等说明类内容优先按 markdown 正文块整列换行，展示前移除零宽断行字符，并把“每字一行”的病态段落归一回可读正文；仅终端输出、diff 与代码类块继续保留预格式化渲染。
+- Chat 的 `Thinking / 已思考` 外层披露展开时只进入步骤列表态；该动作会收起同一 assistant 消息下已打开的单步详情，避免移动端把历史详情重新展开并造成视口突跳。单步详情仍由用户点开具体步骤后展示。
+- Chat 与 Terminal 的过程详情必须共用同一套最终 detail surface 渲染规则：终端、代码、diff、tool input 与 JSON 类输出直接使用等宽内容块，说明、markdown、thinking、文本型 tool output 与 error 直接使用富文本正文块，并保留 block 标题、文件名与起始行号；Terminal 中需要单独拉取 detail 的步骤，必须在 detail 返回后再展开步骤体，不允许先显示 preview 兜底再二次跳变。
 - Terminal 移动端的四键阅读定位条只按静态 Composer footprint 停靠，不跟随软键盘位移动态上移；输入框聚焦且键盘弹起时按钮组主动隐藏，键盘收起或浏览器视口回弹后再恢复到 Composer 上沿之上，不得留下悬空残影。
 
 ## Control, Operations & Governance
