@@ -24,7 +24,9 @@ import {
   DEFAULT_RUNTIME_EVENT_FILTER,
   RUNTIME_EVENT_FILTER_OPTIONS,
   normalizeRuntimeTraceEvents,
+  runtimeTraceEventDetailID,
   type RuntimeEventFilterID,
+  type RuntimeBlock,
   type RuntimeTraceEvent,
 } from "../shell/components/runtimeTraceEvents";
 
@@ -32,6 +34,7 @@ const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.long_term_snapshot.v1";
+const SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.session.info_snapshot.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
@@ -46,13 +49,24 @@ const CODEX_RUNTIME_MODEL_ID = "codex";
 const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
+const CHAT_HISTORY_PAGE_TURN_LIMIT = 20;
 export const CHAT_RUNTIME_CACHE_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const CHAT_LONG_TERM_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-function chatTerminalSessionEndpoint(path: string = ""): string {
+function chatTerminalSessionEndpoint(
+  path: string = "",
+  query: Record<string, string | number | boolean | undefined> = {},
+): string {
   const normalizedPath = path.trim().replace(/^\/+/, "");
   const suffix = normalizedPath ? `/${normalizedPath}` : "";
-  return `${TERMINAL_SESSION_COLLECTION_ENDPOINT}${suffix}?${CHAT_TERMINAL_SESSION_SCOPE_QUERY}`;
+  const search = new URLSearchParams(CHAT_TERMINAL_SESSION_SCOPE_QUERY);
+  Object.entries(query).forEach(([key, value]) => {
+    if (typeof value === "undefined" || value === "") {
+      return;
+    }
+    search.set(key, String(value));
+  });
+  return `${TERMINAL_SESSION_COLLECTION_ENDPOINT}${suffix}?${search.toString()}`;
 }
 
 type ChatSessionPollPlan = {
@@ -114,6 +128,7 @@ type ChatSession = {
   messages: ChatMessage[];
   messagesLoaded?: boolean;
   serverBacked?: boolean;
+  turnsPaging?: TerminalTurnPaging;
 };
 
 type ChatProviderModel = {
@@ -213,9 +228,19 @@ type TerminalSessionPayload = {
   skill_ids?: string[];
   mcp_ids?: string[];
   turns?: TerminalTurnPayload[];
-  turns_paging?: {
-    has_more_before?: boolean;
-  };
+  turns_paging?: TerminalTurnPaging;
+};
+
+type TerminalTurnPaging = {
+  limit?: number;
+  total?: number;
+  byte_limit?: number;
+  approx_bytes?: number;
+  has_more_before?: boolean;
+  has_more_after?: boolean;
+  oldest_turn_id?: string;
+  newest_turn_id?: string;
+  next_before_turn_id?: string;
 };
 
 type TerminalTurnPayload = {
@@ -235,6 +260,16 @@ type TerminalAttachmentPayload = {
   content_type?: string;
   asset_url?: string;
   preview_url?: string;
+};
+
+type RuntimeTraceEventDetail = {
+  turn_id?: string;
+  event?: RuntimeTraceEvent;
+  blocks?: RuntimeBlock[];
+};
+
+type RuntimeTraceEventDetailResponse = {
+  event?: RuntimeTraceEventDetail;
 };
 
 type ConversationRuntimeContextValue = {
@@ -289,6 +324,7 @@ type ConversationRuntimeContextValue = {
   toggleSkill: (id: string, checked: boolean) => void;
   toggleRuntimeEventFilter: (id: RuntimeEventFilterID, checked: boolean) => void;
   toggleProcess: (messageID: string) => void;
+  loadProcessEventDetail: (messageID: string, eventID: string) => Promise<void>;
 };
 
 type ConversationRuntimeWorkspaceContextValue = Omit<
@@ -466,6 +502,7 @@ function cloneChatSession(session: ChatSession): ChatSession {
     skillIDs: [...session.skillIDs],
     mcpIDs: [...session.mcpIDs],
     messages: session.messages.map(cloneChatMessage),
+    turnsPaging: session.turnsPaging ? { ...session.turnsPaging } : undefined,
   };
 }
 
@@ -503,6 +540,93 @@ function normalizeSelectionIDs(values: unknown): string[] {
     return [];
   }
   return Array.from(new Set(values.map((item) => normalizeText(item)).filter(Boolean)));
+}
+
+function normalizeOptionalNumber(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeTerminalTurnPaging(value: unknown): TerminalTurnPaging | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    limit: normalizeOptionalNumber(record.limit),
+    total: normalizeOptionalNumber(record.total),
+    byte_limit: normalizeOptionalNumber(record.byte_limit),
+    approx_bytes: normalizeOptionalNumber(record.approx_bytes),
+    has_more_before: typeof record.has_more_before === "boolean" ? record.has_more_before : undefined,
+    has_more_after: typeof record.has_more_after === "boolean" ? record.has_more_after : undefined,
+    oldest_turn_id: normalizeText(record.oldest_turn_id),
+    newest_turn_id: normalizeText(record.newest_turn_id),
+    next_before_turn_id: normalizeText(record.next_before_turn_id),
+  };
+}
+
+function messageTurnID(messageID: string): string {
+  const normalized = normalizeText(messageID);
+  const separatorIndex = normalized.lastIndexOf(":");
+  return separatorIndex > 0 ? normalized.slice(0, separatorIndex) : "";
+}
+
+function sessionHasTurn(session: ChatSession | null | undefined, turnID: string): boolean {
+  const normalizedTurnID = normalizeText(turnID);
+  return Boolean(normalizedTurnID && session?.messages.some((message) => messageTurnID(message.id) === normalizedTurnID));
+}
+
+function oldestTurnIDFromMessages(messages: ChatMessage[]): string {
+  for (const message of messages) {
+    const turnID = messageTurnID(message.id);
+    if (turnID) {
+      return turnID;
+    }
+  }
+  return "";
+}
+
+function isPagedTerminalTurnPayload(
+  item: TerminalSessionPayload,
+  paging: TerminalTurnPaging | undefined,
+): boolean {
+  if (!paging || !Array.isArray(item.turns)) {
+    return false;
+  }
+  if (paging.has_more_before || paging.has_more_after) {
+    return true;
+  }
+  return typeof paging.total === "number" && item.turns.length < paging.total;
+}
+
+function mergeTerminalTurnPaging(
+  previous: ChatSession | null | undefined,
+  incoming: TerminalTurnPaging | undefined,
+): TerminalTurnPaging | undefined {
+  if (!incoming) {
+    return previous?.turnsPaging ? { ...previous.turnsPaging } : undefined;
+  }
+  const next = { ...incoming };
+  const boundaryTurnID = normalizeText(next.next_before_turn_id || next.oldest_turn_id);
+  if (
+    previous?.turnsPaging?.has_more_before === false
+    && next.has_more_before === true
+    && sessionHasTurn(previous, boundaryTurnID)
+  ) {
+    next.has_more_before = false;
+  }
+  if (!next.next_before_turn_id) {
+    next.next_before_turn_id = next.oldest_turn_id || oldestTurnIDFromMessages(previous?.messages || []);
+  }
+  return next;
+}
+
+function trimSessionForInfoCache(session: ChatSession): ChatSession {
+  return {
+    ...cloneChatSession(session),
+    messages: [],
+    messagesLoaded: false,
+  };
 }
 
 function isStreamingPlaceholderText(text: string): boolean {
@@ -676,6 +800,9 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
   if (!id) {
     return null;
   }
+  const targetRecord = record.target && typeof record.target === "object"
+    ? record.target as Record<string, unknown>
+    : {};
   return {
     id,
     sourceRoute: "chat",
@@ -687,8 +814,8 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     pinned: record.pinned === true,
     target: normalizeChatTarget({
       type: "model",
-      id: normalizeText(record.targetID),
-      name: normalizeText(record.targetName),
+      id: normalizeText(record.targetID ?? targetRecord.id),
+      name: normalizeText(record.targetName ?? targetRecord.name),
     }),
     modelProviderID: normalizeText(record.modelProviderID),
     modelID: normalizeText(record.modelID),
@@ -701,6 +828,17 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
       : [],
     messagesLoaded: typeof record.messagesLoaded === "boolean" ? record.messagesLoaded : undefined,
     serverBacked: typeof record.serverBacked === "boolean" ? record.serverBacked : undefined,
+    turnsPaging: normalizeTerminalTurnPaging(record.turnsPaging ?? record.turns_paging),
+  };
+}
+
+function normalizeCachedSessionsState(value: unknown): SessionsState {
+  if (!value || typeof value !== "object") {
+    return { chat: [] };
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    chat: normalizeRouteSessions("chat", normalizeStoredSessionList(record.chat)),
   };
 }
 
@@ -757,6 +895,7 @@ function serializeStoredSession(session: ChatSession): Record<string, unknown> {
     messages: session.messages.map(serializeStoredMessage),
     messagesLoaded: session.messagesLoaded,
     serverBacked: session.serverBacked,
+    turnsPaging: session.turnsPaging,
   };
 }
 
@@ -889,7 +1028,26 @@ function readLongTermConversationRuntimeCache(): ConversationRuntimeCacheSnapsho
   return {
     cachedAt: cache.cachedAt,
     activeSessionByRoute: { chat: normalizeText(cache.activeSessionByRoute?.chat) },
-    sessionsByRoute: cloneSessionsState(cache.sessionsByRoute || { chat: [] }),
+    sessionsByRoute: normalizeCachedSessionsState(cache.sessionsByRoute),
+  };
+}
+
+function readSessionInfoConversationRuntimeCache(): ConversationRuntimeCacheSnapshot | null {
+  const cache = readJSONLocalStorage<ConversationRuntimeCacheSnapshot | null>(SESSION_INFO_SNAPSHOT_STORAGE_KEY, null);
+  if (!cache) {
+    return null;
+  }
+  if (Date.now() - Number(cache.cachedAt || 0) > CHAT_LONG_TERM_CACHE_TTL_MS) {
+    try {
+      window.localStorage.removeItem(SESSION_INFO_SNAPSHOT_STORAGE_KEY);
+    } catch {
+    }
+    return null;
+  }
+  return {
+    cachedAt: cache.cachedAt,
+    activeSessionByRoute: { chat: normalizeText(cache.activeSessionByRoute?.chat) },
+    sessionsByRoute: normalizeCachedSessionsState(cache.sessionsByRoute),
   };
 }
 
@@ -909,6 +1067,16 @@ function writeLongTermConversationRuntimeCache(activeSessionByRoute: ActiveSessi
   });
 }
 
+function writeSessionInfoConversationRuntimeCache(activeSessionByRoute: ActiveSessionState, sessionsByRoute: SessionsState) {
+  writeJSONLocalStorage(SESSION_INFO_SNAPSHOT_STORAGE_KEY, {
+    cachedAt: Date.now(),
+    activeSessionByRoute: { chat: normalizeText(activeSessionByRoute.chat) },
+    sessionsByRoute: {
+      chat: normalizeRouteSessions("chat", sessionsByRoute.chat.map(trimSessionForInfoCache)),
+    },
+  });
+}
+
 function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialState {
   const cache = readConversationRuntimeCache();
   if (cache) {
@@ -918,9 +1086,11 @@ function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialSta
     };
   }
   const longTermCache = readLongTermConversationRuntimeCache();
+  const infoCache = longTermCache ? null : readSessionInfoConversationRuntimeCache();
+  const fallbackCache = longTermCache || infoCache;
   return {
-    activeSessionByRoute: loadActiveSessionState(longTermCache?.activeSessionByRoute || null),
-    sessionsByRoute: loadActiveSessionSnapshots(longTermCache?.sessionsByRoute || null),
+    activeSessionByRoute: loadActiveSessionState(fallbackCache?.activeSessionByRoute || null),
+    sessionsByRoute: loadActiveSessionSnapshots(fallbackCache?.sessionsByRoute || null),
   };
 }
 
@@ -996,6 +1166,33 @@ function normalizeTerminalProcessEvents(sessionID: string, turnID: string, turn:
   return normalizeRuntimeTraceEvents(turn.runtime_trace_events, { sessionID, turnID });
 }
 
+function normalizeRuntimeTraceEventDetail(
+  detail: RuntimeTraceEventDetail | undefined,
+  fallback: RuntimeTraceEvent,
+): RuntimeTraceEvent | null {
+  if (!detail?.event) {
+    return null;
+  }
+  const normalized = normalizeRuntimeTraceEvents([detail.event], {
+    sessionID: fallback.session_id,
+    turnID: fallback.turn_id,
+  })[0];
+  if (!normalized) {
+    return null;
+  }
+  const blocks = normalized.blocks.length > 0
+    ? normalized.blocks
+    : Array.isArray(detail.blocks)
+      ? detail.blocks
+      : fallback.blocks;
+  return {
+    ...fallback,
+    ...normalized,
+    blocks,
+    raw: normalized.raw ? { ...normalized.raw, has_detail: false } : fallback.raw ? { ...fallback.raw, has_detail: false } : undefined,
+  };
+}
+
 function normalizeTerminalTurnMessages(sessionID: string, turn: TerminalTurnPayload): ChatMessage[] {
   const id = normalizeText(turn.id);
   if (!id) {
@@ -1054,8 +1251,12 @@ function normalizeTerminalSession(
   const parsedMessages = Array.isArray(item.turns)
     ? item.turns.flatMap((turn) => normalizeTerminalTurnMessages(id, turn))
     : null;
+  const incomingPaging = normalizeTerminalTurnPaging(item.turns_paging);
+  const shouldMergePagedMessages = parsedMessages
+    && previous?.messages.length
+    && isPagedTerminalTurnPayload(item, incomingPaging);
   const messages = parsedMessages
-    ? (previous?.messages.length && item.turns_paging?.has_more_before
+    ? (shouldMergePagedMessages
       ? mergePagedMessages(previous.messages, parsedMessages)
       : previous?.messages.length && !shouldUseParsedMessages(previous.messages, parsedMessages)
         ? previous.messages
@@ -1083,6 +1284,7 @@ function normalizeTerminalSession(
     messages,
     messagesLoaded: Array.isArray(item.turns),
     serverBacked: true,
+    turnsPaging: mergeTerminalTurnPaging(previous, incomingPaging),
   };
 }
 
@@ -1109,6 +1311,7 @@ function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSession[]): C
         typeof session.serverBacked === "boolean"
           ? session.serverBacked
           : previous?.serverBacked,
+      turnsPaging: session.turnsPaging || previous?.turnsPaging,
     });
   });
   existing
@@ -1263,6 +1466,8 @@ export function ConversationRuntimeProvider({
   const pollTimerRef = useRef<number>(0);
   const sessionsByRouteRef = useRef(sessionsByRoute);
   const recoveryPromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
+  const progressiveHistoryLoadsRef = useRef(new Set<string>());
+  const processEventDetailLoadsRef = useRef(new Set<string>());
   const composerDraftPersistTimerRef = useRef<number>(0);
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
@@ -1377,6 +1582,52 @@ export function ConversationRuntimeProvider({
       ),
     }));
   }, [patchSession]);
+
+  const loadProcessEventDetail = useCallback(async (messageID: string, eventID: string) => {
+    const session = sessionsByRouteRef.current[route].find((item) => item.id === activeSessionByRoute[route]) || activeSession;
+    const message = session?.messages.find((item) => item.id === messageID);
+    const runtimeEvent = message?.processEvents.find((event) =>
+      runtimeTraceEventDetailID(event) === eventID || normalizeText(event.id) === normalizeText(eventID),
+    );
+    const turnID = normalizeText(runtimeEvent?.turn_id);
+    const detailID = runtimeEvent ? runtimeTraceEventDetailID(runtimeEvent) : normalizeText(eventID);
+    if (!session?.id || !message || !runtimeEvent || !turnID || !detailID || runtimeEvent.raw?.has_detail !== true) {
+      return;
+    }
+    const requestKey = `${session.id}:${turnID}:${detailID}`;
+    if (processEventDetailLoadsRef.current.has(requestKey)) {
+      return;
+    }
+    processEventDetailLoadsRef.current.add(requestKey);
+    try {
+      const payload = await apiClient.get<RuntimeTraceEventDetailResponse>(
+        `/api/terminal/sessions/${encodeURIComponent(session.id)}/turns/${encodeURIComponent(turnID)}/events/${encodeURIComponent(detailID)}`,
+      );
+      const detailedEvent = normalizeRuntimeTraceEventDetail(payload.event, runtimeEvent);
+      if (!detailedEvent) {
+        return;
+      }
+      patchSession(route, session.id, (currentSession) => ({
+        ...currentSession,
+        messages: currentSession.messages.map((currentMessage) => {
+          if (currentMessage.id !== messageID) {
+            return currentMessage;
+          }
+          return {
+            ...currentMessage,
+            processEvents: currentMessage.processEvents.map((event) =>
+              runtimeTraceEventDetailID(event) === detailID || normalizeText(event.id) === detailID
+                ? detailedEvent
+                : event,
+            ),
+          };
+        }),
+      }));
+    } catch {
+    } finally {
+      processEventDetailLoadsRef.current.delete(requestKey);
+    }
+  }, [activeSession, activeSessionByRoute, apiClient, patchSession, route]);
 
   const focusSession = useCallback((sessionID: string) => {
     const resolvedSessionID = sessionID;
@@ -1502,9 +1753,16 @@ export function ConversationRuntimeProvider({
     }));
   }, [patchSession, route]);
 
-  const hydrateRuntimeSession = async (routeKey: ConversationRoute, sessionID: string): Promise<ChatSession | null> => {
+  const hydrateRuntimeSession = async (
+    routeKey: ConversationRoute,
+    sessionID: string,
+    options: { turnBefore?: string; turnLimit?: number } = {},
+  ): Promise<ChatSession | null> => {
     const payload = await apiClient.get<{ session?: TerminalSessionPayload }>(
-      chatTerminalSessionEndpoint(encodeURIComponent(sessionID)),
+      chatTerminalSessionEndpoint(encodeURIComponent(sessionID), {
+        turn_before: normalizeText(options.turnBefore),
+        turn_limit: options.turnLimit,
+      }),
     );
     return hydrateRuntimeSessionResponse(routeKey, routeKey, sessionID, payload);
   };
@@ -1736,6 +1994,7 @@ export function ConversationRuntimeProvider({
   useEffect(() => {
     writeConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
     writeLongTermConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
+    writeSessionInfoConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
   }, [activeSessionByRoute, sessionsByRoute]);
 
   useEffect(() => {
@@ -1753,6 +2012,56 @@ export function ConversationRuntimeProvider({
     onVisibilityChange: setPageHidden,
     onActive: refreshCurrentRouteOnPageActive,
   });
+
+  useEffect(() => {
+    const sessionID = normalizeText(activeSession?.id);
+    const paging = activeSession?.turnsPaging;
+    const beforeTurnID = normalizeText(paging?.next_before_turn_id || paging?.oldest_turn_id)
+      || oldestTurnIDFromMessages(activeSession?.messages || []);
+    if (
+      !sessionID
+      || activeSession?.serverBacked !== true
+      || activeSession.messagesLoaded !== true
+      || paging?.has_more_before !== true
+      || !beforeTurnID
+      || hasRecoverableRuntimeState(activeSession)
+    ) {
+      return;
+    }
+    const requestKey = `${route}:${sessionID}:${beforeTurnID}`;
+    if (progressiveHistoryLoadsRef.current.has(requestKey)) {
+      return;
+    }
+    let cancelled = false;
+    progressiveHistoryLoadsRef.current.add(requestKey);
+    void (async () => {
+      try {
+        const hydrated = await hydrateRuntimeSession(route, sessionID, {
+          turnBefore: beforeTurnID,
+          turnLimit: CHAT_HISTORY_PAGE_TURN_LIMIT,
+        });
+        if (!cancelled && hydrated) {
+          upsertRuntimeSession(route, hydrated);
+        }
+      } catch {
+      } finally {
+        progressiveHistoryLoadsRef.current.delete(requestKey);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeSession?.id,
+    activeSession?.messages,
+    activeSession?.messagesLoaded,
+    activeSession?.serverBacked,
+    activeSession?.turnsPaging?.has_more_before,
+    activeSession?.turnsPaging?.next_before_turn_id,
+    activeSession?.turnsPaging?.oldest_turn_id,
+    route,
+    upsertRuntimeSession,
+  ]);
 
   useEffect(() => {
     const loadCatalogs = async () => {
@@ -2120,9 +2429,10 @@ export function ConversationRuntimeProvider({
           message.id === messageID
             ? { ...message, processCollapsed: !resolveProcessCollapsed(message) }
             : message,
-        ),
+          ),
       }));
     },
+    loadProcessEventDetail,
   }), [
     route,
     compact,
@@ -2152,6 +2462,7 @@ export function ConversationRuntimeProvider({
     patchSession,
     persistRuntimeSessionConfig,
     refreshActiveSession,
+    loadProcessEventDetail,
     removeSession,
     setSessionPinned,
   ]);

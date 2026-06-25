@@ -12,6 +12,7 @@ import {
 import { RuntimeProcessStepMeta } from "./RuntimeProcessStepMeta";
 import {
   DEFAULT_RUNTIME_EVENT_FILTER,
+  runtimeTraceEventDetailID,
   runtimeTraceEventVisibleByFilter,
   type RuntimeEventFilterID,
   type RuntimeTraceEvent,
@@ -352,7 +353,7 @@ function buildChatTimelineItem(
         bodyClassName: "terminal-process-body",
         emptyState: <div className="terminal-process-empty">{copy.processEmpty}</div>,
         events: parsed.events.map((step, index) => {
-          const stepID = step.id || `${step.title}-${index}`;
+          const stepID = runtimeTraceEventDetailID(step) || `${step.title}-${index}`;
           const expanded = Boolean(expandedProcessEvents[chatProcessEventKey(message.id, stepID)]);
           return {
             id: stepID,

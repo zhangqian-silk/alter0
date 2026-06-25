@@ -14,6 +14,7 @@ const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
+const SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.session.info_snapshot.v1";
 
 const apiClientMock = {
   get: vi.fn(async () => ({ items: [] })),
@@ -59,6 +60,20 @@ function RuntimeHarness() {
       <output data-testid="assistant-text">{assistantMessage?.text || ""}</output>
       <output data-testid="assistant-process-count">{assistantMessage?.processEvents.length || 0}</output>
       <output data-testid="assistant-process-status">{assistantMessage?.processEvents[0]?.status || ""}</output>
+      <output data-testid="assistant-process-blocks">
+        {JSON.stringify(assistantMessage?.processEvents[0]?.blocks || [])}
+      </output>
+      <button
+        type="button"
+        onClick={() => {
+          const event = assistantMessage?.processEvents[0];
+          if (assistantMessage && event) {
+            void runtime.loadProcessEventDetail(assistantMessage.id, event.raw?.ref || event.id);
+          }
+        }}
+      >
+        load process detail
+      </button>
       <output data-testid="active-session-status">{runtime.activeSession?.status || ""}</output>
     </div>
   );
@@ -1937,5 +1952,207 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions/alter0-chat?scope=chat"));
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer");
+  });
+
+  it("progressively loads earlier Chat turn pages without a pull gesture", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Progressive chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: {
+                has_more_before: true,
+                oldest_turn_id: "turn-3",
+                newest_turn_id: "turn-3",
+                next_before_turn_id: "turn-3",
+                total: 3,
+              },
+              turns: [{
+                id: "turn-3",
+                prompt: "latest",
+                status: "success",
+                started_at: "2026-04-23T03:33:00Z",
+                finished_at: "2026-04-23T03:33:01Z",
+                final_output: "latest answer",
+              }],
+            }],
+          };
+        case "/api/terminal/sessions/alter0-chat?scope=chat&turn_before=turn-3&turn_limit=20":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Progressive chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: {
+                has_more_before: false,
+                has_more_after: true,
+                oldest_turn_id: "turn-1",
+                newest_turn_id: "turn-2",
+                next_before_turn_id: "turn-1",
+                total: 3,
+              },
+              turns: [
+                {
+                  id: "turn-1",
+                  prompt: "oldest",
+                  status: "success",
+                  started_at: "2026-04-23T03:31:00Z",
+                  finished_at: "2026-04-23T03:31:01Z",
+                  final_output: "oldest answer",
+                },
+                {
+                  id: "turn-2",
+                  prompt: "middle",
+                  status: "success",
+                  started_at: "2026-04-23T03:32:00Z",
+                  finished_at: "2026-04-23T03:32:01Z",
+                  final_output: "middle answer",
+                },
+              ],
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      "/api/terminal/sessions/alter0-chat?scope=chat&turn_before=turn-3&turn_limit=20",
+    ));
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("oldest answer"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("middle answer");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer");
+  });
+
+  it("restores cached Chat session info when the full long-term message cache is unavailable", async () => {
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "cached-chat" }));
+    window.localStorage.setItem(
+      SESSION_INFO_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        activeSessionByRoute: { chat: "cached-chat" },
+        sessionsByRoute: {
+          chat: [{
+            id: "cached-chat",
+            status: "ready",
+            title: "Cached session info",
+            createdAt: Date.parse("2026-04-23T03:30:00Z"),
+            pinned: true,
+            targetID: "codex",
+            targetName: "Codex",
+            messages: [],
+            messagesLoaded: false,
+            serverBacked: true,
+          }],
+        },
+      }),
+    );
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Cached session info"));
+  });
+
+  it("loads Chat runtime process event details on demand and keeps them in the message cache", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Detail chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [{
+                id: "turn-1",
+                prompt: "show thinking",
+                status: "success",
+                started_at: "2026-04-23T03:31:00Z",
+                finished_at: "2026-04-23T03:31:01Z",
+                final_output: "done",
+                runtime_trace_events: [{
+                  id: "step-1",
+                  turn_id: "turn-1",
+                  seq: 1,
+                  source: "adapter",
+                  provider: { engine: "codex", adapter: "codex_cli_json" },
+                  role: "assistant",
+                  kind: "reasoning",
+                  lifecycle: "completed",
+                  status: "completed",
+                  title: "Thinking",
+                  blocks: [],
+                  visibility: "collapsed",
+                  raw: { ref: "event-ref-1", has_detail: true },
+                }],
+              }],
+            }],
+          };
+        case "/api/terminal/sessions/alter0-chat/turns/turn-1/events/event-ref-1":
+          return {
+            event: {
+              turn_id: "turn-1",
+              event: {
+                id: "step-1",
+                turn_id: "turn-1",
+                seq: 1,
+                source: "adapter",
+                provider: { engine: "codex", adapter: "codex_cli_json" },
+                role: "assistant",
+                kind: "reasoning",
+                lifecycle: "completed",
+                status: "completed",
+                title: "Thinking",
+                blocks: [{ type: "thinking", text: "full thinking detail" }],
+                visibility: "collapsed",
+                raw: { ref: "event-ref-1", has_detail: true },
+              },
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("assistant-process-count")).toHaveTextContent("1"));
+    expect(screen.getByTestId("assistant-process-blocks")).not.toHaveTextContent("full thinking detail");
+
+    fireEvent.click(screen.getByRole("button", { name: "load process detail" }));
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      "/api/terminal/sessions/alter0-chat/turns/turn-1/events/event-ref-1",
+    ));
+    await waitFor(() => expect(screen.getByTestId("assistant-process-blocks")).toHaveTextContent("full thinking detail"));
+    expect(window.localStorage.getItem("alter0.web.session.long_term_snapshot.v1")).toContain("full thinking detail");
   });
 });
