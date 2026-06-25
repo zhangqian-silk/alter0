@@ -546,7 +546,7 @@ describe("ConversationWorkspace", () => {
     }));
   });
 
-  it("refreshes the active Chat session when the user pulls the timeline back to the top", () => {
+  it("does not refresh the active Chat session when the user scrolls to the top", () => {
     runtimeMock.activeSession = {
       id: "session-1",
       status: "ready",
@@ -565,177 +565,44 @@ describe("ConversationWorkspace", () => {
     expect(screenNode).toBeInTheDocument();
     fireEvent.scroll(screenNode, { target: { scrollTop: 0 } });
 
-    expect(runtimeMock.refreshActiveSession).toHaveBeenCalledTimes(1);
+    expect(runtimeMock.refreshActiveSession).not.toHaveBeenCalled();
   });
 
-  it("refreshes the active Chat session on a touch pull gesture while already pinned at the top", () => {
+  it("loads only the next local history batch when the user scrolls to the top", () => {
+    const messages = Array.from({ length: 40 }, (_value, index) => ({
+      id: `msg-${index + 1}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      text: `Message ${index + 1}`,
+      attachments: [],
+      route: "chat",
+      source: "chat",
+      error: false,
+      status: "done",
+      at: Date.parse("2026-04-23T09:00:00Z") + index,
+      processEvents: [],
+    }));
     runtimeMock.activeSession = {
       id: "session-1",
       status: "ready",
-      title: "Session with loaded messages",
-      messages: [
-        { id: "msg-1", role: "assistant", text: "One", at: Date.now(), status: "done" },
-        { id: "msg-2", role: "assistant", text: "Two", at: Date.now(), status: "done" },
-      ],
+      title: "Session with hidden local messages",
+      messages,
     };
     runtimeMock.sessions = [runtimeMock.activeSession];
     runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
 
-    renderWorkspace({ isMobileViewport: true });
+    renderWorkspace({ isMobileViewport: false });
 
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: messages.slice(-32),
+    }));
     const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
     expect(screenNode).toBeInTheDocument();
-    Object.defineProperty(screenNode, "scrollTop", {
-      configurable: true,
-      value: 0,
-    });
-    const touchStart = new Event("touchstart", { bubbles: true, cancelable: true });
-    Object.defineProperty(touchStart, "touches", {
-      configurable: true,
-      value: [{ clientY: 120 }],
-    });
-    const touchMove = new Event("touchmove", { bubbles: true, cancelable: true });
-    Object.defineProperty(touchMove, "touches", {
-      configurable: true,
-      value: [{ clientY: 190 }],
-    });
+    fireEvent.scroll(screenNode, { target: { scrollTop: 0 } });
 
-    screenNode.dispatchEvent(touchStart);
-    screenNode.dispatchEvent(touchMove);
-
-    expect(runtimeMock.refreshActiveSession).toHaveBeenCalledTimes(1);
-  });
-
-  it("refreshes the active Chat session when a touch pull reaches the top during the same gesture", () => {
-    runtimeMock.activeSession = {
-      id: "session-1",
-      status: "ready",
-      title: "Session with loaded messages",
-      messages: [
-        { id: "msg-1", role: "assistant", text: "One", at: Date.now(), status: "done" },
-        { id: "msg-2", role: "assistant", text: "Two", at: Date.now(), status: "done" },
-      ],
-    };
-    runtimeMock.sessions = [runtimeMock.activeSession];
-    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
-
-    renderWorkspace({ isMobileViewport: true });
-
-    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
-    expect(screenNode).toBeInTheDocument();
-    let scrollTop = 96;
-    Object.defineProperty(screenNode, "scrollTop", {
-      configurable: true,
-      get: () => scrollTop,
-      set: (value) => {
-        scrollTop = value;
-      },
-    });
-    const touchStart = new Event("touchstart", { bubbles: true, cancelable: true });
-    Object.defineProperty(touchStart, "touches", {
-      configurable: true,
-      value: [{ clientY: 120 }],
-    });
-    const touchMoveAtTop = new Event("touchmove", { bubbles: true, cancelable: true });
-    Object.defineProperty(touchMoveAtTop, "touches", {
-      configurable: true,
-      value: [{ clientY: 190 }],
-    });
-
-    screenNode.dispatchEvent(touchStart);
-    scrollTop = 0;
-    screenNode.dispatchEvent(touchMoveAtTop);
-
-    expect(runtimeMock.refreshActiveSession).toHaveBeenCalledTimes(1);
-  });
-
-  it("refreshes the active Chat session when the touch pull is captured by the workspace body", () => {
-    runtimeMock.activeSession = {
-      id: "session-1",
-      status: "ready",
-      title: "Session with loaded messages",
-      messages: [
-        { id: "msg-1", role: "assistant", text: "One", at: Date.now(), status: "done" },
-        { id: "msg-2", role: "assistant", text: "Two", at: Date.now(), status: "done" },
-      ],
-    };
-    runtimeMock.sessions = [runtimeMock.activeSession];
-    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
-
-    renderWorkspace({ isMobileViewport: true });
-
-    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
-    const workspaceBody = document.querySelector(".runtime-workspace-body") as HTMLDivElement;
-    expect(screenNode).toBeInTheDocument();
-    expect(workspaceBody).toBeInTheDocument();
-    Object.defineProperty(screenNode, "scrollTop", {
-      configurable: true,
-      value: 0,
-    });
-    const touchStart = new Event("touchstart", { bubbles: true, cancelable: true });
-    Object.defineProperty(touchStart, "touches", {
-      configurable: true,
-      value: [{ clientY: 120 }],
-    });
-    const touchMove = new Event("touchmove", { bubbles: true, cancelable: true });
-    Object.defineProperty(touchMove, "touches", {
-      configurable: true,
-      value: [{ clientY: 190 }],
-    });
-
-    workspaceBody.dispatchEvent(touchStart);
-    workspaceBody.dispatchEvent(touchMove);
-
-    expect(runtimeMock.refreshActiveSession).toHaveBeenCalledTimes(1);
-  });
-
-  it("refreshes the active Chat session when iOS only exposes the pull through window touch events", () => {
-    runtimeMock.activeSession = {
-      id: "session-1",
-      status: "ready",
-      title: "Session with loaded messages",
-      messages: [
-        { id: "msg-1", role: "assistant", text: "One", at: Date.now(), status: "done" },
-        { id: "msg-2", role: "assistant", text: "Two", at: Date.now(), status: "done" },
-      ],
-    };
-    runtimeMock.sessions = [runtimeMock.activeSession];
-    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
-
-    renderWorkspace({ isMobileViewport: true });
-
-    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
-    expect(screenNode).toBeInTheDocument();
-    Object.defineProperty(screenNode, "scrollTop", {
-      configurable: true,
-      value: 0,
-    });
-    vi.spyOn(screenNode, "getBoundingClientRect").mockReturnValue({
-      x: 0,
-      y: 88,
-      top: 88,
-      left: 0,
-      right: 390,
-      bottom: 720,
-      width: 390,
-      height: 632,
-      toJSON: () => ({}),
-    });
-    const touchStart = new Event("touchstart", { bubbles: true, cancelable: true });
-    Object.defineProperty(touchStart, "touches", {
-      configurable: true,
-      value: [{ clientX: 180, clientY: 130 }],
-    });
-    const touchMove = new Event("touchmove", { bubbles: true, cancelable: true });
-    Object.defineProperty(touchMove, "touches", {
-      configurable: true,
-      value: [{ clientX: 180, clientY: 200 }],
-    });
-
-    window.dispatchEvent(touchStart);
-    window.dispatchEvent(touchMove);
-
-    expect(runtimeMock.refreshActiveSession).toHaveBeenCalledTimes(1);
+    expect(runtimeMock.refreshActiveSession).not.toHaveBeenCalled();
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages,
+    }));
   });
 
   it("keeps Details focused on Chat metadata without Chat panels", () => {
