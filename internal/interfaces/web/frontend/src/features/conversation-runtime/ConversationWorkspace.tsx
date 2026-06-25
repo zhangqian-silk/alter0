@@ -40,6 +40,7 @@ type ConversationWorkspaceSharedRefs = {
 const INITIAL_VISIBLE_CHAT_MESSAGES = 32;
 const CHAT_MESSAGE_LOAD_BATCH_SIZE = 32;
 const CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET = 32;
+const CHAT_HISTORY_TOUCH_PULL_REFRESH_DISTANCE = 56;
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const MARKDOWN_SYNTAX_DEMO_QUERY_KEY = "markdown_demo";
@@ -158,6 +159,8 @@ function useConversationWorkspaceController(
   const activeTimelineSessionRef = useRef("");
   const previousActiveMessageCountRef = useRef(0);
   const manualHistoryRefreshInFlightRef = useRef(false);
+  const touchPullStartYRef = useRef<number | null>(null);
+  const touchPullTriggeredRef = useRef(false);
   const pendingHistoryScrollRestoreRef = useRef<{
     sessionID: string;
     scrollHeight: number;
@@ -442,9 +445,54 @@ function useConversationWorkspaceController(
         }
       }
     };
+    const readTouchClientY = (event: Event): number | null => {
+      const touches = (event as { touches?: ArrayLike<{ clientY?: number }> }).touches;
+      const clientY = touches?.[0]?.clientY;
+      return typeof clientY === "number" ? clientY : null;
+    };
+    const triggerTopRefresh = () => {
+      if (hiddenMessageCount > 0) {
+        loadEarlierMessages();
+      } else {
+        refreshActiveHistory();
+      }
+    };
+    const handleTouchStart = (event: Event) => {
+      const clientY = readTouchClientY(event);
+      if (clientY === null || node.scrollTop > CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET) {
+        touchPullStartYRef.current = null;
+        touchPullTriggeredRef.current = false;
+        return;
+      }
+      touchPullStartYRef.current = clientY;
+      touchPullTriggeredRef.current = false;
+    };
+    const handleTouchMove = (event: Event) => {
+      const startY = touchPullStartYRef.current;
+      const clientY = readTouchClientY(event);
+      if (startY === null || clientY === null || touchPullTriggeredRef.current) {
+        return;
+      }
+      if (clientY - startY >= CHAT_HISTORY_TOUCH_PULL_REFRESH_DISTANCE) {
+        touchPullTriggeredRef.current = true;
+        triggerTopRefresh();
+      }
+    };
+    const resetTouchPull = () => {
+      touchPullStartYRef.current = null;
+      touchPullTriggeredRef.current = false;
+    };
     node.addEventListener("scroll", handleScroll, { passive: true });
+    node.addEventListener("touchstart", handleTouchStart, { passive: true });
+    node.addEventListener("touchmove", handleTouchMove, { passive: true });
+    node.addEventListener("touchend", resetTouchPull, { passive: true });
+    node.addEventListener("touchcancel", resetTouchPull, { passive: true });
     return () => {
       node.removeEventListener("scroll", handleScroll);
+      node.removeEventListener("touchstart", handleTouchStart);
+      node.removeEventListener("touchmove", handleTouchMove);
+      node.removeEventListener("touchend", resetTouchPull);
+      node.removeEventListener("touchcancel", resetTouchPull);
     };
   }, [hiddenMessageCount, loadEarlierMessages, refreshActiveHistory, timelineScreenRef]);
   useLayoutEffect(() => {
