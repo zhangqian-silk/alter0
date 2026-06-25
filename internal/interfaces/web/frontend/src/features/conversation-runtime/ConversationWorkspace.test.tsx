@@ -74,6 +74,7 @@ const runtimeMock = {
   focusSession: vi.fn(),
   removeSession: vi.fn().mockResolvedValue(undefined),
   setSessionPinned: vi.fn().mockResolvedValue(undefined),
+  refreshActiveSession: vi.fn().mockResolvedValue(undefined),
   setDraft: vi.fn(),
   draftAttachments: [],
   addDraftAttachments: vi.fn().mockResolvedValue(undefined),
@@ -203,6 +204,7 @@ describe("ConversationWorkspace", () => {
     runtimeMock.focusSession.mockClear();
     runtimeMock.removeSession.mockClear();
     runtimeMock.setSessionPinned.mockClear();
+    runtimeMock.refreshActiveSession.mockClear();
     runtimeMock.addDraftAttachments.mockClear();
     runtimeMock.removeDraftAttachment.mockClear();
     runtimeMock.clearDraftAttachments.mockClear();
@@ -473,6 +475,95 @@ describe("ConversationWorkspace", () => {
     expect(buildChatTimelineItemsMock).toHaveBeenCalledWith(expect.objectContaining({
       messages: runtimeMock.activeSession.messages,
     }));
+  });
+
+  it("keeps the already visible Chat history in the render window after a new turn is appended", () => {
+    const initialMessages = Array.from({ length: 32 }, (_value, index) => ({
+      id: `msg-${index + 1}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      text: `Message ${index + 1}`,
+      attachments: [],
+      route: "chat",
+      source: "chat",
+      error: false,
+      status: "done",
+      at: Date.parse("2026-04-23T09:00:00Z") + index,
+      processEvents: [],
+    }));
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Session with full visible history",
+      messages: initialMessages,
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    const { rerender } = render(<WorkspaceTestFrame overrides={{ isMobileViewport: false }} />);
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: initialMessages,
+    }));
+
+    const nextMessages = [
+      ...initialMessages,
+      {
+        id: "msg-33",
+        role: "user",
+        text: "New prompt",
+        attachments: [],
+        route: "chat",
+        source: "chat",
+        error: false,
+        status: "",
+        at: Date.parse("2026-04-23T09:10:00Z"),
+        processEvents: [],
+      },
+      {
+        id: "msg-34",
+        role: "assistant",
+        text: "New response",
+        attachments: [],
+        route: "chat",
+        source: "chat",
+        error: false,
+        status: "done",
+        at: Date.parse("2026-04-23T09:10:01Z"),
+        processEvents: [],
+      },
+    ];
+    runtimeMock.activeSession = {
+      ...runtimeMock.activeSession,
+      messages: nextMessages,
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+
+    rerender(<WorkspaceTestFrame overrides={{ isMobileViewport: false }} />);
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: nextMessages,
+    }));
+  });
+
+  it("refreshes the active Chat session when the user pulls the timeline back to the top", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Session with loaded messages",
+      messages: [
+        { id: "msg-1", role: "assistant", text: "One", at: Date.now(), status: "done" },
+        { id: "msg-2", role: "assistant", text: "Two", at: Date.now(), status: "done" },
+      ],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+    expect(screenNode).toBeInTheDocument();
+    fireEvent.scroll(screenNode, { target: { scrollTop: 0 } });
+
+    expect(runtimeMock.refreshActiveSession).toHaveBeenCalledTimes(1);
   });
 
   it("keeps Details focused on Chat metadata without Chat panels", () => {

@@ -1,6 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
-  CHAT_RUNTIME_CACHE_MESSAGE_LIMIT,
   CHAT_RUNTIME_CACHE_SESSION_TTL_MS,
   ConversationRuntimeProvider,
   resetConversationRuntimeCache,
@@ -68,9 +67,14 @@ function RuntimeHarness() {
 function MessageTextHarness() {
   const runtime = useConversationRuntime();
   return (
-    <output data-testid="message-texts">
-      {runtime.activeSession?.messages.map((message) => message.text).join("|") || ""}
-    </output>
+    <div>
+      <button type="button" onClick={() => void runtime.refreshActiveSession()}>
+        refresh active
+      </button>
+      <output data-testid="message-texts">
+        {runtime.activeSession?.messages.map((message) => message.text).join("|") || ""}
+      </output>
+    </div>
   );
 }
 
@@ -264,6 +268,7 @@ describe("ConversationRuntimeProvider", () => {
     resetConversationRuntimeCache();
     vi.clearAllMocks();
     window.sessionStorage.clear();
+    window.localStorage.clear();
     window.history.replaceState({}, "", "/chat");
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
@@ -305,6 +310,7 @@ describe("ConversationRuntimeProvider", () => {
     resetConversationRuntimeCache();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
     window.history.replaceState({}, "", "/");
   });
 
@@ -401,7 +407,7 @@ describe("ConversationRuntimeProvider", () => {
   });
 
   it("hydrates a fresh Chat runtime cache immediately and refreshes after the API returns", async () => {
-    const cachedTurnCount = Math.floor(CHAT_RUNTIME_CACHE_MESSAGE_LIMIT / 2) + 2;
+    const cachedTurnCount = 18;
     const cachedTurns = chatTurnFixtures(cachedTurnCount);
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -460,7 +466,7 @@ describe("ConversationRuntimeProvider", () => {
 
     expect(screen.getByTestId("active-session-title")).toHaveTextContent("Cached chat");
     expect(screen.getByTestId("message-texts")).toHaveTextContent(`cached answer ${cachedTurnCount}`);
-    expect(screen.getByTestId("message-texts")).not.toHaveTextContent("cached answer 1");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("cached answer 1");
 
     listRequest.resolve({
       items: [{
@@ -476,7 +482,68 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("message-texts")).toHaveTextContent(`server answer ${cachedTurnCount}`);
   });
 
-  it("does not hydrate an expired Chat runtime cache", async () => {
+  it("hydrates all Chat messages from the long-lived browser cache before the API returns", async () => {
+    const cachedTurnCount = 18;
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Durable cached chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: chatTurnFixtures(cachedTurnCount, "durable answer"),
+            }],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const firstView = render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent(`durable answer ${cachedTurnCount}`));
+    firstView.unmount();
+    resetConversationRuntimeCache();
+    window.sessionStorage.clear();
+
+    const listRequest = deferred<{ items?: unknown[] }>();
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return listRequest.promise;
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Durable cached chat"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("durable answer 1");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent(`durable answer ${cachedTurnCount}`);
+  });
+
+  it("does not hydrate expired Chat browser caches", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1000);
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -510,7 +577,7 @@ describe("ConversationRuntimeProvider", () => {
     window.sessionStorage.removeItem(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY);
     window.sessionStorage.removeItem(RECENT_SESSION_SNAPSHOT_STORAGE_KEY);
 
-    nowSpy.mockReturnValue(1000 + CHAT_RUNTIME_CACHE_SESSION_TTL_MS + 1);
+    nowSpy.mockReturnValue(1000 + (31 * 24 * 60 * 60 * 1000));
     const listRequest = deferred<{ items?: unknown[] }>();
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -1658,6 +1725,75 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Remote completion"));
   });
 
+  it("keeps existing Chat history when a send response returns a non-overlapping paged turn", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Paged send",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: { has_more_before: true },
+              turns: [{
+                id: "turn-1",
+                prompt: "older prompt",
+                status: "success",
+                started_at: "2026-04-23T03:31:00Z",
+                finished_at: "2026-04-23T03:31:01Z",
+                final_output: "older answer",
+              }],
+            }],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+        return {
+          session: {
+            id: "alter0-chat",
+            title: "Paged send",
+            status: "ready",
+            created_at: "2026-04-23T03:30:00Z",
+            turns_paging: { has_more_before: true },
+            turns: [{
+              id: "turn-2",
+              prompt: "new prompt",
+              status: "success",
+              started_at: "2026-04-23T03:32:00Z",
+              finished_at: "2026-04-23T03:32:01Z",
+              final_output: "new answer",
+            }],
+          },
+        };
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageTextHarness />
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("new answer"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer");
+  });
+
   it("merges paged Chat session detail refreshes into existing messages", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -1729,5 +1865,77 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer refreshed"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer");
+  });
+
+  it("refreshes the active Chat session on demand so paged history can continue loading", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Paged chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: { has_more_before: true },
+              turns: [{
+                id: "turn-2",
+                prompt: "newer",
+                status: "success",
+                started_at: "2026-04-23T03:32:00Z",
+                finished_at: "2026-04-23T03:32:01Z",
+                final_output: "newer answer",
+              }],
+            }],
+          };
+        case "/api/terminal/sessions/alter0-chat?scope=chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Paged chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: { has_more_before: true },
+              turns: [
+                {
+                  id: "turn-1",
+                  prompt: "older",
+                  status: "success",
+                  started_at: "2026-04-23T03:31:00Z",
+                  finished_at: "2026-04-23T03:31:01Z",
+                  final_output: "older answer",
+                },
+                {
+                  id: "turn-2",
+                  prompt: "newer",
+                  status: "success",
+                  started_at: "2026-04-23T03:32:00Z",
+                  finished_at: "2026-04-23T03:32:01Z",
+                  final_output: "newer answer",
+                },
+              ],
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer"));
+    fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions/alter0-chat?scope=chat"));
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer");
   });
 });
