@@ -29,7 +29,7 @@ const (
 	gitMergeTimeout        = 15 * time.Second
 	gitStatusTimeout       = 10 * time.Second
 	gitBranchShowTimeout   = 10 * time.Second
-	goBuildRuntimeTimeout  = 2 * time.Minute
+	serviceBuildTimeout    = 10 * time.Minute
 )
 
 type serviceRestarter struct {
@@ -276,8 +276,12 @@ func buildRelaunchBinary(workingDir string) (string, error) {
 		extension = ".exe"
 	}
 	targetPath := filepath.Join(outputDir, fmt.Sprintf("alter0-relaunch-%d%s", time.Now().UnixNano(), extension))
-	if err := runCommandWithTimeout(goBuildRuntimeTimeout, repoDir, "go", "build", "-o", targetPath, "./cmd/alter0"); err != nil {
+	buildScript := filepath.Join(repoDir, "scripts", "build_alter0_service.sh")
+	if err := runCommandWithTimeoutEnv(serviceBuildTimeout, repoDir, []string{"ALTER0_BUILD_OUTPUT=" + targetPath}, buildScript); err != nil {
 		return "", fmt.Errorf("build relaunch binary: %w", err)
+	}
+	if _, err := os.Stat(targetPath); err != nil {
+		return "", fmt.Errorf("inspect relaunch binary: %w", err)
 	}
 	return targetPath, nil
 }
@@ -307,9 +311,20 @@ func runCommand(dir string, name string, args ...string) error {
 }
 
 func runCommandWithTimeout(timeout time.Duration, dir string, name string, args ...string) error {
+	return runCommandWithTimeoutEnv(timeout, dir, nil, name, args...)
+}
+
+func runCommandWithTimeoutEnv(timeout time.Duration, dir string, env []string, name string, args ...string) error {
 	cmd, cancel := prepareCommand(timeout, dir, name, args...)
 	if cancel != nil {
 		defer cancel()
+	}
+	if len(env) > 0 {
+		baseEnv := cmd.Env
+		if baseEnv == nil {
+			baseEnv = os.Environ()
+		}
+		cmd.Env = append(baseEnv, env...)
 	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {

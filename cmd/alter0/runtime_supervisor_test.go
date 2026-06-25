@@ -4,6 +4,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -104,6 +107,49 @@ func TestBuildRuntimeProbeAddrNormalizesWildcardHost(t *testing.T) {
 	}
 	if probeAddr != "http://127.0.0.1:18088" {
 		t.Fatalf("unexpected probe addr %q", probeAddr)
+	}
+}
+
+func TestBuildRelaunchBinaryUsesFrontendAwareBuildScript(t *testing.T) {
+	repoDir := t.TempDir()
+	scriptDir := filepath.Join(repoDir, "scripts")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("create script dir: %v", err)
+	}
+	scriptPath := filepath.Join(scriptDir, "build_alter0_service.sh")
+	script := `#!/bin/sh
+set -eu
+: "${ALTER0_BUILD_OUTPUT:?}"
+printf '%s\n' "$ALTER0_BUILD_OUTPUT" > "$PWD/build-output.txt"
+mkdir -p "$(dirname "$ALTER0_BUILD_OUTPUT")"
+printf '#!/bin/sh\n' > "$ALTER0_BUILD_OUTPUT"
+chmod +x "$ALTER0_BUILD_OUTPUT"
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake build script: %v", err)
+	}
+
+	candidate, err := buildRelaunchBinary(repoDir)
+	if err != nil {
+		t.Fatalf("build relaunch binary: %v", err)
+	}
+	if _, err := os.Stat(candidate); err != nil {
+		t.Fatalf("expected candidate binary to exist: %v", err)
+	}
+	expectedDir := filepath.Join(repoDir, "output", "runtime")
+	if filepath.Dir(candidate) != expectedDir {
+		t.Fatalf("candidate written to %q, want %q", filepath.Dir(candidate), expectedDir)
+	}
+	if runtime.GOOS == "windows" && filepath.Ext(candidate) != ".exe" {
+		t.Fatalf("windows candidate must use .exe extension, got %q", candidate)
+	}
+
+	recorded, err := os.ReadFile(filepath.Join(repoDir, "build-output.txt"))
+	if err != nil {
+		t.Fatalf("read recorded build output: %v", err)
+	}
+	if strings.TrimSpace(string(recorded)) != candidate {
+		t.Fatalf("build script received output %q, want %q", strings.TrimSpace(string(recorded)), candidate)
 	}
 }
 

@@ -126,7 +126,7 @@ internal/shared/infrastructure     # ID、日志、metrics
 
 Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` 下的兼容样式资源保持 `no-cache`，确保页面与样式刷新及时；`static/dist/assets` 下带哈希的构建产物使用长期 immutable 缓存，减少重复下载。服务端在输出 Web Shell HTML 时会按实际 JS/CSS 内容自动为 `/assets/index-*.js|css` 注入 `?v=<content-hash>`，主服务重启、快进或 session 级预览服务刷新后，只要资产内容变化，浏览器就会请求新 URL，不依赖人工 cache-bust。
 
-服务二进制构建统一通过 `scripts/build_alter0_service.sh` 收口：脚本会先执行 `internal/interfaces/web/frontend` 下的前端构建并校验 `static/dist/index.html` 引用了新的哈希 JS/CSS 产物，再执行 `go build` 生成服务二进制。`scripts/start_alter0_service.sh`、`scripts/relaunch_service.sh` 与 `make build` 都复用该入口，避免服务重启只拉取 Go 源码而继续嵌入旧前端产物。
+服务二进制构建统一通过 `scripts/build_alter0_service.sh` 收口：脚本会先执行 `internal/interfaces/web/frontend` 下的前端构建并校验 `static/dist/index.html` 引用了新的哈希 JS/CSS 产物，再执行 `go build` 生成服务二进制。`scripts/start_alter0_service.sh`、`scripts/relaunch_service.sh`、`make build` 与 Runtime supervisor 候选二进制构建都复用该入口，避免服务重启只拉取 Go 源码而继续嵌入旧前端产物。
 
 当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Terminal / Settings` 三个稳定入口，主工作区按运行态或设置页渲染。`/chat` 是唯一对话入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；历史 `/chat` 会自动映射到 `/chat`，旧 Chat 会话会作为 Chat 会话继续展示和恢复。`/settings` 承接 Runtime、Skills、Memory 与 Schedules。
 
@@ -406,7 +406,7 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 `Settings > Runtime` 中的“重启服务”会走运行时托管链路，而不是由当前业务进程直接自拉起：
 
 1. 点击“重启服务”后会打开站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项展示，默认勾选。
-2. `sync_remote_master=false`：基于当前仓库状态构建候选二进制，并由 `supervisor` 完成子进程切换。
+2. `sync_remote_master=false`：基于当前仓库状态调用统一构建入口，先重建前端 `static/dist`，再构建候选二进制，并由 `supervisor` 完成子进程切换。
 3. `sync_remote_master=true`：先校验当前分支为 `master`；无 Git 已跟踪本地改动时直接执行同步重启；若后端检测到 Git 已跟踪本地改动，会以结构化错误要求前端进入二次确认。只有用户二次确认并传入 `confirm_discard_tracked_changes=true` 时才会丢弃这些改动，否则不会清理本地工作区内容。确认后执行 `git fetch --prune origin master` 与 `git merge --ff-only FETCH_HEAD`，随后通过统一构建入口先重建前端 `static/dist`、再构建候选二进制并切换。
 4. 候选版本只有在 `/readyz` 探活通过后才会成为当前运行版本；若启动失败，会自动恢复上一运行版本。
 5. Git 或构建失败会直接返回到 Web 控制台，便于定位权限、凭据、快进合并失败等问题。
