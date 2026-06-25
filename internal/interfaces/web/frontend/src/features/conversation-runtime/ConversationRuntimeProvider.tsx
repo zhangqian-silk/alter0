@@ -31,6 +31,7 @@ import {
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
+const LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.long_term_snapshot.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
@@ -46,7 +47,7 @@ const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 export const CHAT_RUNTIME_CACHE_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
-export const CHAT_RUNTIME_CACHE_MESSAGE_LIMIT = 12;
+const CHAT_LONG_TERM_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function chatTerminalSessionEndpoint(path: string = ""): string {
   const normalizedPath = path.trim().replace(/^\/+/, "");
@@ -275,6 +276,7 @@ type ConversationRuntimeContextValue = {
   focusSession: (sessionID: string) => void;
   removeSession: (sessionID: string) => Promise<void>;
   setSessionPinned: (sessionID: string, pinned: boolean) => Promise<void>;
+  refreshActiveSession: () => Promise<void>;
   setDraft: (value: string) => void;
   addDraftAttachments: (attachments: ComposerAttachment[]) => Promise<void>;
   removeDraftAttachment: (attachmentID: string) => void;
@@ -467,23 +469,9 @@ function cloneChatSession(session: ChatSession): ChatSession {
   };
 }
 
-function trimChatSessionForRuntimeCache(session: ChatSession): ChatSession {
-  const next = cloneChatSession(session);
-  if (next.messages.length > CHAT_RUNTIME_CACHE_MESSAGE_LIMIT) {
-    next.messages = next.messages.slice(-CHAT_RUNTIME_CACHE_MESSAGE_LIMIT);
-  }
-  return next;
-}
-
 function cloneSessionsState(sessionsByRoute: SessionsState): SessionsState {
   return {
     chat: normalizeRouteSessions("chat", sessionsByRoute.chat.map(cloneChatSession)),
-  };
-}
-
-function trimSessionsStateForRuntimeCache(sessionsByRoute: SessionsState): SessionsState {
-  return {
-    chat: normalizeRouteSessions("chat", sessionsByRoute.chat.map(trimChatSessionForRuntimeCache)),
   };
 }
 
@@ -583,9 +571,22 @@ function mergePagedMessages(previous: ChatMessage[], parsed: ChatMessage[]): Cha
   if (previous.length === 0) {
     return parsed;
   }
+  if (parsed.length === 0) {
+    return previous;
+  }
   const previousIDs = new Set(previous.map((message) => message.id));
   const hasOverlap = parsed.some((message) => previousIDs.has(message.id));
   if (!hasOverlap) {
+    const previousFirstAt = previous[0]?.at || 0;
+    const previousLastAt = previous[previous.length - 1]?.at || 0;
+    const parsedFirstAt = parsed[0]?.at || 0;
+    const parsedLastAt = parsed[parsed.length - 1]?.at || 0;
+    if (
+      (parsedLastAt > 0 && previousFirstAt > 0 && parsedLastAt < previousFirstAt)
+      || (parsedFirstAt > 0 && previousLastAt > 0 && parsedFirstAt > previousLastAt)
+    ) {
+      return [...previous, ...parsed].sort((left, right) => left.at - right.at);
+    }
     return shouldUseParsedMessages(previous, parsed) ? parsed : previous;
   }
   const merged = new Map<string, ChatMessage>();
@@ -778,22 +779,45 @@ function writeJSONStorage(key: string, value: unknown) {
   }
 }
 
-function loadActiveSessionState(): ActiveSessionState {
+function readJSONLocalStorage<T>(key: string, fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return fallback;
+    }
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJSONLocalStorage(key: string, value: unknown) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+  }
+}
+
+function loadActiveSessionState(fallback?: ActiveSessionState | null): ActiveSessionState {
   const parsed = readJSONStorage<Record<string, string>>(ACTIVE_SESSION_STORAGE_KEY, {});
   return {
     chat:
       readWorkbenchRouteSessionID("chat")
       || normalizeText(parsed.chat)
       || normalizeText(parsed["chat"])
+      || normalizeText(fallback?.chat)
       || CANONICAL_CHAT_SESSION_ID,
   };
 }
 
-function loadActiveSessionSnapshots(): SessionsState {
+function loadActiveSessionSnapshots(fallback?: SessionsState | null): SessionsState {
   const parsedActive = readJSONStorage<StoredActiveSessionSnapshotState>(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY, {});
   const parsedRecent = readJSONStorage<StoredRecentSessionSnapshotState>(RECENT_SESSION_SNAPSHOT_STORAGE_KEY, {});
   const mergeStoredRouteSessions = (routeKey: string) => {
     const sessions = new Map<string, ChatSession>();
+    (fallback?.chat || []).forEach((session) => {
+      sessions.set(session.id, { ...cloneChatSession(session), sourceRoute: "chat" });
+    });
     normalizeStoredSessionList(parsedRecent[routeKey]).forEach((session) => {
       sessions.set(session.id, { ...session, sourceRoute: "chat" });
     });
@@ -850,12 +874,39 @@ function readConversationRuntimeCache(): ConversationRuntimeCacheSnapshot | null
   };
 }
 
+function readLongTermConversationRuntimeCache(): ConversationRuntimeCacheSnapshot | null {
+  const cache = readJSONLocalStorage<ConversationRuntimeCacheSnapshot | null>(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY, null);
+  if (!cache) {
+    return null;
+  }
+  if (Date.now() - Number(cache.cachedAt || 0) > CHAT_LONG_TERM_CACHE_TTL_MS) {
+    try {
+      window.localStorage.removeItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY);
+    } catch {
+    }
+    return null;
+  }
+  return {
+    cachedAt: cache.cachedAt,
+    activeSessionByRoute: { chat: normalizeText(cache.activeSessionByRoute?.chat) },
+    sessionsByRoute: cloneSessionsState(cache.sessionsByRoute || { chat: [] }),
+  };
+}
+
 function writeConversationRuntimeCache(activeSessionByRoute: ActiveSessionState, sessionsByRoute: SessionsState) {
   conversationRuntimeCache = {
     cachedAt: Date.now(),
     activeSessionByRoute: { chat: normalizeText(activeSessionByRoute.chat) },
-    sessionsByRoute: trimSessionsStateForRuntimeCache(sessionsByRoute),
+    sessionsByRoute: cloneSessionsState(sessionsByRoute),
   };
+}
+
+function writeLongTermConversationRuntimeCache(activeSessionByRoute: ActiveSessionState, sessionsByRoute: SessionsState) {
+  writeJSONLocalStorage(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY, {
+    cachedAt: Date.now(),
+    activeSessionByRoute: { chat: normalizeText(activeSessionByRoute.chat) },
+    sessionsByRoute: cloneSessionsState(sessionsByRoute),
+  });
 }
 
 function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialState {
@@ -866,9 +917,10 @@ function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialSta
       sessionsByRoute: cache.sessionsByRoute,
     };
   }
+  const longTermCache = readLongTermConversationRuntimeCache();
   return {
-    activeSessionByRoute: loadActiveSessionState(),
-    sessionsByRoute: loadActiveSessionSnapshots(),
+    activeSessionByRoute: loadActiveSessionState(longTermCache?.activeSessionByRoute || null),
+    sessionsByRoute: loadActiveSessionSnapshots(longTermCache?.sessionsByRoute || null),
   };
 }
 
@@ -1457,6 +1509,20 @@ export function ConversationRuntimeProvider({
     return hydrateRuntimeSessionResponse(routeKey, routeKey, sessionID, payload);
   };
 
+  const refreshActiveSession = useCallback(async () => {
+    const sessionID = normalizeText(activeSession?.id);
+    if (!sessionID || activeSession?.serverBacked !== true) {
+      return;
+    }
+    try {
+      const hydrated = await hydrateRuntimeSession(route, sessionID);
+      if (hydrated) {
+        upsertRuntimeSession(route, hydrated);
+      }
+    } catch {
+    }
+  }, [activeSession, route, upsertRuntimeSession]);
+
   const recoverRuntimeSession = async (
     routeKey: ConversationRoute,
     sessionID: string,
@@ -1669,6 +1735,7 @@ export function ConversationRuntimeProvider({
 
   useEffect(() => {
     writeConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
+    writeLongTermConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
   }, [activeSessionByRoute, sessionsByRoute]);
 
   useEffect(() => {
@@ -1939,6 +2006,7 @@ export function ConversationRuntimeProvider({
     focusSession,
     removeSession,
     setSessionPinned,
+    refreshActiveSession,
     toggleInspector: (tab) => {
       if (!tab) {
         setInspectorOpen((current) => {
@@ -2083,6 +2151,7 @@ export function ConversationRuntimeProvider({
     focusSession,
     patchSession,
     persistRuntimeSessionConfig,
+    refreshActiveSession,
     removeSession,
     setSessionPinned,
   ]);

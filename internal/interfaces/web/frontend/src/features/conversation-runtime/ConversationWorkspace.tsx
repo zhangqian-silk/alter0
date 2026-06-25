@@ -157,6 +157,7 @@ function useConversationWorkspaceController(
   const { timelineScreenRef, workspaceBodyRef } = sharedRefs;
   const activeTimelineSessionRef = useRef("");
   const previousActiveMessageCountRef = useRef(0);
+  const manualHistoryRefreshInFlightRef = useRef(false);
   const pendingHistoryScrollRestoreRef = useRef<{
     sessionID: string;
     scrollHeight: number;
@@ -406,6 +407,15 @@ function useConversationWorkspaceController(
       };
     });
   }, [hiddenMessageCount, timelineMessages.length, timelineScreenRef, timelineSessionID]);
+  const refreshActiveHistory = useCallback(() => {
+    if (!timelineSessionID || showMarkdownSyntaxDemo || manualHistoryRefreshInFlightRef.current) {
+      return;
+    }
+    manualHistoryRefreshInFlightRef.current = true;
+    void runtime.refreshActiveSession().finally(() => {
+      manualHistoryRefreshInFlightRef.current = false;
+    });
+  }, [runtime, showMarkdownSyntaxDemo, timelineSessionID]);
   useEffect(() => {
     setTimelineWindow((current) => {
       if (current.sessionID === timelineSessionID) {
@@ -419,23 +429,24 @@ function useConversationWorkspaceController(
     pendingHistoryScrollRestoreRef.current = null;
   }, [timelineSessionID]);
   useEffect(() => {
-    if (hiddenMessageCount <= 0) {
-      return undefined;
-    }
     const node = timelineScreenRef.current;
     if (!node) {
       return undefined;
     }
     const handleScroll = () => {
       if (node.scrollTop <= CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET) {
-        loadEarlierMessages();
+        if (hiddenMessageCount > 0) {
+          loadEarlierMessages();
+        } else {
+          refreshActiveHistory();
+        }
       }
     };
     node.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
       node.removeEventListener("scroll", handleScroll);
     };
-  }, [hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
+  }, [hiddenMessageCount, loadEarlierMessages, refreshActiveHistory, timelineScreenRef]);
   useLayoutEffect(() => {
     const pending = pendingHistoryScrollRestoreRef.current;
     if (!pending || pending.sessionID !== timelineSessionID) {
@@ -448,6 +459,28 @@ function useConversationWorkspaceController(
     pendingHistoryScrollRestoreRef.current = null;
     node.scrollTop = Math.max(0, node.scrollHeight - pending.scrollHeight + pending.scrollTop);
   }, [timelineItems.length, timelineScreenRef, timelineSessionID]);
+  useLayoutEffect(() => {
+    const previousMessageCount = previousActiveMessageCountRef.current;
+    if (
+      !timelineSessionID
+      || activeTimelineSessionRef.current !== timelineSessionID
+      || previousMessageCount <= 0
+      || timelineMessages.length <= previousMessageCount
+      || visibleMessageCount < previousMessageCount
+      || visibleMessageCount >= timelineMessages.length
+    ) {
+      return;
+    }
+    setTimelineWindow((current) => {
+      if (current.sessionID !== timelineSessionID || current.visibleCount >= timelineMessages.length) {
+        return current;
+      }
+      return {
+        sessionID: timelineSessionID,
+        visibleCount: timelineMessages.length,
+      };
+    });
+  }, [timelineMessages.length, timelineSessionID, visibleMessageCount]);
   useLayoutEffect(() => {
     const previousSessionID = activeTimelineSessionRef.current;
     const previousMessageCount = previousActiveMessageCountRef.current;
