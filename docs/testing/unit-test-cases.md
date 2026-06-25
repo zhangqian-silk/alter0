@@ -259,6 +259,7 @@
 
 - `builtin_skills_test.go`
 - `main_test.go`
+- `runtime_supervisor_test.go`
 - `supervisor_client_test.go`
 
 用例范围：
@@ -267,6 +268,7 @@
 - 启动阶段 file-backed Skill 文件校验，确保 `docs/skills/preview-publish/SKILL.md`、`docs/skills/frontend-design/SKILL.md`、`docs/skills/memory-maintenance/SKILL.md` 与 `docs/skills/travel/SKILL.md` 可被当前仓库解析。
 - 运行时 PATH、NO_PROXY、Web 登录密码环境变量与内部启动参数过滤。
 - supervisor client 重启错误、结构化重启错误码透传、探活地址归一、空响应错误，以及 `sync_remote_master` 遇到 tracked 改动时要求二次确认，确认后才丢弃 tracked 改动。
+- Runtime supervisor 候选二进制构建必须调用统一前端感知构建脚本，并通过 `ALTER0_BUILD_OUTPUT` 指定候选输出路径。
 
 边界：
 

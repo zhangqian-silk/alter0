@@ -5,6 +5,7 @@
 - 内置 Skill 初始化与 file-backed Skill 文件处理，包括私有 `memory-maintenance`、统一预览/部署 `preview-publish`、`frontend-design` 与 `travel` 路径约束。
 - 运行时 PATH、NO_PROXY、Web 登录密码环境变量和内部启动参数过滤。
 - supervisor client 重启错误、结构化重启错误码透传、探活地址归一、空响应错误，以及 `sync_remote_master` 遇到 tracked 改动时要求二次确认，确认后才丢弃 tracked 改动。
+- Runtime supervisor 候选二进制构建必须调用统一前端感知构建脚本，并通过 `ALTER0_BUILD_OUTPUT` 指定候选输出路径。
 
 ## 边界
 

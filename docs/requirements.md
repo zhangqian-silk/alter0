@@ -188,7 +188,7 @@
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 Claude Code provider profile 配置，包含 base URL、API Key 保留语义、model、profile、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复；启用且健康的 Provider 作为 Claude Code 首选运行来源。
 - Codex Runtime 作为 `Codex Direct` 的账号与模型管理来源，在无可用 Model Provider 或 Claude Code 运行失败时承接自然语言任务兜底执行。
-- Runtime 设置页支持在线实例启动时间与 commit hash 展示、运行时重启、默认启用的远端 master 快进同步、仅在后端检测到 Git 已跟踪本地改动后才触发的二次确认、确认后丢弃已跟踪改动的重启前同步策略、候选二进制构建、readyz 探活与失败回滚。旧运行参数配置页、环境变量可视化配置、队列、终端 shell、记忆路径参数均不再对用户暴露。
+- Runtime 设置页支持在线实例启动时间与 commit hash 展示、运行时重启、默认启用的远端 master 快进同步、仅在后端检测到 Git 已跟踪本地改动后才触发的二次确认、确认后丢弃已跟踪改动的重启前同步策略、通过统一前端感知构建入口生成候选二进制、readyz 探活与失败回滚。旧运行参数配置页、环境变量可视化配置、队列、终端 shell、记忆路径参数均不再对用户暴露。
 - Settings 页面提供 Codex Runtime 面板，使用单一顶部面板承载当前服务运行账户的 Codex 身份快照、邮箱、计划、认证模式、hourly / weekly 额度、profile、LLM Provider 注册状态，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换。首屏加载时 Codex Runtime 状态与 LLM Provider 状态需并行读取。页面支持为当前运行账户启动 Codex device-code 登录，并展示验证链接、用户码、过期时间、轮询间隔与登录输出；登录成功后刷新 Runtime 身份与额度。页面同时支持通过 Claude Code Provider Console 连续注册与编辑多个 OpenAI-compatible Provider；桌面端 registry 与 editor 在同一容器内左右分栏，窄屏单列展开。字段包含 Provider 名称、base URL、API key 与 models；models 使用全宽多行编辑区，支持换行或逗号分隔，提交后写入 Model Provider 注册表，首个 model 作为默认模型，并刷新 Provider 状态。已注册 Provider 需展示名称、base URL、默认 model、模型数量、模型列表与启用/默认状态；编辑时 API key 留空表示保留已保存密钥。每次注册或更新成功后表单清空 base URL / API key / models，并自动准备下一个未占用的 `Claude Code N` 默认名称。页面不展示 Account ID / User ID、保存名称、多账号导入/切换入口、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。额度必须来自当前 `auth.json` 的实时 quota 刷新结果，model / 思考深度选择变更后仅实时写回当前用户配置中的 `model` 与 `model_reasoning_effort`。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、统一 `HOME=/var/lib/alter0`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。
