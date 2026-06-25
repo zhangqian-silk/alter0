@@ -566,6 +566,44 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.refreshActiveSession).toHaveBeenCalledTimes(1);
   });
 
+  it("refreshes the active Chat session on a touch pull gesture while already pinned at the top", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Session with loaded messages",
+      messages: [
+        { id: "msg-1", role: "assistant", text: "One", at: Date.now(), status: "done" },
+        { id: "msg-2", role: "assistant", text: "Two", at: Date.now(), status: "done" },
+      ],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    renderWorkspace({ isMobileViewport: true });
+
+    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+    expect(screenNode).toBeInTheDocument();
+    Object.defineProperty(screenNode, "scrollTop", {
+      configurable: true,
+      value: 0,
+    });
+    const touchStart = new Event("touchstart", { bubbles: true, cancelable: true });
+    Object.defineProperty(touchStart, "touches", {
+      configurable: true,
+      value: [{ clientY: 120 }],
+    });
+    const touchMove = new Event("touchmove", { bubbles: true, cancelable: true });
+    Object.defineProperty(touchMove, "touches", {
+      configurable: true,
+      value: [{ clientY: 190 }],
+    });
+
+    screenNode.dispatchEvent(touchStart);
+    screenNode.dispatchEvent(touchMove);
+
+    expect(runtimeMock.refreshActiveSession).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps Details focused on Chat metadata without Chat panels", () => {
     runtimeMock.providers = [
       {
