@@ -88,6 +88,7 @@ const runtimeMock = {
   toggleSkill: vi.fn(),
   toggleRuntimeEventFilter: vi.fn(),
   toggleProcess: vi.fn(),
+  loadProcessEventDetail: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock("./ConversationRuntimeProvider", () => ({
@@ -280,6 +281,7 @@ describe("ConversationWorkspace", () => {
       timelineOptions.onToggleProcessEvent("assistant-1", "step-1");
     });
 
+    expect(runtimeMock.loadProcessEventDetail).toHaveBeenCalledWith("assistant-1", "step-1");
     timelineOptions = buildChatTimelineItemsMock.mock.calls[buildChatTimelineItemsMock.mock.calls.length - 1][0];
     expect(timelineOptions.expandedProcessEvents).toEqual({ "assistant-1:step-1": true });
 

@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-06-24
+> Last update: 2026-06-26
 
 ## 领域边界
 
@@ -48,7 +48,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 面向通用对话入口，默认直接通过 Claude Code CLI 或 Codex CLI 执行。
 - `Chat` 不再绑定内置 `main` Skill，也不再默认调度内置专项 Skill。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在 Chat 会话过程中调整，并作用于后续发送的消息；`Chat` 的 `Provider / Model` 选择器额外暴露内置 `Codex` 项，允许用户不经过常规 LLM Provider 直接切到 `Codex CLI` 执行链。Web `Chat` 不再提供独立空态、Skill 选择器、私有 Skill 面板或会话级目标切换；旧 Chat 会话加载时仅迁移为 Chat 会话并保留目标 Skill 名称作为历史元数据。
-- `Provider / Model` 与 `Skills` 配置面板同时提供过程披露过滤项：`important_text / plan / reasoning / tools / commands / system`。默认只勾选 `important_text`，其余类型需要用户显式开启；勾选只影响前端过程区展示，不改变底层会话消息、执行结果或历史持久化。`Thinking / 已思考` 展开后的步骤行需展示同一分类标签，便于用户判断当前可见步骤来自重要文本、计划、推理、工具、命令或系统事件。
+- `Provider / Model` 与 `Skills` 配置面板同时提供过程披露过滤项：`important_text / plan / reasoning / tools / commands / system`。默认只勾选 `important_text`，其余类型需要用户显式开启；勾选只影响前端过程区展示，不改变底层会话消息、执行结果或历史持久化。`Thinking / 已思考` 展开后的步骤行需展示同一分类标签，便于用户判断当前可见步骤来自重要文本、计划、推理、工具、命令或系统事件；带 `raw.has_detail` 的步骤只在用户展开具体步骤时拉取完整 detail，首屏会话详情不得提前返回大段 thinking 明细。
 
 ### Settings 页面
 
@@ -82,7 +82,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Terminal` 页面 Composer 复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、缩略预览与历史回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`；其中缩略位继续使用 `preview_url`，再次查看时统一切回 `asset_url`。
 - assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
 - `GET /api/terminal/sessions?scope=chat` 返回 Chat 运行页会话摘要，至少包含标题、Skills 选择、创建时间、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。Terminal 默认 `/api/terminal/sessions` 不包含 Chat-scoped 会话。
-- `GET /api/terminal/sessions/{session_id}?scope=chat` 返回单个 Chat 运行页会话详情，至少包含 Terminal-compatible `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
+- `GET /api/terminal/sessions/{session_id}?scope=chat` 返回单个 Chat 运行页会话详情，默认只返回最新 turns 页，并通过 `turns_paging` 提供总量、页边界、`next_before_turn_id` 与是否仍有更早内容；前端继续按 `turn_before` 后台补齐更早 turns。详情至少包含 Terminal-compatible `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
 - `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
 - `GET /api/sessions/{session_id}/messages` 查询会话消息。
 - `DELETE /api/sessions/{session_id}` 删除会话，并触发关联工作区和任务清理。
@@ -111,7 +111,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `POST /api/terminal/sessions/{session_id}/input?scope=chat` 在 Web 层接受请求后，后端执行与持久化不得再依赖浏览器连接持续存活；页面刷新、标签页切换、请求断开或前端取消只允许中断当前 HTTP 回传，不得直接取消本轮会话执行。
 - `Chat` 的 URL query 只表达显式会话恢复：页面首次加载、刷新、手动粘贴 `/chat?session_id=<8位短hash>` 或浏览器恢复带 query 的标签页时，Chat 先读取 `session_id` 恢复目标会话。访问 `/chat` 或从主导航切回 `Chat` 时，工作台清理旧 `session_id`，并按服务端会话列表与本地最近快照的合并结果打开最新会话，避免上一次活动会话被 query 或 sessionStorage 固定。历史 `/chat?session_id=<8位短hash>` 入口继续按 Chat 会话恢复对应历史会话。
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
-- `Chat` 在同一 SPA 工作台内从 Chat 切到 Settings、Terminal 或其他页面再返回时，应优先使用浏览器内存级运行态缓存恢复会话列表、当前活动会话和最新少量消息；缓存 TTL 为 8 小时，当前会话消息最多保留 12 条。该缓存只服务路由切换后的首屏恢复，不写入 `sessionStorage` / `localStorage`，不替代服务端历史或刷新恢复快照；会话列表和单会话详情接口返回后必须继续按现有合并规则更新视图，超过 TTL 的缓存不得参与首屏渲染。
+- `Chat` 在同一 SPA 工作台内从 Chat 切到 Settings、Terminal 或其他页面再返回时，应优先使用浏览器内存级运行态缓存恢复会话列表、当前活动会话和完整已加载消息；缓存 TTL 为 8 小时，不裁剪当前已加载消息。该缓存只服务路由切换后的首屏恢复，不替代服务端历史或刷新恢复快照；会话列表和单会话详情接口返回后必须继续按现有合并规则更新视图，超过 TTL 的缓存不得参与首屏渲染。
 - `Chat` 需复用 Terminal session store 作为服务端会话事实来源，记录 `session_id -> title / skills / status / turns / pinned / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
 - `Chat / Terminal` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前运行页会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。列表项主体只展示标题，真实会话尾侧固定提供单个三点更多按钮；展开菜单承载置顶、查看详情与删除操作，查看详情会聚焦该会话并打开 `Details` 面板且不主动收起已打开的移动会话抽屉，删除操作必须二次确认后才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、短 hash、Skill 标签或额外摘要。运行页空列表、Chat 本地空白草稿和 Terminal 加载态优先展示一条 active `New` 占位会话；`New` 草稿/占位只作为输入入口，不显示三点菜单，不支持置顶、详情或删除，同一路由内重复点击 `New` 只聚焦既有空白虚拟会话，不创建多个空会话。Terminal 占位会话不立即写入服务端，点击列表占位或移动端顶部 `New` 关闭会话抽屉并聚焦输入框，首次发送输入或添加附件后才创建真实 Terminal session 并替换占位项；真实 Terminal session 在首条输入命名前也以 `New` 作为默认标题。三条运行页继续生成同一规则的 8 位短 hash，用于运行页 URL 恢复、预览域名映射与人工排障引用；左侧会话列表不展示短 hash。完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表或 URL 展示值。
@@ -206,7 +206,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 - Process action / observation 与 Terminal 执行细节在前端收敛为可折叠 Process，并统一在当前消息或 turn 内同页展开。
 - 最终答复出现后，Process 默认折叠，阅读焦点回到正文。
-- 单个步骤详情由用户点开对应步骤后展示，并在当前浏览器会话内保留状态；外层 `Thinking / 已思考` 每次展开或折叠时需收起该消息下已打开的单步详情，使移动端先稳定进入步骤列表态，不把历史详情重新撑开视口。
+- 单个步骤详情由用户点开对应步骤后展示；若步骤标记 `raw.has_detail`，前端需先按 `session_id / turn_id / event_id` 拉取完整 detail 并写回当前消息缓存，再在当前浏览器会话内保留展开状态。外层 `Thinking / 已思考` 每次展开或折叠时需收起该消息下已打开的单步详情，使移动端先稳定进入步骤列表态，不把历史详情重新撑开视口。
 - Chat 与 Terminal 过程披露中的所有步骤详情都直接渲染为同一套最终 detail surface：`terminal / code / diff / tool_input` 与 JSON 类 `tool_output` 使用等宽内容块，`text / markdown / thinking / tool_output(text) / error` 以及历史 `step.detail` 使用富文本正文块；结构化 block 的标题、文件名和起始行号需在详情头部保留。即使只有 `RuntimeTraceEvent.blocks` 中的结构化摘要，也不得先按普通 Markdown 文本显示再切换为最终形态。步骤行的类型标签、耗时与状态需与 Terminal 同源渲染，类型标签需与过程披露过滤映射同源，不通过标题或自然语言内容推断，详情块不重复渲染状态 badge。
 
 ### 布局
@@ -221,10 +221,10 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 的会话列表、工作区外壳、聊天滚动区和输入区需输出 `runtime-*` 主契约并保留必要的 `terminal-* + conversation-*` 兼容 class，确保两条运行页与 `Terminal` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
 - `Chat` 首页 Composer 采用单一胶囊式助手输入面板：主 textarea 透明无内边框，工具栏与输入区处在同一白色 surface 内；工具栏不再显示 `Session` 会话设置按钮，只保留附件与发送等直接对话动作。附件入口使用回形针图标，文字 label 仅保留给可访问语义；桌面端输入面板按主阅读宽度居中，移动端压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，除 Composer 胶囊外不使用额外胶囊按钮、卡片边框或厚圆角表达层级；会话列表项与 `Details` 面板保持同一浅色 runtime 质感。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
 - `Chat` 在页面重新变为前台可见或浏览器重新把当前页激活时，必须复用运行页共享的 page-activation 补偿刷新链路：会话列表、当前活动会话详情与 pending task 状态都要立即回源。页面隐藏时暂停 pending task 定时轮询，恢复前台后再补偿检查，避免后台标签页持续发起任务状态请求。
-- `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat-scoped Terminal session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果，并按消息 id 合并到已有时间线，后台恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息。
+- `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat-scoped Terminal session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果，并继续按 `turn_before` 后台自动请求更早页，直到服务端标记没有更早内容；所有分页结果按消息 id 合并到已有时间线，后台恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息。
 - `Chat` 时间线到顶交互承担手动补拉职责：本地仍有隐藏消息时继续按批次展开；本地窗口已完全展开时，用户继续滚动到顶、在移动端 `scrollTop` 已为 0 时继续触摸下拉，或从接近顶部的位置一路下拉到顶后继续拉动，需触发当前活动 Chat-scoped Terminal session 详情回源，并把返回的分页 turn 合并进已有时间线。触摸手势需在整个工作区正文层和 `window` capture 链路捕获，并按触点坐标确认手势发生在消息区内，避免 iOS Safari 弹性下拉只出现在全局触摸链路或真机手势落在 workspace body 而非内部 screen 节点时丢失；Composer、移动端头部、详情浮层和会话抽屉区域不得触发历史补拉。该刷新不得重置当前会话、不得清空已加载更早消息，也不得在请求进行中重复发起同一手动补拉。
 - `Chat` 发送新消息后，服务端输入响应、后续详情刷新或分页片段只允许按 turn/message id 与时间顺序合并进现有时间线；即使响应只包含新 turn 或最新轻量页，也不得替换掉用户当前已加载的旧历史。若追加前当前渲染窗口已经覆盖全部已加载消息，追加后可见窗口需同步扩容，避免旧消息被最新一轮挤出视图。
-- `Chat` 的浏览器缓存分为短期运行态与长期持久态：8 小时运行态缓存保留当前已加载会话的完整消息，30 天 `localStorage` 长期快照保留同一批会话与完整消息，用于刷新、重开或 sessionStorage 丢失时首屏恢复。长期缓存不得阻断服务端会话列表与单会话详情回源；当服务端返回更新历史时继续按现有分页合并规则覆盖或补齐本地快照。
+- `Chat` 的浏览器缓存分为短期运行态、长期完整消息快照与轻量会话信息快照：8 小时运行态缓存保留当前已加载会话的完整消息，30 天 `localStorage` 长期快照保留同一批会话与完整消息，用于刷新、重开或 sessionStorage 丢失时首屏恢复；轻量会话信息快照只保存标题、状态、置顶、模型与能力选择等元数据，用于完整消息缓存写入失败或被清理时恢复会话列表。长期缓存不得阻断服务端会话列表与单会话详情回源；当服务端返回更新历史时继续按现有分页合并规则覆盖或补齐本地快照。
 - `Chat` Composer 支持最多 5 张图片附件；附件可通过附件按钮选择，也可在 PC 输入框内直接粘贴剪贴板图片。粘贴图片时仅拦截图片文件并进入附件草稿，普通文本粘贴继续保持 textarea 原生行为。附件在输入区以缩略图展示，可单张预览和移除，并按会话草稿持久化。缩略条继续使用预览图，但单张预览弹层必须优先显示原图。当前选中的模型若未声明视觉能力，带图发送必须直接阻止并提示切换模型。
 - 移动端 `Chat` 的左侧主导航抽屉与主工作区在 `1100px` 及以下需回落为静态表面，不保留模糊玻璃层或持续背景动效；性能优先级高于装饰层，确保真机滚动、抽屉开关和输入框聚焦不出现明显卡顿。
 - 根工作台仅在窄屏时使用主导航抽屉；运行页会话列表由主导航统一承载，避免出现导航抽屉和会话浮层叠加。

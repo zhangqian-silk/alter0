@@ -209,7 +209,10 @@ function useConversationWorkspaceController(
       ...current,
       [key]: !current[key],
     }));
-  }, []);
+    if (!expandedProcessEvents[key]) {
+      void runtime.loadProcessEventDetail(messageID, stepID);
+    }
+  }, [expandedProcessEvents, runtime]);
   useEffect(() => {
     setExpandedProcessSteps({});
   }, [timelineSessionID]);
