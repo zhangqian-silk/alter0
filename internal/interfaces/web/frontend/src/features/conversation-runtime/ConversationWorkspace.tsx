@@ -40,7 +40,6 @@ type ConversationWorkspaceSharedRefs = {
 const INITIAL_VISIBLE_CHAT_MESSAGES = 32;
 const CHAT_MESSAGE_LOAD_BATCH_SIZE = 32;
 const CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET = 32;
-const CHAT_HISTORY_TOUCH_PULL_REFRESH_DISTANCE = 56;
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const MARKDOWN_SYNTAX_DEMO_QUERY_KEY = "markdown_demo";
@@ -158,11 +157,6 @@ function useConversationWorkspaceController(
   const { timelineScreenRef, workspaceBodyRef } = sharedRefs;
   const activeTimelineSessionRef = useRef("");
   const previousActiveMessageCountRef = useRef(0);
-  const manualHistoryRefreshInFlightRef = useRef(false);
-  const touchPullGestureActiveRef = useRef(false);
-  const touchPullStartYRef = useRef<number | null>(null);
-  const touchPullLastYRef = useRef<number | null>(null);
-  const touchPullTriggeredRef = useRef(false);
   const pendingHistoryScrollRestoreRef = useRef<{
     sessionID: string;
     scrollHeight: number;
@@ -415,15 +409,6 @@ function useConversationWorkspaceController(
       };
     });
   }, [hiddenMessageCount, timelineMessages.length, timelineScreenRef, timelineSessionID]);
-  const refreshActiveHistory = useCallback(() => {
-    if (!timelineSessionID || showMarkdownSyntaxDemo || manualHistoryRefreshInFlightRef.current) {
-      return;
-    }
-    manualHistoryRefreshInFlightRef.current = true;
-    void runtime.refreshActiveSession().finally(() => {
-      manualHistoryRefreshInFlightRef.current = false;
-    });
-  }, [runtime, showMarkdownSyntaxDemo, timelineSessionID]);
   useEffect(() => {
     setTimelineWindow((current) => {
       if (current.sessionID === timelineSessionID) {
@@ -441,127 +426,16 @@ function useConversationWorkspaceController(
     if (!node) {
       return undefined;
     }
-    const touchNode = workspaceBodyRef.current || node;
     const handleScroll = () => {
-      if (node.scrollTop <= CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET) {
-        if (hiddenMessageCount > 0) {
-          loadEarlierMessages();
-        } else {
-          refreshActiveHistory();
-        }
-      }
-    };
-    const readTouchPoint = (event: Event): { clientX: number; clientY: number } | null => {
-      const touches = (event as { touches?: ArrayLike<{ clientY?: number }> }).touches;
-      const clientY = touches?.[0]?.clientY;
-      const clientX = touches?.[0]?.clientX;
-      return typeof clientY === "number"
-        ? { clientX: typeof clientX === "number" ? clientX : 0, clientY }
-        : null;
-    };
-    const isTouchPointInTimeline = (point: { clientX: number; clientY: number } | null) => {
-      if (!point) {
-        return false;
-      }
-      const rect = node.getBoundingClientRect();
-      if (rect.width <= 0 && rect.height <= 0) {
-        return true;
-      }
-      return point.clientY >= rect.top
-        && point.clientY <= rect.bottom
-        && point.clientX >= rect.left
-        && point.clientX <= rect.right;
-    };
-    const isRefreshTouchTarget = (event: Event, point: { clientX: number; clientY: number } | null) => {
-      if (!isTouchPointInTimeline(point)) {
-        return false;
-      }
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        return true;
-      }
-      const workspaceBody = workspaceBodyRef.current;
-      if (workspaceBody && !workspaceBody.contains(target)) {
-        return false;
-      }
-      if (target instanceof Element && target.closest([
-        "[data-runtime-composer='true']",
-        ".runtime-workspace-mobile-header",
-        ".workspace-details-layer",
-        ".runtime-workspace-session-pane",
-      ].join(", "))) {
-        return false;
-      }
-      return true;
-    };
-    const triggerTopRefresh = () => {
-      if (hiddenMessageCount > 0) {
+      if (node.scrollTop <= CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET && hiddenMessageCount > 0) {
         loadEarlierMessages();
-      } else {
-        refreshActiveHistory();
       }
-    };
-    const handleTouchStart = (event: Event) => {
-      const point = readTouchPoint(event);
-      if (!point || !isRefreshTouchTarget(event, point)) {
-        touchPullGestureActiveRef.current = false;
-        touchPullStartYRef.current = null;
-        touchPullLastYRef.current = null;
-        touchPullTriggeredRef.current = false;
-        return;
-      }
-      touchPullGestureActiveRef.current = true;
-      touchPullStartYRef.current = node.scrollTop <= CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET ? point.clientY : null;
-      touchPullLastYRef.current = point.clientY;
-      touchPullTriggeredRef.current = false;
-    };
-    const handleTouchMove = (event: Event) => {
-      const point = readTouchPoint(event);
-      if (!touchPullGestureActiveRef.current || !point || touchPullTriggeredRef.current) {
-        return;
-      }
-      if (node.scrollTop > CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET) {
-        touchPullStartYRef.current = null;
-        touchPullLastYRef.current = point.clientY;
-        return;
-      }
-      if (touchPullStartYRef.current === null) {
-        touchPullStartYRef.current = touchPullLastYRef.current ?? point.clientY;
-      }
-      const startY = touchPullStartYRef.current;
-      if (point.clientY - startY >= CHAT_HISTORY_TOUCH_PULL_REFRESH_DISTANCE) {
-        touchPullTriggeredRef.current = true;
-        triggerTopRefresh();
-      }
-      touchPullLastYRef.current = point.clientY;
-    };
-    const resetTouchPull = () => {
-      touchPullGestureActiveRef.current = false;
-      touchPullStartYRef.current = null;
-      touchPullLastYRef.current = null;
-      touchPullTriggeredRef.current = false;
     };
     node.addEventListener("scroll", handleScroll, { passive: true });
-    touchNode.addEventListener("touchstart", handleTouchStart, { passive: true });
-    touchNode.addEventListener("touchmove", handleTouchMove, { passive: true });
-    touchNode.addEventListener("touchend", resetTouchPull, { passive: true });
-    touchNode.addEventListener("touchcancel", resetTouchPull, { passive: true });
-    window.addEventListener("touchstart", handleTouchStart, { capture: true, passive: true });
-    window.addEventListener("touchmove", handleTouchMove, { capture: true, passive: true });
-    window.addEventListener("touchend", resetTouchPull, { capture: true, passive: true });
-    window.addEventListener("touchcancel", resetTouchPull, { capture: true, passive: true });
     return () => {
       node.removeEventListener("scroll", handleScroll);
-      touchNode.removeEventListener("touchstart", handleTouchStart);
-      touchNode.removeEventListener("touchmove", handleTouchMove);
-      touchNode.removeEventListener("touchend", resetTouchPull);
-      touchNode.removeEventListener("touchcancel", resetTouchPull);
-      window.removeEventListener("touchstart", handleTouchStart, { capture: true });
-      window.removeEventListener("touchmove", handleTouchMove, { capture: true });
-      window.removeEventListener("touchend", resetTouchPull, { capture: true });
-      window.removeEventListener("touchcancel", resetTouchPull, { capture: true });
     };
-  }, [hiddenMessageCount, loadEarlierMessages, refreshActiveHistory, timelineScreenRef, workspaceBodyRef]);
+  }, [hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
   useLayoutEffect(() => {
     const pending = pendingHistoryScrollRestoreRef.current;
     if (!pending || pending.sessionID !== timelineSessionID) {
