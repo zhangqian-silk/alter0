@@ -103,6 +103,18 @@ describe("legacy route layout stylesheet", () => {
     expect(stylesheet).toContain(".terminal-final-rendered .message-markdown-rendered > :last-child {");
   });
 
+  it("keeps legacy mobile page shells on the stable keyboard baseline", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(
+      resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"),
+      "utf8",
+    );
+
+    expect(stylesheet).toContain("height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset));");
+    expect(stylesheet).toContain("height: min(100%, var(--mobile-viewport-height, 100dvh));");
+    expect(stylesheet).toContain("height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset)));");
+  });
+
   it("version-busts legacy runtime stylesheets so repeated preview deploys cannot reuse stale process CSS", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const html = readFileSync(resolve(currentDirectory, "../../../index.html"), "utf8");

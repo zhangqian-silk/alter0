@@ -37,6 +37,7 @@
   --accent: #1d4ed8;
   --content-width: 960px;
   --mobile-viewport-height: 100dvh;
+  --mobile-viewport-offset-top: 0px;
   --keyboard-offset: 0px;
   --keyboard-composer-offset: 0px;
 }
@@ -792,6 +793,7 @@ body {
     border: 0;
     border-radius: 24px;
   }
+
 }
 
 .conversation-empty-state::before {
@@ -3104,7 +3106,8 @@ body {
   line-height: 1.4;
 }
 
-[data-runtime-view="terminal"] .runtime-composer-meta:not(.is-empty) {
+[data-runtime-view="terminal"] .runtime-composer-meta:not(.is-empty),
+[data-runtime-composer-view="terminal"] .runtime-composer-meta:not(.is-empty) {
   max-width: min(42vw, 420px);
   padding: 4px 8px;
   border: 1px solid rgba(15, 23, 42, 0.08);
@@ -3324,7 +3327,8 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  [data-runtime-view="terminal"] .runtime-composer-meta:not(.is-empty) {
+  [data-runtime-view="terminal"] .runtime-composer-meta:not(.is-empty),
+  [data-runtime-composer-view="terminal"] .runtime-composer-meta:not(.is-empty) {
     max-width: 36vw;
   }
 
@@ -5412,6 +5416,11 @@ body::after {
   .app-shell.info-mode,
   .app-shell.nav-collapsed,
   .app-shell.nav-collapsed.info-mode {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
     padding: 0;
@@ -6417,6 +6426,11 @@ body::after {
 
   .app-shell,
   .app-shell.info-mode {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
     display: block;
     grid-template-columns: minmax(0, 1fr);
     min-height: 0;
@@ -7397,6 +7411,14 @@ body::after {
   overflow: hidden;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(243, 247, 251, 0.98) 100%);
   box-shadow: 0 34px 70px -54px rgba(15, 23, 42, 0.18);
+}
+
+.runtime-composer-portal-host {
+  display: contents;
+}
+
+.runtime-composer-spacer {
+  display: none;
 }
 
 .runtime-workspace-head {
@@ -8916,7 +8938,9 @@ body::after {
 }
 
 [data-runtime-view="conversation"] .runtime-composer-form .runtime-composer-upload,
-[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload {
+[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload,
+[data-runtime-composer-view="conversation"] .runtime-composer-form .runtime-composer-upload,
+[data-runtime-composer-view="terminal"] .runtime-composer-form .runtime-composer-upload {
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: rgba(238, 244, 249, 0.96);
   color: #334155;
@@ -8936,7 +8960,9 @@ body::after {
 }
 
 [data-runtime-view="conversation"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled),
-[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled) {
+[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled),
+[data-runtime-composer-view="conversation"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled),
+[data-runtime-composer-view="terminal"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled) {
   background: rgba(236, 242, 248, 0.98);
   border-color: rgba(148, 163, 184, 0.42);
 }
@@ -9025,7 +9051,10 @@ body::after {
 
 [data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="interrupted"],
 [data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="failed"],
-[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="error"] {
+[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="error"],
+[data-runtime-composer-view="terminal"] .runtime-composer-meta[data-runtime-status="interrupted"],
+[data-runtime-composer-view="terminal"] .runtime-composer-meta[data-runtime-status="failed"],
+[data-runtime-composer-view="terminal"] .runtime-composer-meta[data-runtime-status="error"] {
   color: #991b1b;
   border-color: rgba(248, 113, 113, 0.22);
   background: rgba(254, 242, 242, 0.96);
@@ -9033,7 +9062,10 @@ body::after {
 
 [data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="exited"],
 [data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="canceled"],
-[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="cancelled"] {
+[data-runtime-view="terminal"] .runtime-composer-meta[data-runtime-status="cancelled"],
+[data-runtime-composer-view="terminal"] .runtime-composer-meta[data-runtime-status="exited"],
+[data-runtime-composer-view="terminal"] .runtime-composer-meta[data-runtime-status="canceled"],
+[data-runtime-composer-view="terminal"] .runtime-composer-meta[data-runtime-status="cancelled"] {
   color: #9a3412;
   border-color: rgba(251, 191, 36, 0.22);
   background: rgba(255, 247, 237, 0.96);
@@ -9221,7 +9253,8 @@ body::after {
   line-height: 1.65;
 }
 
-[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-meta {
+[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-meta,
+[data-runtime-composer-view="terminal"] .runtime-composer-form .runtime-composer-meta {
   display: inline-flex;
   align-items: center;
   min-height: 26px;
@@ -9233,7 +9266,8 @@ body::after {
   color: #5b6f86;
 }
 
-[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-tools {
+[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-tools,
+[data-runtime-composer-view="terminal"] .runtime-composer-form .runtime-composer-tools {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
@@ -9571,14 +9605,18 @@ body::after {
 
 .runtime-composer-utility:hover:not(:disabled),
 [data-runtime-view="conversation"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled),
-[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled) {
+[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled),
+[data-runtime-composer-view="conversation"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled),
+[data-runtime-composer-view="terminal"] .runtime-composer-form .runtime-composer-upload:hover:not(:disabled) {
   border-color: rgba(203, 213, 225, 0.96);
   background: #f1f5f9;
   color: #475569;
 }
 
 [data-runtime-view="conversation"] .runtime-composer-form .runtime-composer-upload,
-[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload {
+[data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload,
+[data-runtime-composer-view="conversation"] .runtime-composer-form .runtime-composer-upload,
+[data-runtime-composer-view="terminal"] .runtime-composer-form .runtime-composer-upload {
   border-color: rgba(226, 232, 240, 0.96);
   background: #f8fafc;
   color: #64748b;
@@ -9717,11 +9755,24 @@ body::after {
     grid-row: 3;
   }
 
-  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-composer-shell,
-  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-composer-shell {
+  .runtime-composer-spacer {
+    display: block;
     grid-row: 4;
-    align-self: end;
+    height: var(--runtime-composer-rest-inset, 0px);
+    min-height: 0;
+    pointer-events: none;
   }
+
+  .runtime-composer-portal-host .runtime-composer-shell {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px));
+    z-index: 80;
+    width: 100%;
+    max-width: 100%;
+  }
+
 }
 
 @media (max-width: 760px) {
@@ -9950,6 +10001,23 @@ body::after {
   [data-runtime-view="terminal"] .runtime-workspace-screen {
     height: 100%;
     max-height: 100%;
+    padding-bottom: 20px;
+  }
+
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-mobile-header,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-mobile-header,
+  .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-mobile-header,
+  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-workspace-mobile-header,
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-head,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-head,
+  .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-head,
+  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-workspace-head,
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-panel,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-panel,
+  .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-panel,
+  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-workspace-panel {
+    transform: translate3d(0, var(--mobile-viewport-offset-top, 0px), 0) !important;
+    transition: none;
   }
 
   .runtime-workspace-mobile-header {
@@ -10233,7 +10301,9 @@ body::after {
   }
 
   .runtime-composer-shell {
-    position: relative;
+    position: fixed;
+    left: 0;
+    right: 0;
     z-index: 24;
     width: 100%;
     max-width: 100%;
@@ -10268,7 +10338,8 @@ body::after {
 
   /* Source contract marker: bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-composer-offset, var(--keyboard-offset))); */
 
-  [data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-meta {
+  [data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-meta,
+  [data-runtime-composer-view="terminal"] .runtime-composer-form .runtime-composer-meta {
     display: inline-flex;
     align-items: center;
     min-height: 30px;
@@ -10284,7 +10355,9 @@ body::after {
 
   .runtime-composer-utility,
   [data-runtime-view="conversation"] .runtime-composer-form .runtime-composer-upload,
-  [data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload {
+  [data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-upload,
+  [data-runtime-composer-view="conversation"] .runtime-composer-form .runtime-composer-upload,
+  [data-runtime-composer-view="terminal"] .runtime-composer-form .runtime-composer-upload {
     height: 36px;
     width: 36px;
     min-width: 36px;
@@ -10345,7 +10418,8 @@ body::after {
     margin-top: 8px;
   }
 
-  [data-runtime-view="conversation"] .runtime-composer-shell {
+  [data-runtime-view="conversation"] .runtime-composer-shell,
+  [data-runtime-composer-view="conversation"] .runtime-composer-shell {
     border-top: 0;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(250, 252, 255, 0.94) 48%, rgba(250, 252, 255, 0.98) 100%);
   }

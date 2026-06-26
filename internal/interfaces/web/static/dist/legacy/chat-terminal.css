@@ -1811,6 +1811,11 @@
 
   .app-shell,
   .app-shell.info-mode {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
     grid-template-columns: minmax(0, 1fr);
     min-height: 0;
     height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset));

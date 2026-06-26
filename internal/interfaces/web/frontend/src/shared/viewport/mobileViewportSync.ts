@@ -1,7 +1,6 @@
 import {
   MOBILE_KEYBOARD_MIN_OFFSET_PX,
   MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS,
-  MOBILE_VIEWPORT_COMPOSER_OFFSET_HOLD_MS,
   createDefaultMobileViewportState,
   deriveMobileViewportState,
   isMobileViewportWidth,
@@ -62,6 +61,7 @@ export function createMobileViewportSyncController(
     });
     state = result.state;
     root.style.setProperty("--mobile-viewport-height", result.cssVars.mobileViewportHeight);
+    root.style.setProperty("--mobile-viewport-offset-top", result.cssVars.mobileViewportOffsetTop);
     root.style.setProperty("--keyboard-offset", result.cssVars.keyboardOffset);
     root.style.setProperty("--keyboard-composer-offset", result.cssVars.keyboardComposerOffset);
     clearCooldownSync();
@@ -71,14 +71,7 @@ export function createMobileViewportSyncController(
       && result.state.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
       && result.state.baselineHeight > 0
       && reportedViewportHeight >= result.state.baselineHeight - 2;
-    const composerOffsetHold =
-      activeInput
-      && result.state.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
-      && (visualViewport?.offsetTop ?? 0) > 0
-      && result.cssVars.keyboardComposerOffset === `${result.state.keyboardOffset}px`;
-    if (composerOffsetHold) {
-      scheduleCooldownSync(MOBILE_VIEWPORT_COMPOSER_OFFSET_HOLD_MS + 16);
-    } else if (focusedFullHeightReport) {
+    if (focusedFullHeightReport) {
       scheduleCooldownSync(MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS + 16);
     }
   };
@@ -112,6 +105,7 @@ export function createMobileViewportSyncController(
       doc.removeEventListener("focusin", sync);
       doc.removeEventListener("focusout", sync);
       root.style.setProperty("--mobile-viewport-height", "100dvh");
+      root.style.setProperty("--mobile-viewport-offset-top", "0px");
       root.style.setProperty("--keyboard-offset", "0px");
       root.style.setProperty("--keyboard-composer-offset", "0px");
     },
