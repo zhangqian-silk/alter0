@@ -3,7 +3,6 @@ export const TERMINAL_SESSION_SHEET_BREAKPOINT_PX = 760;
 export const MOBILE_VIEWPORT_SYNC_THRESHOLD_PX = 8;
 export const MOBILE_KEYBOARD_MIN_OFFSET_PX = 120;
 export const MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS = 240;
-export const MOBILE_VIEWPORT_COMPOSER_OFFSET_HOLD_MS = 360;
 export const MOBILE_VIEWPORT_WIDTH_RESET_DELTA_PX = 48;
 
 export type MobileViewportState = {
@@ -29,6 +28,7 @@ export type DeriveMobileViewportResult = {
   state: MobileViewportState;
   cssVars: {
     mobileViewportHeight: string;
+    mobileViewportOffsetTop: string;
     keyboardOffset: string;
     keyboardComposerOffset: string;
   };
@@ -57,12 +57,8 @@ export function isTerminalSessionSheetViewportWidth(width: number): boolean {
   return Number(width) <= TERMINAL_SESSION_SHEET_BREAKPOINT_PX;
 }
 
-function resolveKeyboardComposerOffset(
-  keyboardOffset: number,
-  viewportOffsetTop: number,
-  holdViewportOffsetTop: boolean,
-): number {
-  return Math.max(0, keyboardOffset - (holdViewportOffsetTop ? 0 : viewportOffsetTop));
+function resolveKeyboardComposerOffset(keyboardOffset: number, viewportOffsetTop: number): number {
+  return Math.max(0, keyboardOffset - viewportOffsetTop);
 }
 
 export function deriveMobileViewportState(
@@ -75,6 +71,7 @@ export function deriveMobileViewportState(
       state: createDefaultMobileViewportState(),
       cssVars: {
         mobileViewportHeight: "100dvh",
+        mobileViewportOffsetTop: "0px",
         keyboardOffset: "0px",
         keyboardComposerOffset: "0px"
       },
@@ -116,12 +113,6 @@ export function deriveMobileViewportState(
   const keyboardRecentlyAligned =
     previousState.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
     && (currentTimeMS - (previousState.lastAlignedAt || 0)) < MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS;
-  const shouldHoldComposerOffset =
-    input.hasActiveInput
-    && !widthChanged
-    && viewportOffsetTop > 0
-    && previousState.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
-    && (currentTimeMS - (previousState.lastAlignedAt || 0)) < MOBILE_VIEWPORT_COMPOSER_OFFSET_HOLD_MS;
   if (
     input.hasActiveInput
     && !widthChanged
@@ -137,8 +128,9 @@ export function deriveMobileViewportState(
       },
       cssVars: {
         mobileViewportHeight: `${previousState.height}px`,
+        mobileViewportOffsetTop: `${viewportOffsetTop}px`,
         keyboardOffset: `${previousState.keyboardOffset}px`,
-        keyboardComposerOffset: `${resolveKeyboardComposerOffset(previousState.keyboardOffset, viewportOffsetTop, shouldHoldComposerOffset)}px`
+        keyboardComposerOffset: `${resolveKeyboardComposerOffset(previousState.keyboardOffset, viewportOffsetTop)}px`
       },
       changed: {
         width: false,
@@ -171,9 +163,6 @@ export function deriveMobileViewportState(
   const keyboardOffset = rawKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
     ? rawKeyboardOffset
     : 0;
-  const holdComposerOffset =
-    shouldHoldComposerOffset
-    && keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX;
   const heightChanged = Math.abs(effectiveHeight - previousState.height) >= MOBILE_VIEWPORT_SYNC_THRESHOLD_PX;
   const offsetChanged = Math.abs(keyboardOffset - previousState.keyboardOffset) >= MOBILE_VIEWPORT_SYNC_THRESHOLD_PX;
 
@@ -190,8 +179,9 @@ export function deriveMobileViewportState(
     },
     cssVars: {
       mobileViewportHeight: `${effectiveHeight}px`,
+      mobileViewportOffsetTop: `${viewportOffsetTop}px`,
       keyboardOffset: `${keyboardOffset}px`,
-      keyboardComposerOffset: `${resolveKeyboardComposerOffset(keyboardOffset, viewportOffsetTop, holdComposerOffset)}px`
+      keyboardComposerOffset: `${resolveKeyboardComposerOffset(keyboardOffset, viewportOffsetTop)}px`
     },
     changed: {
       width: widthChanged,

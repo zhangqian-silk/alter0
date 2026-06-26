@@ -123,14 +123,71 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("moves the mobile runtime composer with the visual-viewport-adjusted bottom offset instead of a transform layer", () => {
+  it("keeps the mobile runtime composer fixed to the visual-viewport-adjusted bottom edge", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?bottom:\s*var\(--keyboard-composer-offset, var\(--keyboard-offset, 0px\)\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*var\(--keyboard-composer-offset, var\(--keyboard-offset, 0px\)\);/,
     );
     expect(stylesheet).not.toMatch(/\.runtime-composer-shell\s*\{[^}]*transform:/);
+  });
+
+  it("sizes the mobile runtime shell with dynamic viewport CSS while only inner screens scroll", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /Mobile runtime keyboard isolation:[\s\S]*?\.app-shell,\s*\.app-shell\.info-mode,[\s\S]*?\.app-shell\.nav-collapsed\.info-mode\s*\{[\s\S]*?position:\s*relative;[\s\S]*?height:\s*100dvh;[\s\S]*?max-height:\s*100dvh;[\s\S]*?transform:\s*none !important;/,
+    );
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="conversation"\] \.runtime-workspace-body,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-workspace-body > \.runtime-workspace-panel\s*\{[\s\S]*?transform:\s*none !important;[\s\S]*?transition:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /Mobile runtime keyboard isolation:[\s\S]*?\.runtime-composer-shell,\s*\.runtime-composer-portal-host \.runtime-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?bottom:\s*0 !important;/,
+    );
+    expect(stylesheet).not.toMatch(/\.runtime-workspace-body\s*\{[^}]*translate3d\(0, var\(--mobile-viewport-offset-top/);
+    expect(stylesheet).not.toMatch(/\.runtime-workspace-panel\s*\{[^}]*translate3d\(0, var\(--mobile-viewport-offset-top/);
+  });
+
+  it("pins the mobile runtime header outside the keyboard-resized workspace flow", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="terminal"\]\s*\{[\s\S]*?--runtime-mobile-header-fixed-height:\s*56px;[\s\S]*?grid-template-rows:\s*var\(--runtime-mobile-header-fixed-height\) minmax\(0, 1fr\) auto;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="terminal"\] > \.runtime-workspace-mobile-header\s*\{[\s\S]*?position:\s*fixed !important;[\s\S]*?top:\s*0;[\s\S]*?z-index:\s*90;[\s\S]*?transform:\s*translate3d\(0, var\(--mobile-viewport-offset-top, 0px\), 0\) !important;[\s\S]*?transition:\s*none !important;[\s\S]*?animation:\s*none !important;[\s\S]*?will-change:\s*transform;[\s\S]*?backface-visibility:\s*hidden;[\s\S]*?contain:\s*layout paint;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="terminal"\] > \.runtime-workspace-head\s*\{[\s\S]*?display:\s*none;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="terminal"\] > \.runtime-workspace-panel\s*\{[\s\S]*?grid-row:\s*2;/,
+    );
+  });
+
+  it("requests content viewport resizing for virtual keyboards where the browser supports it", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const indexHtml = readFileSync(resolve(currentDirectory, "../../../index.html"), "utf8");
+
+    expect(indexHtml).toContain(
+      '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">',
+    );
+  });
+
+  it("lets mobile page-level shells use the dynamic viewport instead of a locked document layer", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /Mobile runtime keyboard isolation:[\s\S]*?\.app-shell,\s*\.app-shell\.info-mode,[\s\S]*?\.app-shell\.nav-collapsed\.info-mode\s*\{[\s\S]*?position:\s*relative;[\s\S]*?height:\s*100dvh;/,
+    );
+    expect(stylesheet).toMatch(
+      /Mobile runtime keyboard isolation:[\s\S]*?\.chat-pane\.page-mode,[\s\S]*?\.runtime-workspace-body\s*\{[\s\S]*?height:\s*100%;[\s\S]*?overflow:\s*hidden;[\s\S]*?transform:\s*none;/,
+    );
+    expect(stylesheet).toMatch(/Mobile runtime keyboard isolation:[\s\S]*?\.runtime-composer-portal-host \.runtime-composer-shell/);
   });
 
   it("keeps conversation bubbles compact instead of heavy card-like gradients", () => {
@@ -367,28 +424,37 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("keeps mobile app shell height at the stable keyboard baseline while only the composer consumes keyboard offset", () => {
+  it("keeps mobile runtime pages on dynamic viewport CSS while the composer stays fixed to the bottom", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const isolationStylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
 
     expect(stylesheet).toContain("--mobile-viewport-height: 100dvh;");
+    expect(stylesheet).toContain("--mobile-viewport-offset-top: 0px;");
     expect(stylesheet).toContain("--keyboard-offset: 0px;");
     expect(stylesheet).toContain("--keyboard-composer-offset: 0px;");
-    expect(stylesheet).toContain("height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px));");
+    expect(stylesheet).toContain("position: fixed;");
+    expect(isolationStylesheet).toMatch(/Mobile runtime keyboard isolation:[\s\S]*?height:\s*100dvh;/);
     expect(stylesheet).toContain(".chat-pane:not(.page-mode) {");
-    expect(stylesheet).toContain("height: min(100%, var(--mobile-viewport-height, 100dvh));");
     expect(stylesheet).toContain(".chat-pane.page-mode {");
-    expect(stylesheet).toContain("height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset, 0px)));");
-    expect(stylesheet).toContain("bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px));");
+    expect(isolationStylesheet).toContain("bottom: 0 !important;");
+    expect(stylesheet).toContain(".runtime-composer-portal-host");
+    expect(stylesheet).toContain(".runtime-composer-spacer");
   });
 
-  it("locks document scrolling on narrow screens so keyboard focus cannot move the whole workbench", () => {
+  it("keeps narrow roots on dynamic viewport units without fixed document locks", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/root.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 1100px\) \{[\s\S]*?html,\s*body,\s*#frontend-root\s*\{[\s\S]*?height:\s*100%;[\s\S]*?overflow:\s*hidden;[\s\S]*?overscroll-behavior:\s*none;/,
+      /@media \(max-width: 1100px\) \{[\s\S]*?html,\s*body,\s*#frontend-root\s*\{[\s\S]*?min-height:\s*100dvh;[\s\S]*?overflow-x:\s*hidden;/,
     );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?#frontend-root\s*\{[\s\S]*?min-height:\s*100dvh;/,
+    );
+    expect(stylesheet).not.toMatch(/#frontend-root\s*\{[\s\S]*?position:\s*fixed;/);
+    expect(stylesheet).not.toMatch(/html,\s*body,\s*#frontend-root\s*\{[\s\S]*?overflow:\s*hidden;/);
+    expect(stylesheet).not.toMatch(/#frontend-root\s*\{[\s\S]*?transform:\s*translate3d\(0, var\(--mobile-viewport-offset-top/);
   });
 
   it("keeps desktop chrome panels visible and only exposes header drawer buttons at narrow breakpoints", () => {
@@ -424,6 +490,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("[data-runtime-view=\"conversation\"] .runtime-workspace-body {");
     expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-workspace-body {");
     expect(stylesheet).toContain("grid-template-rows: auto auto minmax(0, 1fr) auto;");
+    expect(stylesheet).toContain("height: var(--runtime-composer-rest-inset, 0px);");
   });
 
   it("keeps chat and terminal workspace header controls the same size", () => {
@@ -447,9 +514,11 @@ describe("shell layout stylesheet", () => {
       /\[data-runtime-view="terminal"\] \.runtime-composer-shell\s*\{[\s\S]*?padding:\s*10px 16px 14px;/,
     );
     expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-composer-note {");
-    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-meta {");
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-composer-form \.runtime-composer-meta,\s*\[data-runtime-composer-view="terminal"\] \.runtime-composer-form \.runtime-composer-meta\s*\{/,
+    );
     expect(stylesheet).toContain("min-height: 26px;");
-    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-meta[data-runtime-status=\"failed\"]");
+    expect(stylesheet).toContain("[data-runtime-composer-view=\"terminal\"] .runtime-composer-meta[data-runtime-status=\"failed\"]");
     expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-composer-input {");
     expect(stylesheet).not.toContain("[data-runtime-view=\"terminal\"] .runtime-composer-submit {");
   });
@@ -568,8 +637,9 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body > \.runtime-workspace-panel,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body > \.runtime-workspace-panel\s*\{[\s\S]*?grid-row:\s*3;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 1100px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-body > \.runtime-composer-shell,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body > \.runtime-composer-shell\s*\{[\s\S]*?grid-row:\s*4;[\s\S]*?align-self:\s*end;/,
+      /@media \(max-width: 1100px\) \{[\s\S]*?\.runtime-composer-spacer\s*\{[\s\S]*?grid-row:\s*4;[\s\S]*?height:\s*var\(--runtime-composer-rest-inset, 0px\);/,
     );
+    expect(stylesheet).not.toMatch(/\.runtime-workspace-body > \.runtime-composer-shell\s*\{[\s\S]*?grid-row:\s*4;/);
   });
 
   it("keeps mobile runtime headers and composer controls on a compact single row instead of wrapping into oversized stacks", () => {
@@ -597,7 +667,7 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-tools\s*\{[\s\S]*?flex-wrap:\s*nowrap;[\s\S]*?gap:\s*10px;/,
     );
     expect(stylesheet).toMatch(
-      /\[data-runtime-view="terminal"\] \.runtime-composer-form \.runtime-composer-tools\s*\{[\s\S]*?justify-content:\s*flex-end;/,
+      /\[data-runtime-view="terminal"\] \.runtime-composer-form \.runtime-composer-tools,\s*\[data-runtime-composer-view="terminal"\] \.runtime-composer-form \.runtime-composer-tools\s*\{[\s\S]*?justify-content:\s*flex-end;/,
     );
   });
 
@@ -695,7 +765,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".runtime-composer-submit,");
     expect(stylesheet).toContain(".runtime-composer-upload {");
     expect(stylesheet).toContain("[data-runtime-view=\"conversation\"] .runtime-composer-form .runtime-composer-upload,");
-    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-upload {");
+    expect(stylesheet).toContain("[data-runtime-composer-view=\"terminal\"] .runtime-composer-form .runtime-composer-upload {");
     expect(stylesheet).toContain("width: 38px;");
     expect(stylesheet).toContain("height: 38px;");
     expect(stylesheet).toContain("align-items: center;");
@@ -954,7 +1024,7 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.conversation-empty-state\s*\{[\s\S]*?margin-left:\s*0;[\s\S]*?padding:\s*24px 0 32px;[\s\S]*?align-self:\s*start;[\s\S]*?align-content:\s*start;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*0;[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(255, 255, 255, 0\) 0%, rgba\(250, 252, 255, 0\.94\) 48%, rgba\(250, 252, 255, 0\.98\) 100%\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-shell,\s*\[data-runtime-composer-view="conversation"\] \.runtime-composer-shell\s*\{[\s\S]*?border-top:\s*0;[\s\S]*?background:\s*linear-gradient\(180deg, rgba\(255, 255, 255, 0\) 0%, rgba\(250, 252, 255, 0\.94\) 48%, rgba\(250, 252, 255, 0\.98\) 100%\);/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-input\s*\{[\s\S]*?width:\s*100%;[\s\S]*?height:\s*72px;[\s\S]*?min-height:\s*72px;[\s\S]*?resize:\s*none;/,
@@ -1130,9 +1200,13 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".runtime-composer-input {");
     expect(stylesheet).toContain("min-height: 78px;");
     expect(stylesheet).toContain("padding: 10px 8px 8px;");
-    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-tools {");
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-composer-form \.runtime-composer-tools,\s*\[data-runtime-composer-view="terminal"\] \.runtime-composer-form \.runtime-composer-tools\s*\{/,
+    );
     expect(stylesheet).toContain("justify-content: flex-end;");
-    expect(stylesheet).toContain("[data-runtime-view=\"terminal\"] .runtime-composer-form .runtime-composer-meta {");
+    expect(stylesheet).toMatch(
+      /\[data-runtime-view="terminal"\] \.runtime-composer-form \.runtime-composer-meta,\s*\[data-runtime-composer-view="terminal"\] \.runtime-composer-form \.runtime-composer-meta\s*\{/,
+    );
     expect(stylesheet).toContain("border: 0;");
     expect(stylesheet).toContain("background: rgba(238, 244, 249, 0.96);");
     expect(stylesheet).toContain("box-shadow: none;");
@@ -1300,8 +1374,9 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-screen,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-screen\s*\{[\s\S]*?height:\s*100%;[\s\S]*?max-height:\s*100%;/,
     );
+    expect(stylesheet).toContain("padding-bottom: 20px;");
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?position:\s*relative;[\s\S]*?z-index:\s*24;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?z-index:\s*24;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-jump-cluster\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?bottom:\s*calc\(var\(--runtime-composer-rest-inset, var\(--runtime-composer-inset, 0px\)\) \+ 24px\);[\s\S]*?right:\s*12px;/,

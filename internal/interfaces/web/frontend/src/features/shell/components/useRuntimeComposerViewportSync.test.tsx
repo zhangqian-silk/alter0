@@ -98,7 +98,7 @@ describe("useRuntimeComposerViewportSync", () => {
     expect(workspaceBody.style.getPropertyValue("--runtime-composer-inset")).toBe("0px");
   });
 
-  it("anchors page-level scroll while the mobile composer input remains focused", () => {
+  it("does not override browser page scroll while the mobile composer input remains focused", () => {
     const originalScrollX = Object.getOwnPropertyDescriptor(window, "scrollX");
     const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
     const input = document.createElement("textarea");
@@ -123,7 +123,7 @@ describe("useRuntimeComposerViewportSync", () => {
       render(<Harness isMobileViewport inputFocused />);
       window.dispatchEvent(new Event("scroll"));
 
-      expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 0, behavior: "auto" });
+      expect(scrollTo).not.toHaveBeenCalled();
     } finally {
       if (originalScrollX) {
         Object.defineProperty(window, "scrollX", originalScrollX);
@@ -135,7 +135,7 @@ describe("useRuntimeComposerViewportSync", () => {
     }
   });
 
-  it("restores workspace scroll positions changed by mobile keyboard focus alignment", () => {
+  it("leaves workspace scroll positions to the active scroll container during mobile keyboard focus", () => {
     render(<Harness isMobileViewport inputFocused />);
 
     const workspaceBody = document.querySelector("[data-testid='workspace-body']") as HTMLDivElement;
@@ -145,11 +145,86 @@ describe("useRuntimeComposerViewportSync", () => {
 
     window.dispatchEvent(new Event("scroll"));
 
-    expect(workspaceBody.scrollTop).toBe(0);
-    expect(workspaceScreen.scrollTop).toBe(0);
+    expect(workspaceBody.scrollTop).toBe(84);
+    expect(workspaceScreen.scrollTop).toBe(132);
   });
 
-  it("rechecks page-level scroll after delayed mobile keyboard focus alignment", () => {
+  it("does not lock background workspace scroll during mobile keyboard focus", () => {
+    const { rerender } = render(<Harness isMobileViewport inputFocused={false} />);
+    const workspaceBody = document.querySelector("[data-testid='workspace-body']") as HTMLDivElement;
+    const workspaceScreen = document.querySelector("[data-testid='workspace-screen']") as HTMLElement;
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    workspaceBody.scrollTop = 84;
+    workspaceScreen.scrollTop = 132;
+
+    rerender(<Harness isMobileViewport inputFocused />);
+    workspaceBody.scrollTop = 160;
+    workspaceScreen.scrollTop = 240;
+    workspaceBody.dispatchEvent(new Event("scroll"));
+    workspaceScreen.dispatchEvent(new Event("scroll"));
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(workspaceBody.scrollTop).toBe(160);
+    expect(workspaceScreen.scrollTop).toBe(240);
+  });
+
+  it("leaves the first mobile composer touch to native focus without locking page scroll", () => {
+    vi.useFakeTimers();
+    const originalScrollX = Object.getOwnPropertyDescriptor(window, "scrollX");
+    const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
+    let scrollX = 0;
+    let scrollY = 0;
+    Object.defineProperty(window, "scrollX", {
+      configurable: true,
+      get: () => scrollX,
+    });
+    Object.defineProperty(window, "scrollY", {
+      configurable: true,
+      get: () => scrollY,
+    });
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation((options?: ScrollToOptions | number) => {
+      if (typeof options === "object") {
+        scrollX = Number(options.left || 0);
+        scrollY = Number(options.top || 0);
+      }
+    });
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+
+    try {
+      render(<Harness isMobileViewport inputFocused={false} />);
+      const input = document.querySelector("[data-testid='composer-input']") as HTMLTextAreaElement;
+      const focus = vi.spyOn(input, "focus").mockImplementation(() => undefined);
+      const workspaceBody = document.querySelector("[data-testid='workspace-body']") as HTMLDivElement;
+      const workspaceScreen = document.querySelector("[data-testid='workspace-screen']") as HTMLElement;
+      workspaceBody.scrollTop = 84;
+      workspaceScreen.scrollTop = 132;
+
+      fireEvent.pointerDown(input, { pointerType: "touch" });
+      scrollY = 96;
+      window.dispatchEvent(new Event("scroll"));
+      vi.advanceTimersByTime(200);
+
+      expect(focus).not.toHaveBeenCalled();
+      expect(scrollTo).not.toHaveBeenCalled();
+      expect(scrollY).toBe(96);
+      expect(workspaceBody.scrollTop).toBe(84);
+      expect(workspaceScreen.scrollTop).toBe(132);
+    } finally {
+      vi.useRealTimers();
+      if (originalScrollX) {
+        Object.defineProperty(window, "scrollX", originalScrollX);
+      }
+      if (originalScrollY) {
+        Object.defineProperty(window, "scrollY", originalScrollY);
+      }
+    }
+  });
+
+  it("does not run delayed page-level scroll corrections after mobile keyboard focus", () => {
     vi.useFakeTimers();
     const originalScrollX = Object.getOwnPropertyDescriptor(window, "scrollX");
     const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
@@ -177,7 +252,7 @@ describe("useRuntimeComposerViewportSync", () => {
       scrollY = 64;
       vi.advanceTimersByTime(96);
 
-      expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 0, behavior: "auto" });
+      expect(scrollTo).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
       if (originalScrollX) {
@@ -190,7 +265,7 @@ describe("useRuntimeComposerViewportSync", () => {
     }
   });
 
-  it("restores the scroll anchor captured before the mobile composer input receives focus", () => {
+  it("does not replay scroll anchors captured before the mobile composer input receives focus", () => {
     const originalScrollX = Object.getOwnPropertyDescriptor(window, "scrollX");
     const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
     let scrollY = 0;
@@ -213,17 +288,15 @@ describe("useRuntimeComposerViewportSync", () => {
       const { rerender } = render(<Harness isMobileViewport inputFocused={false} />);
       const workspaceBody = document.querySelector("[data-testid='workspace-body']") as HTMLDivElement;
       const workspaceScreen = document.querySelector("[data-testid='workspace-screen']") as HTMLElement;
-      const input = document.querySelector("[data-testid='composer-input']") as HTMLTextAreaElement;
 
-      fireEvent.pointerDown(input, { pointerType: "touch" });
       scrollY = 72;
       workspaceBody.scrollTop = 96;
       workspaceScreen.scrollTop = 144;
       rerender(<Harness isMobileViewport inputFocused />);
 
-      expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 0, behavior: "auto" });
-      expect(workspaceBody.scrollTop).toBe(0);
-      expect(workspaceScreen.scrollTop).toBe(0);
+      expect(scrollTo).not.toHaveBeenCalled();
+      expect(workspaceBody.scrollTop).toBe(96);
+      expect(workspaceScreen.scrollTop).toBe(144);
     } finally {
       if (originalScrollX) {
         Object.defineProperty(window, "scrollX", originalScrollX);

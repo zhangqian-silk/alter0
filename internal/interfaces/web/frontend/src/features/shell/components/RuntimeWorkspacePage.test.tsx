@@ -68,6 +68,7 @@ function buildController(): RuntimeWorkspacePageController {
 function renderRuntimeWorkspacePage(
   setRuntimeSessionRail = vi.fn(),
   controller = buildController(),
+  contextOverrides: Partial<WorkbenchContextValue> = {},
 ) {
   const contextValue: WorkbenchContextValue = {
     route: "chat",
@@ -82,6 +83,7 @@ function renderRuntimeWorkspacePage(
     closeMobileNav: vi.fn(),
     closeMobileSessionPane: vi.fn(),
     setRuntimeSessionRail,
+    ...contextOverrides,
   };
 
   const view = render(
@@ -184,6 +186,35 @@ describe("RuntimeWorkspacePage", () => {
       expect(onDelete).toHaveBeenCalledTimes(1);
     } finally {
       confirmSpy.mockRestore();
+    }
+  });
+
+  it("renders the mobile composer in a top-level portal and leaves only a spacer in the workspace body", () => {
+    const controller = buildController();
+    controller.composerNode = (
+      <footer className="runtime-composer-shell" data-testid="runtime-composer">
+        composer
+      </footer>
+    );
+
+    const { container, unmount } = renderRuntimeWorkspacePage(vi.fn(), controller, {
+      isMobileViewport: true,
+    });
+
+    try {
+      const workspaceBody = container.querySelector(".runtime-workspace-body");
+      const composer = screen.getByTestId("runtime-composer");
+      const portalHost = document.body.querySelector("[data-runtime-composer-portal-host='chat']");
+
+      expect(workspaceBody).toBeInTheDocument();
+      expect(workspaceBody?.querySelector(".runtime-composer-shell")).not.toBeInTheDocument();
+      expect(workspaceBody?.querySelector("[data-runtime-composer-spacer='chat']")).toBeInTheDocument();
+      expect(portalHost).toContainElement(composer);
+      expect(portalHost).toHaveAttribute("data-runtime-composer-view", "conversation");
+      expect(portalHost).not.toHaveAttribute("data-runtime-view");
+    } finally {
+      unmount();
+      expect(document.body.querySelector("[data-runtime-composer-portal-host='chat']")).not.toBeInTheDocument();
     }
   });
 

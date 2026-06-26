@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode, type TouchEvent } from "react";
+import { createPortal } from "react-dom";
 import { useWorkbenchContext, type WorkbenchSessionRail } from "../../../app/WorkbenchContext";
 import { RuntimeComposer } from "./RuntimeComposer";
 import { RuntimeSessionList, type RuntimeSessionListGroup } from "./RuntimeSessionList";
@@ -150,6 +151,7 @@ export type RuntimeWorkspacePageController = {
 export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorkspacePageController }) {
   const {
     route,
+    isMobileViewport,
     setRuntimeSessionRail,
   } = useWorkbenchContext();
   const [openActionMenuID, setOpenActionMenuID] = useState("");
@@ -373,23 +375,47 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
       />
     </RuntimeWorkspaceScreen>
   ), [controller.screen, controller.timeline]);
+  const composerNode = controller.composerNode ?? (controller.composer ? <RuntimeComposer {...controller.composer} /> : null);
+  const composerPortalView = route === "terminal" ? "terminal" : "conversation";
+  const mobileComposerPortal = isMobileViewport && composerNode && typeof document !== "undefined"
+    ? createPortal(
+      <div
+        className="runtime-composer-portal-host"
+        data-runtime-composer-portal-host={route}
+        data-runtime-composer-view={composerPortalView}
+      >
+        {composerNode}
+      </div>,
+      document.body,
+    )
+    : null;
+  const workspaceFooter = isMobileViewport && composerNode ? (
+    <div
+      className="runtime-composer-spacer"
+      data-runtime-composer-spacer={route}
+      aria-hidden="true"
+    />
+  ) : composerNode;
 
   return (
-    <RuntimeWorkspaceShell
-      {...controller.shell}
-      sessionPanePlacement="navigation"
-      sessionPaneProps={{
-        "data-runtime-session-pane": route,
-        ...controller.shell.sessionPaneProps,
-      }}
-      rootProps={{
-        ...controller.shell.rootProps,
-        "data-runtime-workspace-page": "true",
-      }}
-      sessionPaneBody={sessionPaneBody}
-      workspaceHeader={workspaceHeader}
-      workspaceContent={workspaceContent}
-      workspaceFooter={controller.composerNode ?? (controller.composer ? <RuntimeComposer {...controller.composer} /> : null)}
-    />
+    <>
+      <RuntimeWorkspaceShell
+        {...controller.shell}
+        sessionPanePlacement="navigation"
+        sessionPaneProps={{
+          "data-runtime-session-pane": route,
+          ...controller.shell.sessionPaneProps,
+        }}
+        rootProps={{
+          ...controller.shell.rootProps,
+          "data-runtime-workspace-page": "true",
+        }}
+        sessionPaneBody={sessionPaneBody}
+        workspaceHeader={workspaceHeader}
+        workspaceContent={workspaceContent}
+        workspaceFooter={workspaceFooter}
+      />
+      {mobileComposerPortal}
+    </>
   );
 }

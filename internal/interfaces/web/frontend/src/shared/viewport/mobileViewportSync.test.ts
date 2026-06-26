@@ -1,7 +1,6 @@
 import { createMobileViewportSyncController } from "./mobileViewportSync";
 import {
   MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS,
-  MOBILE_VIEWPORT_COMPOSER_OFFSET_HOLD_MS,
 } from "./mobileViewport";
 
 class MockVisualViewport extends EventTarget {
@@ -33,6 +32,7 @@ function setWindowSize(width: number, height: number) {
 describe("shared viewport mobileViewportSync", () => {
   beforeEach(() => {
     document.documentElement.style.removeProperty("--mobile-viewport-height");
+    document.documentElement.style.removeProperty("--mobile-viewport-offset-top");
     document.documentElement.style.removeProperty("--keyboard-offset");
     document.documentElement.style.removeProperty("--keyboard-composer-offset");
   });
@@ -54,6 +54,7 @@ describe("shared viewport mobileViewportSync", () => {
     visualViewport.dispatchEvent(new Event("resize"));
 
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("520px");
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-offset-top")).toBe("0px");
     expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("332px");
     expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("332px");
 
@@ -61,9 +62,7 @@ describe("shared viewport mobileViewportSync", () => {
     input.remove();
   });
 
-  it("keeps the composer offset stable through transient visual viewport top shifts", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1000);
+  it("publishes visual viewport top shifts without moving root chrome", () => {
     const visualViewport = new MockVisualViewport(430, 932);
     const input = document.createElement("textarea");
     document.body.appendChild(input);
@@ -75,27 +74,23 @@ describe("shared viewport mobileViewportSync", () => {
 
     const controller = createMobileViewportSyncController();
 
-    try {
-      input.focus();
-      visualViewport.height = 620;
-      visualViewport.dispatchEvent(new Event("resize"));
-      expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
-      expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("312px");
+    input.focus();
+    visualViewport.height = 620;
+    visualViewport.dispatchEvent(new Event("resize"));
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("312px");
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-offset-top")).toBe("0px");
 
-      visualViewport.offsetTop = 312;
-      visualViewport.dispatchEvent(new Event("scroll"));
+    visualViewport.offsetTop = 312;
+    visualViewport.dispatchEvent(new Event("scroll"));
 
-      expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("620px");
-      expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
-      expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("312px");
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("620px");
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-offset-top")).toBe("312px");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("0px");
 
-      vi.advanceTimersByTime(MOBILE_VIEWPORT_COMPOSER_OFFSET_HOLD_MS + 16);
-      expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("0px");
-    } finally {
-      controller.destroy();
-      input.remove();
-      vi.useRealTimers();
-    }
+    controller.destroy();
+    input.remove();
   });
 
   it("clears keyboard offset when the focused input blurs or the layout leaves mobile mode", () => {
@@ -125,6 +120,7 @@ describe("shared viewport mobileViewportSync", () => {
     setWindowSize(1280, 900);
     window.dispatchEvent(new Event("resize"));
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("100dvh");
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-offset-top")).toBe("0px");
     expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("0px");
 
     controller.destroy();

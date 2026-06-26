@@ -1,0 +1,129 @@
+/* Mobile runtime keyboard isolation: dynamic viewport owns keyboard resizing; only inner screens scroll. */
+@media (max-width: 1100px) {
+  .app-shell,
+  .app-shell.info-mode,
+  .app-shell.nav-collapsed,
+  .app-shell.nav-collapsed.info-mode {
+    position: relative;
+    min-height: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    transform: none !important;
+    transition: none;
+  }
+
+  .workbench-main,
+  .chat-pane,
+  .chat-pane:not(.page-mode),
+  .chat-pane.page-mode,
+  [data-runtime-view="conversation"],
+  [data-runtime-view="terminal"],
+  .runtime-workspace,
+  .runtime-workspace-body {
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    transform: none;
+  }
+
+  .runtime-workspace-body {
+    position: relative;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    isolation: isolate;
+  }
+
+  [data-runtime-view="conversation"] .runtime-workspace-body,
+  [data-runtime-view="terminal"] .runtime-workspace-body,
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-mobile-header,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-mobile-header,
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-head,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-head,
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-panel,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-panel {
+    transform: none !important;
+    transition: none;
+  }
+
+  .runtime-workspace-panel {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .runtime-workspace-screen {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .runtime-composer-spacer {
+    height: var(--runtime-composer-rest-inset, 0px);
+    flex-shrink: 0;
+    min-height: 0;
+    pointer-events: none;
+  }
+
+  .runtime-composer-shell,
+  .runtime-composer-portal-host .runtime-composer-shell {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0 !important;
+    z-index: 80;
+    width: 100%;
+    max-width: 100%;
+    transform: none !important;
+    transition: none;
+  }
+}
+
+@media (max-width: 760px) {
+  [data-runtime-view="conversation"] .runtime-workspace-body,
+  [data-runtime-view="terminal"] .runtime-workspace-body,
+  .runtime-workspace-body[data-runtime-view="conversation"],
+  .runtime-workspace-body[data-runtime-view="terminal"] {
+    --runtime-mobile-header-fixed-height: 56px;
+    grid-template-rows: var(--runtime-mobile-header-fixed-height) minmax(0, 1fr) auto;
+  }
+
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-mobile-header,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-mobile-header,
+  .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-mobile-header,
+  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-workspace-mobile-header {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 90;
+    min-height: var(--runtime-mobile-header-fixed-height);
+    transform: translate3d(0, var(--mobile-viewport-offset-top, 0px), 0) !important;
+    transition: none !important;
+    animation: none !important;
+    will-change: transform;
+    backface-visibility: hidden;
+    contain: layout paint;
+  }
+
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-head,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-head,
+  .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-head,
+  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-workspace-head {
+    display: none;
+  }
+
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-panel,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-panel,
+  .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-panel,
+  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-workspace-panel {
+    grid-row: 2;
+  }
+
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-composer-spacer,
+  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-composer-spacer,
+  .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-composer-spacer,
+  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-composer-spacer {
+    grid-row: 3;
+  }
+}
