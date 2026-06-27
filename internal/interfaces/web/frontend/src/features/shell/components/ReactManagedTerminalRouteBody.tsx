@@ -22,6 +22,7 @@ import {
   isCodexShellSession,
 } from "./codexSlashCommands";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
+import { runtimeSessionEndpoint } from "./runtimeSessionApi";
 import type { RuntimeTimelineItem, RuntimeTimelineProcessEvent } from "./RuntimeTimeline";
 import { normalizeText, RouteMarkdownContent } from "./RouteBodyPrimitives";
 import {
@@ -310,6 +311,7 @@ const SCROLL_BOTTOM_ANCHOR_THRESHOLD = 24;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 const TERMINAL_NEW_SESSION_PLACEHOLDER_ID = "terminal-new-placeholder";
 const TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.attachments.v1";
+const TERMINAL_RUNTIME_SNAPSHOT_STORAGE_KEY = "alter0.web.terminal.runtime_snapshot.v1";
 const TERMINAL_PENDING_DRAFT_KEY = "__pending__";
 const TERMINAL_HISTORY_PAGE_TURN_LIMIT = 20;
 export const TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -341,6 +343,13 @@ let terminalRuntimeCache: TerminalRuntimeCacheSnapshot | null = null;
 
 export function resetTerminalRuntimeCache() {
   terminalRuntimeCache = null;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.removeItem(TERMINAL_RUNTIME_SNAPSHOT_STORAGE_KEY);
+    } catch {
+      // Ignore localStorage cleanup errors in tests and private browsing contexts.
+    }
+  }
 }
 
 function resolveLanguage(): "en" | "zh" {
@@ -473,7 +482,7 @@ async function uploadTerminalSessionAttachments(
       preview_url?: string;
     }>;
   }>(
-    `/api/sessions/${encodeURIComponent(sessionID)}/attachments`,
+    runtimeSessionEndpoint("terminal", `${encodeURIComponent(sessionID)}/attachments`),
     {
       attachments: pending.map((attachment) => ({
         name: attachment.name,
@@ -702,17 +711,56 @@ function readTerminalRuntimeCache(): TerminalRuntimeCacheSnapshot | null {
   };
 }
 
+function readLongTermTerminalRuntimeCache(): TerminalRuntimeCacheSnapshot | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(TERMINAL_RUNTIME_SNAPSHOT_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const cache = JSON.parse(raw) as Partial<TerminalRuntimeCacheSnapshot>;
+    if (Date.now() - Number(cache.cachedAt || 0) > TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS) {
+      window.localStorage.removeItem(TERMINAL_RUNTIME_SNAPSHOT_STORAGE_KEY);
+      return null;
+    }
+    const sessions = Array.isArray(cache.sessions)
+      ? cache.sessions
+          .filter((session): session is TerminalSession =>
+            Boolean(session && typeof session === "object" && normalizeText((session as TerminalSession).id)),
+          )
+          .map(cloneTerminalSession)
+      : [];
+    return {
+      cachedAt: Number(cache.cachedAt || Date.now()),
+      activeSessionID: normalizeText(cache.activeSessionID),
+      sessions: sortSessions(sessions),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function writeTerminalRuntimeCache(sessions: TerminalSession[], activeSessionID: string) {
-  terminalRuntimeCache = {
+  const snapshot = {
     cachedAt: Date.now(),
     activeSessionID,
     sessions: sortSessions(sessions).map(trimTerminalSessionForRuntimeCache),
   };
+  terminalRuntimeCache = snapshot;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(TERMINAL_RUNTIME_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {
+      // Ignore quota/private-mode persistence failures; memory cache remains available.
+    }
+  }
 }
 
 function resolveInitialTerminalRuntimeState(): TerminalRuntimeInitialState {
   const routeSessionID = readWorkbenchRouteSessionID("terminal");
-  const cache = readTerminalRuntimeCache();
+  const cache = readTerminalRuntimeCache() || readLongTermTerminalRuntimeCache();
   const sessions = cache?.sessions || [];
   const activeSessionID = resolveSessionIDReference(sessions, routeSessionID)
     || resolveSessionIDReference(sessions, cache?.activeSessionID || "")
@@ -1140,7 +1188,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   };
 
   const refreshList = async () => {
-    const payload = await apiClient.get<TerminalSessionsResponse>("/api/terminal/sessions");
+    const payload = await apiClient.get<TerminalSessionsResponse>(runtimeSessionEndpoint("terminal"));
     const nextSessions = (Array.isArray(payload.items) ? payload.items : []).filter(
       (session) => !deletedSessionIDsRef.current.has(session.id),
     );
@@ -1164,17 +1212,12 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     if (!sessionID || deletedSessionIDsRef.current.has(sessionID)) {
       return null;
     }
-    const query = new URLSearchParams();
     const beforeTurnID = normalizeAttachmentText(options.turnBefore);
-    if (beforeTurnID) {
-      query.set("turn_before", beforeTurnID);
-    }
-    if (typeof options.turnLimit === "number" && Number.isFinite(options.turnLimit) && options.turnLimit > 0) {
-      query.set("turn_limit", String(Math.floor(options.turnLimit)));
-    }
-    const queryString = query.toString();
     const payload = await apiClient.get<TerminalSessionResponse>(
-      `/api/terminal/sessions/${encodeURIComponent(sessionID)}${queryString ? `?${queryString}` : ""}`,
+      runtimeSessionEndpoint("terminal", encodeURIComponent(sessionID), {
+        turn_before: beforeTurnID,
+        turn_limit: options.turnLimit,
+      }),
     );
     const nextSession = payload.session || null;
     if (!nextSession || deletedSessionIDsRef.current.has(nextSession.id)) {
@@ -1204,7 +1247,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   };
 
   const createSession = async () => {
-    const payload = await apiClient.post<TerminalSessionResponse>("/api/terminal/sessions", {});
+    const payload = await apiClient.post<TerminalSessionResponse>(runtimeSessionEndpoint("terminal"), {});
     if (!payload.session) {
       return null;
     }
@@ -1559,7 +1602,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     restoreMobileSessionPaneRef.current = keepMobileSessionPaneOpen;
     setDeletingSessionID(sessionID);
     try {
-      await apiClient.delete(`/api/terminal/sessions/${encodeURIComponent(sessionID)}`);
+      await apiClient.delete(runtimeSessionEndpoint("terminal", encodeURIComponent(sessionID)));
       deletedSessionIDsRef.current.add(sessionID);
       setSessions((current) => {
         const next = current.filter((session) => session.id !== sessionID);
@@ -1579,7 +1622,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     setPinningSessionID(sessionID);
     try {
       const payload = await apiClient.post<TerminalSessionResponse>(
-        `/api/terminal/sessions/${encodeURIComponent(sessionID)}/pin`,
+        runtimeSessionEndpoint("terminal", `${encodeURIComponent(sessionID)}/pin`),
         { pinned },
       );
       setSessions((current) =>
@@ -1702,7 +1745,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         return;
       }
       const payload = await apiClient.post<TerminalSessionResponse>(
-        `/api/terminal/sessions/${encodeURIComponent(session.id)}/input`,
+        runtimeSessionEndpoint("terminal", `${encodeURIComponent(session.id)}/input`),
         { input: content, attachments, skill_ids: selectedSkillIDs },
       );
       window.localStorage.removeItem(`terminal:${session.id}`);
@@ -1752,7 +1795,10 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     }
     try {
       const payload = await apiClient.get<RuntimeTraceEventDetailResponse>(
-        `/api/terminal/sessions/${encodeURIComponent(activeSession.id)}/turns/${encodeURIComponent(turnID)}/events/${encodeURIComponent(eventID)}`,
+        runtimeSessionEndpoint(
+          "terminal",
+          `${encodeURIComponent(activeSession.id)}/turns/${encodeURIComponent(turnID)}/events/${encodeURIComponent(eventID)}`,
+        ),
       );
       if (payload.event) {
         setEventDetails((current) => ({ ...current, [key]: payload.event as RuntimeTraceEventDetail }));

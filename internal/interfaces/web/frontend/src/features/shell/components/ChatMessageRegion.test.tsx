@@ -257,8 +257,8 @@ describe("ChatMessageRegion", () => {
                 name: "diagram.png",
                 contentType: "image/png",
                 size: 1024,
-                previewURL: "/api/sessions/session-1/attachments/image-1/preview",
-                assetURL: "/api/sessions/session-1/attachments/image-1/original",
+                previewURL: "/api/chat/sessions/session-1/attachments/image-1/preview",
+                assetURL: "/api/chat/sessions/session-1/attachments/image-1/original",
               },
             ],
           }),
@@ -275,7 +275,7 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
     expect(article.querySelector(".user-message-shell")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-attachment-gallery='message-2']")).toBeInTheDocument();
-    expect(image).toHaveAttribute("src", "/api/sessions/session-1/attachments/image-1/original");
+    expect(image).toHaveAttribute("src", "/api/chat/sessions/session-1/attachments/image-1/original");
     expect(screen.getByText("diagram.png")).toBeInTheDocument();
   });
 
