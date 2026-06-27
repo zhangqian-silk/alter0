@@ -156,10 +156,10 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 - Terminal 会话列表与工作区详情按不同周期刷新。
 - Terminal 刷新策略需按当前会话状态调整：`busy` 会话可继续刷新会话详情与列表，`ready` 会话停止周期轮询，仅在页面重新可见或重新获得焦点时补拉列表与当前会话详情；用户正在滚动输出区时暂停当前会话明细刷新，避免阅读过程中出现卡顿或滚动中断。
 - 页面隐藏、输入聚焦、滚动活跃期间自动降频。
-- Terminal 单会话详情默认裁剪到最新 `20` 个 turns，并按约 `256KiB` 的 turns 页预算控制单次响应体；接口支持 `turn_limit` 与 `turn_before` 分批读取更早 turns，并返回 `turns_paging` 标识总量、页边界、`byte_limit / approx_bytes` 和是否仍有更早内容。前端刷新当前活动会话时按 turn id 合并分页结果，避免长会话在 page-activation 或轮询中被最新片段截断。
+- Terminal 单会话详情默认裁剪到最新 `20` 个 turns，并按约 `256KiB` 的 turns 页预算控制单次响应体；接口支持 `turn_limit` 与 `turn_before` 分批读取更早 turns，并返回 `turns_paging` 标识总量、页边界、`byte_limit / approx_bytes` 和是否仍有更早内容。前端访问、切换或刷新当前活动会话时先拉取最新详情，再按 `turns_paging.has_more_before` 自动带 `turn_before` 渐进补齐更早 turns，并按 turn id 合并分页结果，避免长会话在 page-activation、轮询或输入返回中被最新片段截断。
 - Terminal 打开已有 turn 的会话、刷新恢复当前会话或切换到其他已有输出会话后，`terminal-chat-screen` 初始视口必须落到最新输出所在底部；该定位只作用于会话进入阶段，后续轮询刷新、前后台恢复、Process 展开收起或用户正在滚动输出区时不得强制把视口拉回底部。
 - 页面从后台恢复到前台、浏览器重新把当前 Terminal 页激活为可见页、bfcache 恢复或网络恢复在线时，必须复用运行页共享的 page-activation 链路，立即补拉会话列表与当前活动会话详情，再回到对应状态下的轮询节奏。
-- Terminal 前端在 SPA 路由切换导致组件卸载后，应保留浏览器内存级运行态缓存，用于回到 Terminal 时立即恢复最近会话列表和当前活动会话的最新少量 turns。缓存只作为首屏快照使用，必须在接口响应后按现有列表与单会话详情合并规则更新；缓存写入需裁剪 turns 数量并设置 8 小时 TTL，超过 TTL 后不得参与首屏渲染。
+- Terminal 前端在 SPA 路由切换导致组件卸载后，应保留浏览器内存级运行态缓存，用于回到 Terminal 时立即恢复最近会话列表和当前活动会话的完整已加载 turns。缓存只作为首屏快照使用，必须在接口响应后按现有列表与单会话详情合并规则更新；缓存写入不裁剪已加载 turns，TTL 为 24 小时，每次访问、切换、刷新或前台恢复都会按最新合并结果刷新缓存时间，超过 TTL 后不得参与首屏渲染。
 - Terminal 会话在列表中执行删除并确认成功后，前端必须保持当前会话列表面板状态不变；无论删除的是历史会话还是当前活动会话，都不得因为删除动作自动收起移动端 `Sessions` 抽屉或桌面侧栏上下文。该恢复只允许兜住删除造成的那一次被动收起，不能劫持用户后续的主动关闭；用户点击 `Hide`、再次点击 `Sessions` 按钮或点击抽屉外部遮罩后，面板必须正常关闭。同时继续在本地屏蔽该 `session_id`，即使后续轮询或 page-activation 补拉暂时返回陈旧列表，也不得把已删除项重新插回当前会话侧栏。
 - Terminal 当前稳定入口为 `/terminal`，当前活动会话需同步写入 URL query `session_id=<8位短hash>`；刷新、直接打开 `/terminal?session_id=<8位短hash>` 或浏览器恢复标签页时，前端先按该参数恢复指定 Terminal 会话，只有参数缺失或目标会话已不存在时，才允许回退到列表首项或本地草稿恢复逻辑。
 - Terminal 单步过程详情与 Chat `Thinking / 已思考` 单步详情共用同一套 step meta 与 detail block 渲染规则：步骤行统一展示来自 `RuntimeTraceEvent` 的类型、耗时与状态；说明、markdown、reasoning、plan、log 和文本型 tool output 使用富文本正文块，terminal、代码、diff、tool input 与 JSON 输出使用等宽内容块；block 标题、文件名与起始行号保留在详情头部，状态只在步骤行 meta 中展示。

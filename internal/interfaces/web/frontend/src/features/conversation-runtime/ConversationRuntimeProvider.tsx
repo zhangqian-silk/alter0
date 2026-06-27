@@ -50,8 +50,8 @@ const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
 const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 const CHAT_HISTORY_PAGE_TURN_LIMIT = 20;
-export const CHAT_RUNTIME_CACHE_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
-const CHAT_LONG_TERM_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const CHAT_RUNTIME_CACHE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const CHAT_LONG_TERM_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function chatTerminalSessionEndpoint(
   path: string = "",
@@ -1252,11 +1252,11 @@ function normalizeTerminalSession(
     ? item.turns.flatMap((turn) => normalizeTerminalTurnMessages(id, turn))
     : null;
   const incomingPaging = normalizeTerminalTurnPaging(item.turns_paging);
-  const shouldMergePagedMessages = parsedMessages
+  const shouldMergeTerminalMessages = parsedMessages
     && previous?.messages.length
-    && isPagedTerminalTurnPayload(item, incomingPaging);
+    && (isPagedTerminalTurnPayload(item, incomingPaging) || parsedMessages.length < previous.messages.length);
   const messages = parsedMessages
-    ? (shouldMergePagedMessages
+    ? (shouldMergeTerminalMessages
       ? mergePagedMessages(previous.messages, parsedMessages)
       : previous?.messages.length && !shouldUseParsedMessages(previous.messages, parsedMessages)
         ? previous.messages

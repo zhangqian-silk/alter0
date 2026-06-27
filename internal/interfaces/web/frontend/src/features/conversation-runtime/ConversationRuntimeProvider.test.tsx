@@ -93,6 +93,20 @@ function MessageTextHarness() {
   );
 }
 
+function SendMessageTextHarness() {
+  const runtime = useConversationRuntime();
+  return (
+    <div>
+      <button type="button" onClick={() => void runtime.sendPrompt("new prompt")}>
+        send prompt
+      </button>
+      <output data-testid="message-texts">
+        {runtime.activeSession?.messages.map((message) => message.text).join("|") || ""}
+      </output>
+    </div>
+  );
+}
+
 function InspectorHarness() {
   const runtime = useConversationRuntime();
 
@@ -345,7 +359,7 @@ describe("ConversationRuntimeProvider", () => {
   });
 
   it("keeps the Chat runtime cache alive for long single-device route gaps", () => {
-    expect(CHAT_RUNTIME_CACHE_SESSION_TTL_MS).toBe(8 * 60 * 60 * 1000);
+    expect(CHAT_RUNTIME_CACHE_SESSION_TTL_MS).toBe(24 * 60 * 60 * 1000);
   });
 
   it("opens a default-collapsed completed process on the first toggle", async () => {
@@ -592,7 +606,7 @@ describe("ConversationRuntimeProvider", () => {
     window.sessionStorage.removeItem(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY);
     window.sessionStorage.removeItem(RECENT_SESSION_SNAPSHOT_STORAGE_KEY);
 
-    nowSpy.mockReturnValue(1000 + (31 * 24 * 60 * 60 * 1000));
+    nowSpy.mockReturnValue(1000 + (24 * 60 * 60 * 1000) + 1);
     const listRequest = deferred<{ items?: unknown[] }>();
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -1158,6 +1172,65 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("assistant-process-status")).toHaveTextContent("");
     expect(apiClientMock.post).toHaveBeenCalledWith("/api/terminal/sessions/alter0-chat/input?scope=chat", expect.any(Object));
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("appends a returned new Chat turn without replacing loaded history", async () => {
+    const existingTurns = chatTurnFixtures(3, "existing answer");
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "History session",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: existingTurns,
+            }],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+        return {
+          session: {
+            id: "alter0-chat",
+            title: "History session",
+            status: "ready",
+            created_at: "2026-04-23T03:30:00Z",
+            turns: [{
+              id: "turn-new",
+              prompt: "new prompt",
+              status: "success",
+              started_at: "2026-04-23T04:00:00Z",
+              finished_at: "2026-04-23T04:00:02Z",
+              final_output: "new answer",
+            }],
+          },
+        };
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SendMessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("existing answer 3"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send prompt" }));
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("new answer"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("existing answer 1");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("existing answer 3");
   });
 
   it("keeps polling a busy Terminal-backed Chat session until its final output is restored", async () => {

@@ -175,12 +175,12 @@ Agent 请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 - `Chat` Composer 支持最多 5 张图片附件：用户可通过附件按钮选择图片，也可在 PC 输入框内直接使用 `Ctrl+V` 粘贴剪贴板图片；前端按会话草稿缓存附件、提供缩略图预览与移除操作，用户消息时间线与最近会话恢复仅保留稳定图片资产引用，不再重复持久化原始大图 payload；缩略条继续消费预览图，但再次查看、时间线回显与放大预览统一回到原图资源。助手消息中的 markdown 图片会直接以内联图片方式懒加载显示。仅支持视觉输入的模型允许发送带图消息；图片请求不会切到异步 Task，也不会在模型链失败后静默降级到 Codex 文本执行；用户显式选择 `Codex` 时，已落盘的图片原图路径会通过 Codex CLI `-i` 参数进入 `Codex Direct`，无需在提示词里额外说明图片已经存在。
 - `Chat` 的左侧会话列表与消息时间线现在以 Chat scope 的 Terminal-compatible session store 为准：运行页通过 `/api/terminal/sessions?scope=chat` 和 `/api/terminal/sessions/{session_id}?scope=chat` 恢复会话摘要、Skill 选择、附件引用、turn 历史与结构化 step；用户在会话配置面板调整 Skills 后，下一次 `POST /api/terminal/sessions/{session_id}/input?scope=chat` 会携带过滤后的 `skill_ids`。历史会话恢复出的 Skill 选择会按当前启用且非私有的公有 Skill 目录实时收敛，已删除或禁用的 Skill 不再显示为已选，也不会进入下一次输入 payload；新增勾选的 Skill 无需刷新即可作用于下一次发送。页面初始化中的详情回填若晚于本地新发消息，或集合接口暂时只返回较短历史，不得覆盖当前未完成或更新中的本地时间线。
 - `Chat` 刷新恢复采用“双层快照 + 服务端回源”策略：浏览器本地除当前活动会话外，还会保留最近会话列表的轻量快照；当服务端集合接口短暂漏掉某个刚创建或最近活跃的会话时，前端仍保留该会话在左侧列表中的可见性，并继续按 `session_id` 单独回源详情，避免刷新其他会话后新会话从列表里瞬时消失。即使集合接口已经返回当前会话的摘要项，只要本地仍残留 `Thinking...`、`Load failed`、历史 `streaming` 占位或当前会话最后一条仍是 user，运行页也会继续补拉单会话详情，并用服务端已持久化的 assistant 结果覆盖本地快照。
-- `Chat / Terminal` 单会话详情默认只返回最新 `20` 个 `turns`，并按约 `256KiB` 的 turns 页预算控制单次响应体；`turns_paging` 暴露数量边界与 `byte_limit / approx_bytes`。长会话可用 `turn_limit` 与 `turn_before` 分批读取更早历史。前端按 turn/message id 与时间顺序合并分页详情，后台恢复、刷新、轮询或输入返回的轻量片段不会截断已加载历史；发送后若响应只包含新 turn，已加载的旧历史仍保留在当前时间线。
+- `Chat / Terminal` 单会话详情默认只返回最新 `20` 个 `turns`，并按约 `256KiB` 的 turns 页预算控制单次响应体；`turns_paging` 暴露数量边界与 `byte_limit / approx_bytes`。长会话可用 `turn_limit` 与 `turn_before` 分批读取更早历史。前端访问或切换会话时先加载最新详情，再依据 `turns_paging.has_more_before` 在后台渐进补齐更早页；分页详情、后台恢复、刷新、轮询或输入返回的轻量片段都会按 turn/message id 与时间顺序合并，不会截断已加载历史；发送后若响应只包含新 turn，已加载的旧历史仍保留在当前时间线。
 - `Chat` 已接受请求后若服务端历史暂时只有最新 `user` 消息，前端继续把当前活动会话视为待恢复状态并重试单会话详情，直到 assistant 回复、任务消息或失败态落库；该中间态不会被当成完整对话停止等待。
 - `Chat` 的 Web 会话执行已与浏览器请求生命周期解耦：页面刷新、请求断开或标签页短暂切走不会取消服务端已接受的会话执行；刷新后的恢复继续优先按当前 `session_id` 回源服务端详情与状态 registry，避免本轮已发出的消息因为前端断连而整轮丢失。
 - `Chat` 主入口不把浏览器上次活动会话当作固定锚点：访问 `/chat` 或从主导航切回 `Chat` 时会清理旧 `session_id`，并按服务端会话列表与本地最近快照的合并结果打开最新会话。用户在会话列表中显式点选某个 Chat 会话时，URL 使用 `/chat?session_id=<8位短hash>` 精确恢复该会话；`Terminal` 继续使用 `/terminal?session_id=<8位短hash>` 恢复当前终端会话。历史 `/chat?session_id=<8位短hash>` 继续按 Chat 会话恢复对应历史会话。Settings 统一进入 `/settings`，页内切换 Runtime、Skills、Memory 与 Schedules 时不改写工作台 path。
 - `Chat / Terminal` 在页面从后台回到前台、浏览器重新把当前页激活为可见工作页、bfcache 恢复或网络恢复在线时，共享 page-activation 刷新链路：`Chat` 会立即按当前路由补拉会话列表、当前活动会话详情和 pending task 状态；`Terminal` 会同步刷新会话列表与当前活动会话详情，避免后台期间的最新输出、标题或状态停留在旧视图。
-- `Chat / Terminal` 在同一浏览器工作台内维护 8 小时运行态内存缓存：切到 Settings、Chat、Terminal 或其他页面后再返回时，未过期的会话列表会先用于首屏恢复；`Chat` 的运行态缓存保留当前已加载会话的完整消息，不再只裁剪最近若干条。`Chat` 还会把当前已加载会话与完整消息写入 30 天 `localStorage` 长期快照；刷新、关闭后重开或 sessionStorage 丢失时，前端先用该快照恢复首屏，再等待会话列表与单会话详情接口回源合并。过期快照不会参与首屏渲染；服务端 Session history 仍是最终事实源。
+- `Chat / Terminal` 在同一浏览器工作台内维护 24 小时运行态内存缓存：切到 Settings、Chat、Terminal 或其他页面后再返回时，未过期的会话列表会先用于首屏恢复；运行态缓存保留当前已加载会话的完整消息或 turns，不裁剪历史。`Chat` 还会把当前已加载会话与完整消息写入 24 小时 `localStorage` 快照；刷新、关闭后重开或 sessionStorage 丢失时，前端先用该快照恢复首屏，再等待会话列表与单会话详情接口回源合并。每次访问、切换、刷新或前台恢复都会刷新缓存时间；过期快照不会参与首屏渲染；服务端 Session history 仍是最终事实源。
 - `Chat` 不再维护独立 Conversation Runtime registry；会话存在性、状态、置顶、turn 历史和恢复都沿用 Terminal session store。前端发送前会再次按当前 Skill 目录计算有效选择，确保历史会话里的删除项不会随旧状态重新注入。即使浏览器刷新或请求中断，服务端仍保留该会话的存在性、最近输出与恢复状态，不再把会话可见性完全交给客户端判断。
 - `Terminal` 页面 Composer 支持最多 5 个附件：图片继续提供缩略图预览与移除，常见文本/文档文件以文件条目展示；用户可通过附件按钮选择文件，也可在 PC 输入框内直接使用 `Ctrl+V` 粘贴剪贴板图片，普通文本粘贴继续保持原生输入行为。附件统一先写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，提交时仅发送稳定附件引用。图片继续映射为 Codex CLI `-i` 输入；普通文件会同步写入当前 Terminal 工作区 `input-attachments/<turn_id>/`，并在同轮 prompt 中注入可直接读取的 workspace 相对路径，供 Codex 按需直接读盘。Terminal turn 历史里的图片再次查看时统一优先使用原图资源，缩略位仍保留预览图。Terminal Codex CLI 远端 compact 失败时仅把当前 turn 标记失败，保留已持久化线程标识、会话历史和工作区；下一次输入继续 resume 同一运行线程。Terminal workspace header 继续显示当前会话状态信号，信号固定贴在会话标题左侧，右侧只保留 `Details`，状态名称仅保留给可访问性语义；左侧会话列表只在 `busy` 会话标题旁显示 loading，其余状态不显示行内状态灯。Terminal `Process` 单步状态只在步骤行右侧呈现，展开后的详情块保留标题、文件与正文，不重复 `Ready / Failed` 等状态 badge。Terminal 会话列表为空时先展示与 Chat 一致的 active `New` 占位；该占位不显示三点菜单，`Details` 禁用；点击占位或移动端顶部 `New` 只会关闭会话抽屉并聚焦输入框，不立即创建服务端 Terminal session，首次发送输入或添加附件时才落成真实会话，真实会话在首条输入命名前也使用 `New` 作为默认标题。
 - `Terminal` 移动端的命令与 prompt 气泡保持自然整词换行：路径、flag 和短 shell 片段优先按空格或真实长单词边界断行，不允许因为窄屏收缩把 `/usr/bin/bash -lc 'ls -la'` 这类输入压成逐字或逐 token 的碎行。
@@ -223,7 +223,7 @@ Agent 请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 - `Chat` 消息区在 assistant 结果与 `Process` 展开收起期间采用逐条 patch；时间线渲染按单条消息缓存稳定 Markdown 与 Process 装配结果，避免长输出时反复重建历史消息、Markdown 与消息列表，确保导航、发送、详情和会话切换按钮保持可响应。
 - `Chat` 在同一会话内继续按 `user -> assistant` 追加历史；每轮结果只允许更新当前这条尚未收口的 assistant 占位，已收口历史不得被迟到的会话详情刷新改写。
 - 执行过程通过 Terminal session `turns[].runtime_trace_events` 收口；Chat 与 Terminal 前端直接消费同一组 `RuntimeTraceEvent`，并按用户选择的披露类型渲染。
-- `Chat` 会话详情首个请求只取最近 turn 页；若响应带有 `turns_paging.has_more_before`，前端会继续按 `turn_before` 在后台补齐更早历史并按消息 id/时间合并。
+- `Chat / Terminal` 会话详情首个请求只取最近 turn 页；若响应带有 `turns_paging.has_more_before`，前端会继续按 `turn_before` 在后台补齐更早历史并按 turn/message id 与时间合并。
 - 请求断开或刷新后，前端优先回源当前会话详情，用服务端已持久化的最终消息覆盖本地占位态，只在恢复失败时才收敛为失败态，避免同一条 Chat 请求被浏览器重复提交。
 - 若当前消息已进入 运行时执行链，前端页面切换、标签页隐藏、请求断开或浏览器主动取消请求都不会中断后端执行；最终结果仍会落到会话历史。
 - 浏览器本地缓存里的历史消息若残留 `streaming` 状态，页面恢复时会自动收敛为失败态或任务态，不再把旧消息长期停留在 `In Progress`。
@@ -243,7 +243,7 @@ Agent 请求按用户交互形态分为 `Chat` 与 `Terminal` 两类：
 - 预览短哈希 host 与主域工作台共用同一套登录保护；访问 `https://<session_short_hash>.alter0.cn` 时可直接打开该 host 自身的 `/login` 登录页，登录 cookie 会共享到 `*.alter0.cn`。主运行时的 `supervisor -> web child` 继续继承同一套 `web_login_password`，默认 `web` 全栈预览内部托管的 workspace service 子进程才会去掉第二层登录，避免主域与预览 host 各自重复登录。
 - 运行时执行过程会在运行时产出结构化 `RuntimeTraceEvent`，并通过 Terminal session `turns[].runtime_trace_events`、Task 结果与历史恢复一并返回；前端按可控事件类型渲染可折叠 `Process` 区块，不再维护 Chat 与 Terminal 两套过程数据结构。
 - Chat 回复中的 `Process` 与最终正文在收口后继续同时保留；刷新页面或从服务端会话历史恢复时，结构化步骤不会因最终正文已落库而丢失。
-- `Chat` 在浏览器刷新前会把当前活动会话的轻量快照写入 `sessionStorage`，并把完整已加载消息写入 30 天 `localStorage` 长期缓存；同时额外写入不含消息正文的会话信息缓存，避免完整消息缓存超限时会话列表也丢失。刷新后若服务端会话列表暂时还没返回该会话，前端先用本地快照保住当前会话与消息时间线，再按 `session_id` 补拉单会话详情，避免活跃会话短暂消失或被新的空白 `New` 会话顶替。
+- `Chat` 在浏览器刷新前会把当前活动会话的轻量快照写入 `sessionStorage`，并把完整已加载消息写入 24 小时 `localStorage` 缓存；同时额外写入不含消息正文的会话信息缓存，避免完整消息缓存超限时会话列表也丢失。刷新后若服务端会话列表暂时还没返回该会话，前端先用本地快照保住当前会话与消息时间线，再按 `session_id` 补拉单会话详情，避免活跃会话短暂消失或被新的空白 `New` 会话顶替。
 - Chat 请求一旦进入后端执行链，浏览器侧任何交互事件都不影响 Skill 本身的执行与会话持久化；断开后重新进入历史即可查看最终结果。
 - Runtime Profile 保留为历史配置模型；Chat 当前稳定入口不再依赖内置 Runtime Profile 或内置业务编排 预选能力。
 - Web `Chat` 独立入口与独立消息接口已移除；历史 Chat 会话仅在读取阶段迁移到 Chat 会话模型，并继续保留原目标 Skill 名称作为历史元数据。
