@@ -75,14 +75,14 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `GET /chat` 返回 Web Shell。
 - `GET /login` 与 `POST /login` 处理登录页和登录提交。
 - `GET /logout` 清理当前登录态。
-- `POST /api/terminal/sessions/{session_id}/input?scope=chat` 处理 Chat 的 Terminal-compatible 输入提交，是 Web Chat 当前唯一消息提交入口；Terminal 页面继续使用默认 scope 的 `/api/terminal/sessions/{session_id}/input`。
-- Web `Chat` 独立消息入口已移除；对话消息统一由 Chat-scoped Terminal session input 处理，运行页列表与详情由 Chat scope 的 Terminal session 接口恢复。
+- `POST /api/chat/sessions/{session_id}/input` 处理 Chat 的 Terminal-compatible 输入提交，是 Web Chat 当前唯一消息提交入口；Terminal 页面继续使用 `/api/terminal/sessions/{session_id}/input`。
+- Web `Chat` 独立消息入口已移除；对话消息统一由 Chat owner 的 Terminal-compatible session input 处理，运行页列表与详情由 `/api/chat/sessions` 系列接口恢复。
 - 上述消息接口在 `content` 之外还接受 `attachments[]`；当前稳定支持两种图片输入：首次上传时携带 `data_url`、文件名与 MIME 类型，或在同一 Session 内复用已上传的 `id + asset_url + preview_url` 资产引用。允许仅发送图片，服务端会补齐稳定占位文本并把图片载荷并入统一消息元数据。
-- `POST /api/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`；其中 `preview_url` 只用于缩略图位，历史消息回显与预览弹层必须优先读取 `asset_url` 原图。
+- `POST /api/chat/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`；其中 `preview_url` 只用于缩略图位，历史消息回显与预览弹层必须优先读取 `asset_url` 原图。
 - `Terminal` 页面 Composer 复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、缩略预览与历史回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`；其中缩略位继续使用 `preview_url`，再次查看时统一切回 `asset_url`。
-- assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
-- `GET /api/terminal/sessions?scope=chat` 返回 Chat 运行页会话摘要，至少包含标题、Skills 选择、创建时间、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。Terminal 默认 `/api/terminal/sessions` 不包含 Chat-scoped 会话。
-- `GET /api/terminal/sessions/{session_id}?scope=chat` 返回单个 Chat 运行页会话详情，默认只返回最新 turns 页，并通过 `turns_paging` 提供总量、页边界、`next_before_turn_id` 与是否仍有更早内容；前端继续按 `turn_before` 后台补齐更早 turns。详情至少包含 Terminal-compatible `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
+- assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/chat/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
+- `GET /api/chat/sessions` 返回 Chat 运行页会话摘要，至少包含标题、Skills 选择、创建时间、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。Terminal 默认 `/api/terminal/sessions` 不包含 Chat owner 会话。
+- `GET /api/chat/sessions/{session_id}` 返回单个 Chat 运行页会话详情，默认只返回最新 turns 页，并通过 `turns_paging` 提供总量、页边界、`next_before_turn_id` 与是否仍有更早内容；前端继续按 `turn_before` 后台补齐更早 turns。详情至少包含 Terminal-compatible `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
 - `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
 - `GET /api/sessions/{session_id}/messages` 查询会话消息。
 - `DELETE /api/sessions/{session_id}` 删除会话，并触发关联工作区和任务清理。
@@ -108,7 +108,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 未发送文本草稿在桌面端输入期间允许延迟写回浏览器缓存；当前输入值、切换前 flush、刷新后的草稿恢复和发送结果必须保持一致，不能为了持久化把每次按键都绑定到同步存储写入。
 - 页面刷新、跨设备重开或服务重启后，用户可恢复最近会话与历史消息；恢复结果需保留当前 Session 的目标 Skill、Model 与 Tools / Skills / MCP 选择。
 - 页面刷新时，前端需先用浏览器侧保存的当前活动会话快照恢复最近一条活跃 `Chat` 会话，避免服务端列表短暂缺席时把当前会话清空或替换为新的空白会话；随后再按 `session_id` 回源单会话详情，用服务端最新结果覆盖本地快照。
-- `POST /api/terminal/sessions/{session_id}/input?scope=chat` 在 Web 层接受请求后，后端执行与持久化不得再依赖浏览器连接持续存活；页面刷新、标签页切换、请求断开或前端取消只允许中断当前 HTTP 回传，不得直接取消本轮会话执行。
+- `POST /api/chat/sessions/{session_id}/input` 在 Web 层接受请求后，后端执行与持久化不得再依赖浏览器连接持续存活；页面刷新、标签页切换、请求断开或前端取消只允许中断当前 HTTP 回传，不得直接取消本轮会话执行。
 - `Chat` 的 URL query 只表达显式会话恢复：页面首次加载、刷新、手动粘贴 `/chat?session_id=<8位短hash>` 或浏览器恢复带 query 的标签页时，Chat 先读取 `session_id` 恢复目标会话。访问 `/chat` 或从主导航切回 `Chat` 时，工作台清理旧 `session_id`，并按服务端会话列表与本地最近快照的合并结果打开最新会话，避免上一次活动会话被 query 或 sessionStorage 固定。历史 `/chat?session_id=<8位短hash>` 入口继续按 Chat 会话恢复对应历史会话。
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
 - `Chat` 在同一 SPA 工作台内从 Chat 切到 Settings、Terminal 或其他页面再返回时，应优先使用浏览器内存级运行态缓存恢复会话列表、当前活动会话和完整已加载消息；缓存 TTL 为 24 小时，不裁剪当前已加载消息。该缓存只服务路由切换后的首屏恢复，不替代服务端历史或刷新恢复快照；会话列表和单会话详情接口返回后必须继续按现有合并规则更新视图并刷新缓存时间，超过 TTL 的缓存不得参与首屏渲染。
@@ -121,7 +121,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 ### Chat 消息语义
 
-- Chat 前端统一调用 `POST /api/terminal/sessions/{session_id}/input?scope=chat`；不得调用 `/api/messages`、`/api/messages/stream`，不得依赖 SSE 增量、保活帧、浏览器读流状态或本地 `Thinking` 过程步骤驱动消息区。
+- Chat 前端统一调用 `POST /api/chat/sessions/{session_id}/input`；不得调用 `/api/messages`、`/api/messages/stream`，不得依赖 SSE 增量、保活帧、浏览器读流状态或本地 `Thinking` 过程步骤驱动消息区。
 - Chat 发送后由 Terminal session 状态进入 `busy`；执行完成或失败后，用 input 返回结果或 Terminal session 详情恢复当前消息区。
 - 直连 Codex 的 `agent_message` 按输出频道区分正文与过程：`final` 或旧版无频道消息进入 assistant 最终正文，`commentary` 作为结构化过程事件进入消息内联 `Thinking / 已思考` 披露区，其他非最终频道不得作为最终 `output` 写入会话正文。
 - Chat 与 Terminal 的过程展示统一消费 `RuntimeTraceEvent`。事件 `kind/source/provider/role/status/lifecycle/blocks/action/duration_ms` 等字段只允许来自底层 SDK/CLI provider、工程 adapter 或 alter0 本地确定性注入，不允许用标题、正文、关键词或语言模式推断。Terminal turn 摘要直接提供 `runtime_trace_events`，前端只按 `RuntimeTraceEvent.kind` 过滤展示类型；事件详情通过 `/turns/{turn_id}/events/{event_id}` 读取。
@@ -221,7 +221,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 的会话列表、工作区外壳、聊天滚动区和输入区需输出 `runtime-*` 主契约并保留必要的 `terminal-* + conversation-*` 兼容 class，确保两条运行页与 `Terminal` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
 - `Chat` 首页 Composer 采用单一胶囊式助手输入面板：主 textarea 透明无内边框，工具栏与输入区处在同一白色 surface 内；工具栏不再显示 `Session` 会话设置按钮，只保留附件与发送等直接对话动作。附件入口使用回形针图标，文字 label 仅保留给可访问语义；桌面端输入面板按主阅读宽度居中，移动端压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，除 Composer 胶囊外不使用额外胶囊按钮、卡片边框或厚圆角表达层级；会话列表项与 `Details` 面板保持同一浅色 runtime 质感。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
 - `Chat` 在页面重新变为前台可见或浏览器重新把当前页激活时，必须复用运行页共享的 page-activation 补偿刷新链路：会话列表、当前活动会话详情与 pending task 状态都要立即回源。页面隐藏时暂停 pending task 定时轮询，恢复前台后再补偿检查，避免后台标签页持续发起任务状态请求。
-- `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat-scoped Terminal session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果，并继续按 `turn_before` 后台自动请求更早页，直到服务端标记没有更早内容；所有分页结果按消息 id 合并到已有时间线，后台恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息，也不得在后台前置旧消息时扩展当前可见窗口或强制滚动到底部。
+- `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat owner 的 session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果，并继续按 `turn_before` 后台自动请求更早页，直到服务端标记没有更早内容；所有分页结果按消息 id 合并到已有时间线，后台恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息，也不得在后台前置旧消息时扩展当前可见窗口或强制滚动到底部。
 - `Chat` 时间线到顶交互只负责展开本地已加载的隐藏消息批次；本地窗口已完全展开时，不再触发会话详情回源。服务端更早历史由 `ConversationRuntimeProvider` 基于 `turns_paging` 在后台按 `turn_before` 自动补齐，并按消息 id 与时间顺序合并进时间线。
 - `Chat` 发送新消息后，服务端输入响应、后续详情刷新或分页片段只允许按 turn/message id 与时间顺序合并进现有时间线；即使响应只包含新 turn 或最新轻量页，也不得替换掉用户当前已加载的旧历史。若追加前当前渲染窗口已经覆盖全部已加载消息，追加后可见窗口需同步扩容，避免旧消息被最新一轮挤出视图。
 - `Chat` 的浏览器缓存分为短期运行态、完整消息快照与轻量会话信息快照：24 小时运行态缓存保留当前已加载会话的完整消息，24 小时 `localStorage` 完整快照保留同一批会话与完整消息，用于刷新、重开或 sessionStorage 丢失时首屏恢复；轻量会话信息快照只保存标题、状态、置顶、模型与能力选择等元数据，用于完整消息缓存写入失败或被清理时恢复会话列表。缓存不得阻断服务端会话列表与单会话详情回源；当服务端返回更新历史时继续按现有分页合并规则覆盖或补齐本地快照，并刷新缓存时间。
