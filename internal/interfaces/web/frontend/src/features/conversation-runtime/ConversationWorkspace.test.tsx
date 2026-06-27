@@ -605,6 +605,69 @@ describe("ConversationWorkspace", () => {
     }));
   });
 
+  it("keeps the visible Chat window stable when background history is prepended", () => {
+    const messages = Array.from({ length: 40 }, (_value, index) => ({
+      id: `msg-${index + 1}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      text: `Message ${index + 1}`,
+      attachments: [],
+      route: "chat",
+      source: "chat",
+      error: false,
+      status: "done",
+      at: Date.parse("2026-04-23T09:00:00Z") + index,
+      processEvents: [],
+    }));
+    const olderMessages = Array.from({ length: 20 }, (_value, index) => ({
+      id: `older-msg-${index + 1}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      text: `Older message ${index + 1}`,
+      attachments: [],
+      route: "chat",
+      source: "chat",
+      error: false,
+      status: "done",
+      at: Date.parse("2026-04-23T08:00:00Z") + index,
+      processEvents: [],
+    }));
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Session with background history",
+      messages,
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    const { rerender } = render(<WorkspaceTestFrame overrides={{ isMobileViewport: false }} />);
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: messages.slice(-32),
+    }));
+    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+    Object.defineProperty(screenNode, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(screenNode, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 120,
+    });
+
+    runtimeMock.activeSession = {
+      ...runtimeMock.activeSession,
+      messages: [...olderMessages, ...messages],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    rerender(<WorkspaceTestFrame overrides={{ isMobileViewport: false }} />);
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: messages.slice(-32),
+    }));
+    expect(screenNode.scrollTop).toBe(120);
+  });
+
   it("keeps Details focused on Chat metadata without Chat panels", () => {
     runtimeMock.providers = [
       {

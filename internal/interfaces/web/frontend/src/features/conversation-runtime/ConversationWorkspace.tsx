@@ -157,6 +157,7 @@ function useConversationWorkspaceController(
   const { timelineScreenRef, workspaceBodyRef } = sharedRefs;
   const activeTimelineSessionRef = useRef("");
   const previousActiveMessageCountRef = useRef(0);
+  const previousTimelineMessageIDsRef = useRef<string[]>([]);
   const pendingHistoryScrollRestoreRef = useRef<{
     sessionID: string;
     scrollHeight: number;
@@ -450,11 +451,17 @@ function useConversationWorkspaceController(
   }, [timelineItems.length, timelineScreenRef, timelineSessionID]);
   useLayoutEffect(() => {
     const previousMessageCount = previousActiveMessageCountRef.current;
+    const previousMessageIDs = previousTimelineMessageIDsRef.current;
+    const currentMessageIDs = timelineMessages.map((message) => message.id);
+    const messageAppendedToEnd = previousMessageIDs.length > 0
+      && currentMessageIDs.length > previousMessageIDs.length
+      && previousMessageIDs.every((id, index) => currentMessageIDs[index] === id);
     if (
       !timelineSessionID
       || activeTimelineSessionRef.current !== timelineSessionID
       || previousMessageCount <= 0
       || timelineMessages.length <= previousMessageCount
+      || !messageAppendedToEnd
       || visibleMessageCount < previousMessageCount
       || visibleMessageCount >= timelineMessages.length
     ) {
@@ -472,13 +479,21 @@ function useConversationWorkspaceController(
   }, [timelineMessages.length, timelineSessionID, visibleMessageCount]);
   useLayoutEffect(() => {
     const previousSessionID = activeTimelineSessionRef.current;
-    const previousMessageCount = previousActiveMessageCountRef.current;
+    const previousMessageIDs = previousTimelineMessageIDsRef.current;
+    const currentMessageIDs = timelineMessages.map((message) => message.id);
     const sessionChanged = previousSessionID !== timelineSessionID;
-    const appendedMessages = timelineMessages.slice(previousMessageCount);
+    const messageAppendedToEnd = !sessionChanged
+      && previousMessageIDs.length > 0
+      && currentMessageIDs.length > previousMessageIDs.length
+      && previousMessageIDs.every((id, index) => currentMessageIDs[index] === id);
+    const appendedMessages = messageAppendedToEnd
+      ? timelineMessages.slice(previousMessageIDs.length)
+      : [];
     const userMessageAppended = appendedMessages.some((message) => message.role === "user");
-    const messageAppended = !sessionChanged && timelineSessionID && timelineMessages.length > previousMessageCount && userMessageAppended;
+    const messageAppended = Boolean(timelineSessionID && messageAppendedToEnd && userMessageAppended);
     activeTimelineSessionRef.current = timelineSessionID;
     previousActiveMessageCountRef.current = timelineMessages.length;
+    previousTimelineMessageIDsRef.current = currentMessageIDs;
     if (!timelineSessionID) {
       return;
     }

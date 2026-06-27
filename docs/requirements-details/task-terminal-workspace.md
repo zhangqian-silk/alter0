@@ -156,7 +156,7 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 - Terminal 会话列表与工作区详情按不同周期刷新。
 - Terminal 刷新策略需按当前会话状态调整：`busy` 会话可继续刷新会话详情与列表，`ready` 会话停止周期轮询，仅在页面重新可见或重新获得焦点时补拉列表与当前会话详情；用户正在滚动输出区时暂停当前会话明细刷新，避免阅读过程中出现卡顿或滚动中断。
 - 页面隐藏、输入聚焦、滚动活跃期间自动降频。
-- Terminal 单会话详情默认裁剪到最新 `20` 个 turns，并按约 `256KiB` 的 turns 页预算控制单次响应体；接口支持 `turn_limit` 与 `turn_before` 分批读取更早 turns，并返回 `turns_paging` 标识总量、页边界、`byte_limit / approx_bytes` 和是否仍有更早内容。前端访问、切换或刷新当前活动会话时先拉取最新详情，再按 `turns_paging.has_more_before` 自动带 `turn_before` 渐进补齐更早 turns，并按 turn id 合并分页结果，避免长会话在 page-activation、轮询或输入返回中被最新片段截断。
+- Terminal 单会话详情默认裁剪到最新 `20` 个 turns，并按约 `256KiB` 的 turns 页预算控制单次响应体；接口支持 `turn_limit` 与 `turn_before` 分批读取更早 turns，并返回 `turns_paging` 标识总量、页边界、`byte_limit / approx_bytes` 和是否仍有更早内容。前端访问、切换或刷新当前活动会话时先拉取最新详情，再按 `turns_paging.has_more_before` 自动带 `turn_before` 渐进补齐更早 turns，并按 turn id 合并分页结果，避免长会话在 page-activation、轮询或输入返回中被最新片段截断；后台补页不得覆盖当前输入、详情面板、选择态或主动阅读滚动，也不得在同一 `session_id + turn_before` 边界无进展时反复请求。
 - Terminal 打开已有 turn 的会话、刷新恢复当前会话或切换到其他已有输出会话后，`terminal-chat-screen` 初始视口必须落到最新输出所在底部；该定位只作用于会话进入阶段，后续轮询刷新、前后台恢复、Process 展开收起或用户正在滚动输出区时不得强制把视口拉回底部。
 - 页面从后台恢复到前台、浏览器重新把当前 Terminal 页激活为可见页、bfcache 恢复或网络恢复在线时，必须复用运行页共享的 page-activation 链路，立即补拉会话列表与当前活动会话详情，再回到对应状态下的轮询节奏。
 - Terminal 前端在 SPA 路由切换导致组件卸载后，应保留浏览器内存级运行态缓存，用于回到 Terminal 时立即恢复最近会话列表和当前活动会话的完整已加载 turns。缓存只作为首屏快照使用，必须在接口响应后按现有列表与单会话详情合并规则更新；缓存写入不裁剪已加载 turns，TTL 为 24 小时，每次访问、切换、刷新或前台恢复都会按最新合并结果刷新缓存时间，超过 TTL 后不得参与首屏渲染。

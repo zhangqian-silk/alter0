@@ -949,6 +949,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const draftPersistTimerRef = useRef<number | null>(null);
   const deletedSessionIDsRef = useRef<Set<string>>(new Set());
   const progressiveHistoryLoadsRef = useRef<Set<string>>(new Set());
+  const progressiveHistoryLoadedRef = useRef<Set<string>>(new Set());
   const restoreMobileSessionPaneRef = useRef(false);
   const mobileSubmitGestureLockRef = useRef(false);
   const mobileSessionGestureLockRef = useRef(false);
@@ -1372,7 +1373,10 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       return;
     }
     const requestKey = `${sessionID}:${beforeTurnID}`;
-    if (progressiveHistoryLoadsRef.current.has(requestKey)) {
+    if (
+      progressiveHistoryLoadsRef.current.has(requestKey)
+      || progressiveHistoryLoadedRef.current.has(requestKey)
+    ) {
       return;
     }
     let cancelled = false;
@@ -1384,6 +1388,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
             turnBefore: beforeTurnID,
             turnLimit: TERMINAL_HISTORY_PAGE_TURN_LIMIT,
           });
+          progressiveHistoryLoadedRef.current.add(requestKey);
         }
       } catch {
       } finally {
