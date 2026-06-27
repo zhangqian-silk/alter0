@@ -311,8 +311,8 @@ const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 const TERMINAL_NEW_SESSION_PLACEHOLDER_ID = "terminal-new-placeholder";
 const TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.attachments.v1";
 const TERMINAL_PENDING_DRAFT_KEY = "__pending__";
-export const TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
-export const TERMINAL_RUNTIME_CACHE_TURN_LIMIT = 6;
+const TERMINAL_HISTORY_PAGE_TURN_LIMIT = 20;
+export const TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 type TerminalPollPlan = {
   enabled: boolean;
@@ -330,6 +330,11 @@ type TerminalRuntimeInitialState = {
   sessions: TerminalSession[];
   activeSessionID: string;
   hydratedFromCache: boolean;
+};
+
+type TerminalSessionRefreshOptions = {
+  turnBefore?: string;
+  turnLimit?: number;
 };
 
 let terminalRuntimeCache: TerminalRuntimeCacheSnapshot | null = null;
@@ -679,23 +684,7 @@ function cloneTerminalSession(session: TerminalSession): TerminalSession {
 }
 
 function trimTerminalSessionForRuntimeCache(session: TerminalSession): TerminalSession {
-  const next = cloneTerminalSession(session);
-  if (!Array.isArray(next.turns) || next.turns.length <= TERMINAL_RUNTIME_CACHE_TURN_LIMIT) {
-    return next;
-  }
-  const sortedTurns = [...next.turns].sort(compareTerminalTurns);
-  const retainedTurns = sortedTurns.slice(-TERMINAL_RUNTIME_CACHE_TURN_LIMIT);
-  const oldest = retainedTurns[0];
-  const newest = retainedTurns[retainedTurns.length - 1];
-  next.turns = retainedTurns;
-  next.turns_paging = {
-    ...(next.turns_paging || {}),
-    has_more_before: true,
-    oldest_turn_id: oldest?.id || next.turns_paging?.oldest_turn_id,
-    newest_turn_id: newest?.id || next.turns_paging?.newest_turn_id,
-    next_before_turn_id: next.turns_paging?.next_before_turn_id || oldest?.id,
-  };
-  return next;
+  return cloneTerminalSession(session);
 }
 
 function readTerminalRuntimeCache(): TerminalRuntimeCacheSnapshot | null {
@@ -758,6 +747,69 @@ function mergeTerminalTurns(current: TerminalTurn[] | undefined, incoming: Termi
   return Array.from(merged.values()).sort(compareTerminalTurns);
 }
 
+function oldestTerminalTurnID(turns: TerminalTurn[] | undefined): string {
+  if (!Array.isArray(turns) || turns.length === 0) {
+    return "";
+  }
+  return normalizeText([...turns].sort(compareTerminalTurns)[0]?.id);
+}
+
+function newestTerminalTurnID(turns: TerminalTurn[] | undefined): string {
+  if (!Array.isArray(turns) || turns.length === 0) {
+    return "";
+  }
+  return normalizeText([...turns].sort(compareTerminalTurns)[turns.length - 1]?.id);
+}
+
+function hasTerminalTurn(turns: TerminalTurn[] | undefined, turnID: string): boolean {
+  const normalized = normalizeText(turnID);
+  return Boolean(normalized && Array.isArray(turns) && turns.some((turn) => turn.id === normalized));
+}
+
+function mergeTerminalTurnPaging(
+  current: TerminalTurnPaging | undefined,
+  incoming: TerminalTurnPaging | undefined,
+  turns: TerminalTurn[] | undefined,
+): TerminalTurnPaging | undefined {
+  if (!current && !incoming) {
+    return undefined;
+  }
+  const next: TerminalTurnPaging = {
+    ...(current || {}),
+    ...(incoming || {}),
+  };
+  const oldestTurnID = oldestTerminalTurnID(turns);
+  const newestTurnID = newestTerminalTurnID(turns);
+  if (oldestTurnID) {
+    next.oldest_turn_id = oldestTurnID;
+  }
+  if (newestTurnID) {
+    next.newest_turn_id = newestTurnID;
+  }
+  if (incoming?.has_more_before === false) {
+    next.has_more_before = false;
+    delete next.next_before_turn_id;
+    return next;
+  }
+  if (current?.has_more_before === false && incoming?.has_more_before === true) {
+    const incomingBeforeTurnID = normalizeAttachmentText(incoming.next_before_turn_id || incoming.oldest_turn_id);
+    if (!incomingBeforeTurnID || hasTerminalTurn(turns, incomingBeforeTurnID)) {
+      next.has_more_before = false;
+      delete next.next_before_turn_id;
+      return next;
+    }
+  }
+  if (next.has_more_before === true) {
+    const beforeTurnID = normalizeAttachmentText(next.next_before_turn_id || next.oldest_turn_id || oldestTurnID);
+    if (beforeTurnID) {
+      next.next_before_turn_id = beforeTurnID;
+    }
+  } else {
+    delete next.next_before_turn_id;
+  }
+  return next;
+}
+
 function mergeSessionSnapshot(
   current: TerminalSession | undefined,
   incoming: TerminalSession,
@@ -772,9 +824,14 @@ function mergeSessionSnapshot(
       merged[key as string] = value;
     }
   });
-  if (incoming.turns_paging?.has_more_before && Array.isArray(incoming.turns)) {
+  if (Array.isArray(incoming.turns)) {
     merged.turns = mergeTerminalTurns(current.turns, incoming.turns);
   }
+  merged.turns_paging = mergeTerminalTurnPaging(
+    current.turns_paging,
+    incoming.turns_paging,
+    merged.turns as TerminalTurn[] | undefined,
+  );
   return merged as TerminalSession;
 }
 
@@ -891,6 +948,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   } | null>(null);
   const draftPersistTimerRef = useRef<number | null>(null);
   const deletedSessionIDsRef = useRef<Set<string>>(new Set());
+  const progressiveHistoryLoadsRef = useRef<Set<string>>(new Set());
   const restoreMobileSessionPaneRef = useRef(false);
   const mobileSubmitGestureLockRef = useRef(false);
   const mobileSessionGestureLockRef = useRef(false);
@@ -1101,12 +1159,21 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     return nextSessions;
   };
 
-  const refreshActiveSession = async (sessionID: string) => {
+  const refreshActiveSession = async (sessionID: string, options: TerminalSessionRefreshOptions = {}) => {
     if (!sessionID || deletedSessionIDsRef.current.has(sessionID)) {
       return null;
     }
+    const query = new URLSearchParams();
+    const beforeTurnID = normalizeAttachmentText(options.turnBefore);
+    if (beforeTurnID) {
+      query.set("turn_before", beforeTurnID);
+    }
+    if (typeof options.turnLimit === "number" && Number.isFinite(options.turnLimit) && options.turnLimit > 0) {
+      query.set("turn_limit", String(Math.floor(options.turnLimit)));
+    }
+    const queryString = query.toString();
     const payload = await apiClient.get<TerminalSessionResponse>(
-      `/api/terminal/sessions/${encodeURIComponent(sessionID)}`,
+      `/api/terminal/sessions/${encodeURIComponent(sessionID)}${queryString ? `?${queryString}` : ""}`,
     );
     const nextSession = payload.session || null;
     if (!nextSession || deletedSessionIDsRef.current.has(nextSession.id)) {
@@ -1291,6 +1358,48 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     }
     void refreshActiveSession(activeSessionResolvedID);
   }, [activeSessionResolvedID]);
+
+  useEffect(() => {
+    const sessionID = normalizeAttachmentText(activeSession?.id);
+    const paging = activeSession?.turns_paging;
+    const beforeTurnID = normalizeAttachmentText(paging?.next_before_turn_id || paging?.oldest_turn_id)
+      || oldestTerminalTurnID(turns);
+    if (
+      !sessionID
+      || paging?.has_more_before !== true
+      || !beforeTurnID
+    ) {
+      return;
+    }
+    const requestKey = `${sessionID}:${beforeTurnID}`;
+    if (progressiveHistoryLoadsRef.current.has(requestKey)) {
+      return;
+    }
+    let cancelled = false;
+    progressiveHistoryLoadsRef.current.add(requestKey);
+    void (async () => {
+      try {
+        if (!cancelled) {
+          await refreshActiveSession(sessionID, {
+            turnBefore: beforeTurnID,
+            turnLimit: TERMINAL_HISTORY_PAGE_TURN_LIMIT,
+          });
+        }
+      } catch {
+      } finally {
+        progressiveHistoryLoadsRef.current.delete(requestKey);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeSession?.id,
+    activeSession?.turns_paging?.has_more_before,
+    activeSession?.turns_paging?.next_before_turn_id,
+    activeSession?.turns_paging?.oldest_turn_id,
+    turns,
+  ]);
 
   useEffect(() => {
     if (!activeSessionID || !activeSession || !pollPlan.enabled) {
@@ -1602,7 +1711,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         setSessions((current) =>
           sortSessions(
             current.map((item) =>
-              item.id === session!.id ? (payload.session as TerminalSession) : item,
+              item.id === session!.id
+                ? mergeSessionSnapshot(item, payload.session as TerminalSession)
+                : item,
             ),
           ),
         );

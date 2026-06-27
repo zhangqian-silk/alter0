@@ -5,7 +5,6 @@ import {
   resetTerminalRuntimeCache,
   resolveTerminalPollPlan,
   TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS,
-  TERMINAL_RUNTIME_CACHE_TURN_LIMIT,
 } from "./ReactManagedTerminalRouteBody";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../../app/WorkbenchContext";
 import { hashSessionIDShort } from "../../../shared/session/sessionHash";
@@ -672,11 +671,11 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   it("keeps the Terminal runtime cache alive for longer single-device route gaps", () => {
-    expect(TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS).toBe(8 * 60 * 60 * 1000);
+    expect(TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS).toBe(24 * 60 * 60 * 1000);
   });
 
   it("hydrates a fresh Terminal runtime cache immediately and refreshes after the API returns", async () => {
-    const cachedTurnCount = TERMINAL_RUNTIME_CACHE_TURN_LIMIT + 2;
+    const cachedTurnCount = 8;
     const cachedTurns = terminalTurnFixtures(cachedTurnCount);
     const cachedTurnPayloads = cachedTurns.map((turn, index) => ({
       id: turn.id,
@@ -737,7 +736,7 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     expect(screen.getByRole("heading", { name: "Cached shell" })).toBeInTheDocument();
     expect(screen.getByText(`cached output ${cachedTurnCount}`)).toBeInTheDocument();
-    expect(screen.queryByText("cached output 1")).not.toBeInTheDocument();
+    expect(screen.getByText("cached output 1")).toBeInTheDocument();
 
     listRequest.resolve({
       items: [terminalSessionFixture({
@@ -2821,6 +2820,111 @@ describe("ReactManagedTerminalRouteBody", () => {
 
     await waitFor(() => expect(screen.getByText("newer updated")).toBeInTheDocument());
     expect(screen.getByText("older output")).toBeInTheDocument();
+  });
+
+  it("progressively loads earlier Terminal turn pages after the latest session detail", async () => {
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      requests.push(`${method} ${url}`);
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [{
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+          }],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns_paging: {
+              has_more_before: true,
+              oldest_turn_id: "turn-3",
+              newest_turn_id: "turn-3",
+              next_before_turn_id: "turn-3",
+            },
+            turns: [{
+              id: "turn-3",
+              prompt: "latest",
+              status: "completed",
+              started_at: "2026-04-15T10:03:00Z",
+              finished_at: "2026-04-15T10:03:02Z",
+              duration_ms: 2000,
+              final_output: "latest output",
+              runtime_trace_events: [],
+            }],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1?turn_before=turn-3&turn_limit=20" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns_paging: {
+              has_more_before: false,
+              oldest_turn_id: "turn-1",
+              newest_turn_id: "turn-2",
+            },
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "older",
+                status: "completed",
+                started_at: "2026-04-15T10:01:00Z",
+                finished_at: "2026-04-15T10:01:02Z",
+                duration_ms: 2000,
+                final_output: "older output",
+                runtime_trace_events: [],
+              },
+              {
+                id: "turn-2",
+                prompt: "middle",
+                status: "completed",
+                started_at: "2026-04-15T10:02:00Z",
+                finished_at: "2026-04-15T10:02:02Z",
+                duration_ms: 2000,
+                final_output: "middle output",
+                runtime_trace_events: [],
+              },
+            ],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => expect(screen.getByText("latest output")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("older output")).toBeInTheDocument());
+    expect(screen.getByText("middle output")).toBeInTheDocument();
+    expect(requests).toContain("GET /api/terminal/sessions/terminal-1?turn_before=turn-3&turn_limit=20");
   });
 
   it("marks the terminal composer input as plain text so mobile autofill bars stay off", async () => {
