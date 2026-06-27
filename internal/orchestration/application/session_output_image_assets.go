@@ -105,7 +105,7 @@ func splitMarkdownImageTarget(value string) (string, string) {
 
 func (s *SessionPersistenceService) localizeAssistantImageURL(sessionID string, rawURL string) (string, bool) {
 	normalized := strings.TrimSpace(strings.Trim(rawURL, "<>"))
-	if normalized == "" || strings.HasPrefix(normalized, "/api/sessions/") || strings.HasPrefix(normalized, "data:image/") {
+	if normalized == "" || strings.HasPrefix(normalized, "/api/chat/sessions/") || strings.HasPrefix(normalized, "/api/terminal/sessions/") || strings.HasPrefix(normalized, "data:image/") {
 		return normalized, normalized != ""
 	}
 	parsed, err := url.Parse(normalized)
@@ -190,7 +190,7 @@ func sessionAttachmentDir(baseDir string, sessionID string, attachmentID string)
 }
 
 func sessionAttachmentURL(sessionID string, attachmentID string, variant string) string {
-	return "/api/sessions/" + sanitizeAttachmentSegment(sessionID) + "/attachments/" + sanitizeAttachmentSegment(attachmentID) + "/" + variant
+	return "/api/chat/sessions/" + sanitizeAttachmentSegment(sessionID) + "/attachments/" + sanitizeAttachmentSegment(attachmentID) + "/" + variant
 }
 
 func sanitizeAttachmentSegment(value string) string {

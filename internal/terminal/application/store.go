@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -15,18 +16,17 @@ import (
 const terminalStateDirectoryName = "state"
 
 type persistedSessionRecord struct {
-	Summary           terminaldomain.Session `json:"summary"`
-	TitleManual       *bool                  `json:"title_manual,omitempty"`
-	TitleAuto         *bool                  `json:"title_auto,omitempty"`
-	TitleScore        int                    `json:"title_score,omitempty"`
-	Entries           []terminaldomain.Entry `json:"entries,omitempty"`
-	Turns             []persistedTurnRecord  `json:"turns,omitempty"`
-	NextID            int                    `json:"next_id,omitempty"`
-	NextTurnID        int                    `json:"next_turn_id,omitempty"`
-	NextEventID       int                    `json:"next_event_id,omitempty"`
-	LegacyNextEventID int                    `json:"next_step_id,omitempty"`
-	ThreadID          string                 `json:"thread_id,omitempty"`
-	ClosedByUser      bool                   `json:"closed_by_user,omitempty"`
+	Summary      terminaldomain.Session `json:"summary"`
+	TitleManual  *bool                  `json:"title_manual,omitempty"`
+	TitleAuto    *bool                  `json:"title_auto,omitempty"`
+	TitleScore   int                    `json:"title_score,omitempty"`
+	Entries      []terminaldomain.Entry `json:"entries,omitempty"`
+	Turns        []persistedTurnRecord  `json:"turns,omitempty"`
+	NextID       int                    `json:"next_id,omitempty"`
+	NextTurnID   int                    `json:"next_turn_id,omitempty"`
+	NextEventID  int                    `json:"next_event_id,omitempty"`
+	ThreadID     string                 `json:"thread_id,omitempty"`
+	ClosedByUser bool                   `json:"closed_by_user,omitempty"`
 }
 
 type persistedTurnRecord struct {
@@ -38,7 +38,6 @@ type persistedTurnRecord struct {
 	FinishedAt    time.Time                     `json:"finished_at,omitempty"`
 	FinalOutput   string                        `json:"final_output,omitempty"`
 	RuntimeEvents []persistedRuntimeEventRecord `json:"runtime_events,omitempty"`
-	LegacyEvents  []persistedRuntimeEventRecord `json:"steps,omitempty"`
 }
 
 type persistedRuntimeEventRecord struct {
@@ -52,6 +51,35 @@ type persistedRuntimeEventRecord struct {
 	FinishedAt time.Time            `json:"finished_at,omitempty"`
 	Blocks     []RuntimeDetailBlock `json:"blocks,omitempty"`
 	Searchable bool                 `json:"searchable,omitempty"`
+}
+
+func decodePersistedSessionRecord(data []byte) (persistedSessionRecord, error) {
+	record := persistedSessionRecord{}
+	if err := json.Unmarshal(data, &record); err != nil {
+		return persistedSessionRecord{}, err
+	}
+
+	legacy := struct {
+		NextStepID int `json:"next_step_id,omitempty"`
+		Turns      []struct {
+			Steps []persistedRuntimeEventRecord `json:"steps,omitempty"`
+		} `json:"turns,omitempty"`
+	}{}
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return persistedSessionRecord{}, err
+	}
+	if record.NextEventID <= 0 && legacy.NextStepID > 0 {
+		record.NextEventID = legacy.NextStepID
+	}
+	for index := range record.Turns {
+		if len(record.Turns[index].RuntimeEvents) > 0 || index >= len(legacy.Turns) {
+			continue
+		}
+		if len(legacy.Turns[index].Steps) > 0 {
+			record.Turns[index].RuntimeEvents = append([]persistedRuntimeEventRecord{}, legacy.Turns[index].Steps...)
+		}
+	}
+	return record, nil
 }
 
 func (s *Service) loadPersistedSessions() {
@@ -82,18 +110,17 @@ func (s *Service) loadPersistedSessions() {
 			s.logger.Warn("read terminal session record failed", "path", recordPath, "error", readErr.Error())
 			continue
 		}
-		record := persistedSessionRecord{}
-		if err := json.Unmarshal(data, &record); err != nil {
+		record, err := decodePersistedSessionRecord(data)
+		if err != nil {
 			s.logger.Warn("decode terminal session record failed", "path", recordPath, "error", err.Error())
 			continue
 		}
-		legacyRuntimeEventFields := persistedSessionRecordHasLegacyRuntimeEventFields(data)
 		session := restorePersistedSession(record, now, s.options.WorkingDir)
 		if session == nil {
 			continue
 		}
 		s.sessions[session.summary.ID] = session
-		if legacyRuntimeEventFields {
+		if persistedSessionRecordNeedsMigration(data, session) {
 			needsMigration = append(needsMigration, session)
 		}
 	}
@@ -153,7 +180,7 @@ func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string)
 	s.mu.RUnlock()
 	if ok {
 		existing.mu.RLock()
-		matched := existing.summary.OwnerID == ownerID
+		matched := normalizeTerminalOwnerID(existing.summary.OwnerID) == ownerID
 		existing.mu.RUnlock()
 		if !matched {
 			return nil, ErrSessionNotFound
@@ -174,35 +201,35 @@ func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string)
 		}
 		return nil, ErrSessionNotFound
 	}
-	record := persistedSessionRecord{}
-	if err := json.Unmarshal(data, &record); err != nil {
+	record, err := decodePersistedSessionRecord(data)
+	if err != nil {
 		s.logger.Warn("decode terminal session record failed", "path", path, "error", err.Error())
 		return nil, ErrSessionNotFound
 	}
-	legacyRuntimeEventFields := persistedSessionRecordHasLegacyRuntimeEventFields(data)
 	session := restorePersistedSession(record, time.Now().UTC(), s.options.WorkingDir)
 	if session == nil || strings.TrimSpace(session.summary.OwnerID) != ownerID {
 		return nil, ErrSessionNotFound
 	}
+	needsMigration := persistedSessionRecordNeedsMigration(data, session)
 
 	s.mu.Lock()
 	if existing, ok := s.sessions[sessionID]; ok {
 		existing.mu.RLock()
-		matched := existing.summary.OwnerID == ownerID
+		matched := normalizeTerminalOwnerID(existing.summary.OwnerID) == ownerID
 		existing.mu.RUnlock()
 		if !matched {
 			s.mu.Unlock()
 			return nil, ErrSessionNotFound
 		}
 		s.mu.Unlock()
-		if legacyRuntimeEventFields {
+		if needsMigration {
 			s.persistSession(existing)
 		}
 		return existing, nil
 	}
 	s.sessions[sessionID] = session
 	s.mu.Unlock()
-	if legacyRuntimeEventFields {
+	if needsMigration {
 		s.persistSession(session)
 	}
 	return session, nil
@@ -297,7 +324,7 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 		entries:      append([]terminaldomain.Entry{}, record.Entries...),
 		nextID:       record.NextID,
 		nextTurnID:   record.NextTurnID,
-		nextEventID:  restoredNextRuntimeEventID(record),
+		nextEventID:  record.NextEventID,
 		threadID:     threadID,
 		closedByUser: record.ClosedByUser,
 		turns:        make([]*runtimeTurn, 0, len(record.Turns)),
@@ -322,9 +349,9 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 			StartedAt:   turnRecord.StartedAt,
 			FinishedAt:  turnRecord.FinishedAt,
 			FinalOutput: turnRecord.FinalOutput,
-			events:      make([]*runtimeEventRecord, 0, len(restoredPersistedRuntimeEvents(turnRecord))),
+			events:      make([]*runtimeEventRecord, 0, len(turnRecord.RuntimeEvents)),
 		}
-		for _, stepRecord := range restoredPersistedRuntimeEvents(turnRecord) {
+		for _, stepRecord := range turnRecord.RuntimeEvents {
 			turn.events = append(turn.events, &runtimeEventRecord{
 				ID:         stepRecord.ID,
 				ItemID:     stepRecord.ItemID,
@@ -344,39 +371,27 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	return session
 }
 
-func restoredNextRuntimeEventID(record persistedSessionRecord) int {
-	if record.NextEventID > 0 {
-		return record.NextEventID
-	}
-	return record.LegacyNextEventID
-}
-
-func restoredPersistedRuntimeEvents(record persistedTurnRecord) []persistedRuntimeEventRecord {
-	if len(record.RuntimeEvents) > 0 {
-		return record.RuntimeEvents
-	}
-	return record.LegacyEvents
-}
-
-func persistedSessionRecordHasLegacyRuntimeEventFields(data []byte) bool {
-	raw := struct {
-		LegacyNextEventID json.RawMessage `json:"next_step_id"`
-		Turns             []struct {
-			LegacyEvents json.RawMessage `json:"steps"`
-		} `json:"turns"`
-	}{}
-	if err := json.Unmarshal(data, &raw); err != nil {
+func persistedSessionRecordNeedsMigration(data []byte, session *runtimeSession) bool {
+	if session == nil {
 		return false
 	}
-	if len(raw.LegacyNextEventID) > 0 {
-		return true
+	latestRecord, deleted := snapshotPersistedSession(session)
+	if deleted {
+		return false
 	}
-	for _, turn := range raw.Turns {
-		if len(turn.LegacyEvents) > 0 {
-			return true
-		}
+	latestData, err := json.Marshal(latestRecord)
+	if err != nil {
+		return false
 	}
-	return false
+	var original any
+	if err := json.Unmarshal(data, &original); err != nil {
+		return false
+	}
+	var latest any
+	if err := json.Unmarshal(latestData, &latest); err != nil {
+		return false
+	}
+	return !reflect.DeepEqual(original, latest)
 }
 
 func boolPointer(value bool) *bool {

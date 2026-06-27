@@ -20,9 +20,11 @@ func TestMobileNewChatEntryReachable(t *testing.T) {
 
 func TestConversationRuntimeCreatesAndDeletesTerminalBackedSessions(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx") +
+		readWorkspaceFile(t, "frontend/src/features/shell/components/runtimeSessionApi.ts") +
 		readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
 	markers := []string{
-		`const TERMINAL_SESSION_COLLECTION_ENDPOINT = "/api/terminal/sessions";`,
+		`export function runtimeSessionEndpoint(`,
+		`runtimeSessionEndpoint("chat", path, query)`,
 		"const createTerminalRuntimeSession = useCallback(async (routeKey: ConversationRoute, title: string = \"\"): Promise<ChatSession | null> => {",
 		"chatTerminalSessionEndpoint(),",
 		"upsertRuntimeSession(routeKey, nextSession);",

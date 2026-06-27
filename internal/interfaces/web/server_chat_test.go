@@ -340,7 +340,7 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 func TestChatScriptUsesTerminalSessionInput(t *testing.T) {
 	script := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx")
 	markers := []string{
-		`const TERMINAL_SESSION_COLLECTION_ENDPOINT = "/api/terminal/sessions";`,
+		`runtimeSessionEndpoint("chat", path, query)`,
 		"chatTerminalSessionEndpoint(`${encodeURIComponent(session.id)}/input`)",
 		`skill_ids: activeSkillIDs,`,
 		`await apiClient.post<`,

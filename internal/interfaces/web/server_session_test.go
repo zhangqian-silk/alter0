@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -349,39 +350,41 @@ func TestSessionCleanupHandlerDeletesInactiveTerminalSessions(t *testing.T) {
 	recent := now.Add(-2 * time.Hour)
 	history := &stubSessionHistory{}
 	terminals := &stubWebTerminalService{
-		listResp: []terminaldomain.Session{
-			{
-				ID:           "terminal-old",
-				OwnerID:      sharedTerminalClientID,
-				Status:       terminaldomain.SessionStatusReady,
-				CreatedAt:    old,
-				LastOutputAt: old,
-				UpdatedAt:    old,
-			},
-			{
-				ID:           "terminal-pinned",
-				OwnerID:      sharedTerminalClientID,
-				Status:       terminaldomain.SessionStatusReady,
-				Pinned:       true,
-				CreatedAt:    old,
-				LastOutputAt: old,
-				UpdatedAt:    old,
-			},
-			{
-				ID:           "terminal-busy",
-				OwnerID:      sharedTerminalClientID,
-				Status:       terminaldomain.SessionStatusBusy,
-				CreatedAt:    old,
-				LastOutputAt: old,
-				UpdatedAt:    old,
-			},
-			{
-				ID:           "terminal-recent",
-				OwnerID:      sharedTerminalClientID,
-				Status:       terminaldomain.SessionStatusReady,
-				CreatedAt:    old,
-				LastOutputAt: recent,
-				UpdatedAt:    recent,
+		listByOwner: map[string][]terminaldomain.Session{
+			terminalSessionOwnerID: {
+				{
+					ID:           "terminal-old",
+					OwnerID:      terminalSessionOwnerID,
+					Status:       terminaldomain.SessionStatusReady,
+					CreatedAt:    old,
+					LastOutputAt: old,
+					UpdatedAt:    old,
+				},
+				{
+					ID:           "terminal-pinned",
+					OwnerID:      terminalSessionOwnerID,
+					Status:       terminaldomain.SessionStatusReady,
+					Pinned:       true,
+					CreatedAt:    old,
+					LastOutputAt: old,
+					UpdatedAt:    old,
+				},
+				{
+					ID:           "terminal-busy",
+					OwnerID:      terminalSessionOwnerID,
+					Status:       terminaldomain.SessionStatusBusy,
+					CreatedAt:    old,
+					LastOutputAt: old,
+					UpdatedAt:    old,
+				},
+				{
+					ID:           "terminal-recent",
+					OwnerID:      terminalSessionOwnerID,
+					Status:       terminaldomain.SessionStatusReady,
+					CreatedAt:    old,
+					LastOutputAt: recent,
+					UpdatedAt:    recent,
+				},
 			},
 		},
 	}
@@ -394,11 +397,11 @@ func TestSessionCleanupHandlerDeletesInactiveTerminalSessions(t *testing.T) {
 
 	body := server.maintenance.RunSessionCleanup(now)
 
-	if terminals.lastOwnerID != sharedTerminalClientID {
-		t.Fatalf("expected shared terminal owner, got %q", terminals.lastOwnerID)
-	}
 	if len(terminals.deleteIDs) != 1 || terminals.deleteIDs[0] != "terminal-old" {
 		t.Fatalf("expected only old terminal deleted, got %+v", terminals.deleteIDs)
+	}
+	if len(terminals.deleteOwnerIDs) != 1 || terminals.deleteOwnerIDs[0] != terminalSessionOwnerID+":terminal-old" {
+		t.Fatalf("expected only old terminal session deleted, got %+v", terminals.deleteOwnerIDs)
 	}
 	if body.DeletedCount != 1 || body.SkippedPinnedCount != 1 || body.SkippedProtectedCount != 1 || body.ScannedCount != 4 {
 		t.Fatalf("expected combined terminal cleanup counts, got %+v", body)
@@ -408,6 +411,55 @@ func TestSessionCleanupHandlerDeletesInactiveTerminalSessions(t *testing.T) {
 	}
 	if history.lastCleanupOption.InactiveDuration != 7*24*time.Hour {
 		t.Fatalf("expected session cleanup still invoked with fixed threshold, got %+v", history.lastCleanupOption)
+	}
+}
+
+func TestSessionCleanupHandlerDeletesInactiveChatOwnedTerminalSessions(t *testing.T) {
+	now := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
+	old := now.Add(-8 * 24 * time.Hour)
+	history := &stubSessionHistory{}
+	terminals := &stubWebTerminalService{
+		listByOwner: map[string][]terminaldomain.Session{
+			terminalSessionOwnerID: {
+				{
+					ID:           "terminal-old",
+					OwnerID:      terminalSessionOwnerID,
+					Status:       terminaldomain.SessionStatusReady,
+					CreatedAt:    old,
+					LastOutputAt: old,
+					UpdatedAt:    old,
+				},
+			},
+			chatSessionOwnerID: {
+				{
+					ID:           "chat-old",
+					OwnerID:      chatSessionOwnerID,
+					Status:       terminaldomain.SessionStatusReady,
+					CreatedAt:    old,
+					LastOutputAt: old,
+					UpdatedAt:    old,
+				},
+			},
+		},
+	}
+	server := &Server{
+		sessions:  history,
+		terminals: terminals,
+		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	server.ensureMaintenanceService()
+
+	body := server.maintenance.RunSessionCleanup(now)
+
+	expectedDeletes := []string{
+		terminalSessionOwnerID + ":terminal-old",
+		chatSessionOwnerID + ":chat-old",
+	}
+	if !reflect.DeepEqual(terminals.deleteOwnerIDs, expectedDeletes) {
+		t.Fatalf("expected terminal and chat terminal deletes, got %+v", terminals.deleteOwnerIDs)
+	}
+	if body.TerminalDeletedCount != 2 || body.TerminalScannedCount != 2 {
+		t.Fatalf("expected combined terminal cleanup counts, got %+v", body)
 	}
 }
 

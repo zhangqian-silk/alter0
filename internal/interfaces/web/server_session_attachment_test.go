@@ -26,7 +26,7 @@ type sessionAttachmentUploadResponse struct {
 	} `json:"items"`
 }
 
-func TestSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing.T) {
+func TestTerminalSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing.T) {
 	t.Parallel()
 
 	workspaceRoot := t.TempDir()
@@ -34,10 +34,11 @@ func TestSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing
 		idGenerator:   &sequenceIDGenerator{ids: []string{"asset-1"}},
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		telemetry:     observability.NewTelemetry(),
+		terminals:     &stubWebTerminalService{},
 		workspaceRoot: workspaceRoot,
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/sessions/session-images/attachments", strings.NewReader(`{
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-images/attachments", strings.NewReader(`{
 		"attachments":[
 			{
 				"name":"diagram.png",
@@ -48,7 +49,7 @@ func TestSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing
 		]
 	}`))
 	rec := httptest.NewRecorder()
-	server.sessionMessageListHandler(rec, req)
+	server.terminalSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
@@ -64,6 +65,12 @@ func TestSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing
 	if payload.Items[0].ID != "asset-1" {
 		t.Fatalf("expected asset id asset-1, got %+v", payload.Items[0])
 	}
+	if !strings.HasPrefix(payload.Items[0].AssetURL, "/api/terminal/sessions/session-images/attachments/") {
+		t.Fatalf("expected terminal attachment asset url, got %q", payload.Items[0].AssetURL)
+	}
+	if !strings.HasPrefix(payload.Items[0].PreviewURL, "/api/terminal/sessions/session-images/attachments/") {
+		t.Fatalf("expected terminal attachment preview url, got %q", payload.Items[0].PreviewURL)
+	}
 
 	originalPath := filepath.Join(workspaceRoot, ".alter0", "workspaces", "sessions", "session-images", "attachments", "asset-1", "original.png")
 	previewPath := filepath.Join(workspaceRoot, ".alter0", "workspaces", "sessions", "session-images", "attachments", "asset-1", "preview.webp")
@@ -76,7 +83,7 @@ func TestSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing
 
 	originalReq := httptest.NewRequest(http.MethodGet, payload.Items[0].AssetURL, nil)
 	originalRec := httptest.NewRecorder()
-	server.sessionMessageListHandler(originalRec, originalReq)
+	server.terminalSessionItemHandler(originalRec, originalReq)
 	if originalRec.Code != http.StatusOK {
 		t.Fatalf("expected original asset 200, got %d", originalRec.Code)
 	}
@@ -86,7 +93,7 @@ func TestSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing
 
 	previewReq := httptest.NewRequest(http.MethodGet, payload.Items[0].PreviewURL, nil)
 	previewRec := httptest.NewRecorder()
-	server.sessionMessageListHandler(previewRec, previewReq)
+	server.terminalSessionItemHandler(previewRec, previewReq)
 	if previewRec.Code != http.StatusOK {
 		t.Fatalf("expected preview asset 200, got %d", previewRec.Code)
 	}
@@ -95,7 +102,7 @@ func TestSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *testing
 	}
 }
 
-func TestSessionAttachmentHandlerStoresFilesWithoutPreviewVariant(t *testing.T) {
+func TestTerminalSessionAttachmentHandlerStoresFilesWithoutPreviewVariant(t *testing.T) {
 	t.Parallel()
 
 	workspaceRoot := t.TempDir()
@@ -103,10 +110,11 @@ func TestSessionAttachmentHandlerStoresFilesWithoutPreviewVariant(t *testing.T) 
 		idGenerator:   &sequenceIDGenerator{ids: []string{"asset-file-1"}},
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		telemetry:     observability.NewTelemetry(),
+		terminals:     &stubWebTerminalService{},
 		workspaceRoot: workspaceRoot,
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/sessions/session-files/attachments", strings.NewReader(`{
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-files/attachments", strings.NewReader(`{
 		"attachments":[
 			{
 				"name":"requirements.md",
@@ -116,7 +124,7 @@ func TestSessionAttachmentHandlerStoresFilesWithoutPreviewVariant(t *testing.T) 
 		]
 	}`))
 	rec := httptest.NewRecorder()
-	server.sessionMessageListHandler(rec, req)
+	server.terminalSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
@@ -140,7 +148,7 @@ func TestSessionAttachmentHandlerStoresFilesWithoutPreviewVariant(t *testing.T) 
 
 	previewReq := httptest.NewRequest(http.MethodGet, payload.Items[0].PreviewURL, nil)
 	previewRec := httptest.NewRecorder()
-	server.sessionMessageListHandler(previewRec, previewReq)
+	server.terminalSessionItemHandler(previewRec, previewReq)
 	if previewRec.Code != http.StatusOK {
 		t.Fatalf("expected preview asset 200, got %d", previewRec.Code)
 	}
@@ -156,7 +164,7 @@ func TestTerminalInputEncodesWorkspaceAttachmentReferences(t *testing.T) {
 	terminal := &stubWebTerminalService{
 		inputResp: terminaldomain.Session{
 			ID:      "session-images",
-			OwnerID: chatTerminalClientID,
+			OwnerID: chatSessionOwnerID,
 			Status:  terminaldomain.SessionStatusRunning,
 		},
 	}
@@ -168,7 +176,7 @@ func TestTerminalInputEncodesWorkspaceAttachmentReferences(t *testing.T) {
 		workspaceRoot: workspaceRoot,
 	}
 
-	uploadReq := httptest.NewRequest(http.MethodPost, "/api/sessions/session-images/attachments", strings.NewReader(`{
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/session-images/attachments", strings.NewReader(`{
 		"attachments":[
 			{
 				"name":"diagram.png",
@@ -179,7 +187,7 @@ func TestTerminalInputEncodesWorkspaceAttachmentReferences(t *testing.T) {
 		]
 	}`))
 	uploadRec := httptest.NewRecorder()
-	server.sessionMessageListHandler(uploadRec, uploadReq)
+	server.chatSessionItemHandler(uploadRec, uploadReq)
 	if uploadRec.Code != http.StatusOK {
 		t.Fatalf("expected upload 200, got %d: %s", uploadRec.Code, uploadRec.Body.String())
 	}
@@ -189,7 +197,7 @@ func TestTerminalInputEncodesWorkspaceAttachmentReferences(t *testing.T) {
 		t.Fatalf("decode upload response: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-images/input?scope=chat", strings.NewReader(`{
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/session-images/input", strings.NewReader(`{
 		"input":"请分析这张图",
 		"attachments":[
 			{
@@ -202,7 +210,7 @@ func TestTerminalInputEncodesWorkspaceAttachmentReferences(t *testing.T) {
 		]
 	}`))
 	rec := httptest.NewRecorder()
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
@@ -223,5 +231,75 @@ func TestTerminalInputEncodesWorkspaceAttachmentReferences(t *testing.T) {
 	}
 	if attachments[0].PreviewURL != uploadPayload.Items[0].PreviewURL {
 		t.Fatalf("expected preview URL preserved, got %+v", attachments[0])
+	}
+}
+
+func TestLegacySessionAttachmentEndpointIsNotAccepted(t *testing.T) {
+	t.Parallel()
+
+	server := &Server{
+		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		telemetry: observability.NewTelemetry(),
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/session-images/attachments", strings.NewReader(`{"attachments":[]}`))
+	rec := httptest.NewRecorder()
+
+	server.sessionMessageListHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected legacy attachment endpoint to be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestChatSessionAttachmentEndpointStoresAssetsUnderChatRoute(t *testing.T) {
+	t.Parallel()
+
+	workspaceRoot := t.TempDir()
+	server := &Server{
+		telemetry:     observability.NewTelemetry(),
+		idGenerator:   &sequenceIDGenerator{ids: []string{"asset-chat-1"}},
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		terminals:     &stubWebTerminalService{},
+		workspaceRoot: workspaceRoot,
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chat-images/attachments", strings.NewReader(`{
+		"attachments":[
+			{
+				"name":"diagram.png",
+				"content_type":"image/png",
+				"data_url":"data:image/png;base64,ZmFrZQ==",
+				"preview_data_url":"data:image/webp;base64,QUJD"
+			}
+		]
+	}`))
+	uploadRec := httptest.NewRecorder()
+	server.chatSessionItemHandler(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusOK {
+		t.Fatalf("expected upload 200, got %d: %s", uploadRec.Code, uploadRec.Body.String())
+	}
+
+	var payload sessionAttachmentUploadResponse
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal upload response: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 uploaded asset, got %+v", payload.Items)
+	}
+	if !strings.HasPrefix(payload.Items[0].AssetURL, "/api/chat/sessions/chat-images/attachments/") {
+		t.Fatalf("expected chat attachment asset url, got %q", payload.Items[0].AssetURL)
+	}
+	if !strings.HasPrefix(payload.Items[0].PreviewURL, "/api/chat/sessions/chat-images/attachments/") {
+		t.Fatalf("expected chat attachment preview url, got %q", payload.Items[0].PreviewURL)
+	}
+
+	previewReq := httptest.NewRequest(http.MethodGet, payload.Items[0].PreviewURL, nil)
+	previewRec := httptest.NewRecorder()
+	server.chatSessionItemHandler(previewRec, previewReq)
+	if previewRec.Code != http.StatusOK {
+		t.Fatalf("expected preview asset 200, got %d", previewRec.Code)
+	}
+	if body := strings.TrimSpace(previewRec.Body.String()); body != "ABC" {
+		t.Fatalf("expected decoded preview body 'ABC', got %q", body)
 	}
 }

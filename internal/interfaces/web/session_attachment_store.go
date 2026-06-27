@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,8 @@ import (
 )
 
 const conversationSessionAttachmentDirName = "attachments"
+
+type attachmentRoutePrefixContextKey struct{}
 
 type conversationAttachmentManifest struct {
 	ID                 string `json:"id"`
@@ -70,7 +73,7 @@ func (s *Server) handleSessionAttachmentUpload(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attachments are required"})
 		return
 	}
-	items, err := s.storeConversationAttachmentBatch(sessionID, req.Attachments)
+	items, err := s.storeConversationAttachmentBatch(sessionID, req.Attachments, attachmentRoutePrefixFromRequest(r))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -130,13 +133,14 @@ func readConversationPreviewContentType(sessionID string, attachmentID string, a
 	return asset.ContentType
 }
 
-func (s *Server) normalizeConversationMessageAttachments(sessionID string, values []messageAttachmentRequest) ([]execdomain.UserAttachment, error) {
+func (s *Server) normalizeConversationMessageAttachments(sessionID string, values []messageAttachmentRequest, routePrefix string) ([]execdomain.UserAttachment, error) {
 	if len(values) == 0 {
 		return nil, nil
 	}
+	routePrefix = normalizeAttachmentRoutePrefix(routePrefix)
 	items := make([]execdomain.UserAttachment, 0, len(values))
 	for _, value := range values {
-		item, err := s.materializeConversationAttachment(sessionID, value)
+		item, err := s.materializeConversationAttachment(sessionID, value, routePrefix)
 		if err != nil {
 			return nil, err
 		}
@@ -145,19 +149,27 @@ func (s *Server) normalizeConversationMessageAttachments(sessionID string, value
 	return execdomain.NormalizeUserAttachments(items), nil
 }
 
-func (s *Server) materializeConversationAttachment(sessionID string, value messageAttachmentRequest) (execdomain.UserAttachment, error) {
+func (s *Server) materializeConversationAttachment(sessionID string, value messageAttachmentRequest, routePrefix string) (execdomain.UserAttachment, error) {
 	if strings.TrimSpace(value.ID) != "" {
 		asset, err := s.resolveConversationAttachment(sessionID, value.ID)
 		if err != nil {
 			return execdomain.UserAttachment{}, err
+		}
+		assetURL := strings.TrimSpace(value.AssetURL)
+		if assetURL == "" {
+			assetURL = asset.AssetURL
+		}
+		previewURL := strings.TrimSpace(value.PreviewURL)
+		if previewURL == "" {
+			previewURL = asset.PreviewURL
 		}
 		return execdomain.UserAttachment{
 			ID:            asset.ID,
 			Name:          asset.Name,
 			ContentType:   asset.ContentType,
 			WorkspacePath: asset.WorkspacePath,
-			AssetURL:      asset.AssetURL,
-			PreviewURL:    asset.PreviewURL,
+			AssetURL:      assetURL,
+			PreviewURL:    previewURL,
 		}, nil
 	}
 	if strings.TrimSpace(value.DataURL) == "" {
@@ -170,7 +182,7 @@ func (s *Server) materializeConversationAttachment(sessionID string, value messa
 			DataURL:     strings.TrimSpace(value.DataURL),
 		}, nil
 	}
-	asset, err := s.storeConversationAttachment(sessionID, value)
+	asset, err := s.storeConversationAttachment(sessionID, value, routePrefix)
 	if err != nil {
 		return execdomain.UserAttachment{}, err
 	}
@@ -184,10 +196,10 @@ func (s *Server) materializeConversationAttachment(sessionID string, value messa
 	}, nil
 }
 
-func (s *Server) storeConversationAttachmentBatch(sessionID string, values []messageAttachmentRequest) ([]conversationAttachmentAsset, error) {
+func (s *Server) storeConversationAttachmentBatch(sessionID string, values []messageAttachmentRequest, routePrefix string) ([]conversationAttachmentAsset, error) {
 	items := make([]conversationAttachmentAsset, 0, len(values))
 	for _, value := range values {
-		item, err := s.storeConversationAttachment(sessionID, value)
+		item, err := s.storeConversationAttachment(sessionID, value, routePrefix)
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +208,7 @@ func (s *Server) storeConversationAttachmentBatch(sessionID string, values []mes
 	return items, nil
 }
 
-func (s *Server) storeConversationAttachment(sessionID string, value messageAttachmentRequest) (conversationAttachmentAsset, error) {
+func (s *Server) storeConversationAttachment(sessionID string, value messageAttachmentRequest, routePrefix string) (conversationAttachmentAsset, error) {
 	if s == nil || strings.TrimSpace(s.workspaceRoot) == "" {
 		return conversationAttachmentAsset{}, errors.New("workspace root unavailable")
 	}
@@ -253,8 +265,8 @@ func (s *Server) storeConversationAttachment(sessionID string, value messageAtta
 		Size:          manifest.Size,
 		WorkspacePath: originalPath,
 		PreviewPath:   previewPath,
-		AssetURL:      conversationAttachmentURL(sessionID, assetID, "original"),
-		PreviewURL:    resolveConversationAttachmentPreviewURL(sessionID, assetID, previewPath),
+		AssetURL:      conversationAttachmentURL(routePrefix, sessionID, assetID, "original"),
+		PreviewURL:    resolveConversationAttachmentPreviewURL(routePrefix, sessionID, assetID, previewPath),
 	}, nil
 }
 
@@ -271,8 +283,8 @@ func (s *Server) resolveConversationAttachment(sessionID string, attachmentID st
 		Size:          manifest.Size,
 		WorkspacePath: filepath.Join(dir, conversationAttachmentStoredFileName(manifest.OriginalFileName, "original", manifest.ContentType)),
 		PreviewPath:   resolveConversationStoredPreviewPath(dir, manifest),
-		AssetURL:      conversationAttachmentURL(sessionID, manifest.ID, "original"),
-		PreviewURL:    resolveConversationAttachmentPreviewURL(sessionID, manifest.ID, resolveConversationStoredPreviewPath(dir, manifest)),
+		AssetURL:      conversationAttachmentURL(defaultAttachmentRoutePrefix, sessionID, manifest.ID, "original"),
+		PreviewURL:    resolveConversationAttachmentPreviewURL(defaultAttachmentRoutePrefix, sessionID, manifest.ID, resolveConversationStoredPreviewPath(dir, manifest)),
 	}, nil
 }
 
@@ -307,8 +319,56 @@ func conversationAttachmentDir(baseDir string, sessionID string, attachmentID st
 	return filepath.Join(baseDir, ".alter0", "workspaces", "sessions", sanitizeWorkspaceSegment(sessionID), conversationSessionAttachmentDirName, sanitizeWorkspaceSegment(attachmentID))
 }
 
-func conversationAttachmentURL(sessionID string, attachmentID string, variant string) string {
-	return "/api/sessions/" + sanitizeWorkspaceSegment(sessionID) + "/attachments/" + sanitizeWorkspaceSegment(attachmentID) + "/" + variant
+const defaultAttachmentRoutePrefix = "/api/sessions"
+
+func attachmentRoutePrefixFromPath(path string) string {
+	switch {
+	case strings.HasPrefix(path, "/api/chat/sessions/"):
+		return "/api/chat/sessions"
+	case strings.HasPrefix(path, "/api/terminal/sessions/"):
+		return "/api/terminal/sessions"
+	default:
+		return defaultAttachmentRoutePrefix
+	}
+}
+
+func normalizeAttachmentRoutePrefix(routePrefix string) string {
+	switch strings.TrimSpace(routePrefix) {
+	case "/api/chat/sessions":
+		return "/api/chat/sessions"
+	case "/api/terminal/sessions":
+		return "/api/terminal/sessions"
+	default:
+		return defaultAttachmentRoutePrefix
+	}
+}
+
+func attachmentRoutePrefixFromRequest(r *http.Request) string {
+	if r != nil {
+		if value, ok := r.Context().Value(attachmentRoutePrefixContextKey{}).(string); ok && strings.TrimSpace(value) != "" {
+			return normalizeAttachmentRoutePrefix(value)
+		}
+		if r.URL != nil {
+			return attachmentRoutePrefixFromPath(r.URL.Path)
+		}
+	}
+	return defaultAttachmentRoutePrefix
+}
+
+func withAttachmentRoutePrefix(r *http.Request, routePrefix string) *http.Request {
+	if r == nil {
+		return r
+	}
+	ctx := context.WithValue(r.Context(), attachmentRoutePrefixContextKey{}, strings.TrimSpace(routePrefix))
+	return r.WithContext(ctx)
+}
+
+func conversationAttachmentURL(routePrefix string, sessionID string, attachmentID string, variant string) string {
+	prefix := strings.TrimRight(strings.TrimSpace(routePrefix), "/")
+	if prefix == "" {
+		prefix = defaultAttachmentRoutePrefix
+	}
+	return prefix + "/" + sanitizeWorkspaceSegment(sessionID) + "/attachments/" + sanitizeWorkspaceSegment(attachmentID) + "/" + variant
 }
 
 func resolveConversationStoredPreviewPath(dir string, manifest conversationAttachmentManifest) string {
@@ -318,11 +378,11 @@ func resolveConversationStoredPreviewPath(dir string, manifest conversationAttac
 	return filepath.Join(dir, conversationAttachmentStoredFileName(manifest.PreviewFileName, "preview", manifest.PreviewContentType))
 }
 
-func resolveConversationAttachmentPreviewURL(sessionID string, attachmentID string, previewPath string) string {
+func resolveConversationAttachmentPreviewURL(routePrefix string, sessionID string, attachmentID string, previewPath string) string {
 	if strings.TrimSpace(previewPath) == "" {
-		return conversationAttachmentURL(sessionID, attachmentID, "original")
+		return conversationAttachmentURL(routePrefix, sessionID, attachmentID, "original")
 	}
-	return conversationAttachmentURL(sessionID, attachmentID, "preview")
+	return conversationAttachmentURL(routePrefix, sessionID, attachmentID, "preview")
 }
 
 func decodeConversationAttachmentDataURL(raw string) ([]byte, error) {
