@@ -1254,7 +1254,7 @@ function normalizeTerminalSession(
   const incomingPaging = normalizeTerminalTurnPaging(item.turns_paging);
   const shouldMergeTerminalMessages = parsedMessages
     && previous?.messages.length
-    && (isPagedTerminalTurnPayload(item, incomingPaging) || parsedMessages.length < previous.messages.length);
+    && (Boolean(incomingPaging) || isPagedTerminalTurnPayload(item, incomingPaging) || parsedMessages.length < previous.messages.length);
   const messages = parsedMessages
     ? (shouldMergeTerminalMessages
       ? mergePagedMessages(previous.messages, parsedMessages)
@@ -1869,7 +1869,8 @@ export function ConversationRuntimeProvider({
           skill_ids: activeSkillIDs,
         },
       );
-      const hydrated = normalizeTerminalSession(payload.session || {}, session, route);
+      const latestSession = sessionsByRouteRef.current[route].find((item) => item.id === session.id) || session;
+      const hydrated = normalizeTerminalSession(payload.session || {}, latestSession, route);
       if (hydrated) {
         upsertRuntimeSession(route, hydrated);
       } else {

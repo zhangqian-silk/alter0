@@ -100,6 +100,9 @@ function SendMessageTextHarness() {
       <button type="button" onClick={() => void runtime.sendPrompt("new prompt")}>
         send prompt
       </button>
+      <button type="button" onClick={() => void runtime.refreshActiveSession()}>
+        refresh active
+      </button>
       <output data-testid="message-texts">
         {runtime.activeSession?.messages.map((message) => message.text).join("|") || ""}
       </output>
@@ -1229,6 +1232,140 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "send prompt" }));
 
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("new answer"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("existing answer 1");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("existing answer 3");
+  });
+
+  it("merges the final earlier Chat history page without dropping the latest page", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Progressive history",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [{
+                id: "turn-3",
+                prompt: "latest prompt",
+                status: "success",
+                started_at: "2026-04-23T03:03:00Z",
+                finished_at: "2026-04-23T03:03:02Z",
+                final_output: "latest answer",
+              }],
+            }],
+          };
+        case "/api/terminal/sessions/alter0-chat?scope=chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Progressive history",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: {
+                has_more_before: false,
+                oldest_turn_id: "turn-1",
+                newest_turn_id: "turn-2",
+              },
+              turns: [
+                {
+                  id: "turn-1",
+                  prompt: "older prompt",
+                  status: "success",
+                  started_at: "2026-04-23T03:01:00Z",
+                  finished_at: "2026-04-23T03:01:02Z",
+                  final_output: "older answer",
+                },
+                {
+                  id: "turn-2",
+                  prompt: "middle prompt",
+                  status: "success",
+                  started_at: "2026-04-23T03:02:00Z",
+                  finished_at: "2026-04-23T03:02:02Z",
+                  final_output: "middle answer",
+                },
+              ],
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer"));
+
+    fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("middle answer");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer");
+  });
+
+  it("appends a returned user-only Chat turn without replacing loaded history", async () => {
+    const existingTurns = chatTurnFixtures(3, "existing answer");
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "History session",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: existingTurns,
+            }],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+        return {
+          session: {
+            id: "alter0-chat",
+            title: "History session",
+            status: "busy",
+            created_at: "2026-04-23T03:30:00Z",
+            turns: [{
+              id: "turn-user-only",
+              prompt: "new prompt",
+              status: "running",
+              started_at: "2026-04-23T04:00:00Z",
+              final_output: "",
+            }],
+          },
+        };
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SendMessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("existing answer 3"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send prompt" }));
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("new prompt"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("existing answer 1");
     expect(screen.getByTestId("message-texts")).toHaveTextContent("existing answer 3");
   });

@@ -2924,7 +2924,205 @@ describe("ReactManagedTerminalRouteBody", () => {
     await waitFor(() => expect(screen.getByText("latest output")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("older output")).toBeInTheDocument());
     expect(screen.getByText("middle output")).toBeInTheDocument();
+    expect(screen.getByText("latest output")).toBeInTheDocument();
     expect(requests).toContain("GET /api/terminal/sessions/terminal-1?turn_before=turn-3&turn_limit=20");
+  });
+
+  it("does not repeatedly reload the same Terminal history page when a background page makes no progress", async () => {
+    let backgroundPageLoads = 0;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [{
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+          }],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns_paging: {
+              has_more_before: true,
+              oldest_turn_id: "turn-3",
+              newest_turn_id: "turn-3",
+              next_before_turn_id: "turn-3",
+            },
+            turns: [{
+              id: "turn-3",
+              prompt: "latest",
+              status: "completed",
+              started_at: "2026-04-15T10:03:00Z",
+              finished_at: "2026-04-15T10:03:02Z",
+              duration_ms: 2000,
+              final_output: "latest output",
+              runtime_trace_events: [],
+            }],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1?turn_before=turn-3&turn_limit=20" && method === "GET") {
+        backgroundPageLoads += 1;
+        if (backgroundPageLoads > 1) {
+          return Promise.reject(new Error("reloaded the same Terminal history page"));
+        }
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => expect(screen.getByText("latest output")).toBeInTheDocument());
+    await waitFor(() => expect(backgroundPageLoads).toBe(1));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    });
+
+    expect(backgroundPageLoads).toBe(1);
+  });
+
+  it("keeps loaded Terminal history when an input response returns only the new turn", async () => {
+    let sessionLoads = 0;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          items: [{
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+          }],
+        }));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        sessionLoads += 1;
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:11:00Z",
+            turns: sessionLoads > 1
+              ? [{
+                  id: "turn-3",
+                  prompt: "continue",
+                  status: "completed",
+                  started_at: "2026-04-15T10:11:00Z",
+                  finished_at: "2026-04-15T10:11:02Z",
+                  duration_ms: 2000,
+                  final_output: "new output",
+                  runtime_trace_events: [],
+                }]
+              : [
+                  {
+                    id: "turn-1",
+                    prompt: "older",
+                    status: "completed",
+                    started_at: "2026-04-15T10:01:00Z",
+                    finished_at: "2026-04-15T10:01:02Z",
+                    duration_ms: 2000,
+                    final_output: "older output",
+                    runtime_trace_events: [],
+                  },
+                  {
+                    id: "turn-2",
+                    prompt: "latest",
+                    status: "completed",
+                    started_at: "2026-04-15T10:02:00Z",
+                    finished_at: "2026-04-15T10:02:02Z",
+                    duration_ms: 2000,
+                    final_output: "latest output",
+                    runtime_trace_events: [],
+                  },
+                ],
+          },
+        }));
+      }
+      if (url === "/api/terminal/sessions/terminal-1/input" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:11:00Z",
+            turns: [{
+              id: "turn-3",
+              prompt: "continue",
+              status: "completed",
+              started_at: "2026-04-15T10:11:00Z",
+              finished_at: "2026-04-15T10:11:02Z",
+              duration_ms: 2000,
+              final_output: "new output",
+              runtime_trace_events: [],
+            }],
+          },
+        }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => expect(screen.getByText("older output")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("latest output")).toBeInTheDocument());
+
+    fireEvent.change(document.querySelector("[data-runtime-composer-input='terminal']") as HTMLTextAreaElement, {
+      target: { value: "continue" },
+    });
+    fireEvent.click(document.querySelector("[data-runtime-composer-submit='terminal']") as HTMLButtonElement);
+
+    await waitFor(() => expect(screen.getByText("new output")).toBeInTheDocument());
+    expect(screen.getByText("older output")).toBeInTheDocument();
+    expect(screen.getByText("latest output")).toBeInTheDocument();
   });
 
   it("marks the terminal composer input as plain text so mobile autofill bars stay off", async () => {
