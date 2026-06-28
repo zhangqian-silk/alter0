@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode, type TouchEvent } from "react";
-import { createPortal } from "react-dom";
 import { useWorkbenchContext, type WorkbenchSessionRail } from "../../../app/WorkbenchContext";
 import { RuntimeComposer } from "./RuntimeComposer";
+import { RuntimeMobileComposerPortal } from "./RuntimeMobileComposerPortal";
 import { RuntimeSessionList, type RuntimeSessionListGroup } from "./RuntimeSessionList";
 import { RouteFieldRow } from "./RouteBodyPrimitives";
 import { RuntimeTimeline, type RuntimeTimelineItem } from "./RuntimeTimeline";
@@ -376,19 +376,14 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
     </RuntimeWorkspaceScreen>
   ), [controller.screen, controller.timeline]);
   const composerNode = controller.composerNode ?? (controller.composer ? <RuntimeComposer {...controller.composer} /> : null);
-  const composerPortalView = route === "terminal" ? "terminal" : "conversation";
-  const mobileComposerPortal = isMobileViewport && composerNode && typeof document !== "undefined"
-    ? createPortal(
-      <div
-        className="runtime-composer-portal-host"
-        data-runtime-composer-portal-host={route}
-        data-runtime-composer-view={composerPortalView}
-      >
-        {composerNode}
-      </div>,
-      document.body,
-    )
-    : null;
+  const mobileComposerPortal = (
+    <RuntimeMobileComposerPortal
+      isMobileViewport={isMobileViewport}
+      route={route}
+      composerNode={composerNode}
+      mobileLayoutState={controller.shell.mobileLayoutState}
+    />
+  );
   const workspaceFooter = isMobileViewport && composerNode ? (
     <div
       className="runtime-composer-spacer"
