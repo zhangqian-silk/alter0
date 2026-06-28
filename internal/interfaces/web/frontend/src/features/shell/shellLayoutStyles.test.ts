@@ -123,12 +123,12 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("keeps the mobile runtime composer fixed to the visual-viewport-adjusted bottom edge", () => {
+  it("keeps the mobile runtime composer fixed to the dynamic viewport bottom edge", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*var\(--keyboard-composer-offset, var\(--keyboard-offset, 0px\)\);/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*0;/,
     );
     expect(stylesheet).not.toMatch(/\.runtime-composer-shell\s*\{[^}]*transform:/);
   });
@@ -144,10 +144,24 @@ describe("shell layout stylesheet", () => {
       /\[data-runtime-view="conversation"\] \.runtime-workspace-body,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-body,[\s\S]*?\[data-runtime-view="terminal"\] \.runtime-workspace-body > \.runtime-workspace-panel\s*\{[\s\S]*?transform:\s*none !important;[\s\S]*?transition:\s*none;/,
     );
     expect(stylesheet).toMatch(
-      /Mobile runtime keyboard isolation:[\s\S]*?\.runtime-composer-shell,\s*\.runtime-composer-portal-host \.runtime-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?bottom:\s*0 !important;/,
+      /Mobile runtime keyboard isolation:[\s\S]*?\.runtime-composer-shell,\s*\.runtime-composer-portal-host \.runtime-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?bottom:\s*0 !important;[\s\S]*?z-index:\s*80;/,
+    );
+    expect(stylesheet).toMatch(
+      /Mobile runtime keyboard isolation:[\s\S]*?\.runtime-composer-portal-host\[data-runtime-composer-suspended="true"\] \.runtime-composer-shell\s*\{[\s\S]*?visibility:\s*hidden;[\s\S]*?opacity:\s*0;[\s\S]*?pointer-events:\s*none;/,
     );
     expect(stylesheet).not.toMatch(/\.runtime-workspace-body\s*\{[^}]*translate3d\(0, var\(--mobile-viewport-offset-top/);
     expect(stylesheet).not.toMatch(/\.runtime-workspace-panel\s*\{[^}]*translate3d\(0, var\(--mobile-viewport-offset-top/);
+  });
+
+  it("keeps mobile composer event handling aligned with the online viewport sync path", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /Mobile runtime keyboard isolation:[\s\S]*?\.runtime-composer-shell,\s*\.runtime-composer-portal-host \.runtime-composer-shell\s*\{[\s\S]*?bottom:\s*0 !important;[\s\S]*?z-index:\s*80;/,
+    );
+    expect(stylesheet).not.toMatch(/\.runtime-composer-form\s*\{[\s\S]*?pointer-events:\s*none;/);
+    expect(stylesheet).not.toMatch(/\.runtime-composer-shell,\s*\.runtime-composer-portal-host \.runtime-composer-shell\s*\{[^}]*pointer-events:\s*none;/);
   });
 
   it("pins the mobile runtime header outside the keyboard-resized workspace flow", () => {
@@ -438,6 +452,7 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".chat-pane:not(.page-mode) {");
     expect(stylesheet).toContain(".chat-pane.page-mode {");
     expect(isolationStylesheet).toContain("bottom: 0 !important;");
+    expect(isolationStylesheet).toContain("height: var(--runtime-composer-rest-inset, 0px);");
     expect(stylesheet).toContain(".runtime-composer-portal-host");
     expect(stylesheet).toContain(".runtime-composer-spacer");
   });
