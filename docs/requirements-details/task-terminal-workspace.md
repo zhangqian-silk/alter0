@@ -29,6 +29,7 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 
 - Web Shell 中的 Terminal 路由页主体由 React 原生实现，运行区根节点直接挂在共享 `workbench-pane-shell` 下，不再额外经过 `route-view / route-body` 包裹，避免从 Chat/Chat 切换时出现布局与滚动容器跳变。
 - Terminal 页面直接请求 `/api/terminal/sessions`、`/api/terminal/sessions/{session_id}`、`/api/terminal/sessions/{session_id}/turns/{turn_id}/events/{event_id}` 等接口，并在 React 内维护会话恢复、轮询、输入、删除、事件展开、滚动定位与本地草稿恢复。
+- Terminal 与 Chat 的前端会话生命周期必须完全复用同一套 runtime session controller 与 catalog hook；列表、详情、输入、置顶、删除、附件、事件明细、历史分页以及 model / Skill / MCP catalog 只允许通过 route 参数区分 `terminal` 与 `chat`，不得在 Terminal 页面内保留私有会话状态机、endpoint 拼接或私有分页常量。
 - Terminal 的 session pane 容器、workspace 容器与主视图外壳在 React rerender 期间必须保持稳定实例，不能因语言切换、path 路由变化或壳层状态更新而清空正在运行的终端内容。
 - Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构；Terminal 只注入当前状态值、详情面板内容、Process、跳转四键与 Composer 控件，工作区标题、状态按钮和 `Details` 按钮必须使用 Chat/Chat 同一组共享 header 元素。详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
 - React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管；工作区头部仅复用共享 `RuntimeWorkspaceHeader` 元素，不再保留 Terminal 专属 header kind、标题元素或 details toggle。

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { resolveComposerAttachmentViewerURL } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 import {
@@ -17,29 +17,9 @@ import {
   type RuntimeEventFilterID,
   type RuntimeTraceEvent,
 } from "./runtimeTraceEvents";
+import type { RuntimeSessionTimelineMessage } from "./runtimeSessionViewModel";
 
-export type ChatMessageSnapshot = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  attachments: Array<{
-    id: string;
-    name: string;
-    contentType: string;
-    size: number;
-    dataURL?: string;
-    previewDataURL?: string;
-    assetURL?: string;
-    previewURL?: string;
-  }>;
-  route: string;
-  source: string;
-  error: boolean;
-  status: string;
-  at: number;
-  processEvents: RuntimeTraceEvent[];
-  processCollapsed?: boolean;
-};
+export type ChatMessageSnapshot = RuntimeSessionTimelineMessage;
 
 type MessageCopy = {
   statusInProgress: string;
@@ -114,7 +94,7 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
     <RuntimeTimeline
       className="message-list"
       timelineProps={{ "data-message-session-id": sessionId }}
-      items={buildChatTimelineItems({
+      items={buildRuntimeSessionTimelineItems({
         cacheScope: sessionId,
         messages,
         language,
@@ -128,6 +108,12 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
 });
 
 export function buildChatTimelineItems({
+  ...options
+}: BuildRuntimeSessionTimelineItemsOptions) {
+  return buildRuntimeSessionTimelineItems(options);
+}
+
+export function buildRuntimeSessionTimelineItems({
   cacheScope = "default",
   messages,
   language,
@@ -135,7 +121,8 @@ export function buildChatTimelineItems({
   expandedProcessEvents,
   onToggleProcessEvent,
   runtimeEventFilter,
-}: BuildChatTimelineItemsOptions) {
+  renderProcessEventDetail,
+}: BuildRuntimeSessionTimelineItemsOptions) {
   const callbackCacheID = resolveCallbackCacheID(onToggleProcess);
   const stepCallbackCacheID = resolveCallbackCacheID(onToggleProcessEvent);
   const copy = MESSAGE_COPY[language];
@@ -160,6 +147,7 @@ export function buildChatTimelineItems({
       expandedStepMap,
       onToggleProcessEvent,
       filter,
+      renderProcessEventDetail,
     );
     timelineItemCache.set(cacheKey, { signature, item });
     trimTimelineItemCache();
@@ -167,7 +155,7 @@ export function buildChatTimelineItems({
   });
 }
 
-type BuildChatTimelineItemsOptions = {
+type BuildRuntimeSessionTimelineItemsOptions = {
   cacheScope?: string;
   messages: ChatMessageSnapshot[];
   language: LegacyShellLanguage;
@@ -175,6 +163,7 @@ type BuildChatTimelineItemsOptions = {
   expandedProcessEvents?: Record<string, boolean>;
   onToggleProcessEvent?: (messageID: string, stepID: string) => void;
   runtimeEventFilter?: RuntimeEventFilterID[];
+  renderProcessEventDetail?: (messageID: string, event: RuntimeTraceEvent) => ReactNode;
 };
 
 function resolveCallbackCacheID(callback?: Function) {
@@ -236,6 +225,8 @@ function buildChatTimelineItemSignature(message: ChatMessageSnapshot) {
       assetURL: attachment.assetURL,
       previewURL: attachment.previewURL,
     })),
+    promptText: message.promptText,
+    promptAttachments: message.promptAttachments,
     route: message.route,
     source: message.source,
     error: message.error,
@@ -243,6 +234,39 @@ function buildChatTimelineItemSignature(message: ChatMessageSnapshot) {
     processEvents: message.processEvents,
     processCollapsed: message.processCollapsed,
   });
+}
+
+function normalizeRuntimeTimelineText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function buildRuntimeSessionPromptBlocks(message: ChatMessageSnapshot): RuntimeTimelineItem["blocks"] {
+  const promptText = normalizeRuntimeTimelineText(message.promptText);
+  const promptAttachments = message.promptAttachments || [];
+  const blocks: RuntimeTimelineItem["blocks"] = [];
+  if (promptAttachments.length > 0) {
+    blocks.push({
+      type: "attachments",
+      galleryId: `${message.id}:prompt`,
+      className: "terminal-turn-attachments",
+      items: promptAttachments.map((attachment) => ({
+        key: attachment.id,
+        name: attachment.name,
+        src: resolveComposerAttachmentViewerURL(attachment),
+      })),
+    });
+  }
+  if (promptText) {
+    blocks.push({
+      type: "prompt",
+      className: "terminal-log-row kind-command terminal-turn-prompt runtime-message runtime-message-user",
+      bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-user-shell user-message-shell",
+      textClassName: "terminal-log-main",
+      timeClassName: "terminal-log-time",
+      text: promptText,
+    });
+  }
+  return blocks;
 }
 
 function buildChatTimelineItem(
@@ -253,6 +277,7 @@ function buildChatTimelineItem(
   expandedProcessEvents: Record<string, boolean> = {},
   onToggleProcessEvent?: (messageID: string, stepID: string) => void,
   runtimeEventFilter: RuntimeEventFilterID[] = DEFAULT_RUNTIME_EVENT_FILTER,
+  renderProcessEventDetail?: (messageID: string, event: RuntimeTraceEvent) => ReactNode,
 ): RuntimeTimelineItem {
   const footer = message.role === "assistant" && shouldShowAssistantStatus(message) ? (
     <div className="msg-meta">
@@ -294,30 +319,45 @@ function buildChatTimelineItem(
   }
 
   const parsed = resolveExecutionContent(message, language, runtimeEventFilter);
+  const promptBlocks = buildRuntimeSessionPromptBlocks(message);
   if (!parsed.events.length) {
     const markdown = parsed.hadProcess ? parsed.answer.trim() : (parsed.answer.trim() || message.text);
+    const promptOnlyTurn =
+      Boolean(promptBlocks.length)
+      && message.assistantTextDerivedFromPrompt === true;
     return {
       id: message.id,
       className: "msg assistant terminal-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
-      articleProps: { "data-message-id": message.id },
+      articleProps: {
+        "data-message-id": message.id,
+        "data-terminal-turn": runtimeSessionTimelineTurnID(message.id),
+      },
       bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
-      blocks: markdown.trim() ? [
-        {
+      blocks: [
+        ...promptBlocks,
+        ...(markdown.trim() && !promptOnlyTurn ? [{
           type: "markdown-shell" as const,
           markdown,
-          copyValue: message.status === "streaming" ? undefined : markdown.trim(),
+          copyValue: message.status === "streaming" ? undefined : message.text,
           copyLabel: copy.copyValue,
           wrapperClassName: [
             "terminal-final-output",
+            "terminal-turn-output",
+            "runtime-message",
+            "runtime-message-assistant",
             "conversation-final-output",
             message.status === "streaming" ? "is-streaming" : "",
             message.error ? "is-error" : "",
           ].filter(Boolean).join(" "),
-          wrapperProps: { "data-conversation-final-output": message.id },
+          wrapperProps: {
+            "data-conversation-final-output": message.id,
+            "data-terminal-final-output": runtimeSessionTimelineTurnID(message.id),
+          },
+          bubbleClassName: "runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
           className: "terminal-final-text conversation-final-text",
           bodyClassName: "terminal-final-rendered conversation-final-rendered",
-        },
-      ] : [],
+        }] : []),
+      ],
       footer,
     };
   }
@@ -330,15 +370,25 @@ function buildChatTimelineItem(
   return {
     id: message.id,
     className: "msg assistant terminal-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
-    articleProps: { "data-message-id": message.id },
+    articleProps: {
+      "data-message-id": message.id,
+      "data-terminal-turn": runtimeSessionTimelineTurnID(message.id),
+    },
     bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
     blocks: [
+      ...promptBlocks,
       {
         type: "process",
         shellClassName: `runtime-thinking-shell terminal-process-shell ${collapsed ? "is-collapsed" : ""}`,
-        shellProps: { "data-conversation-process-shell": message.id },
+        shellProps: {
+          "data-conversation-process-shell": message.id,
+          "data-terminal-process-shell": runtimeSessionTimelineTurnID(message.id),
+        },
         toggleClassName: "runtime-thinking-toggle terminal-process-toggle",
-        toggleProps: { "data-conversation-process-toggle": message.id },
+        toggleProps: {
+          "data-conversation-process-toggle": message.id,
+          "data-terminal-process-toggle": runtimeSessionTimelineTurnID(message.id),
+        },
         title: (
           <>
             <span className="terminal-step-toggle-icon" aria-hidden="true">{collapsed ? ">" : "v"}</span>
@@ -364,7 +414,7 @@ function buildChatTimelineItem(
               "data-runtime-event-kind": step.kind,
               "data-runtime-event-source": step.source,
             },
-            title: step.title || `${copy.processLabel} ${index + 1}`,
+            title: normalizeRuntimeTimelineText(step.summary || step.title) || `${copy.processLabel} ${index + 1}`,
             titleClassName: "terminal-step-title",
             meta: runtimeEventDisclosureMeta(step, language),
             expanded,
@@ -377,7 +427,7 @@ function buildChatTimelineItem(
             bodyClassName: "terminal-step-body",
             detail: (
               <div className="terminal-step-detail">
-                {runtimeEventDetail(step)}
+                {renderProcessEventDetail?.(message.id, step) || runtimeEventDetail(step)}
               </div>
             ),
           };
@@ -387,10 +437,14 @@ function buildChatTimelineItem(
         {
           type: "markdown-shell" as const,
           markdown: parsed.answer,
-          copyValue: parsed.answer,
+          copyValue: message.text,
           copyLabel: copy.copyValue,
-          wrapperClassName: "terminal-final-output conversation-final-output",
-          wrapperProps: { "data-conversation-final-output": message.id },
+          wrapperClassName: "terminal-final-output terminal-turn-output runtime-message runtime-message-assistant conversation-final-output",
+          wrapperProps: {
+            "data-conversation-final-output": message.id,
+            "data-terminal-final-output": runtimeSessionTimelineTurnID(message.id),
+          },
+          bubbleClassName: "runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
           className: "terminal-final-text conversation-process-answer-shell conversation-final-text",
           bodyClassName: "terminal-final-rendered conversation-process-answer conversation-final-rendered",
         },
@@ -398,6 +452,10 @@ function buildChatTimelineItem(
     ],
     footer,
   };
+}
+
+function runtimeSessionTimelineTurnID(messageID: string): string {
+  return messageID.replace(/:(user|assistant)$/, "");
 }
 
 function assistantStatusLabel(status: string, language: LegacyShellLanguage) {

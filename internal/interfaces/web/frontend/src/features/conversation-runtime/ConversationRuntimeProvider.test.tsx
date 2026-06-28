@@ -15,6 +15,7 @@ const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
+const LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.long_term_snapshot.v1";
 const SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.session.info_snapshot.v1";
 
 const apiClientMock = {
@@ -1134,6 +1135,10 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent("Legacy local chat"));
     expect(screen.getByTestId("sessions")).toHaveTextContent("Recent local chat");
+    expect(window.sessionStorage.getItem(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem(RECENT_SESSION_SNAPSHOT_STORAGE_KEY)).toBeNull();
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY)).toContain("Legacy local chat");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY)).toContain("Recent local chat");
   });
 
   it("uploads draft images into the active Chat session workspace", async () => {
@@ -1671,7 +1676,7 @@ describe("ConversationRuntimeProvider", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
     expect(apiClientMock.post).not.toHaveBeenCalledWith("/api/chat/sessions/alter0-chat/input", expect.any(Object));
-    expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
+    expect(screen.getByTestId("assistant-text")).toHaveTextContent("成都旅游攻略");
   });
 
   it("allows clicking the active inspector tab again to collapse only that tab content", async () => {
