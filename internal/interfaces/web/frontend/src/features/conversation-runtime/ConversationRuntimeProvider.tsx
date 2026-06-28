@@ -51,6 +51,7 @@ const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 const CHAT_HISTORY_PAGE_TURN_LIMIT = 20;
 export const CHAT_RUNTIME_CACHE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const CHAT_LONG_TERM_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const EMPTY_COMPOSER_ATTACHMENTS: ComposerAttachment[] = [];
 
 function chatTerminalSessionEndpoint(
   path: string = "",
@@ -331,15 +332,30 @@ type ConversationRuntimeWorkspaceContextValue = Omit<
 type ConversationRuntimeComposerContextValue = Pick<
   ConversationRuntimeContextValue,
   "route"
+  | "inspectorOpen"
+  | "inspectorTab"
+  | "inspectorTabOpen"
   | "draft"
   | "draftAttachments"
   | "busy"
+  | "selectedProviderId"
+  | "selectedModelId"
   | "selectedModelSupportsVision"
+  | "providers"
+  | "capabilities"
+  | "skills"
+  | "runtimeEventFilter"
   | "setDraft"
   | "addDraftAttachments"
   | "removeDraftAttachment"
   | "clearDraftAttachments"
   | "sendPrompt"
+  | "toggleInspector"
+  | "closeInspector"
+  | "selectModel"
+  | "toggleCapability"
+  | "toggleSkill"
+  | "toggleRuntimeEventFilter"
 >;
 
 const ConversationRuntimeWorkspaceContext = createContext<ConversationRuntimeWorkspaceContextValue | null>(null);
@@ -1459,6 +1475,7 @@ export function ConversationRuntimeProvider({
   const progressiveHistoryLoadsRef = useRef(new Set<string>());
   const processEventDetailLoadsRef = useRef(new Set<string>());
   const composerDraftPersistTimerRef = useRef<number>(0);
+  const sendPromptRef = useRef<(prompt?: string) => Promise<void>>(async () => undefined);
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
 
@@ -1467,7 +1484,7 @@ export function ConversationRuntimeProvider({
   const activeSessionID = resolveSessionIDReference(activeSessions, activeSessionReference) || activeSessionReference;
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
   const activeDraftKey = activeSessionID || NEW_CHAT_DRAFT_KEY;
-  const activeDraftAttachments = composerAttachmentDrafts[activeDraftKey] || [];
+  const activeDraftAttachments = composerAttachmentDrafts[activeDraftKey] || EMPTY_COMPOSER_ATTACHMENTS;
   const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
   const availableSkillIDs = useMemo(
     () => skillCatalogLoaded ? defaultChatSkillIDs(skills) : null,
@@ -1833,17 +1850,20 @@ export function ConversationRuntimeProvider({
     return false;
   };
 
-  const sendPrompt = async (prompt: string = composerDrafts[activeDraftKey] || "") => {
+  const sendPromptImpl = async (prompt: string = composerDrafts[activeDraftKey] || "") => {
     const content = prompt.trim().slice(0, MAX_COMPOSER_CHARS);
     let attachments = activeDraftAttachments;
     if (!content && attachments.length === 0) {
       return;
     }
-    if (activeSession && shouldPollTerminalBackedSession(activeSession)) {
+    const currentActiveSession = activeSessionID
+      ? sessionsByRouteRef.current[route].find((item) => item.id === activeSessionID) || null
+      : null;
+    if (currentActiveSession && shouldPollTerminalBackedSession(currentActiveSession)) {
       return;
     }
-    const session = activeSession?.serverBacked
-      ? activeSession
+    const session = currentActiveSession?.serverBacked
+      ? currentActiveSession
       : await createTerminalRuntimeSession(route, content);
     if (!session) {
       return;
@@ -1886,6 +1906,10 @@ export function ConversationRuntimeProvider({
       }));
     }
   };
+
+  sendPromptRef.current = sendPromptImpl;
+
+  const sendPrompt = useCallback((prompt?: string) => sendPromptRef.current(prompt), []);
 
   const uploadDraftAttachments = async (
     sessionID: string,
@@ -2231,6 +2255,165 @@ export function ConversationRuntimeProvider({
   const selectedModel = enabledModels(selectedProvider).find((model) => normalizeText(model.id) === selection.modelID) || null;
   const currentTarget = activeSession?.target || defaultChatTarget();
   const activeSessionBusy = activeSession ? shouldPollTerminalBackedSession(activeSession) : false;
+  const selectedModelSupportsVision = selectedModel ? selectedModel.supports_vision !== false : true;
+  const activeMcpIDKey = (activeSession?.mcpIDs || []).join("\u0000");
+  const activeSkillIDKey = activeSkillIDs.join("\u0000");
+  const availableSkillIDKey = availableSkillIDs === null ? "__loading__" : availableSkillIDs.join("\u0000");
+  const runtimeProviderItems = useMemo(() => enabledProviders(availableProviders).map((provider) => ({
+    id: normalizeText(provider.id),
+    name: normalizeText(provider.name) || normalizeText(provider.id),
+    models: enabledModels(provider).map((model) => ({
+      id: normalizeText(model.id),
+      name: normalizeText(model.name) || normalizeText(model.id),
+      supportsVision: model.supports_vision !== false,
+      active:
+        normalizeText(provider.id) === selection.providerID
+        && normalizeText(model.id) === selection.modelID,
+    })),
+  })), [availableProviders, selection.modelID, selection.providerID]);
+  const runtimeCapabilityItems = useMemo(() => {
+    const activeMcpIDs = new Set((activeSession?.mcpIDs || []).map(normalizeText));
+    return [
+      ...mcps
+        .filter((item) => item.enabled !== false)
+        .map((item) => ({
+          id: normalizeText(item.id),
+          name: normalizeText(item.name) || normalizeText(item.id),
+          description: normalizeText(item.description) || normalizeText(item.scope) || "MCP",
+          kind: "mcp" as const,
+          active: activeMcpIDs.has(normalizeText(item.id)),
+        }))
+        .filter((item) => item.id),
+    ];
+  // activeMcpIDKey intentionally decouples Composer from activeSession.messages changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMcpIDKey, mcps]);
+  const runtimeSkillItems = useMemo(() => {
+    const selectedSkillIDs = new Set(activeSkillIDs);
+    return [
+      ...skills
+        .filter((item) => item.enabled !== false && isPublicSkillCapability(item))
+        .map((item) => ({
+          id: normalizeText(item.id),
+          name: normalizeText(item.name) || normalizeText(item.id),
+          description: normalizeText(item.description) || normalizeText(item.scope) || "Skill",
+          kind: "skill" as const,
+          active: selectedSkillIDs.has(normalizeText(item.id)),
+          visibility: "public" as const,
+          locked: false,
+        }))
+        .filter((item) => item.id),
+    ].filter((item): item is RuntimeSelection => Boolean(item?.id));
+  // activeSkillIDKey intentionally decouples Composer from activeSession.messages changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSkillIDKey, skills]);
+  const readCurrentActiveSession = useCallback(() => {
+    if (!activeSessionID) {
+      return null;
+    }
+    return sessionsByRouteRef.current[route].find((session) => session.id === activeSessionID) || null;
+  }, [activeSessionID, route]);
+  const toggleInspector = useCallback((tab?: "model" | "capabilities" | "skills") => {
+    if (!tab) {
+      setInspectorOpen((current) => {
+        const nextOpen = !current;
+        if (nextOpen) {
+          setInspectorTabOpen(true);
+        }
+        return nextOpen;
+      });
+      return;
+    }
+    if (tab === inspectorTab) {
+      setInspectorOpen(true);
+      setInspectorTabOpen((current) => !current);
+      return;
+    }
+    setInspectorTab(tab);
+    setInspectorTabOpen(true);
+    setInspectorOpen(true);
+  }, [inspectorTab]);
+  const closeInspector = useCallback(() => setInspectorOpen(false), []);
+  const selectModel = useCallback((providerID: string, modelID: string) => {
+    const session = readCurrentActiveSession();
+    if (!session) {
+      return;
+    }
+    const nextSession = {
+      ...session,
+      modelProviderID: normalizeText(providerID),
+      modelID: normalizeText(modelID),
+    };
+    patchSession(route, session.id, (currentSession) => ({
+      ...currentSession,
+      modelProviderID: nextSession.modelProviderID,
+      modelID: nextSession.modelID,
+    }));
+    void persistRuntimeSessionConfig(route, nextSession);
+  }, [patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
+  const toggleCapability = useCallback((id: string, kind: "tool" | "mcp", checked: boolean) => {
+    const session = readCurrentActiveSession();
+    if (!session) {
+      return;
+    }
+    const value = normalizeText(id);
+    if (!value) {
+      return;
+    }
+    const mutate = (items: string[]) =>
+      checked
+        ? normalizeSelectionIDs([...items, value])
+        : items.filter((item) => item !== value);
+    const nextSession = kind === "tool"
+      ? { ...session, toolIDs: mutate(session.toolIDs) }
+      : { ...session, mcpIDs: mutate(session.mcpIDs) };
+    patchSession(route, session.id, (currentSession) =>
+      kind === "tool"
+        ? { ...currentSession, toolIDs: mutate(currentSession.toolIDs) }
+        : { ...currentSession, mcpIDs: mutate(currentSession.mcpIDs) },
+    );
+    void persistRuntimeSessionConfig(route, nextSession);
+  }, [patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
+  const toggleSkill = useCallback((id: string, checked: boolean) => {
+    const session = readCurrentActiveSession();
+    if (!session) {
+      return;
+    }
+    const value = normalizeText(id);
+    if (!value) {
+      return;
+    }
+    if (availableSkillIDs !== null && !availableSkillIDs.includes(value)) {
+      return;
+    }
+    const mutate = () =>
+      checked
+        ? normalizeSelectionIDs([...effectiveSessionSkillIDs(session, availableSkillIDs), value])
+        : effectiveSessionSkillIDs(session, availableSkillIDs).filter((item) => item !== value);
+    const nextSession = {
+      ...session,
+      skillIDs: mutate(),
+      skillIDsExplicit: true,
+    };
+    patchSession(route, session.id, () => nextSession);
+    void persistRuntimeSessionConfig(route, nextSession);
+  // availableSkillIDKey intentionally decouples Composer from availableSkillIDs array identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableSkillIDKey, patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
+  const toggleRuntimeEventFilter = useCallback((id: RuntimeEventFilterID, checked: boolean) => {
+    const value = normalizeText(id) as RuntimeEventFilterID;
+    const allowed = new Set(RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id));
+    if (!allowed.has(value)) {
+      return;
+    }
+    setRuntimeEventFilter((current) => {
+      const next = checked
+        ? normalizeRuntimeEventFilter([...current, value])
+        : normalizeRuntimeEventFilter(current.filter((item) => item !== value));
+      persistRuntimeEventFilter(next);
+      return next;
+    });
+  }, []);
 
   const workspaceValue = useMemo<ConversationRuntimeWorkspaceContextValue>(() => ({
     route,
@@ -2258,45 +2441,10 @@ export function ConversationRuntimeProvider({
     selectedProviderId: selection.providerID,
     selectedModelId: selection.modelID,
     selectedModelLabel: selectedModel?.name || selectedModel?.id || "Default",
-    selectedModelSupportsVision: selectedModel ? selectedModel.supports_vision !== false : true,
-    providers: enabledProviders(availableProviders).map((provider) => ({
-      id: normalizeText(provider.id),
-      name: normalizeText(provider.name) || normalizeText(provider.id),
-      models: enabledModels(provider).map((model) => ({
-        id: normalizeText(model.id),
-        name: normalizeText(model.name) || normalizeText(model.id),
-        supportsVision: model.supports_vision !== false,
-        active:
-          normalizeText(provider.id) === selection.providerID
-          && normalizeText(model.id) === selection.modelID,
-      })),
-    })),
-    capabilities: [
-      ...mcps
-        .filter((item) => item.enabled !== false)
-        .map((item) => ({
-          id: normalizeText(item.id),
-          name: normalizeText(item.name) || normalizeText(item.id),
-          description: normalizeText(item.description) || normalizeText(item.scope) || "MCP",
-          kind: "mcp" as const,
-          active: Boolean(activeSession?.mcpIDs.includes(normalizeText(item.id))),
-        }))
-        .filter((item) => item.id),
-    ],
-    skills: [
-      ...skills
-        .filter((item) => item.enabled !== false && isPublicSkillCapability(item))
-        .map((item) => ({
-          id: normalizeText(item.id),
-          name: normalizeText(item.name) || normalizeText(item.id),
-          description: normalizeText(item.description) || normalizeText(item.scope) || "Skill",
-          kind: "skill" as const,
-          active: activeSkillIDs.includes(normalizeText(item.id)),
-          visibility: "public" as const,
-          locked: false,
-        }))
-        .filter((item) => item.id),
-    ].filter((item): item is RuntimeSelection => Boolean(item?.id)),
+    selectedModelSupportsVision,
+    providers: runtimeProviderItems,
+    capabilities: runtimeCapabilityItems,
+    skills: runtimeSkillItems,
     runtimeEventFilter,
     toolCount: (activeSession?.toolIDs.length || 0) + (activeSession?.mcpIDs.length || 0),
     skillCount: activeSkillIDs.length,
@@ -2307,109 +2455,12 @@ export function ConversationRuntimeProvider({
     removeSession,
     setSessionPinned,
     refreshActiveSession,
-    toggleInspector: (tab) => {
-      if (!tab) {
-        setInspectorOpen((current) => {
-          const nextOpen = !current;
-          if (nextOpen) {
-            setInspectorTabOpen(true);
-          }
-          return nextOpen;
-        });
-        return;
-      }
-      if (tab === inspectorTab) {
-        setInspectorOpen(true);
-        setInspectorTabOpen((current) => !current);
-        return;
-      }
-      setInspectorTab(tab);
-      setInspectorTabOpen(true);
-      setInspectorOpen(true);
-    },
-    closeInspector: () => setInspectorOpen(false),
-    selectModel: (providerID: string, modelID: string) => {
-      const session = activeSession;
-      if (!session) {
-        return;
-      }
-      const nextSession = {
-        ...session,
-        modelProviderID: normalizeText(providerID),
-        modelID: normalizeText(modelID),
-      };
-      patchSession(route, session.id, (currentSession) => ({
-        ...currentSession,
-        modelProviderID: nextSession.modelProviderID,
-        modelID: nextSession.modelID,
-      }));
-      void persistRuntimeSessionConfig(route, nextSession);
-    },
-    toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => {
-      const session = activeSession;
-      if (!session) {
-        return;
-      }
-      const value = normalizeText(id);
-      if (!value) {
-        return;
-      }
-      const mutate = (items: string[]) =>
-        checked
-          ? normalizeSelectionIDs([...items, value])
-          : items.filter((item) => item !== value);
-      const nextSession = kind === "tool"
-        ? { ...session, toolIDs: mutate(session.toolIDs) }
-        : { ...session, mcpIDs: mutate(session.mcpIDs) };
-      patchSession(route, session.id, (currentSession) =>
-        kind === "tool"
-          ? { ...currentSession, toolIDs: mutate(currentSession.toolIDs) }
-          : { ...currentSession, mcpIDs: mutate(currentSession.mcpIDs) },
-      );
-      void persistRuntimeSessionConfig(route, nextSession);
-    },
-    toggleSkill: (id: string, checked: boolean) => {
-      const session = activeSession;
-      if (!session) {
-        return;
-      }
-      const value = normalizeText(id);
-      if (!value) {
-        return;
-      }
-      if (availableSkillIDs !== null && !availableSkillIDs.includes(value)) {
-        return;
-      }
-      const mutate = (items: string[]) =>
-        checked
-          ? normalizeSelectionIDs([...effectiveSessionSkillIDs(session, availableSkillIDs), value])
-          : effectiveSessionSkillIDs(session, availableSkillIDs).filter((item) => item !== value);
-      const nextSession = {
-        ...session,
-        skillIDs: mutate(session.skillIDs),
-        skillIDsExplicit: true,
-      };
-      patchSession(route, session.id, (currentSession) => ({
-        ...currentSession,
-        skillIDs: mutate(currentSession.skillIDs),
-        skillIDsExplicit: true,
-      }));
-      void persistRuntimeSessionConfig(route, nextSession);
-    },
-    toggleRuntimeEventFilter: (id: RuntimeEventFilterID, checked: boolean) => {
-      const value = normalizeText(id) as RuntimeEventFilterID;
-      const allowed = new Set(RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id));
-      if (!allowed.has(value)) {
-        return;
-      }
-      setRuntimeEventFilter((current) => {
-        const next = checked
-          ? normalizeRuntimeEventFilter([...current, value])
-          : normalizeRuntimeEventFilter(current.filter((item) => item !== value));
-        persistRuntimeEventFilter(next);
-        return next;
-      });
-    },
+    toggleInspector,
+    closeInspector,
+    selectModel,
+    toggleCapability,
+    toggleSkill,
+    toggleRuntimeEventFilter,
     toggleProcess: (messageID: string) => {
       if (!activeSession) {
         return;
@@ -2441,29 +2492,42 @@ export function ConversationRuntimeProvider({
     selection.modelID,
     selectedModel?.name,
     selectedModel?.id,
-    availableProviders,
-    mcps,
-    skills,
+    selectedModelSupportsVision,
+    runtimeProviderItems,
+    runtimeCapabilityItems,
+    runtimeSkillItems,
     runtimeEventFilter,
-    activeSessionByRoute,
     activeSkillIDs,
-    availableSkillIDs,
     createTerminalRuntimeSession,
     focusSession,
     patchSession,
-    persistRuntimeSessionConfig,
     refreshActiveSession,
     loadProcessEventDetail,
     removeSession,
     setSessionPinned,
+    toggleInspector,
+    closeInspector,
+    selectModel,
+    toggleCapability,
+    toggleSkill,
+    toggleRuntimeEventFilter,
   ]);
 
   const composerValue = useMemo<ConversationRuntimeComposerContextValue>(() => ({
     route,
+    inspectorOpen,
+    inspectorTab,
+    inspectorTabOpen,
     draft: composerDrafts[activeDraftKey] || "",
     draftAttachments: activeDraftAttachments,
     busy: activeSessionBusy,
-    selectedModelSupportsVision: selectedModel ? selectedModel.supports_vision !== false : true,
+    selectedProviderId: selection.providerID,
+    selectedModelId: selection.modelID,
+    selectedModelSupportsVision,
+    providers: runtimeProviderItems,
+    capabilities: runtimeCapabilityItems,
+    skills: runtimeSkillItems,
+    runtimeEventFilter,
     setDraft: (value: string) => {
       const nextDrafts = { ...composerDrafts, [activeDraftKey]: value.slice(0, MAX_COMPOSER_CHARS) };
       setComposerDrafts(nextDrafts);
@@ -2473,8 +2537,9 @@ export function ConversationRuntimeProvider({
       if (normalized.length === 0) {
         return;
       }
-      const session = activeSession?.serverBacked
-        ? activeSession
+      const currentActiveSession = readCurrentActiveSession();
+      const session = currentActiveSession?.serverBacked
+        ? currentActiveSession
         : await createTerminalRuntimeSession(route);
       if (!session) {
         return;
@@ -2491,7 +2556,7 @@ export function ConversationRuntimeProvider({
       persistComposerAttachmentDrafts(nextDrafts);
     },
     removeDraftAttachment: (attachmentID: string) => {
-      const sessionID = activeSession?.id;
+      const sessionID = activeSessionID;
       if (!sessionID) {
         return;
       }
@@ -2501,7 +2566,7 @@ export function ConversationRuntimeProvider({
       persistComposerAttachmentDrafts(nextDrafts);
     },
     clearDraftAttachments: () => {
-      const sessionID = activeSession?.id;
+      const sessionID = activeSessionID;
       if (!sessionID) {
         return;
       }
@@ -2510,17 +2575,39 @@ export function ConversationRuntimeProvider({
       persistComposerAttachmentDrafts(nextDrafts);
     },
     sendPrompt,
+    toggleInspector,
+    closeInspector,
+    selectModel,
+    toggleCapability,
+    toggleSkill,
+    toggleRuntimeEventFilter,
   }), [
     route,
+    inspectorOpen,
+    inspectorTab,
+    inspectorTabOpen,
     activeDraftKey,
     composerDrafts,
     activeDraftAttachments,
     activeSessionBusy,
-    selectedModel,
+    selection.providerID,
+    selection.modelID,
+    selectedModelSupportsVision,
+    runtimeProviderItems,
+    runtimeCapabilityItems,
+    runtimeSkillItems,
+    runtimeEventFilter,
     composerAttachmentDrafts,
-    activeSession,
+    activeSessionID,
+    readCurrentActiveSession,
     createTerminalRuntimeSession,
     sendPrompt,
+    toggleInspector,
+    closeInspector,
+    selectModel,
+    toggleCapability,
+    toggleSkill,
+    toggleRuntimeEventFilter,
   ]);
 
   return (

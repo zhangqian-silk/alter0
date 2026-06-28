@@ -372,7 +372,7 @@ body {
 
   .runtime-composer-shell {
     padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
-    bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px));
+    bottom: 0;
   }
 
   .runtime-composer-form {
@@ -518,7 +518,7 @@ body {
 
 @media (max-width: 760px) {
   .runtime-composer-shell {
-    bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px));
+    bottom: 0;
   }
 
   [data-runtime-view="terminal"] .terminal-final-output {
@@ -770,7 +770,7 @@ body {
 
 @media (max-width: 760px) {
   .runtime-composer-shell {
-    bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px));
+    bottom: 0;
   }
 
   .primary-nav {
@@ -9767,7 +9767,7 @@ body::after {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px));
+    bottom: 0;
     z-index: 80;
     width: 100%;
     max-width: 100%;
@@ -10309,7 +10309,7 @@ body::after {
     max-width: 100%;
     border-top: 0;
     padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
-    bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px));
+    bottom: 0;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(250, 252, 255, 0.94) 48%, rgba(250, 252, 255, 0.98) 100%);
   }
 
@@ -10336,7 +10336,7 @@ body::after {
     display: none;
   }
 
-  /* Source contract marker: bottom: calc(168px + env(safe-area-inset-bottom) + var(--keyboard-composer-offset, var(--keyboard-offset))); */
+  /* Source contract marker: runtime composer anchors to the dynamic viewport bottom. */
 
   [data-runtime-view="terminal"] .runtime-composer-form .runtime-composer-meta,
   [data-runtime-composer-view="terminal"] .runtime-composer-form .runtime-composer-meta {
@@ -11141,7 +11141,7 @@ body {
 
 @media (max-width: 760px) {
   .runtime-composer-shell {
-    bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px));
+    bottom: 0;
   }
 
   [data-runtime-view="terminal"] .terminal-final-output {

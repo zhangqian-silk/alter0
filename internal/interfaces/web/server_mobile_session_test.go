@@ -118,7 +118,8 @@ func TestConversationDetailsUseSharedWorkspaceHeader(t *testing.T) {
 		readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx") +
 		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeWorkspaceHeader.tsx")
 	markers := []string{
-		"toggleInspector: (tab) => {",
+		"const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);",
+		"onToggleDetails: activeSessionIsDraft ? () => undefined : () => setSessionDetailsOpen((current) => !current),",
 		`data-runtime-workspace-header="true"`,
 		`headerProps: { "data-runtime-header-kind": "conversation" },`,
 		`data-runtime-details-panel`,

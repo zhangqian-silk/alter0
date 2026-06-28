@@ -23,6 +23,7 @@ import {
 } from "./codexSlashCommands";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
 import { runtimeSessionEndpoint } from "./runtimeSessionApi";
+import { resolveRuntimeMobileLayoutState } from "./runtimeMobileLayout";
 import type { RuntimeTimelineItem, RuntimeTimelineProcessEvent } from "./RuntimeTimeline";
 import { normalizeText, RouteMarkdownContent } from "./RouteBodyPrimitives";
 import {
@@ -1956,11 +1957,19 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     turns,
     activeSession?.id,
   ]);
+  const mobileLayoutState = resolveRuntimeMobileLayoutState({
+    isMobileViewport: workbench.isMobileViewport,
+    inputFocused,
+    primaryNavOpen: workbench.mobileNavOpen,
+    sessionPaneOpen: workbench.mobileSessionPaneOpen,
+    composerPanelOpen: metaOpen,
+  });
 
   return {
     shell: {
       rootClassName: "runtime-workspace-view",
       rootProps: { "data-runtime-view": "terminal" },
+      mobileLayoutState,
       sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen
         ? "is-open"
         : undefined,

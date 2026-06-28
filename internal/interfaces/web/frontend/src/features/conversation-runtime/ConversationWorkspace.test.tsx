@@ -365,6 +365,24 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
   });
 
+  it("suspends the mobile composer while the primary navigation drawer is open", () => {
+    const { unmount } = renderWorkspace({
+      isMobileViewport: true,
+      mobileNavOpen: true,
+    });
+
+    try {
+      const shell = document.querySelector("[data-runtime-view='conversation']");
+      const portalHost = document.body.querySelector("[data-runtime-composer-portal-host='chat']");
+
+      expect(shell).toHaveAttribute("data-runtime-mobile-layout", "mobile-primary-nav-drawer");
+      expect(portalHost).toHaveAttribute("data-runtime-composer-suspended", "true");
+      expect(portalHost).toHaveAttribute("aria-hidden", "true");
+    } finally {
+      unmount();
+    }
+  });
+
   it("disables the Chat composer while the active Terminal-backed session is busy", () => {
     runtimeMock.busy = true;
     runtimeMock.activeSession = {

@@ -75,14 +75,14 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `GET /chat` 返回 Web Shell。
 - `GET /login` 与 `POST /login` 处理登录页和登录提交。
 - `GET /logout` 清理当前登录态。
-- `POST /api/chat/sessions/{session_id}/input` 处理 Chat 的 Terminal-compatible 输入提交，是 Web Chat 当前唯一消息提交入口；Terminal 页面继续使用 `/api/terminal/sessions/{session_id}/input`。
-- Web `Chat` 独立消息入口已移除；对话消息统一由 Chat owner 的 Terminal-compatible session input 处理，运行页列表与详情由 `/api/chat/sessions` 系列接口恢复。
+- `POST /api/chat/sessions/{session_id}/input` 处理 Chat owner 输入提交，是 Web Chat 当前唯一消息提交入口；Terminal 页面继续使用 `/api/terminal/sessions/{session_id}/input`。
+- Web `Chat` 独立消息入口已移除；对话消息统一由 Chat owner 的 runtime session input 处理，运行页列表与详情由 `/api/chat/sessions` 接口恢复。
 - 上述消息接口在 `content` 之外还接受 `attachments[]`；当前稳定支持两种图片输入：首次上传时携带 `data_url`、文件名与 MIME 类型，或在同一 Session 内复用已上传的 `id + asset_url + preview_url` 资产引用。允许仅发送图片，服务端会补齐稳定占位文本并把图片载荷并入统一消息元数据。
-- `POST /api/chat/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`；其中 `preview_url` 只用于缩略图位，历史消息回显与预览弹层必须优先读取 `asset_url` 原图。
+- `POST /api/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`；其中 `preview_url` 只用于缩略图位，历史消息回显与预览弹层必须优先读取 `asset_url` 原图。
 - `Terminal` 页面 Composer 复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、缩略预览与历史回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`；其中缩略位继续使用 `preview_url`，再次查看时统一切回 `asset_url`。
-- assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/chat/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
+- assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
 - `GET /api/chat/sessions` 返回 Chat 运行页会话摘要，至少包含标题、Skills 选择、创建时间、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。Terminal 默认 `/api/terminal/sessions` 不包含 Chat owner 会话。
-- `GET /api/chat/sessions/{session_id}` 返回单个 Chat 运行页会话详情，默认只返回最新 turns 页，并通过 `turns_paging` 提供总量、页边界、`next_before_turn_id` 与是否仍有更早内容；前端继续按 `turn_before` 后台补齐更早 turns。详情至少包含 Terminal-compatible `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
+- `GET /api/chat/sessions/{session_id}` 返回单个 Chat 运行页会话详情，默认只返回最新 turns 页，并通过 `turns_paging` 提供总量、页边界、`next_before_turn_id` 与是否仍有更早内容；前端继续按 `turn_before` 后台补齐更早 turns。详情至少包含 runtime `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
 - `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
 - `GET /api/sessions/{session_id}/messages` 查询会话消息。
 - `DELETE /api/sessions/{session_id}` 删除会话，并触发关联工作区和任务清理。
@@ -221,7 +221,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 的会话列表、工作区外壳、聊天滚动区和输入区需输出 `runtime-*` 主契约并保留必要的 `terminal-* + conversation-*` 兼容 class，确保两条运行页与 `Terminal` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
 - `Chat` 首页 Composer 采用单一胶囊式助手输入面板：主 textarea 透明无内边框，工具栏与输入区处在同一白色 surface 内；工具栏不再显示 `Session` 会话设置按钮，只保留附件与发送等直接对话动作。附件入口使用回形针图标，文字 label 仅保留给可访问语义；桌面端输入面板按主阅读宽度居中，移动端压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，除 Composer 胶囊外不使用额外胶囊按钮、卡片边框或厚圆角表达层级；会话列表项与 `Details` 面板保持同一浅色 runtime 质感。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
 - `Chat` 在页面重新变为前台可见或浏览器重新把当前页激活时，必须复用运行页共享的 page-activation 补偿刷新链路：会话列表、当前活动会话详情与 pending task 状态都要立即回源。页面隐藏时暂停 pending task 定时轮询，恢复前台后再补偿检查，避免后台标签页持续发起任务状态请求。
-- `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat owner 的 session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果，并继续按 `turn_before` 后台自动请求更早页，直到服务端标记没有更早内容；所有分页结果按消息 id 合并到已有时间线，后台恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息，也不得在后台前置旧消息时扩展当前可见窗口或强制滚动到底部。
+- `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat owner 的 session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果，并继续按 `turn_before` 后台自动请求更早页，直到服务端标记没有更早内容；所有分页结果按消息 id 合并到已有时间线，后台恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息，也不得在后台前置旧消息时扩展当前可见窗口、强制滚动到底部或重建 Composer 输入状态与配置面板。
 - `Chat` 时间线到顶交互只负责展开本地已加载的隐藏消息批次；本地窗口已完全展开时，不再触发会话详情回源。服务端更早历史由 `ConversationRuntimeProvider` 基于 `turns_paging` 在后台按 `turn_before` 自动补齐，并按消息 id 与时间顺序合并进时间线。
 - `Chat` 发送新消息后，服务端输入响应、后续详情刷新或分页片段只允许按 turn/message id 与时间顺序合并进现有时间线；即使响应只包含新 turn 或最新轻量页，也不得替换掉用户当前已加载的旧历史。若追加前当前渲染窗口已经覆盖全部已加载消息，追加后可见窗口需同步扩容，避免旧消息被最新一轮挤出视图。
 - `Chat` 的浏览器缓存分为短期运行态、完整消息快照与轻量会话信息快照：24 小时运行态缓存保留当前已加载会话的完整消息，24 小时 `localStorage` 完整快照保留同一批会话与完整消息，用于刷新、重开或 sessionStorage 丢失时首屏恢复；轻量会话信息快照只保存标题、状态、置顶、模型与能力选择等元数据，用于完整消息缓存写入失败或被清理时恢复会话列表。缓存不得阻断服务端会话列表与单会话详情回源；当服务端返回更新历史时继续按现有分页合并规则覆盖或补齐本地快照，并刷新缓存时间。
@@ -248,23 +248,28 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 移动端 root 不做 fixed 页面锁，也不对 `html / body / #frontend-root` 使用 `overflow: hidden` 根层锁；App Shell 使用 `height: 100dvh` 承接键盘后的可见高度。键盘占位只作为 Composer 静态 footprint 事实，不再用于拉伸 App Shell、workspace header 或正文 panel，也不通过 transform 反向移动后方运行层，避免浏览器工具栏状态切换、输入聚焦或键盘动画造成底部留白、内容裁切或整页位移。
 - `Chat / Terminal` 的移动端会话列表共用左侧主导航抽屉：运行页顶部只保留 `Menu` 抽屉入口，并在抽屉中直接展示主工作流入口与当前运行页会话列表；点击遮罩、切换路由、切换会话或新建会话后，不保留旧的抽屉展开态。
 - `Chat` 的移动端左侧抽屉在真机上优先保证稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不再叠加多层位移、条目级顺序动画或生硬的整板平推过渡。
-- 输入区在软键盘弹起、收起、浏览器工具栏伸缩时持续贴住动态视口底部；fixed Composer 使用 `bottom: 0`，正文滚动区、空态、命令候选和配置面板不消费键盘偏移。
+- 输入区在软键盘弹起、收起、浏览器工具栏伸缩时持续贴住键盘或动态视口底部；fixed Composer 使用 `--keyboard-composer-offset`，正文滚动区、空态、命令候选和配置面板不消费键盘高度。
 - 仅在输入框实际聚焦且软键盘占位达到阈值时追加键盘底部偏移。
 - 键盘收起或视口回弹后不保留额外底部空白。
 - `Chat / Terminal` 在页面恢复前台可见、浏览器重新激活当前标签页或系统恢复当前 WebView 时，必须立刻重算共享视口诊断变量和 Composer 静态 footprint；第一帧不得沿用后台前遗留的旧输入区高度或旧底部遮挡量。
-- `Chat / Terminal` 首次触摸主输入框时需保留浏览器原生软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为，不主动 focus，不锁定 `window` page scroll，也不通过 `scrollTo` 干预真实焦点或回放页面级滚动锚点。键盘开合过渡期内，`100dvh` 只驱动 App Shell 可见高度，fixed Composer 通过 `bottom: 0` 贴住动态视口底边；输入框后方的 `workspaceBody / runtime-workspace-screen` 等滚动容器不短时锁定，移动 workbar 只消费 `VisualViewport.offsetTop` 做独立 transform 坐标对齐，workspace header 与正文 panel 不单独消费 `VisualViewport` 变量。正文滚动区、空态、命令候选、配置面板和公共操作行由 App Shell 动态视口高度与静态 workspace inset 保持原位，不再做页面级滚动锚回，避免背景滚动与 iOS Safari 原生键盘动画互相竞争。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
+- `Chat / Terminal` 首次触摸主输入框时需保留浏览器原生软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为，不主动 focus，不锁定 `window` page scroll，也不通过 `scrollTo` 干预真实焦点或回放页面级滚动锚点。键盘开合过渡期内，`100dvh` 只驱动 App Shell 可见高度，fixed Composer 通过 `--keyboard-composer-offset` 贴住键盘或动态视口底边；输入框后方的 `workspaceBody / runtime-workspace-screen` 等滚动容器不短时锁定，移动 workbar 只消费 `VisualViewport.offsetTop` 做独立 transform 坐标对齐，workspace header 与正文 panel 不单独消费 `VisualViewport` 变量。正文滚动区、空态、命令候选、配置面板和公共操作行由 App Shell 动态视口高度与静态 workspace inset 保持原位，不再做页面级滚动锚回，避免背景滚动与 iOS Safari 原生键盘动画互相竞争。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
+- 主输入框首触后的键盘动画稳定窗口只允许恢复 workspace screen 与 workspace body 的输入前滚动快照，防止 iOS Safari 自动把后方消息内容推到新的阅读位置；消息区一旦产生新的 `touchmove / pointermove / wheel / scroll` 意图就取消待执行恢复，该恢复窗口结束后不再干预用户对消息区的手动滚动。
+- 主输入框保持聚焦时，消息区单指纵向拖动必须通过 touch-scroll bridge 直接更新 `.runtime-workspace-screen.scrollTop`，不再把键盘态消息滚动完全交给 iOS Safari 的嵌套 overflow 原生滚动分派。
+- fixed Composer 的透明外壳、渐变背景、form surface 空白和外层留白不得接收 pointer/touch 事件；只有输入胶囊内部真实控件接收事件，确保视觉上露出的后方消息区仍能直接拖动滚动。
 - `Chat` 在移动端触摸发送按钮时，必须先 blur 当前主输入框，再继续原有发送链路；键盘收起期间 composer 继续随 `100dvh` 的真实回弹贴底，不能在发送后继续维持聚焦态或把输入区悬停在空白带上。
 - `Chat` 的移动端顶部 workbar 必须作为 fixed 顶层固定在 `top: 0`，并通过无 transition 的合成层 transform 对齐 visual viewport top；workspace body 只保留对应高度的 header footprint。底部 Composer 通过顶层 portal 作为 fixed 浮层独立贴底，不再是 `.runtime-workspace-body` 的普通流后代；正文只保留静态 Composer footprint；`.conversation-chat-screen` 与空态欢迎区在软键盘弹起期间只在内部滚动，不能因键盘高度变化带动顶部 header、正文或输入区出现压缩、回弹或位移动画。
 - `Chat` 在键盘收起和 composer 回弹到底边时，工作区滚动面保持原位；最后一屏消息、空态说明和阅读定位控件都不能在底边留下额外空白或残留占位。
-- `Chat` 在移动端软键盘弹起期间，底部 Composer 必须继续占据运行页最高交互层级；阅读定位按钮在主输入框聚焦后需主动隐藏，待输入框失焦、键盘收起后再恢复，不得压到输入框、附件条或键盘上方。
+- `Chat / Terminal` 在移动端软键盘弹起期间，底部 Composer 必须高于阅读定位按钮；阅读定位按钮在主输入框聚焦后需主动隐藏，待输入框失焦、键盘收起后再恢复，不得压到输入框、附件条或键盘上方。左侧主导航抽屉打开时，当前主输入框必须 blur，portal Composer 进入 suspended 状态并退出交互层，抽屉与遮罩保持最高可触达层级。
+- `Chat / Terminal` 的移动端 overlay owner 由统一状态机发布，状态包括 `mobile-primary-nav-drawer`、`mobile-session-drawer`、`mobile-composer-panel`、`mobile-details-dialog` 与 `mobile-attachment-preview`；Composer 是否 suspended 只由该状态机推导，不由具体 route 或单个按钮额外传递局部开关。
+- 软键盘打开期间，除主输入框自身和正文消息滚动区的滚动手势外，运行页其他交互入口都必须先释放当前输入焦点再执行动作；该规则覆盖移动 workbar、主导航抽屉、Composer 工具栏、附件、发送、会话设置、遮罩和详情/配置入口。
 - `Chat` 的主输入框在移动端必须按普通命令文本输入处理：关闭系统自动填充、卡片、地址与密码类输入辅助条，避免键盘上沿再挂出额外输入助手并露出底部残留页面层。
 - `Chat / Terminal` 的移动端主输入框需显式保持 16px 及以上可编辑文本字号；重新打开浏览器后首次聚焦输入法时，页面不得因 iOS Safari 自动输入框缩放而出现横向裁切、整体放大或分辨率突变。
-- `Chat` 在移动端键盘弹起和收回期间，仅允许顶部 workbar 通过 fixed top 加合成层 transform 对齐 visual viewport 顶边、底部 Composer 通过 fixed bottom 贴住动态视口底边；紧凑 workspace header、正文滚动区、空态、命令候选与配置面板保持布局原位，不跟随键盘做额外动画或跳变；阅读定位按钮在输入框聚焦期间隐藏。
+- `Chat / Terminal` 在移动端键盘弹起和收回期间，仅允许顶部 workbar 通过 fixed top 加合成层 transform 对齐 visual viewport 顶边、底部 Composer 通过 fixed bottom 与 `--keyboard-composer-offset` 贴住键盘或动态视口底边；紧凑 workspace header、正文滚动区、空态、命令候选与配置面板保持布局原位，不跟随键盘做额外动画或跳变；阅读定位按钮在输入框聚焦期间隐藏。
 - `Chat` 的移动端发送按钮支持在键盘保持打开时直接点按提交；首触发送需覆盖 `pointerdown(touch)` 与 `touchstart` 提交链路，并在同一次触摸内去重，立即进入当前 `sendPrompt` 链路，不需要先收键盘或补第二次点击。
 - `Chat` 的 Composer 不额外叠加 `bottom` 过渡动画；键盘回弹与输入区回贴底边时只消费动态视口底边，避免补间动画与视口收缩/回弹叠加造成拖滞。
 - `Chat` 在输入框失焦后，必须随 `100dvh` 恢复逐步释放高度；不允许先把 composer 闪回到底边，再被后续视口变化顶回去。
-- `Chat / Terminal` 在输入框保持聚焦且软键盘占位已建立后，不再用 `VisualViewport.height + offsetTop` 或 JS 键盘占位作为恢复判定；root、App Shell、workspace header 与正文 panel 不得被脚本变量驱动位移，Composer 只通过 CSS fixed bottom 贴住动态视口，避免输入区被浏览器键盘动画和 CSS bottom 双重上移。
-- `Chat / Terminal` 的共享 runtime Composer 在真手机宽度下必须通过 `runtime-composer-portal-host` 渲染到 `document.body` 顶层，脱离 workspace grid 与输入框后方滚动容器，再作为 `position: fixed; bottom: 0` 浮层贴住动态视口底边，不使用 `transform` 承载软键盘位移；workspace body 只保留 `runtime-composer-spacer` 作为静态 footprint；输入框阴影和白色 surface 在键盘弹起、收起或浏览器工具栏回弹期间不得留下灰色残影、旧层缓存或底部悬空阴影块。
+- `Chat / Terminal` 在输入框保持聚焦且软键盘占位已建立后，不再用 `VisualViewport.height + offsetTop` 或 JS 键盘占位作为恢复判定；root、App Shell、workspace header 与正文 panel 不得被脚本变量驱动位移，Composer 只通过 CSS fixed bottom 与 `--keyboard-composer-offset` 贴住键盘或动态视口，避免输入区被浏览器键盘动画和 CSS bottom 双重上移。
+- `Chat / Terminal` 的共享 runtime Composer 在真手机宽度下必须通过 `runtime-composer-portal-host` 渲染到 `document.body` 顶层，脱离 workspace grid 与输入框后方滚动容器，再作为 `position: fixed; bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px))` 浮层贴住键盘或动态视口底边，不使用 `transform` 承载软键盘位移；workspace body 只保留 `runtime-composer-spacer` 作为静态 footprint，且 footprint 只等于 Composer 可见高度，不包含键盘高度；输入框阴影和白色 surface 在键盘弹起、收起或浏览器工具栏回弹期间不得留下灰色残影、旧层缓存或底部悬空阴影块。
 - `Chat / Terminal` 的四键阅读定位条统一使用同一套圆形按钮样式和触摸反馈，避免不同运行页在跳转控件上分叉出独立实现。
 - `760px` 及以下的真手机宽度下，主导航抽屉、会话列表区、头部按钮高度与间距继续压缩，避免头部按钮挤占可用阅读高度。
 - 小高度窄屏下，主导航抽屉仍需保留稳定的触摸滚动链：菜单内容滚动不把整个页面带离当前上下文，抽屉底部固定区域与菜单滚动区域边界清晰。

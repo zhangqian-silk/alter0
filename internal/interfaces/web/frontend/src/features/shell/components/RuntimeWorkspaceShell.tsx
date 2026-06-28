@@ -1,5 +1,8 @@
-import { useEffect, useRef, type ComponentPropsWithoutRef, type PointerEvent, type ReactNode, type Ref, type TouchEvent } from "react";
+import { useEffect, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "react";
 import { RuntimeWorkspaceFrame } from "./RuntimeWorkspaceFrame";
+import { runtimeMobileLayoutSuspendsComposer, type RuntimeMobileLayoutState } from "./runtimeMobileLayout";
+import { runWithKeyboardDismissal } from "./runtimeKeyboardDismissal";
+import { useRuntimeMobilePressAction, type RuntimeMobilePressButtonProps } from "./useRuntimeMobilePressAction";
 
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -59,6 +62,7 @@ const MOBILE_ACTION_CLICK_SUPPRESS_MS = 700;
 type RuntimeWorkspaceShellProps = {
   rootClassName?: string;
   rootProps?: ComponentPropsWithoutRef<"section">;
+  mobileLayoutState?: RuntimeMobileLayoutState;
   sessionPanePlacement?: "workspace" | "navigation";
   sessionPaneClassName?: string;
   sessionPaneProps?: ComponentPropsWithoutRef<"aside">;
@@ -87,6 +91,7 @@ type RuntimeWorkspaceShellProps = {
   workspaceProps?: ComponentPropsWithoutRef<"section">;
   workspaceBodyClassName?: string;
   workspaceBodyRef?: Ref<HTMLDivElement>;
+  workspaceBodyProps?: ComponentPropsWithoutRef<"div">;
   mobileHeaderPlacement?: "leading" | "body";
   mobileHeaderClassName?: string;
   mobileHeaderProps?: Omit<ComponentPropsWithoutRef<"header">, "className" | "children">;
@@ -114,9 +119,14 @@ type RuntimeWorkspaceShellProps = {
   workspaceFooter?: ReactNode;
 };
 
+function classNameIncludes(value: string | undefined, className: string): boolean {
+  return (value || "").split(/\s+/).includes(className);
+}
+
 export function RuntimeWorkspaceShell({
   rootClassName,
   rootProps,
+  mobileLayoutState,
   sessionPanePlacement,
   sessionPaneClassName,
   sessionPaneProps,
@@ -140,6 +150,7 @@ export function RuntimeWorkspaceShell({
   workspaceProps,
   workspaceBodyClassName,
   workspaceBodyRef,
+  workspaceBodyProps,
   mobileHeaderPlacement,
   mobileHeaderClassName,
   mobileHeaderProps,
@@ -166,88 +177,27 @@ export function RuntimeWorkspaceShell({
   workspaceContent,
   workspaceFooter,
 }: RuntimeWorkspaceShellProps) {
-  const mobileActionLocksRef = useRef<Record<RuntimeWorkspaceMobileActionKey, boolean>>({
-    nav: false,
-    title: false,
-    session: false,
-    primary: false,
+  const { createPressHandlers, triggerFromClick } = useRuntimeMobilePressAction({
+    suppressClickMs: MOBILE_ACTION_CLICK_SUPPRESS_MS,
   });
-  const mobileActionLockTimersRef = useRef<Record<RuntimeWorkspaceMobileActionKey, number | null>>({
-    nav: null,
-    title: null,
-    session: null,
-    primary: null,
-  });
-  const releaseMobileActionLock = (key: RuntimeWorkspaceMobileActionKey) => {
-    mobileActionLocksRef.current[key] = false;
-    const timer = mobileActionLockTimersRef.current[key];
-    if (timer !== null) {
-      window.clearTimeout(timer);
-      mobileActionLockTimersRef.current[key] = null;
-    }
-  };
-  const triggerMobileActionFromPress = (key: RuntimeWorkspaceMobileActionKey, action: (() => void) | undefined) => {
-    if (!action || mobileActionLocksRef.current[key]) {
-      return;
-    }
-    mobileActionLocksRef.current[key] = true;
-    const existingTimer = mobileActionLockTimersRef.current[key];
-    if (existingTimer !== null) {
-      window.clearTimeout(existingTimer);
-    }
-    mobileActionLockTimersRef.current[key] = window.setTimeout(() => {
-      releaseMobileActionLock(key);
-    }, MOBILE_ACTION_CLICK_SUPPRESS_MS);
-    action();
-  };
-  const triggerMobileActionFromClick = (key: RuntimeWorkspaceMobileActionKey, action: (() => void) | undefined) => {
-    if (mobileActionLocksRef.current[key]) {
-      releaseMobileActionLock(key);
-      return;
-    }
-    action?.();
-  };
   const createMobilePressHandlers = (
     key: RuntimeWorkspaceMobileActionKey,
     action: (() => void) | undefined,
-    props: Omit<ComponentPropsWithoutRef<"button">, "type" | "className" | "children" | "onClick"> | undefined,
-  ) => {
-    const {
-      onPointerDownCapture,
-      onTouchStartCapture,
-      ...restProps
-    } = props || {};
-    return {
-      ...restProps,
-      onPointerDownCapture: (event: PointerEvent<HTMLButtonElement>) => {
-        onPointerDownCapture?.(event);
-        if (event.defaultPrevented || event.pointerType === "mouse") {
-          return;
-        }
-        event.preventDefault();
-        triggerMobileActionFromPress(key, action);
-      },
-      onTouchStartCapture: (event: TouchEvent<HTMLButtonElement>) => {
-        onTouchStartCapture?.(event);
-        if (event.defaultPrevented) {
-          return;
-        }
-        event.preventDefault();
-        triggerMobileActionFromPress(key, action);
-      },
-    };
-  };
+    props: RuntimeMobilePressButtonProps | undefined,
+  ) => createPressHandlers(key, action, props);
   const mobileNavPressProps = createMobilePressHandlers("nav", onMobileNav, mobileNavButtonProps);
   const mobileTitlePressProps = createMobilePressHandlers("title", onMobileTitle, mobileTitleButtonProps);
   const mobileSessionPressProps = createMobilePressHandlers("session", onMobileSession, mobileSessionButtonProps);
   const mobilePrimaryPressProps = createMobilePressHandlers("primary", onMobilePrimary, mobilePrimaryButtonProps);
-  useEffect(() => () => {
-    for (const timer of Object.values(mobileActionLockTimersRef.current)) {
-      if (timer !== null) {
-        window.clearTimeout(timer);
-      }
+  const sessionPaneOpen = classNameIncludes(sessionPaneClassName, "is-open")
+    || mobileLayoutState === "mobile-session-drawer";
+  const composerSuspendedState = runtimeMobileLayoutSuspendsComposer(mobileLayoutState);
+  useEffect(() => {
+    if (!composerSuspendedState) {
+      return;
     }
-  }, []);
+    runWithKeyboardDismissal();
+  }, [composerSuspendedState]);
   const mobileHeader = mobileHeaderPlacement ? (
     <header
       className={joinClassNames("runtime-workspace-mobile-header", mobileHeaderClassName)}
@@ -262,7 +212,7 @@ export function RuntimeWorkspaceShell({
           )}
           type="button"
           {...mobileNavPressProps}
-          onClick={() => triggerMobileActionFromClick("nav", onMobileNav)}
+          onClick={() => triggerFromClick("nav", onMobileNav)}
         >
           <RuntimeMobileMenuIcon />
           <RuntimeMobileActionLabel label={mobileNavButtonLabel} />
@@ -276,7 +226,7 @@ export function RuntimeWorkspaceShell({
           )}
           type="button"
           {...mobileTitlePressProps}
-          onClick={() => triggerMobileActionFromClick("title", onMobileTitle)}
+          onClick={() => triggerFromClick("title", onMobileTitle)}
         >
           <span className="runtime-workspace-mobile-title-copy">
             {mobileTitleTone ? (
@@ -316,7 +266,7 @@ export function RuntimeWorkspaceShell({
               )}
               type="button"
               {...mobileSessionPressProps}
-              onClick={() => triggerMobileActionFromClick("session", onMobileSession)}
+              onClick={() => triggerFromClick("session", onMobileSession)}
             >
               <RuntimeMobileMenuIcon />
               <RuntimeMobileActionLabel label={mobileSessionButtonLabel} />
@@ -330,7 +280,7 @@ export function RuntimeWorkspaceShell({
               )}
               type="button"
               {...mobilePrimaryPressProps}
-              onClick={() => triggerMobileActionFromClick("primary", onMobilePrimary)}
+              onClick={() => triggerFromClick("primary", onMobilePrimary)}
             >
               <RuntimeMobilePlusIcon />
               <RuntimeMobileActionLabel label={mobilePrimaryButtonLabel} />
@@ -344,7 +294,12 @@ export function RuntimeWorkspaceShell({
   return (
     <RuntimeWorkspaceFrame
       rootClassName={joinClassNames("runtime-workspace-shell", rootClassName)}
-      rootProps={rootProps}
+      rootProps={{
+        ...rootProps,
+        "data-runtime-mobile-layout": mobileLayoutState,
+        "data-runtime-session-pane-open": sessionPaneOpen ? "true" : "false",
+        "data-runtime-composer-suspended": composerSuspendedState ? "true" : "false",
+      }}
       leadingContent={mobileHeaderPlacement === "leading" ? mobileHeader : undefined}
       sessionPaneClassName={joinClassNames(
         "runtime-workspace-session-pane",
@@ -437,6 +392,12 @@ export function RuntimeWorkspaceShell({
         workspaceBodyClassName,
       )}
       workspaceBodyRef={workspaceBodyRef}
+      workspaceBodyProps={{
+        ...workspaceBodyProps,
+        "data-runtime-mobile-layout": mobileLayoutState,
+        "data-runtime-session-pane-open": sessionPaneOpen ? "true" : "false",
+        "data-runtime-composer-suspended": composerSuspendedState ? "true" : "false",
+      }}
       mobileHeader={mobileHeaderPlacement === "body" ? mobileHeader : undefined}
       workspaceHeader={workspaceHeader}
       workspaceContent={workspaceContent}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type PointerEvent, type ReactNode, type TouchEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type PointerEvent, type ReactNode, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { formatDateTime } from "../../shared/time/format";
 import { groupSessionListItems } from "../../shared/time/sessionListGroups";
@@ -12,6 +12,7 @@ import { conversationMarkdownSyntaxFixture } from "../shell/components/MessageMa
 import { normalizeText } from "../shell/components/RouteBodyPrimitives";
 import { RUNTIME_EVENT_FILTER_OPTIONS } from "../shell/components/runtimeTraceEvents";
 import { RuntimeComposer } from "../shell/components/RuntimeComposer";
+import { resolveRuntimeMobileLayoutState } from "../shell/components/runtimeMobileLayout";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
 import { ScrollJumpStrip } from "../shell/components/ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "../shell/components/useRuntimeComposerViewportSync";
@@ -564,9 +565,17 @@ function useConversationWorkspaceController(
       </div>
     );
   }, [hiddenMessageCount, language, loadEarlierMessages]);
+  const mobileLayoutState = resolveRuntimeMobileLayoutState({
+    isMobileViewport: workbench.isMobileViewport,
+    inputFocused,
+    primaryNavOpen: workbench.mobileNavOpen,
+    sessionPaneOpen: workbench.mobileSessionPaneOpen,
+    composerPanelOpen: runtime.inspectorOpen && runtime.inspectorTabOpen,
+  });
   const shell = useMemo(() => ({
     shell: {
       rootClassName: "runtime-workspace-view",
+      mobileLayoutState,
       rootProps: {
         "data-runtime-view": "conversation",
         "data-runtime-route": runtime.route,
@@ -626,9 +635,12 @@ function useConversationWorkspaceController(
     handleCreateSession,
     newSessionLabel,
     runtime.route,
+    runtime.inspectorOpen,
+    runtime.inspectorTabOpen,
     runtime.activeSession?.title,
     sessionCountLabel,
     sessionPaneTitle,
+    mobileLayoutState,
     workbench.closeMobileSessionPane,
     workbench.isMobileViewport,
     workbench.mobileNavOpen,
@@ -705,7 +717,7 @@ function useConversationWorkspaceController(
   }), [composerNode, header, screen, sessionList, shell, timeline]);
 }
 
-function ConversationComposerSection({
+const ConversationComposerSection = memo(function ConversationComposerSection({
   language,
   workspaceBodyRef,
   inputFocused,
@@ -717,7 +729,6 @@ function ConversationComposerSection({
   onInputFocusedChange: (focused: boolean) => void;
 }) {
   const workbench = useWorkbenchContext();
-  const runtime = useConversationRuntimeWorkspace();
   const composerRuntime = useConversationRuntimeComposer();
   const copy = getLegacyShellCopy(language);
   const [composerAttachmentError, setComposerAttachmentError] = useState("");
@@ -741,16 +752,16 @@ function ConversationComposerSection({
     ? "当前模型不支持图片输入，请切换到支持视觉的模型后再发送。"
     : "The selected model does not support image input. Switch to a vision-capable model before sending.";
   const codexSlashCommandsLabel = language === "zh" ? "Codex 斜线命令" : "Codex slash commands";
-  const inspectorTabOpen = runtime.inspectorOpen && runtime.inspectorTabOpen;
-  const modelInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "model";
-  const capabilitiesInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "capabilities";
-  const skillsInspectorOpen = inspectorTabOpen && runtime.inspectorTab === "skills";
+  const inspectorTabOpen = composerRuntime.inspectorOpen && composerRuntime.inspectorTabOpen;
+  const modelInspectorOpen = inspectorTabOpen && composerRuntime.inspectorTab === "model";
+  const capabilitiesInspectorOpen = inspectorTabOpen && composerRuntime.inspectorTab === "capabilities";
+  const skillsInspectorOpen = inspectorTabOpen && composerRuntime.inspectorTab === "skills";
   const capabilityGroups = useMemo(() => ({
-    activeCapabilities: runtime.capabilities.filter((item) => item.active),
-    availableCapabilities: runtime.capabilities.filter((item) => !item.active),
-    activeSkills: runtime.skills.filter((item) => item.active),
-    availableSkills: runtime.skills.filter((item) => !item.active),
-  }), [runtime.capabilities, runtime.skills]);
+    activeCapabilities: composerRuntime.capabilities.filter((item) => item.active),
+    availableCapabilities: composerRuntime.capabilities.filter((item) => !item.active),
+    activeSkills: composerRuntime.skills.filter((item) => item.active),
+    availableSkills: composerRuntime.skills.filter((item) => !item.active),
+  }), [composerRuntime.capabilities, composerRuntime.skills]);
   const directCodexSelected = isDirectCodexModelSelection(
     composerRuntime.selectedProviderId,
     composerRuntime.selectedModelId,
@@ -892,8 +903,8 @@ function ConversationComposerSection({
           <label key={option.id} className="conversation-check-item">
             <input
               type="checkbox"
-              checked={runtime.runtimeEventFilter.includes(option.id)}
-              onChange={(event) => runtime.toggleRuntimeEventFilter(option.id, event.target.checked)}
+              checked={composerRuntime.runtimeEventFilter.includes(option.id)}
+              onChange={(event) => composerRuntime.toggleRuntimeEventFilter(option.id, event.target.checked)}
             />
             <span>
               <strong>{option.label[language]}</strong>
@@ -904,15 +915,15 @@ function ConversationComposerSection({
       </div>
     </section>
   );
-  const conversationComposerPanel = runtime.inspectorOpen && runtime.inspectorTabOpen ? (
+  const conversationComposerPanel = composerRuntime.inspectorOpen && composerRuntime.inspectorTabOpen ? (
     <div
       className="conversation-inspector runtime-composer-config-panel"
       data-runtime-config-panel="conversation"
-      data-runtime-config-tab={runtime.inspectorTab}
+      data-runtime-config-tab={composerRuntime.inspectorTab}
     >
       <div className="runtime-composer-panel-head">
         <strong>{copy.runtimeMobile}</strong>
-        <button type="button" className="runtime-composer-panel-close" onClick={() => runtime.closeInspector()}>
+        <button type="button" className="runtime-composer-panel-close" onClick={() => composerRuntime.closeInspector()}>
           {language === "zh" ? "关闭" : "Close"}
         </button>
       </div>
@@ -923,11 +934,11 @@ function ConversationComposerSection({
             key={tab.key}
             type="button"
             role="tab"
-            aria-selected={runtime.inspectorTab === tab.key}
-            className={runtime.inspectorTab === tab.key ? "is-active" : undefined}
+            aria-selected={composerRuntime.inspectorTab === tab.key}
+            className={composerRuntime.inspectorTab === tab.key ? "is-active" : undefined}
             onClick={() => {
-              if (runtime.inspectorTab !== tab.key) {
-                runtime.toggleInspector(tab.key);
+              if (composerRuntime.inspectorTab !== tab.key) {
+                composerRuntime.toggleInspector(tab.key);
               }
             }}
           >
@@ -938,7 +949,7 @@ function ConversationComposerSection({
 
       {modelInspectorOpen ? (
         <div className="conversation-inspector-sections">
-          {runtime.providers.map((provider) => (
+          {composerRuntime.providers.map((provider) => (
             <section key={provider.id} className="conversation-inspector-section">
               <strong>{provider.name}</strong>
               <div className="conversation-chip-list">
@@ -947,7 +958,7 @@ function ConversationComposerSection({
                     key={model.id}
                     className={model.active ? "conversation-chip is-active" : "conversation-chip"}
                     type="button"
-                    onClick={() => runtime.selectModel(provider.id, model.id)}
+                    onClick={() => composerRuntime.selectModel(provider.id, model.id)}
                   >
                     {model.name}
                   </button>
@@ -969,7 +980,7 @@ function ConversationComposerSection({
                   <input
                     type="checkbox"
                     checked={item.active}
-                    onChange={(event) => runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
+                    onChange={(event) => composerRuntime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
                   />
                   <span><strong>{item.name}</strong><small>{item.description}</small></span>
                 </label>
@@ -984,7 +995,7 @@ function ConversationComposerSection({
                   <input
                     type="checkbox"
                     checked={item.active}
-                    onChange={(event) => runtime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
+                    onChange={(event) => composerRuntime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
                   />
                   <span><strong>{item.name}</strong><small>{item.description}</small></span>
                 </label>
@@ -1008,7 +1019,7 @@ function ConversationComposerSection({
                     disabled={item.locked}
                     onChange={(event) => {
                       if (!item.locked) {
-                        runtime.toggleSkill(item.id, event.target.checked);
+                        composerRuntime.toggleSkill(item.id, event.target.checked);
                       }
                     }}
                   />
@@ -1022,7 +1033,7 @@ function ConversationComposerSection({
             <div className="conversation-check-list">
               {capabilityGroups.availableSkills.map((item) => (
                 <label key={item.id} className="conversation-check-item">
-                  <input type="checkbox" checked={item.active} onChange={(event) => runtime.toggleSkill(item.id, event.target.checked)} />
+                  <input type="checkbox" checked={item.active} onChange={(event) => composerRuntime.toggleSkill(item.id, event.target.checked)} />
                   <span><strong>{item.name}</strong><small>{item.description}</small></span>
                 </label>
               ))}
@@ -1095,12 +1106,12 @@ function ConversationComposerSection({
           key: "session",
           label: copy.runtimeMobile,
           icon: <RuntimeSessionControlIcon />,
-          className: runtime.inspectorOpen ? "is-active" : undefined,
-          onClick: () => runtime.toggleInspector(),
+          className: composerRuntime.inspectorOpen ? "is-active" : undefined,
+          onClick: () => composerRuntime.toggleInspector(),
         },
       ]}
       panelContent={conversationComposerPanel}
-      onPanelDismiss={() => runtime.closeInspector()}
+      onPanelDismiss={() => composerRuntime.closeInspector()}
       panelProps={{
         "data-runtime-config-surface": "conversation",
       }}
@@ -1117,7 +1128,7 @@ function ConversationComposerSection({
       previewCloseLabel={composerClosePreviewLabel}
     />
   );
-}
+});
 
 export function ConversationWorkspace({ language }: ConversationWorkspaceProps) {
   const timelineScreenRef = useRef<HTMLDivElement | null>(null);
