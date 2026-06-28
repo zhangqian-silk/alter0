@@ -12,6 +12,7 @@ import { conversationMarkdownSyntaxFixture } from "../shell/components/MessageMa
 import { normalizeText } from "../shell/components/RouteBodyPrimitives";
 import { RUNTIME_EVENT_FILTER_OPTIONS } from "../shell/components/runtimeTraceEvents";
 import { RuntimeComposer } from "../shell/components/RuntimeComposer";
+import { resolveRuntimeMobileLayoutState } from "../shell/components/runtimeMobileLayout";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
 import { ScrollJumpStrip } from "../shell/components/ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "../shell/components/useRuntimeComposerViewportSync";
@@ -564,9 +565,17 @@ function useConversationWorkspaceController(
       </div>
     );
   }, [hiddenMessageCount, language, loadEarlierMessages]);
+  const mobileLayoutState = resolveRuntimeMobileLayoutState({
+    isMobileViewport: workbench.isMobileViewport,
+    inputFocused,
+    primaryNavOpen: workbench.mobileNavOpen,
+    sessionPaneOpen: workbench.mobileSessionPaneOpen,
+    composerPanelOpen: runtime.inspectorOpen && runtime.inspectorTabOpen,
+  });
   const shell = useMemo(() => ({
     shell: {
       rootClassName: "runtime-workspace-view",
+      mobileLayoutState,
       rootProps: {
         "data-runtime-view": "conversation",
         "data-runtime-route": runtime.route,
@@ -626,9 +635,12 @@ function useConversationWorkspaceController(
     handleCreateSession,
     newSessionLabel,
     runtime.route,
+    runtime.inspectorOpen,
+    runtime.inspectorTabOpen,
     runtime.activeSession?.title,
     sessionCountLabel,
     sessionPaneTitle,
+    mobileLayoutState,
     workbench.closeMobileSessionPane,
     workbench.isMobileViewport,
     workbench.mobileNavOpen,

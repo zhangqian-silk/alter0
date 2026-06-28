@@ -17,6 +17,7 @@ import {
   resolveComposerAttachmentViewerURL,
   type ComposerAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
+import { runWithKeyboardDismissal, withKeyboardDismissal } from "./runtimeKeyboardDismissal";
 
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -210,10 +211,16 @@ export function RuntimeComposer({
   } = metaProps || {};
   const {
     className: addAttachmentButtonPropsClassName,
+    onClick: addAttachmentButtonOnClick,
+    onPointerDownCapture: addAttachmentButtonOnPointerDownCapture,
+    onTouchStartCapture: addAttachmentButtonOnTouchStartCapture,
     ...addAttachmentButtonRestProps
   } = addAttachmentButtonProps || {};
   const {
     className: submitButtonPropsClassName,
+    onClick: submitButtonOnClick,
+    onPointerDownCapture: submitButtonOnPointerDownCapture,
+    onTouchStartCapture: submitButtonOnTouchStartCapture,
     ...submitButtonRestProps
   } = submitButtonProps || {};
   const composerAlias = runtimeKind === "terminal" ? "terminal" : "conversation";
@@ -396,6 +403,8 @@ export function RuntimeComposer({
                 } = button;
                 const {
                   className: utilityButtonPropsClassName,
+                  onPointerDownCapture: utilityButtonOnPointerDownCapture,
+                  onTouchStartCapture: utilityButtonOnTouchStartCapture,
                   ...utilityButtonRestProps
                 } = buttonProps || {};
                 return (
@@ -409,7 +418,9 @@ export function RuntimeComposer({
                     )}
                     aria-label={label}
                     disabled={disabled}
-                    onClick={onClick}
+                    onClick={() => runWithKeyboardDismissal(onClick)}
+                    onPointerDownCapture={withKeyboardDismissal(utilityButtonOnPointerDownCapture)}
+                    onTouchStartCapture={withKeyboardDismissal(utilityButtonOnTouchStartCapture)}
                     data-runtime-composer-utility={key}
                     {...utilityButtonRestProps}
                   >
@@ -432,7 +443,15 @@ export function RuntimeComposer({
                 )}
                 {...addAttachmentButtonRestProps}
                 aria-label={addAttachmentLabel}
-                onClick={onAddAttachment}
+                onClick={withKeyboardDismissal((event) => {
+                  addAttachmentButtonOnClick?.(event);
+                  if (event.defaultPrevented) {
+                    return;
+                  }
+                  onAddAttachment();
+                })}
+                onPointerDownCapture={withKeyboardDismissal(addAttachmentButtonOnPointerDownCapture)}
+                onTouchStartCapture={withKeyboardDismissal(addAttachmentButtonOnTouchStartCapture)}
                 data-runtime-composer-upload={runtimeKind}
                 data-composer-upload={composerAlias}
               >
@@ -469,6 +488,9 @@ export function RuntimeComposer({
                 )}
                 {...submitButtonRestProps}
                 aria-label={submitLabel}
+                onClick={withKeyboardDismissal(submitButtonOnClick)}
+                onPointerDownCapture={withKeyboardDismissal(submitButtonOnPointerDownCapture)}
+                onTouchStartCapture={withKeyboardDismissal(submitButtonOnTouchStartCapture)}
                 data-runtime-composer-submit={runtimeKind}
                 data-runtime-submit={runtimeKind}
                 data-composer-submit={composerAlias}
