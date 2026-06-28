@@ -77,6 +77,16 @@
     transform: none !important;
     transition: none;
   }
+
+  .runtime-composer-portal-host[data-runtime-composer-suspended="true"] {
+    display: contents;
+  }
+
+  .runtime-composer-portal-host[data-runtime-composer-suspended="true"] .runtime-composer-shell {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 @media (max-width: 760px) {
