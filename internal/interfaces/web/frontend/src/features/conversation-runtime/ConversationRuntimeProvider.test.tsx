@@ -220,7 +220,7 @@ function ProcessToggleHarness() {
 function setupDefaultAPI() {
   apiClientMock.get.mockImplementation(async (path: string) => {
     switch (path) {
-      case "/api/terminal/sessions?scope=chat":
+      case "/api/chat/sessions":
         return {
           items: [
             {
@@ -232,7 +232,7 @@ function setupDefaultAPI() {
             },
           ],
         };
-      case "/api/terminal/sessions/alter0-chat?scope=chat":
+      case "/api/chat/sessions/alter0-chat":
         return {
           session: {
             id: "alter0-chat",
@@ -280,7 +280,7 @@ function chatTurnFixtures(count: number, outputPrefix = "cached answer") {
 
 function mockMessageDone(output = "Done") {
   apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-    if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+    if (path === "/api/chat/sessions/alter0-chat/input") {
       return {
         session: {
           id: "alter0-chat",
@@ -318,7 +318,7 @@ describe("ConversationRuntimeProvider", () => {
     );
     setupDefaultAPI();
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/terminal/sessions?scope=chat") {
+      if (path === "/api/chat/sessions") {
         return {
           session: {
             id: "new-terminal-chat",
@@ -337,8 +337,8 @@ describe("ConversationRuntimeProvider", () => {
               name: "trace.png",
               content_type: "image/png",
               size: 12,
-              asset_url: "/api/sessions/alter0-chat/attachments/uploaded-image-1/original",
-              preview_url: "/api/sessions/alter0-chat/attachments/uploaded-image-1/preview",
+              asset_url: "/api/chat/sessions/alter0-chat/attachments/uploaded-image-1/original",
+              preview_url: "/api/chat/sessions/alter0-chat/attachments/uploaded-image-1/preview",
             },
           ],
         };
@@ -404,8 +404,8 @@ describe("ConversationRuntimeProvider", () => {
     };
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions":
+        case "/api/chat/sessions/alter0-chat":
           return {
             session: {
               id: "alter0-chat",
@@ -453,7 +453,7 @@ describe("ConversationRuntimeProvider", () => {
     const cachedTurns = chatTurnFixtures(cachedTurnCount);
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -488,7 +488,7 @@ describe("ConversationRuntimeProvider", () => {
     const listRequest = deferred<{ items?: unknown[] }>();
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return listRequest.promise;
         case "/api/control/llm/providers":
         case "/api/control/skills":
@@ -528,7 +528,7 @@ describe("ConversationRuntimeProvider", () => {
     const cachedTurnCount = 18;
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -562,7 +562,7 @@ describe("ConversationRuntimeProvider", () => {
     const listRequest = deferred<{ items?: unknown[] }>();
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return listRequest.promise;
         case "/api/control/llm/providers":
         case "/api/control/skills":
@@ -589,7 +589,7 @@ describe("ConversationRuntimeProvider", () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1000);
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -623,7 +623,7 @@ describe("ConversationRuntimeProvider", () => {
     const listRequest = deferred<{ items?: unknown[] }>();
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return listRequest.promise;
         case "/api/control/llm/providers":
         case "/api/control/skills":
@@ -668,12 +668,12 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
     expect(screen.getByTestId("sessions")).toHaveTextContent("");
 
     fireEvent.click(screen.getByRole("button", { name: "new session" }));
 
-    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat", {}));
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions", {}));
     await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:/));
   });
 
@@ -687,7 +687,7 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
   });
 
   it("creates Terminal-backed Chat sessions when New is pressed repeatedly", async () => {
@@ -703,13 +703,13 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "new session" }));
     fireEvent.click(screen.getByRole("button", { name: "new session" }));
 
-    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat", {}));
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions", {}));
   });
 
   it("updates Chat session pin state through the session history pin endpoint", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [
               {
@@ -746,7 +746,7 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => {
       expect(apiClientMock.post).toHaveBeenCalledWith(
-        "/api/terminal/sessions/alter0-chat/pin?scope=chat",
+        "/api/chat/sessions/alter0-chat/pin",
         { pinned: false },
       );
     });
@@ -756,7 +756,7 @@ describe("ConversationRuntimeProvider", () => {
   it("moves pinned Chat sessions ahead of newer unpinned sessions", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [
               {
@@ -801,7 +801,7 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => {
       expect(apiClientMock.post).toHaveBeenCalledWith(
-        "/api/terminal/sessions/older-chat/pin?scope=chat",
+        "/api/chat/sessions/older-chat/pin",
         { pinned: true },
       );
     });
@@ -811,7 +811,7 @@ describe("ConversationRuntimeProvider", () => {
   it("pins a newly created Terminal-backed Chat session", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
         case "/api/control/llm/providers":
         case "/api/control/skills":
         case "/api/control/mcps":
@@ -826,7 +826,7 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
 
     fireEvent.click(screen.getByRole("button", { name: "new session" }));
     await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:/));
@@ -834,7 +834,7 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "pin active" }));
 
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
-      "/api/terminal/sessions/new-terminal-chat/pin?scope=chat",
+      "/api/chat/sessions/new-terminal-chat/pin",
       { pinned: true },
     ));
     expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:[^|]*:pinned$/);
@@ -844,7 +844,7 @@ describe("ConversationRuntimeProvider", () => {
     window.sessionStorage.clear();
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
         case "/api/control/llm/providers":
         case "/api/control/mcps":
           return { items: [] };
@@ -896,7 +896,7 @@ describe("ConversationRuntimeProvider", () => {
   it("selects all public skills by default when a Terminal-backed Chat session has no skill_ids field", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         requestBody = body || null;
         return {
           session: {
@@ -912,7 +912,7 @@ describe("ConversationRuntimeProvider", () => {
     });
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [
               {
@@ -924,7 +924,7 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions/alter0-chat":
           return {
             session: {
               id: "alter0-chat",
@@ -980,7 +980,7 @@ describe("ConversationRuntimeProvider", () => {
     );
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [
               {
@@ -995,7 +995,7 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/terminal/sessions/skill-session-2?scope=chat":
+        case "/api/chat/sessions/skill-session-2":
           return {
             session: {
               id: "skill-session-2",
@@ -1026,7 +1026,7 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent("Travel Plan"));
-    expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat");
+    expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions");
   });
 
   it("keeps the stored active Terminal-backed Chat session when the route has no explicit session query", async () => {
@@ -1037,7 +1037,7 @@ describe("ConversationRuntimeProvider", () => {
     );
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [
               {
@@ -1060,7 +1060,7 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/terminal/sessions/latest-chat-session?scope=chat":
+        case "/api/chat/sessions/latest-chat-session":
           return {
             session: {
               id: "latest-chat-session",
@@ -1120,7 +1120,7 @@ describe("ConversationRuntimeProvider", () => {
       }),
     );
     apiClientMock.get.mockImplementation(async (path: string) => {
-      if (path === "/api/terminal/sessions?scope=chat") {
+      if (path === "/api/chat/sessions") {
         return { items: [] };
       }
       return { items: [] };
@@ -1143,11 +1143,11 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
     fireEvent.click(screen.getByRole("button", { name: "attach" }));
 
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
-      "/api/sessions/alter0-chat/attachments",
+      "/api/chat/sessions/alter0-chat/attachments",
       {
         attachments: [
           {
@@ -1164,7 +1164,7 @@ describe("ConversationRuntimeProvider", () => {
   it("marks the chat session busy without creating local stream process events after sending a prompt", async () => {
     vi.stubGlobal("fetch", vi.fn());
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         return new Promise(() => undefined);
       }
       return {};
@@ -1176,14 +1176,14 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
     await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy"));
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
     expect(screen.getByTestId("assistant-process-count")).toHaveTextContent("0");
     expect(screen.getByTestId("assistant-process-status")).toHaveTextContent("");
-    expect(apiClientMock.post).toHaveBeenCalledWith("/api/terminal/sessions/alter0-chat/input?scope=chat", expect.any(Object));
+    expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat/input", expect.any(Object));
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -1191,7 +1191,7 @@ describe("ConversationRuntimeProvider", () => {
     const existingTurns = chatTurnFixtures(3, "existing answer");
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -1210,7 +1210,7 @@ describe("ConversationRuntimeProvider", () => {
       }
     });
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         return {
           session: {
             id: "alter0-chat",
@@ -1249,7 +1249,7 @@ describe("ConversationRuntimeProvider", () => {
   it("merges the final earlier Chat history page without dropping the latest page", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -1266,7 +1266,7 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions/alter0-chat":
           return {
             session: {
               id: "alter0-chat",
@@ -1346,7 +1346,7 @@ describe("ConversationRuntimeProvider", () => {
     }>();
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -1369,7 +1369,7 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat&turn_before=turn-3&turn_limit=20":
+        case "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20":
           return earlierPage.promise;
         case "/api/control/llm/providers":
         case "/api/control/skills":
@@ -1389,7 +1389,7 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer"));
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
-      "/api/terminal/sessions/alter0-chat?scope=chat&turn_before=turn-3&turn_limit=20",
+      "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20",
     ));
     const renderCountBeforeHistoryMerge = Number(screen.getByTestId("composer-render-count").textContent?.split(":")[0] || "0");
 
@@ -1439,7 +1439,7 @@ describe("ConversationRuntimeProvider", () => {
     const existingTurns = chatTurnFixtures(3, "existing answer");
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -1458,7 +1458,7 @@ describe("ConversationRuntimeProvider", () => {
       }
     });
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         return {
           session: {
             id: "alter0-chat",
@@ -1498,7 +1498,7 @@ describe("ConversationRuntimeProvider", () => {
     let inputAccepted = false;
     let detailCallsAfterInput = 0;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         inputAccepted = true;
         return {
           session: {
@@ -1521,7 +1521,7 @@ describe("ConversationRuntimeProvider", () => {
     });
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [
               {
@@ -1533,7 +1533,7 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions/alter0-chat":
           if (inputAccepted) {
             detailCallsAfterInput += 1;
           }
@@ -1593,7 +1593,7 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
     vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
@@ -1615,8 +1615,8 @@ describe("ConversationRuntimeProvider", () => {
     vi.stubGlobal("fetch", vi.fn());
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions":
+        case "/api/chat/sessions/alter0-chat":
           return {
             items: [
               {
@@ -1670,7 +1670,7 @@ describe("ConversationRuntimeProvider", () => {
 
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
-    expect(apiClientMock.post).not.toHaveBeenCalledWith("/api/terminal/sessions/alter0-chat/input?scope=chat", expect.any(Object));
+    expect(apiClientMock.post).not.toHaveBeenCalledWith("/api/chat/sessions/alter0-chat/input", expect.any(Object));
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
   });
 
@@ -1697,7 +1697,7 @@ describe("ConversationRuntimeProvider", () => {
     vi.stubGlobal("fetch", vi.fn());
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         requestBody = body || null;
         return {
           session: {
@@ -1733,14 +1733,14 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(requestBody?.input).toBe("Run this with Codex"));
     expect(requestBody).not.toHaveProperty("metadata");
-    expect(apiClientMock.post).toHaveBeenCalledWith("/api/terminal/sessions/alter0-chat/input?scope=chat", expect.any(Object));
+    expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat/input", expect.any(Object));
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("persists Chat skill selections to the runtime session before the next message is sent", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         requestBody = body || null;
         return {
           session: {
@@ -1757,7 +1757,7 @@ describe("ConversationRuntimeProvider", () => {
     });
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [
               {
@@ -1771,7 +1771,7 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions/alter0-chat":
           return {
             session: {
               id: "alter0-chat",
@@ -1837,8 +1837,8 @@ describe("ConversationRuntimeProvider", () => {
   it("keeps cleared Chat skill selections cleared after the runtime session patch response", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions":
+        case "/api/chat/sessions/alter0-chat":
           return {
             session: {
               id: "alter0-chat",
@@ -1898,7 +1898,7 @@ describe("ConversationRuntimeProvider", () => {
   it("drops unavailable skills from historical Chat sessions before the next message is sent", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         requestBody = body || null;
         return {
           session: {
@@ -1915,7 +1915,7 @@ describe("ConversationRuntimeProvider", () => {
     });
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [
               {
@@ -1929,7 +1929,7 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions/alter0-chat":
           return {
             session: {
               id: "alter0-chat",
@@ -1978,7 +1978,7 @@ describe("ConversationRuntimeProvider", () => {
   it("sends newly checked skills from historical Chat sessions without a reload", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         requestBody = body || null;
         return {
           session: {
@@ -1995,7 +1995,7 @@ describe("ConversationRuntimeProvider", () => {
     });
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [
               {
@@ -2009,7 +2009,7 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions/alter0-chat":
           return {
             session: {
               id: "alter0-chat",
@@ -2064,7 +2064,7 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions?scope=chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "send" }));
@@ -2076,7 +2076,7 @@ describe("ConversationRuntimeProvider", () => {
   it("keeps existing Chat history when a send response returns a non-overlapping paged turn", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -2103,7 +2103,7 @@ describe("ConversationRuntimeProvider", () => {
       }
     });
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/terminal/sessions/alter0-chat/input?scope=chat") {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
         return {
           session: {
             id: "alter0-chat",
@@ -2145,7 +2145,7 @@ describe("ConversationRuntimeProvider", () => {
   it("merges paged Chat session detail refreshes into existing messages", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -2173,7 +2173,7 @@ describe("ConversationRuntimeProvider", () => {
               ],
             }],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions/alter0-chat":
           return {
             session: {
               id: "alter0-chat",
@@ -2218,7 +2218,7 @@ describe("ConversationRuntimeProvider", () => {
   it("refreshes the active Chat session on demand so paged history can continue loading", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -2236,7 +2236,7 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat":
+        case "/api/chat/sessions/alter0-chat":
           return {
             session: {
               id: "alter0-chat",
@@ -2282,7 +2282,7 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer"));
     fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions/alter0-chat?scope=chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat"));
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer");
   });
@@ -2290,7 +2290,7 @@ describe("ConversationRuntimeProvider", () => {
   it("progressively loads earlier Chat turn pages without a pull gesture", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -2314,7 +2314,7 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/terminal/sessions/alter0-chat?scope=chat&turn_before=turn-3&turn_limit=20":
+        case "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20":
           return {
             session: {
               id: "alter0-chat",
@@ -2366,11 +2366,77 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer"));
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
-      "/api/terminal/sessions/alter0-chat?scope=chat&turn_before=turn-3&turn_limit=20",
+      "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20",
     ));
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("oldest answer"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("middle answer");
     expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer");
+  });
+
+  it("does not repeatedly reload the same Chat history page when a background page makes no progress", async () => {
+    let backgroundPageLoads = 0;
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Loop guard",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: {
+                has_more_before: true,
+                oldest_turn_id: "turn-3",
+                newest_turn_id: "turn-3",
+                next_before_turn_id: "turn-3",
+              },
+              turns: [{
+                id: "turn-3",
+                prompt: "latest",
+                status: "success",
+                started_at: "2026-04-23T03:33:00Z",
+                finished_at: "2026-04-23T03:33:01Z",
+                final_output: "latest answer",
+                runtime_trace_events: [],
+              }],
+            }],
+          };
+        case "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20":
+          backgroundPageLoads += 1;
+          if (backgroundPageLoads > 1) {
+            throw new Error("reloaded the same Chat history page");
+          }
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Loop guard",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [],
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer"));
+    await waitFor(() => expect(backgroundPageLoads).toBe(1));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    });
+
+    expect(backgroundPageLoads).toBe(1);
   });
 
   it("restores cached Chat session info when the full long-term message cache is unavailable", async () => {
@@ -2409,7 +2475,7 @@ describe("ConversationRuntimeProvider", () => {
   it("loads Chat runtime process event details on demand and keeps them in the message cache", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
-        case "/api/terminal/sessions?scope=chat":
+        case "/api/chat/sessions":
           return {
             items: [{
               id: "alter0-chat",
@@ -2441,7 +2507,7 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/terminal/sessions/alter0-chat/turns/turn-1/events/event-ref-1":
+        case "/api/chat/sessions/alter0-chat/turns/turn-1/events/event-ref-1":
           return {
             event: {
               turn_id: "turn-1",
@@ -2483,7 +2549,7 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "load process detail" }));
 
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
-      "/api/terminal/sessions/alter0-chat/turns/turn-1/events/event-ref-1",
+      "/api/chat/sessions/alter0-chat/turns/turn-1/events/event-ref-1",
     ));
     await waitFor(() => expect(screen.getByTestId("assistant-process-blocks")).toHaveTextContent("full thinking detail"));
     expect(window.localStorage.getItem("alter0.web.session.long_term_snapshot.v1")).toContain("full thinking detail");

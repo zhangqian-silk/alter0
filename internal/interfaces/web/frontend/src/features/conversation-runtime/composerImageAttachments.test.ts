@@ -114,11 +114,11 @@ describe("readComposerImageFiles", () => {
       size: 1024,
       dataURL: "data:image/png;base64,ORIGINAL",
       previewDataURL: "data:image/webp;base64,PREVIEW",
-      assetURL: "/api/sessions/session-1/attachments/image-1/original",
-      previewURL: "/api/sessions/session-1/attachments/image-1/preview",
+      assetURL: "/api/chat/sessions/session-1/attachments/image-1/original",
+      previewURL: "/api/chat/sessions/session-1/attachments/image-1/preview",
     };
 
-    expect(resolveComposerAttachmentPreviewURL(attachment)).toBe("/api/sessions/session-1/attachments/image-1/preview");
-    expect(resolveComposerAttachmentViewerURL(attachment)).toBe("/api/sessions/session-1/attachments/image-1/original");
+    expect(resolveComposerAttachmentPreviewURL(attachment)).toBe("/api/chat/sessions/session-1/attachments/image-1/preview");
+    expect(resolveComposerAttachmentViewerURL(attachment)).toBe("/api/chat/sessions/session-1/attachments/image-1/original");
   });
 });

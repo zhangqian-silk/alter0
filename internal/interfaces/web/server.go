@@ -433,6 +433,9 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/codex/runtime", s.codexRuntimeHandler)
 	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
 	mux.HandleFunc("/api/control/llm/providers/", s.llmProviderItemHandler)
+	mux.HandleFunc("/api/chat/sessions", s.chatSessionCollectionHandler)
+	mux.HandleFunc("/api/chat/sessions/recover", s.chatSessionRecoverHandler)
+	mux.HandleFunc("/api/chat/sessions/", s.chatSessionItemHandler)
 	mux.HandleFunc("/api/terminal/sessions", s.terminalSessionCollectionHandler)
 	mux.HandleFunc("/api/terminal/sessions/recover", s.terminalSessionRecoverHandler)
 	mux.HandleFunc("/api/terminal/sessions/", s.terminalSessionItemHandler)
@@ -1003,7 +1006,7 @@ func (s *Server) touchSessionActivityAt(sessionID string, at time.Time) {
 }
 
 func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Request) {
-	sessionID, resource, resourceID, action, ok := sessionResourceID(r.URL.Path)
+	sessionID, resource, _, _, ok := sessionResourceID(r.URL.Path)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
@@ -1105,15 +1108,6 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 			"session_id": sessionID,
 			"pinned":     *request.Pinned,
 		})
-	case "attachments":
-		switch {
-		case resourceID == "" && action == "":
-			s.handleSessionAttachmentUpload(w, r, sessionID)
-		case resourceID != "" && (action == "original" || action == "preview"):
-			s.handleSessionAttachmentRead(w, r, sessionID, resourceID, action)
-		default:
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
-		}
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
@@ -2186,15 +2180,8 @@ func sessionResourceID(path string) (string, string, string, string, bool) {
 	}
 	resource := strings.TrimSpace(parts[1])
 	switch {
-	case len(parts) == 2 && (resource == "messages" || resource == "tasks" || resource == "attachments" || resource == "pin"):
+	case len(parts) == 2 && (resource == "messages" || resource == "tasks" || resource == "pin"):
 		return sessionID, resource, "", "", true
-	case len(parts) == 4 && resource == "attachments":
-		resourceID := strings.TrimSpace(parts[2])
-		action := strings.TrimSpace(parts[3])
-		if resourceID == "" || (action != "original" && action != "preview") {
-			return "", "", "", "", false
-		}
-		return sessionID, resource, resourceID, action, true
 	default:
 		return "", "", "", "", false
 	}

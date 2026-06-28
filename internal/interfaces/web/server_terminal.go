@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,12 +15,13 @@ import (
 	terminalapp "alter0/internal/terminal/application"
 )
 
-const terminalClientIDHeader = "X-Alter0-Terminal-Client"
-const sharedTerminalClientID = "shared"
-const chatTerminalClientID = "chat"
+const terminalSessionOwnerID = "terminal"
+const chatSessionOwnerID = "chat"
 const defaultTerminalTurnDetailLimit = 20
 const maxTerminalTurnDetailLimit = 160
 const maxTerminalTurnDetailBytes = 256 * 1024
+
+type terminalClientIDContextKey struct{}
 
 type terminalSessionCreateRequest struct {
 	Title string `json:"title,omitempty"`
@@ -144,6 +146,34 @@ func (s *Server) terminalSessionRecoverHandler(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 }
 
+func (s *Server) chatSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	s.terminalSessionCollectionHandler(w, withTerminalClientID(r, chatSessionOwnerID))
+}
+
+func (s *Server) chatSessionRecoverHandler(w http.ResponseWriter, r *http.Request) {
+	s.terminalSessionRecoverHandler(w, withTerminalClientID(r, chatSessionOwnerID))
+}
+
+func (s *Server) chatSessionItemHandler(w http.ResponseWriter, r *http.Request) {
+	next := withAttachmentRoutePrefix(withTerminalClientID(r, chatSessionOwnerID), "/api/chat/sessions")
+	if next != nil && next.URL != nil {
+		urlCopy := *next.URL
+		urlCopy.Path = strings.TrimPrefix(urlCopy.Path, "/api/chat/sessions/")
+		urlCopy.Path = "/api/terminal/sessions/" + strings.Trim(urlCopy.Path, "/")
+		next = next.Clone(next.Context())
+		next.URL = &urlCopy
+	}
+	s.terminalSessionItemHandler(w, next)
+}
+
+func withTerminalClientID(r *http.Request, clientID string) *http.Request {
+	if r == nil {
+		return r
+	}
+	ctx := context.WithValue(r.Context(), terminalClientIDContextKey{}, strings.TrimSpace(clientID))
+	return r.WithContext(ctx)
+}
+
 func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Request) {
 	if s.terminals == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "terminal service unavailable"})
@@ -254,6 +284,15 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		writeJSON(w, http.StatusOK, page)
+	case "attachments":
+		switch {
+		case len(parts) == 2:
+			s.handleSessionAttachmentUpload(w, r, sessionID)
+		case len(parts) == 4 && (parts[3] == "original" || parts[3] == "preview"):
+			s.handleSessionAttachmentRead(w, r, sessionID, strings.TrimSpace(parts[2]), strings.TrimSpace(parts[3]))
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
+		}
 	case "input":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -265,7 +304,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
 		}
-		attachments, err := s.normalizeConversationMessageAttachments(sessionID, req.Attachments)
+		attachments, err := s.normalizeConversationMessageAttachments(sessionID, req.Attachments, attachmentRoutePrefixFromRequest(r))
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -558,15 +597,15 @@ func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
 
 func resolveTerminalClientID(r *http.Request) string {
 	if r == nil {
-		return sharedTerminalClientID
+		return terminalSessionOwnerID
 	}
-	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope"))) {
-	case chatTerminalClientID:
-		return chatTerminalClientID
+	if value, ok := r.Context().Value(terminalClientIDContextKey{}).(string); ok {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case chatSessionOwnerID:
+			return chatSessionOwnerID
+		case terminalSessionOwnerID:
+			return terminalSessionOwnerID
+		}
 	}
-	switch strings.ToLower(strings.TrimSpace(r.Header.Get(terminalClientIDHeader))) {
-	case chatTerminalClientID:
-		return chatTerminalClientID
-	}
-	return sharedTerminalClientID
+	return terminalSessionOwnerID
 }

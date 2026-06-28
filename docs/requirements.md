@@ -53,8 +53,8 @@
 - Web 入口稳定提供根路径到 Chat 的默认进入、`/chat`、`/terminal`、`/settings`、`/login` 与 `/logout`。受保护页面、受保护预览工作区与 API 统一走同一登录态校验。访问工作台页面触发登录时，登录回跳只保留 canonical path，不携带会话级长 query。仅静态只读 host 保留匿名访问。
 - 新会话先使用统一占位标题 `New`，早期多轮内可根据更具体输入自动升级标题，避免长期保留“拉取仓库”“分析仓库”等低辨识度名称。
 - 新对话空白会话保持唯一；已有空白会话时，`New` 复用并聚焦该会话。
-- 同一会话内请求保持顺序一致，由当前 Chat-scoped Terminal session 的状态表达 `busy / ready / failed`。
-- `Chat` 消息提交统一使用 `POST /api/terminal/sessions/{session_id}/input?scope=chat`，复用 Terminal-compatible 数据模型与状态机但与 Terminal 默认 session 列表分开存储；前端不再接入 `/api/messages`、`/api/messages/stream`、消息 SSE、SSE parser、本地 `Thinking` 过程步骤或后台 Task API。发送后由 Terminal session 状态标记 `busy`，执行完成或失败后，再通过返回的 session 或 Chat-scoped Terminal session 详情恢复写回 assistant 正文与结构化步骤。
+- 同一会话内请求保持顺序一致，由当前 Chat owner 的 runtime session 状态表达 `busy / ready / failed`。
+- `Chat` 消息提交统一使用 `POST /api/chat/sessions/{session_id}/input`，复用 runtime 数据模型与状态机但与 Terminal 默认 session 列表分开存储；前端不再接入 `/api/messages`、`/api/messages/stream`、消息 SSE、SSE parser、本地 `Thinking` 过程步骤或后台 Task API。发送后由 Terminal session 状态标记 `busy`，执行完成或失败后，再通过返回的 session 或 Chat owner 的 session 详情恢复写回 assistant 正文与结构化步骤。
 - `Chat` 消息入口在请求进入执行链前必须先持久化本轮 `user` 消息；assistant 消息、route、错误码与结构化步骤在执行完成后追加落库，避免浏览器关闭、刷新或请求断开时已发送用户消息只存在于前端乐观状态。
 - `Chat` 在同一会话内保持追加式历史：每次发送都新增一条 `user` 消息与对应 assistant 消息，发送后当前活动时间线需立即回到底部展示本轮新增消息；后续结果或会话详情恢复只允许补丁当前未完成的 assistant 条目，已收口历史不得被迟到结果回写。
 - 请求断开或页面刷新后，前端优先回源当前会话详情，用服务端已持久化的消息覆盖本地占位态，而不是立即把同一请求重发一遍。该恢复链路即使在服务端集合接口已返回当前会话摘要、但尚未附带完整消息时也必须继续触发。只有恢复失败时才收敛为失败态；若没有可用正文，失败提示需明确提示刷新。本地缓存中残留的 `streaming` 消息不得长期停留在 `In Progress`。
@@ -161,7 +161,7 @@
 - Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与 `RuntimeTraceEvent` 视图索引。
 - Terminal API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/runtime event 明细读取，前端可按事件展开或检索执行细节。
 - Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/runtime event 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
-- Terminal 与 Chat scope 会话状态持久化统一使用 `runtime_events` 与 `next_event_id`；读取旧 `steps / next_step_id` 状态文件时会同步迁移并写回新结构。
+- Terminal 与 Chat owner 会话状态持久化统一使用 `runtime_events` 与 `next_event_id`；读取旧 `steps / next_step_id` 状态文件时会同步迁移并写回新结构。
 - Terminal 恢复默认优先复用已持久化 Codex CLI 线程；若续写命中远端 compact 失败，则保留原会话历史、工作区和线程标识，下一次输入继续 resume 同一 Codex CLI 线程。
 - Terminal 会话删除统一从左侧会话列表触发，`Delete` 会同步清理状态文件和独立工作区；工作区头部不再提供单独的 `Close` 入口。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表所在的左侧导航抽屉都保持删除前的展开状态，便于继续清理其他会话；用户随后通过 `Menu` 或抽屉外部遮罩主动关闭时，抽屉必须正常收起。前端在后续列表刷新、轮询和 page-activation 补偿刷新中也不得把该会话重新补回，直到服务端列表稳定反映删除结果。
 - Terminal 历史在同一 Web 登录态下跨设备共享，不按浏览器 client 标识隔离；不设置产品级会话数量上限或固定超时淘汰。

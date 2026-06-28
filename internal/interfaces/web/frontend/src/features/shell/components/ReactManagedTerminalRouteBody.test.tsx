@@ -353,7 +353,7 @@ describe("ReactManagedTerminalRouteBody", () => {
           },
         }));
       }
-      if (url === "/api/sessions/terminal-1/attachments" && method === "POST") {
+      if (url === "/api/terminal/sessions/terminal-1/attachments" && method === "POST") {
         return Promise.resolve(jsonResponse({
           items: [
             {
@@ -361,13 +361,13 @@ describe("ReactManagedTerminalRouteBody", () => {
               name: "terminal-shot.svg",
               content_type: "image/svg+xml",
               size: 32,
-              asset_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/original",
-              preview_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/preview",
+              asset_url: "/api/terminal/sessions/terminal-1/attachments/asset-terminal-1/original",
+              preview_url: "/api/terminal/sessions/terminal-1/attachments/asset-terminal-1/preview",
             },
           ],
         }));
       }
-      if (url === "/api/sessions/terminal-2/attachments" && method === "POST") {
+      if (url === "/api/terminal/sessions/terminal-2/attachments" && method === "POST") {
         return Promise.resolve(jsonResponse({
           items: [
             {
@@ -375,8 +375,8 @@ describe("ReactManagedTerminalRouteBody", () => {
               name: "diagram.svg",
               content_type: "image/svg+xml",
               size: 32,
-              asset_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/original",
-              preview_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/preview",
+              asset_url: "/api/terminal/sessions/terminal-2/attachments/asset-terminal-2/original",
+              preview_url: "/api/terminal/sessions/terminal-2/attachments/asset-terminal-2/preview",
             },
           ],
         }));
@@ -765,6 +765,70 @@ describe("ReactManagedTerminalRouteBody", () => {
       expect(screen.getByText("server output")).toBeInTheDocument();
     });
     expect(screen.getByRole("heading", { name: "Server shell" })).toBeInTheDocument();
+  });
+
+  it("hydrates Terminal sessions from the 24 hour localStorage runtime snapshot", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const cachedTurns = terminalTurnFixtures(2, "stored output").map((turn, index) => ({
+      id: turn.id,
+      prompt: turn.prompt,
+      status: "completed",
+      started_at: `2026-04-15T10:${String(index + 1).padStart(2, "0")}:00Z`,
+      finished_at: `2026-04-15T10:${String(index + 1).padStart(2, "0")}:02Z`,
+      duration_ms: 2000,
+      final_output: turn.final_output,
+      runtime_trace_events: [],
+    }));
+    window.localStorage.setItem("alter0.web.terminal.runtime_snapshot.v1", JSON.stringify({
+      cachedAt: 1_000_000,
+      activeSessionID: "terminal-cache",
+      sessions: [terminalSessionFixture({ turns: cachedTurns })],
+    }));
+
+    const listRequest = deferred<{ items?: unknown[] }>();
+    const sessionRequest = deferred<{ session?: unknown }>();
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions" && method === "GET") {
+        return listRequest.promise.then((payload) => jsonResponse(payload));
+      }
+      if (url === "/api/control/skills" && method === "GET") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      if (url === "/api/terminal/sessions/terminal-cache" && method === "GET") {
+        return sessionRequest.promise.then((payload) => jsonResponse(payload));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    }));
+
+    renderTerminalRouteBody();
+
+    expect(screen.getByRole("heading", { name: "Cached shell" })).toBeInTheDocument();
+    expect(screen.getByText("stored output 1")).toBeInTheDocument();
+    expect(screen.getByText("stored output 2")).toBeInTheDocument();
+
+    listRequest.resolve({ items: [terminalSessionFixture({ title: "Server shell" })] });
+    sessionRequest.resolve({
+      session: terminalSessionFixture({
+        title: "Server shell",
+        turns: [{
+          id: "turn-server",
+          prompt: "server prompt",
+          status: "completed",
+          started_at: "2026-04-15T10:20:00Z",
+          finished_at: "2026-04-15T10:20:02Z",
+          duration_ms: 2000,
+          final_output: "server output",
+          runtime_trace_events: [],
+        }],
+      }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("server output")).toBeInTheDocument();
+    });
+    nowSpy.mockRestore();
   });
 
   it("does not hydrate an expired Terminal runtime cache", async () => {
@@ -1748,7 +1812,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     await waitFor(() => {
       const fetchMock = vi.mocked(fetch);
       expect(fetchMock.mock.calls.some(([request, init]) =>
-        String(request) === "/api/sessions/terminal-1/attachments"
+        String(request) === "/api/terminal/sessions/terminal-1/attachments"
         && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
       expect(fetchMock.mock.calls.some(([request, init]) =>
         String(request) === "/api/terminal/sessions/terminal-1/input"
@@ -1763,8 +1827,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
     expect(payload.attachments[0]).toMatchObject({
       id: "asset-terminal-1",
-      asset_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/original",
-      preview_url: "/api/sessions/terminal-1/attachments/asset-terminal-1/preview",
+      asset_url: "/api/terminal/sessions/terminal-1/attachments/asset-terminal-1/original",
+      preview_url: "/api/terminal/sessions/terminal-1/attachments/asset-terminal-1/preview",
     });
     expect(payload.attachments[0].data_url).toBeUndefined();
   });
@@ -1793,7 +1857,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     await waitFor(() => {
       const fetchMock = vi.mocked(fetch);
       expect(fetchMock.mock.calls.some(([request, init]) =>
-        String(request) === "/api/sessions/terminal-1/attachments"
+        String(request) === "/api/terminal/sessions/terminal-1/attachments"
         && String(init?.method || "GET").toUpperCase() === "POST")).toBe(true);
       expect(screen.getByRole("button", { name: "Preview terminal-shot.svg" })).toBeInTheDocument();
     });
@@ -1835,7 +1899,7 @@ describe("ReactManagedTerminalRouteBody", () => {
           },
         }));
       }
-      if (url === "/api/sessions/terminal-1/attachments" && method === "POST") {
+      if (url === "/api/terminal/sessions/terminal-1/attachments" && method === "POST") {
         return Promise.resolve(jsonResponse({
           items: [
             {
@@ -1843,7 +1907,7 @@ describe("ReactManagedTerminalRouteBody", () => {
               name: "requirements.md",
               content_type: "text/markdown",
               size: 20,
-              asset_url: "/api/sessions/terminal-1/attachments/asset-terminal-file-1/original",
+              asset_url: "/api/terminal/sessions/terminal-1/attachments/asset-terminal-file-1/original",
             },
           ],
         }));
@@ -1898,7 +1962,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     const payload = JSON.parse(String((inputCall?.[1] as RequestInit | undefined)?.body || "{}"));
     expect(payload.attachments[0]).toMatchObject({
       id: "asset-terminal-file-1",
-      asset_url: "/api/sessions/terminal-1/attachments/asset-terminal-file-1/original",
+      asset_url: "/api/terminal/sessions/terminal-1/attachments/asset-terminal-file-1/original",
     });
     expect(payload.attachments[0].preview_url).toBeUndefined();
     expect(payload.attachments[0].data_url).toBeUndefined();
@@ -2400,7 +2464,7 @@ describe("ReactManagedTerminalRouteBody", () => {
           },
         }));
       }
-      if (url === "/api/sessions/terminal-2/attachments" && method === "POST") {
+      if (url === "/api/terminal/sessions/terminal-2/attachments" && method === "POST") {
         return Promise.resolve(jsonResponse({
           items: [
             {
@@ -2408,8 +2472,8 @@ describe("ReactManagedTerminalRouteBody", () => {
               name: "diagram.svg",
               content_type: "image/svg+xml",
               size: 32,
-              asset_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/original",
-              preview_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/preview",
+              asset_url: "/api/terminal/sessions/terminal-2/attachments/asset-terminal-2/original",
+              preview_url: "/api/terminal/sessions/terminal-2/attachments/asset-terminal-2/preview",
             },
           ],
         }));
@@ -2519,7 +2583,7 @@ describe("ReactManagedTerminalRouteBody", () => {
           },
         }));
       }
-      if (url === "/api/sessions/terminal-2/attachments" && method === "POST") {
+      if (url === "/api/terminal/sessions/terminal-2/attachments" && method === "POST") {
         return Promise.resolve(jsonResponse({
           items: [
             {
@@ -2527,8 +2591,8 @@ describe("ReactManagedTerminalRouteBody", () => {
               name: "diagram.svg",
               content_type: "image/svg+xml",
               size: 32,
-              asset_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/original",
-              preview_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/preview",
+              asset_url: "/api/terminal/sessions/terminal-2/attachments/asset-terminal-2/original",
+              preview_url: "/api/terminal/sessions/terminal-2/attachments/asset-terminal-2/preview",
             },
           ],
         }));
@@ -2573,8 +2637,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     expect(payload.attachments).toHaveLength(1);
     expect(payload.attachments[0]).toMatchObject({
       id: "asset-terminal-2",
-      asset_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/original",
-      preview_url: "/api/sessions/terminal-2/attachments/asset-terminal-2/preview",
+      asset_url: "/api/terminal/sessions/terminal-2/attachments/asset-terminal-2/original",
+      preview_url: "/api/terminal/sessions/terminal-2/attachments/asset-terminal-2/preview",
     });
     expect(payload.attachments[0].data_url).toBeUndefined();
   });

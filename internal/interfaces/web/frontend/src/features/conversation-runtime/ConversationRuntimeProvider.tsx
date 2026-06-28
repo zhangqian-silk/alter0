@@ -15,6 +15,7 @@ import type { LegacyShellLanguage } from "../shell/legacyShellCopy";
 import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../../app/routeState";
 import { MOBILE_VIEWPORT_BREAKPOINT_PX } from "../../shared/viewport/mobileViewport";
 import { usePageActivation } from "../../shared/visibility/usePageActivation";
+import { runtimeSessionEndpoint } from "../shell/components/runtimeSessionApi";
 import {
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   isComposerImageAttachment,
@@ -39,8 +40,6 @@ const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
-const TERMINAL_SESSION_COLLECTION_ENDPOINT = "/api/terminal/sessions";
-const CHAT_TERMINAL_SESSION_SCOPE_QUERY = "scope=chat";
 const NEW_CHAT_DRAFT_KEY = "__chat_new__";
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_SESSION_RECOVERY_POLL_INTERVAL_MS = 3000;
@@ -58,16 +57,7 @@ function chatTerminalSessionEndpoint(
   path: string = "",
   query: Record<string, string | number | boolean | undefined> = {},
 ): string {
-  const normalizedPath = path.trim().replace(/^\/+/, "");
-  const suffix = normalizedPath ? `/${normalizedPath}` : "";
-  const search = new URLSearchParams(CHAT_TERMINAL_SESSION_SCOPE_QUERY);
-  Object.entries(query).forEach(([key, value]) => {
-    if (typeof value === "undefined" || value === "") {
-      return;
-    }
-    search.set(key, String(value));
-  });
-  return `${TERMINAL_SESSION_COLLECTION_ENDPOINT}${suffix}?${search.toString()}`;
+  return runtimeSessionEndpoint("chat", path, query);
 }
 
 type ChatSessionPollPlan = {
@@ -1618,7 +1608,7 @@ export function ConversationRuntimeProvider({
     processEventDetailLoadsRef.current.add(requestKey);
     try {
       const payload = await apiClient.get<RuntimeTraceEventDetailResponse>(
-        `/api/terminal/sessions/${encodeURIComponent(session.id)}/turns/${encodeURIComponent(turnID)}/events/${encodeURIComponent(detailID)}`,
+        chatTerminalSessionEndpoint(`${encodeURIComponent(session.id)}/turns/${encodeURIComponent(turnID)}/events/${encodeURIComponent(detailID)}`),
       );
       const detailedEvent = normalizeRuntimeTraceEventDetail(payload.event, runtimeEvent);
       if (!detailedEvent) {
@@ -1931,7 +1921,7 @@ export function ConversationRuntimeProvider({
       return existing;
     }
     const payload = await apiClient.post<SessionAttachmentUploadResponse>(
-      `/api/sessions/${encodeURIComponent(sessionID)}/attachments`,
+      chatTerminalSessionEndpoint(`${encodeURIComponent(sessionID)}/attachments`),
       {
         attachments: pending.map((attachment) => ({
           name: attachment.name,

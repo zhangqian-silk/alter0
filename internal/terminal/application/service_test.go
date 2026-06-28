@@ -815,6 +815,85 @@ func TestServiceLoadPersistedSessionsMigratesLegacyRuntimeEvents(t *testing.T) {
 	}
 }
 
+func TestServiceLoadPersistedSessionsMigratesLegacySessionRecordShape(t *testing.T) {
+	baseDir := t.TempDir()
+	statePath, err := resolveTerminalSessionStateFilePath(baseDir, "legacy-session-shape")
+	if err != nil {
+		t.Fatalf("resolve state path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatalf("prepare state dir: %v", err)
+	}
+	legacyRecord := `{
+  "summary": {
+    "id": "legacy-session-shape",
+    "owner_id": "shared",
+    "title": "legacy session shape",
+    "status": "running"
+  },
+  "entries": [
+    { "cursor": 7, "stream": "stdout", "text": "old output" }
+  ],
+  "turns": [
+    {
+      "id": "turn-3",
+      "prompt": "upgrade me",
+      "status": "completed",
+      "final_output": "done"
+    }
+  ]
+}`
+	if err := os.WriteFile(statePath, []byte(legacyRecord), 0o644); err != nil {
+		t.Fatalf("write legacy state: %v", err)
+	}
+
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
+	snapshot, ok := service.Get(terminalOwnerID, "legacy-session-shape")
+	if !ok {
+		t.Fatalf("expected legacy session shape to restore")
+	}
+	if snapshot.OwnerID != terminalOwnerID {
+		t.Fatalf("expected restored owner to normalize to terminal, got %q", snapshot.OwnerID)
+	}
+	if snapshot.TerminalSessionID != "legacy-session-shape" {
+		t.Fatalf("expected restored terminal session id, got %q", snapshot.TerminalSessionID)
+	}
+	if snapshot.Status != terminaldomain.SessionStatusReady {
+		t.Fatalf("expected legacy running status to normalize to ready, got %q", snapshot.Status)
+	}
+
+	migratedData, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read migrated state: %v", err)
+	}
+	migrated := map[string]any{}
+	if err := json.Unmarshal(migratedData, &migrated); err != nil {
+		t.Fatalf("decode migrated state: %v", err)
+	}
+	summary, ok := migrated["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected migrated summary object, got %#v", migrated["summary"])
+	}
+	if got := summary["owner_id"]; got != terminalOwnerID {
+		t.Fatalf("expected persisted owner_id terminal, got %#v in %s", got, string(migratedData))
+	}
+	if got := summary["terminal_session_id"]; got != "legacy-session-shape" {
+		t.Fatalf("expected persisted terminal_session_id, got %#v in %s", got, string(migratedData))
+	}
+	if got := summary["status"]; got != string(terminaldomain.SessionStatusReady) {
+		t.Fatalf("expected persisted ready status, got %#v in %s", got, string(migratedData))
+	}
+	if got := migrated["next_id"]; got != float64(8) {
+		t.Fatalf("expected migrated next_id 8, got %#v in %s", got, string(migratedData))
+	}
+	if got := migrated["next_turn_id"]; got != float64(3) {
+		t.Fatalf("expected migrated next_turn_id 3, got %#v in %s", got, string(migratedData))
+	}
+	if _, ok := migrated["next_step_id"]; ok {
+		t.Fatalf("expected latest record shape without next_step_id, got %s", string(migratedData))
+	}
+}
+
 func TestServiceGetMigratesLegacyRuntimeEventsFromPersistedState(t *testing.T) {
 	baseDir := t.TempDir()
 	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
@@ -1186,7 +1265,7 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 			"terminal-output-newer": {
 				summary: terminaldomain.Session{
 					ID:           "terminal-output-newer",
-					OwnerID:      sharedTerminalOwnerID,
+					OwnerID:      terminalOwnerID,
 					CreatedAt:    now.Add(-10 * time.Minute),
 					LastOutputAt: now.Add(-2 * time.Minute),
 					UpdatedAt:    now.Add(-4 * time.Minute),
@@ -1195,7 +1274,7 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 			"terminal-updated-newer": {
 				summary: terminaldomain.Session{
 					ID:           "terminal-updated-newer",
-					OwnerID:      sharedTerminalOwnerID,
+					OwnerID:      terminalOwnerID,
 					CreatedAt:    now.Add(-9 * time.Minute),
 					LastOutputAt: now.Add(-3 * time.Minute),
 					UpdatedAt:    now.Add(-1 * time.Minute),
@@ -1204,7 +1283,7 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 		},
 	}
 
-	items := service.List(sharedTerminalOwnerID)
+	items := service.List(terminalOwnerID)
 	if len(items) != 2 {
 		t.Fatalf("expected 2 sessions, got %d", len(items))
 	}
@@ -1225,10 +1304,10 @@ func TestServiceListSeparatesSessionsByOwner(t *testing.T) {
 					UpdatedAt: now,
 				},
 			},
-			"terminal-shared": {
+			"terminal-standard": {
 				summary: terminaldomain.Session{
-					ID:        "terminal-shared",
-					OwnerID:   sharedTerminalOwnerID,
+					ID:        "terminal-standard",
+					OwnerID:   terminalOwnerID,
 					CreatedAt: now.Add(time.Minute),
 					UpdatedAt: now.Add(time.Minute),
 				},
@@ -1240,12 +1319,39 @@ func TestServiceListSeparatesSessionsByOwner(t *testing.T) {
 	if len(chatItems) != 1 || chatItems[0].ID != "terminal-chat" {
 		t.Fatalf("expected only chat-owned sessions, got %+v", chatItems)
 	}
-	sharedItems := service.List("")
-	if len(sharedItems) != 1 || sharedItems[0].ID != "terminal-shared" {
-		t.Fatalf("expected only shared sessions, got %+v", sharedItems)
+	terminalItems := service.List("")
+	if len(terminalItems) != 1 || terminalItems[0].ID != "terminal-standard" {
+		t.Fatalf("expected only terminal sessions, got %+v", terminalItems)
 	}
-	if _, ok := service.Get(sharedTerminalOwnerID, "terminal-chat"); ok {
-		t.Fatalf("expected shared owner to be unable to read chat session")
+	if _, ok := service.Get(terminalOwnerID, "terminal-chat"); ok {
+		t.Fatalf("expected terminal owner to be unable to read chat session")
+	}
+}
+
+func TestServiceNormalizesLegacySharedOwnerToTerminal(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	service := &Service{
+		sessions: map[string]*runtimeSession{
+			"terminal-legacy": {
+				summary: terminaldomain.Session{
+					ID:        "terminal-legacy",
+					OwnerID:   legacySharedTerminalOwnerID,
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			},
+		},
+	}
+
+	items := service.List(terminalOwnerID)
+	if len(items) != 1 || items[0].ID != "terminal-legacy" {
+		t.Fatalf("expected legacy shared owner to list as terminal, got %+v", items)
+	}
+	if _, ok := service.Get("", "terminal-legacy"); !ok {
+		t.Fatalf("expected empty owner to normalize to terminal and read legacy shared session")
+	}
+	if _, ok := service.Get("chat", "terminal-legacy"); ok {
+		t.Fatalf("expected chat owner to be unable to read legacy terminal session")
 	}
 }
 
@@ -1300,7 +1406,7 @@ func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *
 	session := &runtimeSession{
 		summary: terminaldomain.Session{
 			ID:        "terminal-output-flags",
-			OwnerID:   sharedTerminalOwnerID,
+			OwnerID:   terminalOwnerID,
 			CreatedAt: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
 		},
 	}

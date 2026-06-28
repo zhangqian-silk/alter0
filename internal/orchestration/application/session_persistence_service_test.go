@@ -434,7 +434,7 @@ func TestSessionPersistenceServiceLocalizesAssistantMarkdownImagesIntoSessionWor
 		t.Fatalf("handle failed: %v", err)
 	}
 
-	expectedPrefix := "/api/sessions/s-image/attachments/assistant-"
+	expectedPrefix := "/api/chat/sessions/s-image/attachments/assistant-"
 	if !strings.Contains(result.Output, expectedPrefix) {
 		t.Fatalf("expected localized assistant image URL in result output, got %q", result.Output)
 	}

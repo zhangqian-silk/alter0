@@ -10,7 +10,7 @@ func TestEncodeDecodeUserAttachmentsRoundTrip(t *testing.T) {
 			Name:          "requirements.md",
 			ContentType:   "text/markdown",
 			WorkspacePath: "/tmp/session-files/requirements.md",
-			AssetURL:      "/api/sessions/session-1/attachments/asset-1/original",
+			AssetURL:      "/api/chat/sessions/session-1/attachments/asset-1/original",
 		},
 	})
 	if err != nil {
@@ -26,7 +26,7 @@ func TestEncodeDecodeUserAttachmentsRoundTrip(t *testing.T) {
 	if items[0].Name != "requirements.md" ||
 		items[0].ContentType != "text/markdown" ||
 		items[0].WorkspacePath != "/tmp/session-files/requirements.md" ||
-		items[0].AssetURL != "/api/sessions/session-1/attachments/asset-1/original" ||
+		items[0].AssetURL != "/api/chat/sessions/session-1/attachments/asset-1/original" ||
 		items[0].Kind != UserAttachmentKindFile {
 		t.Fatalf("unexpected attachment %#v", items[0])
 	}
@@ -70,8 +70,8 @@ func TestEncodeDecodeUserImageAttachmentsRoundTrip(t *testing.T) {
 			Name:        "diagram.png",
 			ContentType: "image/png",
 			WorkspacePath: "/tmp/session-images/diagram.png",
-			AssetURL:      "/api/sessions/session-1/attachments/asset-1/original",
-			PreviewURL:    "/api/sessions/session-1/attachments/asset-1/preview",
+			AssetURL:      "/api/chat/sessions/session-1/attachments/asset-1/original",
+			PreviewURL:    "/api/chat/sessions/session-1/attachments/asset-1/preview",
 		},
 	})
 	if err != nil {
@@ -87,8 +87,8 @@ func TestEncodeDecodeUserImageAttachmentsRoundTrip(t *testing.T) {
 	if items[0].Name != "diagram.png" ||
 		items[0].ContentType != "image/png" ||
 		items[0].WorkspacePath != "/tmp/session-images/diagram.png" ||
-		items[0].AssetURL != "/api/sessions/session-1/attachments/asset-1/original" ||
-		items[0].PreviewURL != "/api/sessions/session-1/attachments/asset-1/preview" {
+		items[0].AssetURL != "/api/chat/sessions/session-1/attachments/asset-1/original" ||
+		items[0].PreviewURL != "/api/chat/sessions/session-1/attachments/asset-1/preview" {
 		t.Fatalf("unexpected attachment %#v", items[0])
 	}
 }

@@ -51,7 +51,8 @@ var (
 	ErrRuntimeEventNotFound     = errors.New("terminal runtime event not found")
 )
 
-const sharedTerminalOwnerID = "shared"
+const terminalOwnerID = "terminal"
+const legacySharedTerminalOwnerID = "shared"
 
 type Options struct {
 	WorkingDir    string
@@ -258,7 +259,7 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 
 	if existing, ok := s.sessions[sessionID]; ok {
 		snapshot := existing.snapshot()
-		if snapshot.OwnerID != ownerID {
+		if normalizeTerminalOwnerID(snapshot.OwnerID) != ownerID {
 			return terminaldomain.Session{}, ErrSessionNotFound
 		}
 		return snapshot, nil
@@ -323,7 +324,7 @@ func (s *Service) List(ownerID string) []terminaldomain.Session {
 	items := make([]terminaldomain.Session, 0, len(s.sessions))
 	for _, item := range s.sessions {
 		snapshot := item.snapshot()
-		if snapshot.OwnerID != ownerID {
+		if normalizeTerminalOwnerID(snapshot.OwnerID) != ownerID {
 			continue
 		}
 		items = append(items, snapshot)
@@ -1700,7 +1701,7 @@ func (s *Service) getOwnedSession(ownerID string, sessionID string) (*runtimeSes
 	}
 
 	item.mu.RLock()
-	matched := item.summary.OwnerID == ownerID
+	matched := normalizeTerminalOwnerID(item.summary.OwnerID) == ownerID
 	item.mu.RUnlock()
 	if !matched {
 		return nil, ErrSessionNotFound
@@ -1721,10 +1722,10 @@ func (s *Service) getOrRestoreOwnedSession(ownerID string, sessionID string) (*r
 
 func normalizeTerminalOwnerID(ownerID string) string {
 	ownerID = strings.TrimSpace(ownerID)
-	if ownerID != "" {
-		return ownerID
+	if ownerID == "" || ownerID == legacySharedTerminalOwnerID {
+		return terminalOwnerID
 	}
-	return sharedTerminalOwnerID
+	return ownerID
 }
 
 func (s *Service) countActiveLocked() int {

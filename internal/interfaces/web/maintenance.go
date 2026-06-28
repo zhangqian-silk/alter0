@@ -216,33 +216,35 @@ func (m *maintenanceService) cleanupInactiveTerminalSessions(now time.Time, inac
 	}
 	cutoff := now.Add(-inactiveDuration)
 	var cleanupErrors []string
-	for _, session := range m.server.terminals.List(sharedTerminalClientID) {
-		sessionID := strings.TrimSpace(session.ID)
-		if sessionID == "" {
-			continue
+	for _, ownerID := range []string{terminalSessionOwnerID, chatSessionOwnerID} {
+		for _, session := range m.server.terminals.List(ownerID) {
+			sessionID := strings.TrimSpace(session.ID)
+			if sessionID == "" {
+				continue
+			}
+			result.ScannedCount++
+			if session.Pinned {
+				result.SkippedPinnedCount++
+				continue
+			}
+			if _, ok := protected[normalizeMaintenanceSessionID(sessionID)]; ok {
+				result.SkippedProtectedCount++
+				continue
+			}
+			if terminaldomain.NormalizeSessionStatus(session.Status) == terminaldomain.SessionStatusBusy {
+				result.SkippedProtectedCount++
+				continue
+			}
+			lastActiveAt := terminalMaintenanceLastActiveAt(session)
+			if lastActiveAt.IsZero() || !lastActiveAt.Before(cutoff) {
+				continue
+			}
+			if _, err := m.server.terminals.Delete(ownerID, sessionID); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete terminal session %s: %v", sessionID, err))
+				continue
+			}
+			result.DeletedCount++
 		}
-		result.ScannedCount++
-		if session.Pinned {
-			result.SkippedPinnedCount++
-			continue
-		}
-		if _, ok := protected[normalizeMaintenanceSessionID(sessionID)]; ok {
-			result.SkippedProtectedCount++
-			continue
-		}
-		if terminaldomain.NormalizeSessionStatus(session.Status) == terminaldomain.SessionStatusBusy {
-			result.SkippedProtectedCount++
-			continue
-		}
-		lastActiveAt := terminalMaintenanceLastActiveAt(session)
-		if lastActiveAt.IsZero() || !lastActiveAt.Before(cutoff) {
-			continue
-		}
-		if _, err := m.server.terminals.Delete(sharedTerminalClientID, sessionID); err != nil {
-			cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete terminal session %s: %v", sessionID, err))
-			continue
-		}
-		result.DeletedCount++
 	}
 	return result, cleanupErrors
 }

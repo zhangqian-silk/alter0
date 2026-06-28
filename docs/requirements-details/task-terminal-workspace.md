@@ -73,7 +73,7 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 
 ### 存储与迁移
 
-- Terminal 与 Chat scope 会话持久化统一使用 `runtime_events` 和 `next_event_id`，前端与接口只消费 `RuntimeTraceEvent`。
+- Terminal 与 Chat owner 会话持久化统一使用 `runtime_events` 和 `next_event_id`，前端与接口只消费 `RuntimeTraceEvent`。
 - 读取旧状态文件时，服务端兼容解析历史 `steps` 与 `next_step_id`，恢复为同一套运行事件结构，并在同次读取后立即写回新字段；写回后状态文件不再保留旧 `steps / next_step_id` 键。
 - 迁移只改变持久化字段名和索引结构，不重写既有事件 id，避免历史详情链接和排障引用失效。
 
