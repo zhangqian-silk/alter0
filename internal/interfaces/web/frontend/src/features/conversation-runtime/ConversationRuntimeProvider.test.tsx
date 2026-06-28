@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { memo } from "react";
 import {
   CHAT_RUNTIME_CACHE_SESSION_TTL_MS,
   ConversationRuntimeProvider,
@@ -92,6 +93,14 @@ function MessageTextHarness() {
     </div>
   );
 }
+
+let composerRenderCount = 0;
+
+const ComposerRenderProbe = memo(function ComposerRenderProbe() {
+  const runtime = useConversationRuntimeComposer();
+  composerRenderCount += 1;
+  return <output data-testid="composer-render-count">{composerRenderCount}:{runtime.draft}</output>;
+});
 
 function SendMessageTextHarness() {
   const runtime = useConversationRuntime();
@@ -298,6 +307,7 @@ function mockMessageDone(output = "Done") {
 describe("ConversationRuntimeProvider", () => {
   beforeEach(() => {
     resetConversationRuntimeCache();
+    composerRenderCount = 0;
     vi.clearAllMocks();
     window.sessionStorage.clear();
     window.localStorage.clear();
@@ -1310,6 +1320,119 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("middle answer");
     expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer");
+  });
+
+  it("keeps the Chat composer stable while progressively loading earlier history", async () => {
+    const earlierPage = deferred<{
+      session: {
+        id: string;
+        title: string;
+        status: string;
+        created_at: string;
+        turns_paging: {
+          has_more_before: boolean;
+          oldest_turn_id: string;
+          newest_turn_id: string;
+        };
+        turns: Array<{
+          id: string;
+          prompt: string;
+          status: string;
+          started_at: string;
+          finished_at: string;
+          final_output: string;
+        }>;
+      };
+    }>();
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/terminal/sessions?scope=chat":
+          return {
+            items: [{
+              id: "alter0-chat",
+              title: "Progressive history",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns_paging: {
+                has_more_before: true,
+                oldest_turn_id: "turn-3",
+                newest_turn_id: "turn-3",
+                next_before_turn_id: "turn-3",
+              },
+              turns: [{
+                id: "turn-3",
+                prompt: "latest prompt",
+                status: "success",
+                started_at: "2026-04-23T03:03:00Z",
+                finished_at: "2026-04-23T03:03:02Z",
+                final_output: "latest answer",
+              }],
+            }],
+          };
+        case "/api/terminal/sessions/alter0-chat?scope=chat&turn_before=turn-3&turn_limit=20":
+          return earlierPage.promise;
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageTextHarness />
+        <ComposerRenderProbe />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      "/api/terminal/sessions/alter0-chat?scope=chat&turn_before=turn-3&turn_limit=20",
+    ));
+    const renderCountBeforeHistoryMerge = Number(screen.getByTestId("composer-render-count").textContent?.split(":")[0] || "0");
+
+    await act(async () => {
+      earlierPage.resolve({
+        session: {
+          id: "alter0-chat",
+          title: "Progressive history",
+          status: "ready",
+          created_at: "2026-04-23T03:30:00Z",
+          turns_paging: {
+            has_more_before: false,
+            oldest_turn_id: "turn-1",
+            newest_turn_id: "turn-2",
+          },
+          turns: [
+            {
+              id: "turn-1",
+              prompt: "older prompt",
+              status: "success",
+              started_at: "2026-04-23T03:01:00Z",
+              finished_at: "2026-04-23T03:01:02Z",
+              final_output: "older answer",
+            },
+            {
+              id: "turn-2",
+              prompt: "middle prompt",
+              status: "success",
+              started_at: "2026-04-23T03:02:00Z",
+              finished_at: "2026-04-23T03:02:02Z",
+              final_output: "middle answer",
+            },
+          ],
+        },
+      });
+      await earlierPage.promise;
+    });
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("middle answer");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer");
+    expect(Number(screen.getByTestId("composer-render-count").textContent?.split(":")[0] || "0"))
+      .toBe(renderCountBeforeHistoryMerge);
   });
 
   it("appends a returned user-only Chat turn without replacing loaded history", async () => {
