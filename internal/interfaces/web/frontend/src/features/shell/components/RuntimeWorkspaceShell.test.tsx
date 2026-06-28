@@ -1,14 +1,24 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within, type RenderResult } from "@testing-library/react";
+import type { ComponentPropsWithoutRef } from "react";
 import { RuntimeWorkspaceShell } from "./RuntimeWorkspaceShell";
+import type { RuntimeMobileLayoutState } from "./runtimeMobileLayout";
+
+type RuntimeWorkspaceShellHarnessProps = ComponentPropsWithoutRef<typeof RuntimeWorkspaceShell> & {
+  mobileLayoutState?: RuntimeMobileLayoutState;
+};
+
+const RuntimeWorkspaceShellHarness = RuntimeWorkspaceShell as unknown as (
+  props: RuntimeWorkspaceShellHarnessProps
+) => React.ReactElement;
 
 describe("RuntimeWorkspaceShell", () => {
   function renderMobileShell(actions: {
     onMobileNav?: () => void;
     onMobileTitle?: () => void;
     onMobilePrimary?: () => void;
-  }) {
+  }, props: Partial<RuntimeWorkspaceShellHarnessProps> = {}): RenderResult {
     return render(
-      <RuntimeWorkspaceShell
+      <RuntimeWorkspaceShellHarness
         sessionPaneBackdrop={{ ariaLabel: "Hide sessions", onClick: vi.fn() }}
         sessionPaneTitle="Sessions"
         sessionPaneCountLabel="1 session"
@@ -23,6 +33,7 @@ describe("RuntimeWorkspaceShell", () => {
         onMobileTitle={actions.onMobileTitle}
         mobilePrimaryButtonLabel="New"
         onMobilePrimary={actions.onMobilePrimary}
+        {...props}
       />,
     );
   }
@@ -77,5 +88,76 @@ describe("RuntimeWorkspaceShell", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("blurs the active composer input before running mobile header actions", () => {
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    input.focus();
+    const blur = vi.spyOn(input, "blur");
+    const onMobileNav = vi.fn();
+
+    try {
+      renderMobileShell({ onMobileNav });
+
+      fireEvent.click(within(screen.getByRole("banner")).getByRole("button", { name: "Menu" }));
+
+      expect(blur).toHaveBeenCalledTimes(1);
+      expect(onMobileNav).toHaveBeenCalledTimes(1);
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("publishes mobile drawer layout state and suspends the runtime composer layer", () => {
+    renderMobileShell({}, {
+      mobileLayoutState: "mobile-session-drawer",
+      sessionPaneClassName: "is-open",
+      workspaceFooter: <div data-testid="runtime-composer-spacer" />,
+    });
+
+    const shell = document.querySelector(".runtime-workspace-shell") as HTMLElement;
+    const workspaceBody = document.querySelector(".runtime-workspace-body") as HTMLElement;
+    const sessionPane = document.querySelector(".runtime-workspace-session-pane") as HTMLElement;
+
+    expect(shell.dataset.runtimeMobileLayout).toBe("mobile-session-drawer");
+    expect(shell.dataset.runtimeSessionPaneOpen).toBe("true");
+    expect(shell.dataset.runtimeComposerSuspended).toBe("true");
+    expect(workspaceBody.dataset.runtimeMobileLayout).toBe("mobile-session-drawer");
+    expect(workspaceBody.dataset.runtimeComposerSuspended).toBe("true");
+    expect(sessionPane).toHaveClass("is-open");
+  });
+
+  it("blurs the active composer input when the mobile session drawer opens", () => {
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    input.focus();
+    const blur = vi.spyOn(input, "blur");
+
+    try {
+      renderMobileShell({}, {
+        mobileLayoutState: "mobile-session-drawer",
+        sessionPaneClassName: "is-open",
+      });
+
+      expect(blur).toHaveBeenCalledTimes(1);
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("suspends the composer layer when the primary navigation drawer owns mobile layout", () => {
+    renderMobileShell({}, {
+      mobileLayoutState: "mobile-primary-nav-drawer",
+      workspaceFooter: <div data-testid="runtime-composer-spacer" />,
+    });
+
+    const shell = document.querySelector(".runtime-workspace-shell") as HTMLElement;
+    const workspaceBody = document.querySelector(".runtime-workspace-body") as HTMLElement;
+
+    expect(shell.dataset.runtimeMobileLayout).toBe("mobile-primary-nav-drawer");
+    expect(shell.dataset.runtimeSessionPaneOpen).toBe("false");
+    expect(shell.dataset.runtimeComposerSuspended).toBe("true");
+    expect(workspaceBody.dataset.runtimeComposerSuspended).toBe("true");
   });
 });
