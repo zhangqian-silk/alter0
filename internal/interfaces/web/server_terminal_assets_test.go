@@ -12,6 +12,8 @@ func TestTerminalHelperModulesExposeExpectedMarkers(t *testing.T) {
 			"data-runtime-session-list",
 			"data-runtime-workspace",
 			"data-runtime-screen",
+		},
+		"frontend/src/features/shell/components/ChatMessageRegion.tsx": {
 			"data-terminal-step-toggle",
 			"data-terminal-final-output",
 		},

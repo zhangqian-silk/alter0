@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type PointerEvent, type TouchEvent } from "react";
 import { useWorkbenchContext } from "../../../app/WorkbenchContext";
 import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../../../app/routeState";
-import { createAPIClient } from "../../../shared/api/client";
 import { hashSessionIDShort, resolveSessionIDReference } from "../../../shared/session/sessionHash";
 import { groupSessionListItems } from "../../../shared/time/sessionListGroups";
 import { formatDateTime, formatDateTimeMinute } from "../../../shared/time/format";
@@ -11,7 +10,6 @@ import {
   getPastedComposerImageFiles,
   readComposerFiles,
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
-  resolveComposerAttachmentPreviewURL,
   type ComposerAttachment,
 } from "../../conversation-runtime/composerImageAttachments";
 import { getLegacyShellCopy } from "../legacyShellCopy";
@@ -22,20 +20,38 @@ import {
   isCodexShellSession,
 } from "./codexSlashCommands";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
-import { runtimeSessionEndpoint } from "./runtimeSessionApi";
+import {
+  buildRuntimeSessionTimelineItems,
+} from "./ChatMessageRegion";
+import {
+  resolveRuntimeSessionPollPlan,
+  useRuntimeSessionController,
+  type RuntimeSessionPollPlan,
+  type RuntimeSessionPayload,
+} from "./runtimeSessionController";
+import { useRuntimeSessionCatalogs } from "./runtimeSessionCatalogs";
+import {
+  cloneRuntimeSessionViewSession,
+  mergeRuntimeSessionViewSession,
+  oldestRuntimeSessionTurnID,
+  runtimeSessionTurnEvents,
+  runtimeSessionTurnsToTimelineMessages,
+  runtimeTimelineMessageTurnID,
+  type RuntimeSessionAttachment,
+  type RuntimeSessionTurn,
+  type RuntimeSessionTurnPaging,
+  type RuntimeSessionViewSession,
+} from "./runtimeSessionViewModel";
 import { resolveRuntimeMobileLayoutState } from "./runtimeMobileLayout";
-import type { RuntimeTimelineItem, RuntimeTimelineProcessEvent } from "./RuntimeTimeline";
 import { normalizeText, RouteMarkdownContent } from "./RouteBodyPrimitives";
 import {
   RuntimeProcessDetailBlocks,
   runtimeTraceEventToProcessDetailBlocks,
 } from "./RuntimeProcessDetailBlocks";
-import { RuntimeProcessStepMeta } from "./RuntimeProcessStepMeta";
 import { ScrollJumpStrip } from "./ScrollJumpStrip";
 import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
 import {
-  normalizeRuntimeTraceEvents,
-  runtimeTraceEventDisclosureCategory,
+  RUNTIME_EVENT_FILTER_OPTIONS,
   runtimeTraceEventDetailID,
   type RuntimeBlock,
   type RuntimeTraceEvent,
@@ -43,59 +59,16 @@ import {
 
 type TerminalStatus = "ready" | "busy" | "exited" | "failed" | "interrupted";
 
-type TerminalTurn = {
-  id: string;
-  prompt: string;
-  attachments?: TerminalAttachment[];
-  status: string;
-  started_at?: string | number;
-  finished_at?: string | number;
-  duration_ms?: number;
-  final_output?: string;
-  runtime_trace_events?: RuntimeTraceEvent[];
-};
+type TerminalTurn = RuntimeSessionTurn;
+type TerminalTurnPaging = RuntimeSessionTurnPaging;
+type TerminalAttachment = RuntimeSessionAttachment;
 
-type TerminalTurnPaging = {
-  limit?: number;
-  total?: number;
-  has_more_before?: boolean;
-  has_more_after?: boolean;
-  oldest_turn_id?: string;
-  newest_turn_id?: string;
-  next_before_turn_id?: string;
-};
-
-type TerminalAttachment = {
-  id?: string;
-  name: string;
-  content_type: string;
-  data_url?: string;
-  asset_url?: string;
-  preview_url?: string;
-};
-
-type TerminalSession = {
+type TerminalSession = RuntimeSessionViewSession & {
   id: string;
   terminal_session_id?: string;
-  title?: string;
   shell?: string;
   working_dir?: string;
-  status?: string;
-  pinned?: boolean;
-  created_at?: string | number;
-  last_output_at?: string | number;
-  updated_at?: string | number;
   error_message?: string;
-  turns?: TerminalTurn[];
-  turns_paging?: TerminalTurnPaging;
-};
-
-type TerminalSessionsResponse = {
-  items?: TerminalSession[];
-};
-
-type TerminalSessionResponse = {
-  session?: TerminalSession;
 };
 
 function RuntimeSessionControlIcon() {
@@ -114,10 +87,6 @@ type RuntimeTraceEventDetail = {
   event?: RuntimeTraceEvent;
   blocks?: RuntimeBlock[];
   searchable?: boolean;
-};
-
-type RuntimeTraceEventDetailResponse = {
-  event?: RuntimeTraceEventDetail;
 };
 
 type TerminalSkill = {
@@ -185,6 +154,7 @@ type TerminalCopy = {
   loading: string;
   noSession: string;
   metadata: string;
+  model: string;
   skills: string;
   activeSkills: string;
   noSkills: string;
@@ -242,6 +212,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     loading: "Loading...",
     noSession: "Create a terminal session to begin.",
     metadata: "Metadata",
+    model: "Model",
     skills: "Skills",
     activeSkills: "Active skills",
     noSkills: "No skills selected",
@@ -297,6 +268,7 @@ const TERMINAL_COPY: Record<"en" | "zh", TerminalCopy> = {
     loading: "加载中...",
     noSession: "先创建一个终端会话再开始。",
     metadata: "元数据",
+    model: "模型",
     skills: "技能",
     activeSkills: "已启用技能",
     noSkills: "未选择技能",
@@ -314,14 +286,10 @@ const TERMINAL_NEW_SESSION_PLACEHOLDER_ID = "terminal-new-placeholder";
 const TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.attachments.v1";
 const TERMINAL_RUNTIME_SNAPSHOT_STORAGE_KEY = "alter0.web.terminal.runtime_snapshot.v1";
 const TERMINAL_PENDING_DRAFT_KEY = "__pending__";
-const TERMINAL_HISTORY_PAGE_TURN_LIMIT = 20;
 export const TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const TERMINAL_RUNTIME_EVENT_FILTER = RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id);
 
-type TerminalPollPlan = {
-  enabled: boolean;
-  interval: number;
-  refreshActiveSession: boolean;
-};
+type TerminalPollPlan = RuntimeSessionPollPlan;
 
 type TerminalRuntimeCacheSnapshot = {
   cachedAt: number;
@@ -333,11 +301,6 @@ type TerminalRuntimeInitialState = {
   sessions: TerminalSession[];
   activeSessionID: string;
   hydratedFromCache: boolean;
-};
-
-type TerminalSessionRefreshOptions = {
-  turnBefore?: string;
-  turnLimit?: number;
 };
 
 let terminalRuntimeCache: TerminalRuntimeCacheSnapshot | null = null;
@@ -464,16 +427,10 @@ function serializeTerminalComposerAttachment(attachment: ComposerAttachment) {
 }
 
 async function uploadTerminalSessionAttachments(
-  apiClient: ReturnType<typeof createAPIClient>,
-  sessionID: string,
-  attachments: ComposerAttachment[],
-): Promise<ComposerAttachment[]> {
-  const existing = attachments.filter((attachment) => attachment.assetURL);
-  const pending = attachments.filter((attachment) => !attachment.assetURL && attachment.dataURL);
-  if (pending.length === 0) {
-    return existing;
-  }
-  const payload = await apiClient.post<{
+  uploadAttachments: (
+    sessionID: string,
+    body: Record<string, unknown>,
+  ) => Promise<{
     items?: Array<{
       id?: string;
       name?: string;
@@ -482,17 +439,23 @@ async function uploadTerminalSessionAttachments(
       asset_url?: string;
       preview_url?: string;
     }>;
-  }>(
-    runtimeSessionEndpoint("terminal", `${encodeURIComponent(sessionID)}/attachments`),
-    {
-      attachments: pending.map((attachment) => ({
-        name: attachment.name,
-        content_type: attachment.contentType,
-        data_url: attachment.dataURL,
-        preview_data_url: attachment.previewDataURL,
-      })),
-    },
-  );
+  }>,
+  sessionID: string,
+  attachments: ComposerAttachment[],
+): Promise<ComposerAttachment[]> {
+  const existing = attachments.filter((attachment) => attachment.assetURL);
+  const pending = attachments.filter((attachment) => !attachment.assetURL && attachment.dataURL);
+  if (pending.length === 0) {
+    return existing;
+  }
+  const payload = await uploadAttachments(sessionID, {
+    attachments: pending.map((attachment) => ({
+      name: attachment.name,
+      content_type: attachment.contentType,
+      data_url: attachment.dataURL,
+      preview_data_url: attachment.previewDataURL,
+    })),
+  });
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (items.length !== pending.length) {
     throw new Error("Failed to store attachments.");
@@ -596,40 +559,17 @@ export function resolveTerminalPollPlan(options: {
   scrollingActive: boolean;
   inputFocused: boolean;
 }): TerminalPollPlan {
-  const normalized = normalizeStatus(options.status);
-
-  if (normalized === "busy") {
-    if (options.scrollingActive) {
-      return {
-        enabled: false,
-        interval: 0,
-        refreshActiveSession: true,
-      };
-    }
-    return {
-      enabled: true,
-      interval: options.pageHidden
-        ? HIDDEN_POLL_INTERVAL_MS
-        : options.inputFocused
-          ? INTERACTION_POLL_INTERVAL_MS
-          : POLL_INTERVAL_MS,
-      refreshActiveSession: true,
-    };
-  }
-
-  if (normalized === "ready") {
-    return {
-      enabled: false,
-      interval: 0,
-      refreshActiveSession: false,
-    };
-  }
-
-  return {
-    enabled: false,
-    interval: 0,
-    refreshActiveSession: false,
-  };
+  return resolveRuntimeSessionPollPlan({
+    sessionCount: 1,
+    status: normalizeStatus(options.status),
+    pageHidden: options.pageHidden,
+    scrollingActive: options.scrollingActive,
+    inputFocused: options.inputFocused,
+    pollWhenHidden: true,
+    pollInterval: POLL_INTERVAL_MS,
+    interactionPollInterval: INTERACTION_POLL_INTERVAL_MS,
+    hiddenPollInterval: HIDDEN_POLL_INTERVAL_MS,
+  });
 }
 
 function sortSessions(items: TerminalSession[]): TerminalSession[] {
@@ -651,46 +591,8 @@ function sortSessions(items: TerminalSession[]): TerminalSession[] {
   });
 }
 
-function terminalTurnOrdinal(id: string): number {
-  const match = normalizeText(id).match(/(\d+)$/);
-  return match ? Number(match[1]) : Number.NaN;
-}
-
-function compareTerminalTurns(left: TerminalTurn, right: TerminalTurn): number {
-  const leftAt = Math.max(parseTimestamp(left.started_at), parseTimestamp(left.finished_at));
-  const rightAt = Math.max(parseTimestamp(right.started_at), parseTimestamp(right.finished_at));
-  if (leftAt > 0 && rightAt > 0 && leftAt !== rightAt) {
-    return leftAt - rightAt;
-  }
-  const leftOrdinal = terminalTurnOrdinal(left.id);
-  const rightOrdinal = terminalTurnOrdinal(right.id);
-  if (Number.isFinite(leftOrdinal) && Number.isFinite(rightOrdinal) && leftOrdinal !== rightOrdinal) {
-    return leftOrdinal - rightOrdinal;
-  }
-  return normalizeText(left.id).localeCompare(normalizeText(right.id));
-}
-
-function cloneTerminalTurn(turn: TerminalTurn): TerminalTurn {
-  return {
-    ...turn,
-    attachments: Array.isArray(turn.attachments)
-      ? turn.attachments.map((attachment) => ({ ...attachment }))
-      : undefined,
-    runtime_trace_events: Array.isArray(turn.runtime_trace_events)
-      ? turn.runtime_trace_events.map((event) => ({
-          ...event,
-          blocks: event.blocks.map((block) => ({ ...block })),
-        }))
-      : undefined,
-  };
-}
-
 function cloneTerminalSession(session: TerminalSession): TerminalSession {
-  return {
-    ...session,
-    turns: Array.isArray(session.turns) ? session.turns.map(cloneTerminalTurn) : undefined,
-    turns_paging: session.turns_paging ? { ...session.turns_paging } : undefined,
-  };
+  return cloneRuntimeSessionViewSession(session);
 }
 
 function trimTerminalSessionForRuntimeCache(session: TerminalSession): TerminalSession {
@@ -775,113 +677,15 @@ function resolveInitialTerminalRuntimeState(): TerminalRuntimeInitialState {
   };
 }
 
-function mergeTerminalTurns(current: TerminalTurn[] | undefined, incoming: TerminalTurn[] | undefined): TerminalTurn[] | undefined {
-  if (!Array.isArray(incoming)) {
-    return current;
-  }
-  if (!Array.isArray(current) || current.length === 0) {
-    return incoming;
-  }
-  const merged = new Map<string, TerminalTurn>();
-  current.forEach((turn) => {
-    if (normalizeText(turn.id)) {
-      merged.set(turn.id, turn);
-    }
-  });
-  incoming.forEach((turn) => {
-    if (normalizeText(turn.id)) {
-      merged.set(turn.id, turn);
-    }
-  });
-  return Array.from(merged.values()).sort(compareTerminalTurns);
-}
-
 function oldestTerminalTurnID(turns: TerminalTurn[] | undefined): string {
-  if (!Array.isArray(turns) || turns.length === 0) {
-    return "";
-  }
-  return normalizeText([...turns].sort(compareTerminalTurns)[0]?.id);
-}
-
-function newestTerminalTurnID(turns: TerminalTurn[] | undefined): string {
-  if (!Array.isArray(turns) || turns.length === 0) {
-    return "";
-  }
-  return normalizeText([...turns].sort(compareTerminalTurns)[turns.length - 1]?.id);
-}
-
-function hasTerminalTurn(turns: TerminalTurn[] | undefined, turnID: string): boolean {
-  const normalized = normalizeText(turnID);
-  return Boolean(normalized && Array.isArray(turns) && turns.some((turn) => turn.id === normalized));
-}
-
-function mergeTerminalTurnPaging(
-  current: TerminalTurnPaging | undefined,
-  incoming: TerminalTurnPaging | undefined,
-  turns: TerminalTurn[] | undefined,
-): TerminalTurnPaging | undefined {
-  if (!current && !incoming) {
-    return undefined;
-  }
-  const next: TerminalTurnPaging = {
-    ...(current || {}),
-    ...(incoming || {}),
-  };
-  const oldestTurnID = oldestTerminalTurnID(turns);
-  const newestTurnID = newestTerminalTurnID(turns);
-  if (oldestTurnID) {
-    next.oldest_turn_id = oldestTurnID;
-  }
-  if (newestTurnID) {
-    next.newest_turn_id = newestTurnID;
-  }
-  if (incoming?.has_more_before === false) {
-    next.has_more_before = false;
-    delete next.next_before_turn_id;
-    return next;
-  }
-  if (current?.has_more_before === false && incoming?.has_more_before === true) {
-    const incomingBeforeTurnID = normalizeAttachmentText(incoming.next_before_turn_id || incoming.oldest_turn_id);
-    if (!incomingBeforeTurnID || hasTerminalTurn(turns, incomingBeforeTurnID)) {
-      next.has_more_before = false;
-      delete next.next_before_turn_id;
-      return next;
-    }
-  }
-  if (next.has_more_before === true) {
-    const beforeTurnID = normalizeAttachmentText(next.next_before_turn_id || next.oldest_turn_id || oldestTurnID);
-    if (beforeTurnID) {
-      next.next_before_turn_id = beforeTurnID;
-    }
-  } else {
-    delete next.next_before_turn_id;
-  }
-  return next;
+  return oldestRuntimeSessionTurnID(turns);
 }
 
 function mergeSessionSnapshot(
   current: TerminalSession | undefined,
   incoming: TerminalSession,
 ): TerminalSession {
-  if (!current) {
-    return incoming;
-  }
-  const merged = { ...current } as Record<string, unknown>;
-  (Object.keys(incoming) as Array<keyof TerminalSession>).forEach((key) => {
-    const value = incoming[key];
-    if (typeof value !== "undefined") {
-      merged[key as string] = value;
-    }
-  });
-  if (Array.isArray(incoming.turns)) {
-    merged.turns = mergeTerminalTurns(current.turns, incoming.turns);
-  }
-  merged.turns_paging = mergeTerminalTurnPaging(
-    current.turns_paging,
-    incoming.turns_paging,
-    merged.turns as TerminalTurn[] | undefined,
-  );
-  return merged as TerminalSession;
+  return mergeRuntimeSessionViewSession(current, incoming);
 }
 
 function eventKey(turnID: string, eventID: string) {
@@ -942,13 +746,28 @@ function sessionLastOutputLabel(
   return formatDateTimeMinute(labelAt);
 }
 
+function terminalSessionModelLabel(
+  session: TerminalSession | null,
+  providers: ReturnType<typeof useRuntimeSessionCatalogs>["providers"],
+): string {
+  const providerID = normalizeAttachmentText(session?.model_provider_id);
+  const modelID = normalizeAttachmentText(session?.model_id);
+  if (!providerID && !modelID) {
+    return "";
+  }
+  const provider = providers.find((item) => normalizeAttachmentText(item.id) === providerID) || null;
+  const model = provider?.models?.find((item) => normalizeAttachmentText(item.id) === modelID) || null;
+  const providerName = normalizeAttachmentText(provider?.name) || providerID;
+  const modelName = normalizeAttachmentText(model?.name) || modelID;
+  return [providerName, modelName].filter(Boolean).join(" / ");
+}
+
 export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   /* Source contract markers:
      workbench.toggleMobileNav();
      workbench.closeMobileNav();
   */
   const workbench = useWorkbenchContext();
-  const apiClient = useMemo(() => createAPIClient(), []);
   const [language, setLanguage] = useState<"en" | "zh">(() => resolveLanguage());
   const copy = TERMINAL_COPY[language];
   const shellCopy = getLegacyShellCopy(workbench.language);
@@ -956,8 +775,41 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   if (!initialRuntimeStateRef.current) {
     initialRuntimeStateRef.current = resolveInitialTerminalRuntimeState();
   }
-  const [sessions, setSessions] = useState<TerminalSession[]>(() => initialRuntimeStateRef.current?.sessions || []);
-  const [activeSessionID, setActiveSessionID] = useState(() => initialRuntimeStateRef.current?.activeSessionID || "");
+  const runtimeControllerOptions = useMemo(() => ({
+    route: "terminal",
+    initialSessions: initialRuntimeStateRef.current?.sessions || [],
+    initialActiveSessionID: initialRuntimeStateRef.current?.activeSessionID || "",
+    normalizeSession: (payload: RuntimeSessionPayload, previous) => {
+      const id = normalizeAttachmentText(payload.id);
+      if (!id) {
+        return null;
+      }
+      return mergeSessionSnapshot(previous || undefined, { ...(payload as TerminalSession), id });
+    },
+    mergeSession: mergeSessionSnapshot,
+    sortSessions,
+    getProgressiveHistoryPaging: (session) => session.turns_paging,
+    getProgressiveHistoryTurnBefore: (session) =>
+      normalizeAttachmentText(session.turns_paging?.next_before_turn_id || session.turns_paging?.oldest_turn_id)
+      || oldestTerminalTurnID(session.turns),
+  }), []);
+  const runtimeController = useRuntimeSessionController<TerminalSession>(runtimeControllerOptions);
+  const {
+    apiClient,
+    sessions,
+    activeSessionID,
+    setActiveSessionID,
+    activeSession,
+    refreshList,
+    refreshActiveSession,
+    createSession: createRuntimeSession,
+    deleteSession: deleteRuntimeSession,
+    setSessionPinned: setRuntimeSessionPinned,
+    sendInput: sendRuntimeInput,
+    uploadAttachments: uploadRuntimeAttachments,
+    loadEventDetail: loadRuntimeEventDetail,
+  } = runtimeController;
+  const runtimeCatalogs = useRuntimeSessionCatalogs(apiClient);
   const [metaOpen, setMetaOpen] = useState(false);
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -967,7 +819,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const [loadError, setLoadError] = useState("");
   const [inputValue, setInputValue] = useState("");
   const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ComposerAttachment[]>>(() => loadTerminalAttachmentDrafts());
-  const [skills, setSkills] = useState<TerminalSkillSelection[]>([]);
   const [selectedSkillIDs, setSelectedSkillIDs] = useState<string[]>([]);
   const attachmentDraftsRef = useRef<Record<string, ComposerAttachment[]>>(attachmentDrafts);
   const attachmentUploadPromisesRef = useRef<Record<string, {
@@ -996,9 +847,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     anchoredToBottom: boolean;
   } | null>(null);
   const draftPersistTimerRef = useRef<number | null>(null);
-  const deletedSessionIDsRef = useRef<Set<string>>(new Set());
-  const progressiveHistoryLoadsRef = useRef<Set<string>>(new Set());
-  const progressiveHistoryLoadedRef = useRef<Set<string>>(new Set());
   const restoreMobileSessionPaneRef = useRef(false);
   const mobileSubmitGestureLockRef = useRef(false);
   const mobileSessionGestureLockRef = useRef(false);
@@ -1012,12 +860,15 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     [language, sessions],
   );
 
-  const activeSession = sessions.find((session) => session.id === activeSessionID) || null;
   const activeSessionResolvedID = activeSession?.id || "";
   const turns = Array.isArray(activeSession?.turns) ? activeSession.turns : [];
   const activeDraftKey = activeSessionID || TERMINAL_PENDING_DRAFT_KEY;
   const draftAttachments = attachmentDrafts[activeDraftKey] || [];
   const activeStatus = normalizeStatus(activeSession?.status || "");
+  const skills = useMemo(
+    () => normalizeTerminalSkills(runtimeCatalogs.skills as TerminalSkill[]),
+    [runtimeCatalogs.skills],
+  );
   const selectedSkillSet = useMemo(() => new Set(selectedSkillIDs), [selectedSkillIDs]);
   const skillOptions = useMemo(
     () => skills.map((skill) => ({ ...skill, active: selectedSkillSet.has(skill.id) })),
@@ -1188,56 +1039,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     scrollRestoreSnapshotRef.current = null;
   };
 
-  const refreshList = async () => {
-    const payload = await apiClient.get<TerminalSessionsResponse>(runtimeSessionEndpoint("terminal"));
-    const nextSessions = (Array.isArray(payload.items) ? payload.items : []).filter(
-      (session) => !deletedSessionIDsRef.current.has(session.id),
-    );
-    setSessions((current) => {
-      const currentMap = new Map(current.map((session) => [session.id, session]));
-      return sortSessions(
-        nextSessions.map((session) => mergeSessionSnapshot(currentMap.get(session.id), session)),
-      );
-    });
-    setActiveSessionID((current) => {
-      const resolvedCurrent = resolveSessionIDReference(nextSessions, current);
-      if (resolvedCurrent) {
-        return resolvedCurrent;
-      }
-      return nextSessions[0]?.id || "";
-    });
-    return nextSessions;
-  };
-
-  const refreshActiveSession = async (sessionID: string, options: TerminalSessionRefreshOptions = {}) => {
-    if (!sessionID || deletedSessionIDsRef.current.has(sessionID)) {
-      return null;
-    }
-    const beforeTurnID = normalizeAttachmentText(options.turnBefore);
-    const payload = await apiClient.get<TerminalSessionResponse>(
-      runtimeSessionEndpoint("terminal", encodeURIComponent(sessionID), {
-        turn_before: beforeTurnID,
-        turn_limit: options.turnLimit,
-      }),
-    );
-    const nextSession = payload.session || null;
-    if (!nextSession || deletedSessionIDsRef.current.has(nextSession.id)) {
-      return null;
-    }
-    setSessions((current) => {
-      const existing = current.some((session) => session.id === sessionID);
-      const merged = existing
-        ? current.map((session) =>
-            session.id === sessionID
-              ? mergeSessionSnapshot(session, nextSession)
-              : session,
-          )
-        : [nextSession, ...current];
-      return sortSessions(merged);
-    });
-    return nextSession;
-  };
-
   const refreshTerminalOnPageActive = async () => {
     await refreshList().catch(() => null);
     if (!activeSession) {
@@ -1248,15 +1049,10 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   };
 
   const createSession = async () => {
-    const payload = await apiClient.post<TerminalSessionResponse>(runtimeSessionEndpoint("terminal"), {});
-    if (!payload.session) {
+    const nextSession = await createRuntimeSession({});
+    if (!nextSession) {
       return null;
     }
-    const nextSession = payload.session;
-    setSessions((current) =>
-      sortSessions([nextSession, ...current.filter((session) => session.id !== nextSession.id)]),
-    );
-    setActiveSessionID(nextSession.id);
     closeMobileSessionPane();
     setMetaOpen(false);
     setExpandedTurns({});
@@ -1293,34 +1089,15 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   });
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const payload = await apiClient.get<{ items?: TerminalSkill[] }>("/api/control/skills");
-        if (cancelled) {
-          return;
-        }
-        const nextSkills = normalizeTerminalSkills(payload.items);
-        setSkills(nextSkills);
-        setSelectedSkillIDs((current) => {
-          const available = new Set(nextSkills.map((skill) => skill.id));
-          const nextSelected = current.filter((id) => available.has(id));
-          if (nextSelected.length > 0) {
-            return nextSelected;
-          }
-          return resolveDefaultTerminalSkillIDs(nextSkills);
-        });
-      } catch {
-        if (!cancelled) {
-          setSkills([]);
-          setSelectedSkillIDs([]);
-        }
+    setSelectedSkillIDs((current) => {
+      const available = new Set(skills.map((skill) => skill.id));
+      const nextSelected = current.filter((id) => available.has(id));
+      if (nextSelected.length > 0) {
+        return nextSelected;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [apiClient]);
+      return resolveDefaultTerminalSkillIDs(skills);
+    });
+  }, [skills]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1403,52 +1180,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     }
     void refreshActiveSession(activeSessionResolvedID);
   }, [activeSessionResolvedID]);
-
-  useEffect(() => {
-    const sessionID = normalizeAttachmentText(activeSession?.id);
-    const paging = activeSession?.turns_paging;
-    const beforeTurnID = normalizeAttachmentText(paging?.next_before_turn_id || paging?.oldest_turn_id)
-      || oldestTerminalTurnID(turns);
-    if (
-      !sessionID
-      || paging?.has_more_before !== true
-      || !beforeTurnID
-    ) {
-      return;
-    }
-    const requestKey = `${sessionID}:${beforeTurnID}`;
-    if (
-      progressiveHistoryLoadsRef.current.has(requestKey)
-      || progressiveHistoryLoadedRef.current.has(requestKey)
-    ) {
-      return;
-    }
-    let cancelled = false;
-    progressiveHistoryLoadsRef.current.add(requestKey);
-    void (async () => {
-      try {
-        if (!cancelled) {
-          await refreshActiveSession(sessionID, {
-            turnBefore: beforeTurnID,
-            turnLimit: TERMINAL_HISTORY_PAGE_TURN_LIMIT,
-          });
-          progressiveHistoryLoadedRef.current.add(requestKey);
-        }
-      } catch {
-      } finally {
-        progressiveHistoryLoadsRef.current.delete(requestKey);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeSession?.id,
-    activeSession?.turns_paging?.has_more_before,
-    activeSession?.turns_paging?.next_before_turn_id,
-    activeSession?.turns_paging?.oldest_turn_id,
-    turns,
-  ]);
 
   useEffect(() => {
     if (!activeSessionID || !activeSession || !pollPlan.enabled) {
@@ -1603,15 +1334,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     restoreMobileSessionPaneRef.current = keepMobileSessionPaneOpen;
     setDeletingSessionID(sessionID);
     try {
-      await apiClient.delete(runtimeSessionEndpoint("terminal", encodeURIComponent(sessionID)));
-      deletedSessionIDsRef.current.add(sessionID);
-      setSessions((current) => {
-        const next = current.filter((session) => session.id !== sessionID);
-        setActiveSessionID((currentActiveSessionID) =>
-          currentActiveSessionID === sessionID ? next[0]?.id || "" : currentActiveSessionID,
-        );
-        return next;
-      });
+      await deleteRuntimeSession(sessionID);
       window.localStorage.removeItem(`terminal:${sessionID}`);
       clearDraftAttachments(sessionID);
     } finally {
@@ -1622,19 +1345,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const setSessionPinned = async (sessionID: string, pinned: boolean) => {
     setPinningSessionID(sessionID);
     try {
-      const payload = await apiClient.post<TerminalSessionResponse>(
-        runtimeSessionEndpoint("terminal", `${encodeURIComponent(sessionID)}/pin`),
-        { pinned },
-      );
-      setSessions((current) =>
-        sortSessions(
-          current.map((session) =>
-            session.id === sessionID
-              ? mergeSessionSnapshot(session, payload.session || { id: sessionID, pinned })
-              : session,
-          ),
-        ),
-      );
+      await setRuntimeSessionPinned(sessionID, pinned);
     } finally {
       setPinningSessionID("");
     }
@@ -1669,7 +1380,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       }
       updateDraftAttachments(session.id, (current) => [...current, ...attachments]);
       uploadSessionID = session.id;
-      uploadPromise = uploadTerminalSessionAttachments(apiClient, session.id, attachments);
+      uploadPromise = uploadTerminalSessionAttachments(uploadRuntimeAttachments, session.id, attachments);
       attachmentUploadPromisesRef.current[session.id] = {
         pendingIDs: attachments.map((attachment) => attachment.id),
         promise: uploadPromise,
@@ -1735,7 +1446,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         }
       }
       if (nextDraftAttachments.some((attachment) => !attachment.assetURL && attachment.dataURL)) {
-        nextDraftAttachments = await uploadTerminalSessionAttachments(apiClient, session.id, nextDraftAttachments);
+        nextDraftAttachments = await uploadTerminalSessionAttachments(uploadRuntimeAttachments, session.id, nextDraftAttachments);
         updateDraftAttachments(session.id, () => nextDraftAttachments);
         if (draftKey !== session.id) {
           clearDraftAttachments(draftKey);
@@ -1745,10 +1456,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       if (content === "" && attachments.length === 0) {
         return;
       }
-      const payload = await apiClient.post<TerminalSessionResponse>(
-        runtimeSessionEndpoint("terminal", `${encodeURIComponent(session.id)}/input`),
-        { input: content, attachments, skill_ids: selectedSkillIDs },
-      );
+      await sendRuntimeInput(session.id, { input: content, attachments, skill_ids: selectedSkillIDs });
       window.localStorage.removeItem(`terminal:${session.id}`);
       setInputValue("");
       clearDraftAttachments(draftKey);
@@ -1756,17 +1464,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         clearDraftAttachments(session.id);
       }
       setComposerAttachmentError("");
-      if (payload.session) {
-        setSessions((current) =>
-          sortSessions(
-            current.map((item) =>
-              item.id === session!.id
-                ? mergeSessionSnapshot(item, payload.session as TerminalSession)
-                : item,
-            ),
-          ),
-        );
-      }
       await refreshActiveSession(session.id);
       window.requestAnimationFrame(() => {
         const node = chatScreenRef.current;
@@ -1795,14 +1492,9 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       return;
     }
     try {
-      const payload = await apiClient.get<RuntimeTraceEventDetailResponse>(
-        runtimeSessionEndpoint(
-          "terminal",
-          `${encodeURIComponent(activeSession.id)}/turns/${encodeURIComponent(turnID)}/events/${encodeURIComponent(eventID)}`,
-        ),
-      );
-      if (payload.event) {
-        setEventDetails((current) => ({ ...current, [key]: payload.event as RuntimeTraceEventDetail }));
+      const detail = await loadRuntimeEventDetail(activeSession.id, turnID, eventID);
+      if (detail) {
+        setEventDetails((current) => ({ ...current, [key]: detail as RuntimeTraceEventDetail }));
       }
       setExpandedEvents((current) => ({ ...current, [key]: true }));
     } catch (error) {
@@ -1812,7 +1504,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       }));
       setExpandedEvents((current) => ({ ...current, [key]: true }));
     }
-  }, [activeSession, apiClient, expandedEvents, eventDetails]);
+  }, [activeSession, expandedEvents, eventDetails, loadRuntimeEventDetail]);
 
   const handleScroll = () => {
     setScrollingActive(true);
@@ -1851,8 +1543,10 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     : showNewSessionPlaceholder
       ? copy.newShort
       : copy.noSession;
+  const activeModelLabel = terminalSessionModelLabel(activeSession, runtimeCatalogs.providers);
   const terminalDetailsSummary = activeSession ? [
     { label: copy.session, value: activeSession.id, copyLabel: copy.session, mono: true },
+    { label: copy.model, value: activeModelLabel, copyLabel: copy.model },
     { label: copy.shell, value: activeSession.shell, copyLabel: copy.shell, mono: true },
     { label: copy.path, value: activeSession.working_dir, copyLabel: copy.path, mono: true, multiline: true },
     { label: copy.status, value: renderStatus(activeSession.status || "", copy), copyLabel: copy.status },
@@ -1933,29 +1627,80 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
       </section>
     </div>
   ) : null;
-  const terminalTimelineItems = useMemo(() => buildTerminalTimelineItems({
+  const terminalTimelineMessages = useMemo(() => runtimeSessionTurnsToTimelineMessages({
     sessionID: activeSession?.id,
     turns,
     expandedTurns,
-    expandedEvents,
-    eventDetails,
-    eventErrors,
-    copy,
+    route: "terminal",
+    source: "terminal",
+  }), [activeSession?.id, expandedTurns, turns]);
+  const terminalExpandedProcessEvents = useMemo(() => {
+    const next: Record<string, boolean> = {};
+    Object.entries(expandedEvents).forEach(([key, value]) => {
+      const separator = key.indexOf(":");
+      if (separator <= 0) {
+        return;
+      }
+      const turnID = key.slice(0, separator);
+      const eventID = key.slice(separator + 1);
+      next[`${turnID}:assistant:${eventID}`] = value;
+    });
+    return next;
+  }, [expandedEvents]);
+  const terminalTimelineItems = useMemo(() => buildRuntimeSessionTimelineItems({
+    cacheScope: activeSession?.id || "terminal",
+    messages: terminalTimelineMessages,
     language,
-    onToggleTurn: toggleTurn,
-    onToggleEvent: (turnID, eventID, hasDetail) => void toggleEvent(turnID, eventID, hasDetail),
-    onPreviewAttachment: setPreviewAttachment,
+    runtimeEventFilter: TERMINAL_RUNTIME_EVENT_FILTER,
+    onToggleProcess: (messageID) => toggleTurn(runtimeTimelineMessageTurnID(messageID)),
+    expandedProcessEvents: terminalExpandedProcessEvents,
+    onToggleProcessEvent: (messageID, eventID) => {
+      const turnID = runtimeTimelineMessageTurnID(messageID);
+      const runtimeEvent = runtimeSessionTurnEvents(
+        activeSession?.id,
+        turns.find((turn) => turn.id === turnID),
+      ).find((event) => runtimeTraceEventDetailID(event) === eventID);
+      const fallbackBlocks = runtimeEvent ? runtimeTraceEventToProcessDetailBlocks(runtimeEvent) : [];
+      const hasDetail = Boolean(runtimeEvent?.raw?.has_detail ?? fallbackBlocks.length > 0);
+      void toggleEvent(turnID, eventID, hasDetail && fallbackBlocks.length === 0);
+    },
+    renderProcessEventDetail: (messageID, runtimeEvent) => {
+      const turnID = runtimeTimelineMessageTurnID(messageID);
+      const eventID = runtimeTraceEventDetailID(runtimeEvent);
+      const key = eventKey(turnID, eventID);
+      const detail = eventDetails[key];
+      const error = eventErrors[key];
+      const fallbackBlocks = runtimeTraceEventToProcessDetailBlocks(runtimeEvent);
+      const detailBlocks = runtimeTraceEventDetailBlocks(detail);
+      const fallbackContent = String(runtimeEvent.summary || runtimeEvent.title || "").trim();
+      const eventType = normalizeText(runtimeEvent.raw?.type || runtimeEvent.kind || "").toLowerCase();
+      const hasDetail = Boolean(runtimeEvent.raw?.has_detail ?? fallbackBlocks.length > 0);
+      return (
+        <>
+          {error ? <div className="terminal-step-detail-state is-error">{error}</div> : null}
+          {!error ? (
+            <RuntimeProcessDetailBlocks
+              blocks={detailBlocks.length > 0 ? detailBlocks : fallbackBlocks}
+              fallbackContent={fallbackContent}
+              fallbackType={eventType}
+              blockKeyPrefix={eventID}
+              emptyState={!hasDetail ? <div className="terminal-step-detail-state">{copy.noProcess}</div> : null}
+            />
+          ) : null}
+        </>
+      );
+    },
   }), [
+    activeSession?.id,
     copy,
-    expandedEvents,
-    expandedTurns,
-    language,
     eventDetails,
     eventErrors,
+    language,
+    terminalExpandedProcessEvents,
+    terminalTimelineMessages,
     toggleEvent,
     toggleTurn,
     turns,
-    activeSession?.id,
   ]);
   const mobileLayoutState = resolveRuntimeMobileLayoutState({
     isMobileViewport: workbench.isMobileViewport,
@@ -2227,16 +1972,6 @@ export function ReactManagedTerminalRouteBody() {
   return <RuntimeWorkspacePage controller={controller} />;
 }
 
-function terminalTurnRuntimeEvents(
-  sessionID: string,
-  turn: TerminalTurn,
-): RuntimeTraceEvent[] {
-  return normalizeRuntimeTraceEvents(turn.runtime_trace_events, {
-    sessionID,
-    turnID: turn.id,
-  });
-}
-
 function runtimeTraceEventDetailBlocks(detail: RuntimeTraceEventDetail | undefined) {
   if (!detail) {
     return [];
@@ -2260,194 +1995,4 @@ function runtimeTraceEventDetailBlocks(detail: RuntimeTraceEventDetail | undefin
     });
   }
   return [];
-}
-
-function buildTerminalTimelineItems({
-  sessionID,
-  turns,
-  expandedTurns,
-  expandedEvents,
-  eventDetails,
-  eventErrors,
-  copy,
-  language,
-  onToggleTurn,
-  onToggleEvent,
-  onPreviewAttachment,
-}: {
-  sessionID?: string;
-  turns: TerminalTurn[];
-  expandedTurns: Record<string, boolean>;
-  expandedEvents: Record<string, boolean>;
-  eventDetails: Record<string, RuntimeTraceEventDetail>;
-  eventErrors: Record<string, string>;
-  copy: TerminalCopy;
-  language: "en" | "zh";
-  onToggleTurn: (turnID: string) => void;
-  onToggleEvent: (turnID: string, eventID: string, hasDetail: boolean) => void;
-  onPreviewAttachment: (attachment: ComposerAttachment | null) => void;
-}): RuntimeTimelineItem[] {
-  return turns.map((turn) => {
-    const runtimeEvents = terminalTurnRuntimeEvents(sessionID, turn);
-    const turnAttachments = Array.isArray(turn.attachments) ? turn.attachments : [];
-    const imageAttachments = turnAttachments.filter((attachment) => attachment.content_type.startsWith("image/"));
-    const processOpen = expandedTurns[turn.id] ?? false;
-    const hasProcess = runtimeEvents.length > 0 || normalizeStatus(turn.status || "") === "busy";
-    const blocks = [];
-
-    if (imageAttachments.length > 0) {
-      blocks.push({
-        type: "attachments" as const,
-        galleryId: turn.id,
-        className: "terminal-turn-attachments",
-        items: imageAttachments.map((attachment) => {
-          const attachmentID = `${turn.id}:${attachment.id || attachment.name}`;
-          return {
-            key: `${attachmentID}:${attachment.asset_url || attachment.data_url || ""}`,
-            name: attachment.name,
-            src: resolveComposerAttachmentPreviewURL({
-              id: attachmentID,
-              kind: "image",
-              name: attachment.name,
-              contentType: attachment.content_type,
-              dataURL: attachment.data_url,
-              assetURL: attachment.asset_url,
-              previewURL: attachment.preview_url,
-              size: 0,
-            }),
-            previewLabel: `${copy.preview} ${attachment.name}`,
-            onPreview: () => onPreviewAttachment({
-              id: attachmentID,
-              kind: "image",
-              name: attachment.name,
-              contentType: attachment.content_type,
-              dataURL: attachment.data_url,
-              assetURL: attachment.asset_url,
-              previewURL: attachment.preview_url,
-              size: 0,
-            }),
-          };
-        }),
-      });
-    }
-
-    if (normalizeText(turn.prompt) !== "-") {
-      blocks.push({
-        type: "prompt" as const,
-        className: "terminal-log-row kind-command terminal-turn-prompt runtime-message runtime-message-user",
-        bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-user-shell user-message-shell",
-        textClassName: "terminal-log-main",
-        timeClassName: "terminal-log-time",
-        text: turn.prompt,
-      });
-    }
-
-    if (hasProcess) {
-      const processEvents: RuntimeTimelineProcessEvent[] = runtimeEvents.map((runtimeEvent) => {
-        const eventID = runtimeTraceEventDetailID(runtimeEvent);
-        const key = eventKey(turn.id, eventID);
-        const detail = eventDetails[key];
-        const error = eventErrors[key];
-        const expanded = Boolean(expandedEvents[key]);
-        const fallbackBlocks = runtimeTraceEventToProcessDetailBlocks(runtimeEvent);
-        const detailBlocks = runtimeTraceEventDetailBlocks(detail);
-        const hasDetail = Boolean(runtimeEvent.raw?.has_detail ?? fallbackBlocks.length > 0);
-        const shouldFetchDetail = hasDetail && fallbackBlocks.length === 0;
-        const fallbackContent = String(runtimeEvent.summary || runtimeEvent.title || "").trim();
-        const eventType = normalizeText(runtimeEvent.raw?.type || runtimeEvent.kind || "").toLowerCase();
-        const stepCategory = runtimeTraceEventDisclosureCategory(runtimeEvent);
-        return {
-          id: eventID,
-          itemClassName: "terminal-step-item",
-          itemProps: {
-            "data-terminal-step-item": eventID,
-            "data-runtime-event-kind": runtimeEvent.kind,
-            "data-runtime-event-source": runtimeEvent.source,
-            "data-runtime-event-category": stepCategory,
-          },
-          toggleClassName: "terminal-step-toggle",
-          toggleProps: {
-            "data-terminal-step-toggle": eventID,
-            onClick: () => onToggleEvent(turn.id, eventID, shouldFetchDetail),
-          },
-          title: normalizeText(runtimeEvent.summary || runtimeEvent.title || runtimeEvent.kind),
-          titleClassName: "terminal-step-title",
-          meta: (
-            <RuntimeProcessStepMeta
-              event={runtimeEvent}
-              language={language}
-            />
-          ),
-          expanded,
-          onToggle: () => onToggleEvent(turn.id, eventID, shouldFetchDetail),
-          bodyClassName: "terminal-step-body",
-          detail: (
-            <div className="terminal-step-detail">
-              {error ? <div className="terminal-step-detail-state is-error">{error}</div> : null}
-              {!error ? (
-                <RuntimeProcessDetailBlocks
-                  blocks={detailBlocks.length > 0 ? detailBlocks : fallbackBlocks}
-                  fallbackContent={fallbackContent}
-                  fallbackType={eventType}
-                  blockKeyPrefix={eventID}
-                  emptyState={!hasDetail ? <div className="terminal-step-detail-state">{copy.noProcess}</div> : null}
-                />
-              ) : null}
-            </div>
-          ),
-        };
-      });
-
-      blocks.push({
-        type: "process" as const,
-        shellClassName: `runtime-thinking-shell terminal-process-shell${processOpen ? "" : " is-collapsed"}`,
-        shellProps: { "data-terminal-process-shell": turn.id },
-        toggleClassName: "runtime-thinking-toggle terminal-process-toggle",
-        toggleProps: { "data-terminal-process-toggle": turn.id },
-        title: (
-          <>
-            <span className="terminal-step-toggle-icon" aria-hidden="true">
-              {processOpen ? "v" : ">"}
-            </span>
-            <span className="terminal-process-copy">
-              <span className="terminal-process-title">{copy.process}</span>
-              <span className="terminal-process-summary">{copy.processEvents(runtimeEvents.length)}</span>
-            </span>
-          </>
-        ),
-        expanded: processOpen,
-        onToggle: () => onToggleTurn(turn.id),
-        bodyClassName: "terminal-process-body",
-        emptyState: (
-          <div className="terminal-process-empty">
-            {normalizeStatus(turn.status || "") === "busy" ? copy.loading : copy.noProcess}
-          </div>
-        ),
-        events: processEvents,
-      });
-    }
-
-    if (normalizeText(turn.final_output) !== "-") {
-      blocks.push({
-        type: "markdown-shell" as const,
-        markdown: turn.final_output || "",
-        copyValue: turn.final_output,
-        copyLabel: copy.copy,
-        wrapperClassName: "terminal-final-output terminal-turn-output runtime-message runtime-message-assistant",
-        wrapperProps: { "data-terminal-final-output": turn.id },
-        bubbleClassName: "runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
-        className: "terminal-final-text",
-        toolbarClassName: "terminal-final-toolbar",
-        copyButtonClassName: "terminal-final-copy",
-        bodyClassName: "terminal-final-rendered",
-      });
-    }
-
-    return {
-      id: turn.id,
-      className: "terminal-turn-card",
-      articleProps: { "data-terminal-turn": turn.id },
-      blocks,
-    };
-  });
 }

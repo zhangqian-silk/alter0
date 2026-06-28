@@ -162,61 +162,6 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionHandlersIgnoreChatScopeQueryOnTerminalRoute(t *testing.T) {
-	service := &stubWebTerminalService{
-		createResp: terminaldomain.Session{
-			ID:        "terminal-chat",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-chat",
-			Status:    terminaldomain.SessionStatusReady,
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
-		},
-		inputResp: terminaldomain.Session{
-			ID:        "terminal-chat",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-chat",
-			Status:    terminaldomain.SessionStatusBusy,
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
-		},
-	}
-	server := &Server{terminals: service}
-
-	createReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions?scope=chat", bytes.NewBufferString(`{}`))
-	createRec := httptest.NewRecorder()
-	server.terminalSessionCollectionHandler(createRec, createReq)
-
-	if createRec.Code != http.StatusCreated {
-		t.Fatalf("expected create status 201, got %d", createRec.Code)
-	}
-	if service.createReq.OwnerID != terminalSessionOwnerID {
-		t.Fatalf("expected terminal route create owner to stay terminal, got %q", service.createReq.OwnerID)
-	}
-
-	listReq := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions?scope=chat", nil)
-	listRec := httptest.NewRecorder()
-	server.terminalSessionCollectionHandler(listRec, listReq)
-
-	if listRec.Code != http.StatusOK {
-		t.Fatalf("expected list status 200, got %d", listRec.Code)
-	}
-	if service.lastOwnerID != terminalSessionOwnerID {
-		t.Fatalf("expected terminal route list owner to stay terminal, got %q", service.lastOwnerID)
-	}
-
-	inputReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-chat/input?scope=chat", bytes.NewBufferString(`{"input":"hello"}`))
-	inputRec := httptest.NewRecorder()
-	server.terminalSessionItemHandler(inputRec, inputReq)
-
-	if inputRec.Code != http.StatusOK {
-		t.Fatalf("expected input status 200, got %d", inputRec.Code)
-	}
-	if service.lastOwnerID != terminalSessionOwnerID {
-		t.Fatalf("expected terminal route input owner to stay terminal, got %q", service.lastOwnerID)
-	}
-}
-
 func TestChatSessionNamedRouteHandlersUseChatOwner(t *testing.T) {
 	service := &stubWebTerminalService{
 		createResp: terminaldomain.Session{

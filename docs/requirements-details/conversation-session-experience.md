@@ -83,6 +83,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
 - `GET /api/chat/sessions` 返回 Chat 运行页会话摘要，至少包含标题、Skills 选择、创建时间、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。Terminal 默认 `/api/terminal/sessions` 不包含 Chat owner 会话。
 - `GET /api/chat/sessions/{session_id}` 返回单个 Chat 运行页会话详情，默认只返回最新 turns 页，并通过 `turns_paging` 提供总量、页边界、`next_before_turn_id` 与是否仍有更早内容；前端继续按 `turn_before` 后台补齐更早 turns。详情至少包含 runtime `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
+- `Chat / Terminal` 前端会话列表、详情刷新、输入、置顶、删除、附件、事件明细、历史分页、timeline item 构造和 model / Skill / MCP catalog 加载必须由共享 runtime session controller、runtime timeline builder 与 catalog hook 承担；`chat / terminal` route 是会话 API 的唯一分叉点，页面不得保留消息或 turn 的私有展示转换链路。
 - `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
 - `GET /api/sessions/{session_id}/messages` 查询会话消息。
 - `DELETE /api/sessions/{session_id}` 删除会话，并触发关联工作区和任务清理。
@@ -221,7 +222,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 的会话列表、工作区外壳、聊天滚动区和输入区需输出 `runtime-*` 主契约并保留必要的 `terminal-* + conversation-*` 兼容 class，确保两条运行页与 `Terminal` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
 - `Chat` 首页 Composer 采用单一胶囊式助手输入面板：主 textarea 透明无内边框，工具栏与输入区处在同一白色 surface 内；工具栏不再显示 `Session` 会话设置按钮，只保留附件与发送等直接对话动作。附件入口使用回形针图标，文字 label 仅保留给可访问语义；桌面端输入面板按主阅读宽度居中，移动端压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，除 Composer 胶囊外不使用额外胶囊按钮、卡片边框或厚圆角表达层级；会话列表项与 `Details` 面板保持同一浅色 runtime 质感。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
 - `Chat` 在页面重新变为前台可见或浏览器重新把当前页激活时，必须复用运行页共享的 page-activation 补偿刷新链路：会话列表、当前活动会话详情与 pending task 状态都要立即回源。页面隐藏时暂停 pending task 定时轮询，恢复前台后再补偿检查，避免后台标签页持续发起任务状态请求。
-- `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat owner 的 session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果，并继续按 `turn_before` 后台自动请求更早页，直到服务端标记没有更早内容；所有分页结果按消息 id 合并到已有时间线，后台恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息，也不得在后台前置旧消息时扩展当前可见窗口、强制滚动到底部或重建 Composer 输入状态与配置面板。
+- `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat owner 的 session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果，并继续通过共享 runtime session controller 按 `turn_before` 和共享 turn limit 后台自动请求更早页，直到服务端标记没有更早内容；所有分页结果按消息 id 合并到已有时间线，后台恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息，也不得在后台前置旧消息时扩展当前可见窗口、强制滚动到底部或重建 Composer 输入状态与配置面板。
 - `Chat` 时间线到顶交互只负责展开本地已加载的隐藏消息批次；本地窗口已完全展开时，不再触发会话详情回源。服务端更早历史由 `ConversationRuntimeProvider` 基于 `turns_paging` 在后台按 `turn_before` 自动补齐，并按消息 id 与时间顺序合并进时间线。
 - `Chat` 发送新消息后，服务端输入响应、后续详情刷新或分页片段只允许按 turn/message id 与时间顺序合并进现有时间线；即使响应只包含新 turn 或最新轻量页，也不得替换掉用户当前已加载的旧历史。若追加前当前渲染窗口已经覆盖全部已加载消息，追加后可见窗口需同步扩容，避免旧消息被最新一轮挤出视图。
 - `Chat` 的浏览器缓存分为短期运行态、完整消息快照与轻量会话信息快照：24 小时运行态缓存保留当前已加载会话的完整消息，24 小时 `localStorage` 完整快照保留同一批会话与完整消息，用于刷新、重开或 sessionStorage 丢失时首屏恢复；轻量会话信息快照只保存标题、状态、置顶、模型与能力选择等元数据，用于完整消息缓存写入失败或被清理时恢复会话列表。缓存不得阻断服务端会话列表与单会话详情回源；当服务端返回更新历史时继续按现有分页合并规则覆盖或补齐本地快照，并刷新缓存时间。

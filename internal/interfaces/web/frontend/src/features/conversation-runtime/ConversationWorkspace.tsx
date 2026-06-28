@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useWorkbenchContext } from "../../app/WorkbenchContext";
 import { formatDateTime } from "../../shared/time/format";
 import { groupSessionListItems } from "../../shared/time/sessionListGroups";
-import { buildChatTimelineItems, type ChatMessageSnapshot } from "../shell/components/ChatMessageRegion";
+import { buildRuntimeSessionTimelineItems, type ChatMessageSnapshot } from "../shell/components/ChatMessageRegion";
 import {
   buildDraftWithCodexSlashCommand,
   CODEX_SLASH_COMMANDS,
@@ -377,7 +377,7 @@ function useConversationWorkspaceController(
   const sessionDetailsBody = null;
 
   const timelineItems = useMemo(
-    () => buildChatTimelineItems({
+    () => buildRuntimeSessionTimelineItems({
       cacheScope: timelineSessionID,
       messages: visibleMessages,
       language,

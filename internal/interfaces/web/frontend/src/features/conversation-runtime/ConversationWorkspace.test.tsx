@@ -100,6 +100,7 @@ vi.mock("./ConversationRuntimeProvider", () => ({
 vi.mock("../shell/components/ChatMessageRegion", () => ({
   ChatMessageRegion: () => <div data-testid="chat-message-region">messages</div>,
   buildChatTimelineItems: buildChatTimelineItemsMock,
+  buildRuntimeSessionTimelineItems: buildChatTimelineItemsMock,
 }));
 
 function WorkspaceTestFrame({ overrides = {} }: { overrides?: Partial<WorkbenchContextValue> }) {

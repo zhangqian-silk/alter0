@@ -15,7 +15,17 @@ import type { LegacyShellLanguage } from "../shell/legacyShellCopy";
 import { readWorkbenchRouteSessionID, writeWorkbenchRouteSessionID } from "../../app/routeState";
 import { MOBILE_VIEWPORT_BREAKPOINT_PX } from "../../shared/viewport/mobileViewport";
 import { usePageActivation } from "../../shared/visibility/usePageActivation";
-import { runtimeSessionEndpoint } from "../shell/components/runtimeSessionApi";
+import {
+  resolveRuntimeSessionPollPlan,
+  useRuntimeSessionController,
+  type RuntimeSessionPayload,
+} from "../shell/components/runtimeSessionController";
+import { useRuntimeSessionCatalogs } from "../shell/components/runtimeSessionCatalogs";
+import {
+  runtimeSessionTurnsToTimelineMessages,
+  type RuntimeSessionTurnPaging,
+  type RuntimeSessionTimelineMessage,
+} from "../shell/components/runtimeSessionViewModel";
 import {
   MAX_COMPOSER_IMAGE_ATTACHMENTS,
   isComposerImageAttachment,
@@ -46,19 +56,10 @@ const CHAT_SESSION_RECOVERY_POLL_INTERVAL_MS = 3000;
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
-const MAX_RECENT_SESSION_SNAPSHOTS = 12;
 const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
-const CHAT_HISTORY_PAGE_TURN_LIMIT = 20;
 export const CHAT_RUNTIME_CACHE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const CHAT_LONG_TERM_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const EMPTY_COMPOSER_ATTACHMENTS: ComposerAttachment[] = [];
-
-function chatTerminalSessionEndpoint(
-  path: string = "",
-  query: Record<string, string | number | boolean | undefined> = {},
-): string {
-  return runtimeSessionEndpoint("chat", path, query);
-}
 
 type ChatSessionPollPlan = {
   enabled: boolean;
@@ -66,15 +67,16 @@ type ChatSessionPollPlan = {
 };
 
 export function resolveChatSessionPollPlan(options: { sessionCount: number; pageHidden: boolean }): ChatSessionPollPlan {
-  if (options.sessionCount <= 0 || options.pageHidden) {
-    return {
-      enabled: false,
-      interval: 0,
-    };
-  }
+  const plan = resolveRuntimeSessionPollPlan({
+    sessionCount: options.sessionCount,
+    status: "busy",
+    pageHidden: options.pageHidden,
+    pollWhenHidden: false,
+    pollInterval: CHAT_SESSION_RECOVERY_POLL_INTERVAL_MS,
+  });
   return {
-    enabled: true,
-    interval: CHAT_SESSION_RECOVERY_POLL_INTERVAL_MS,
+    enabled: plan.enabled,
+    interval: plan.interval,
   };
 }
 
@@ -86,19 +88,7 @@ type ChatTarget = {
   name: string;
 };
 
-export type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  attachments: ComposerAttachment[];
-  route: string;
-  source: string;
-  error: boolean;
-  status: string;
-  at: number;
-  processEvents: RuntimeTraceEvent[];
-  processCollapsed?: boolean;
-};
+export type ChatMessage = RuntimeSessionTimelineMessage;
 
 type ChatSession = {
   id: string;
@@ -119,7 +109,7 @@ type ChatSession = {
   messages: ChatMessage[];
   messagesLoaded?: boolean;
   serverBacked?: boolean;
-  turnsPaging?: TerminalTurnPaging;
+  turnsPaging?: RuntimeSessionTurnPagingPayload;
 };
 
 type ChatProviderModel = {
@@ -153,6 +143,11 @@ type ComposerDraftMap = Record<string, string>;
 type ComposerAttachmentDraftMap = Record<string, ComposerAttachment[]>;
 type StoredActiveSessionSnapshotState = Record<string, unknown>;
 type StoredRecentSessionSnapshotState = Record<string, unknown>;
+
+type LegacySessionSnapshotLoad = {
+  sessionsByRoute: SessionsState;
+  migratedLegacySnapshots: boolean;
+};
 
 type ConversationRuntimeCacheSnapshot = {
   cachedAt: number;
@@ -194,18 +189,7 @@ type RuntimeProvider = {
   models: RuntimeModel[];
 };
 
-type SessionAttachmentUploadResponse = {
-  items?: Array<{
-    id?: string;
-    name?: string;
-    content_type?: string;
-    size?: number;
-    asset_url?: string;
-    preview_url?: string;
-  }>;
-};
-
-type TerminalSessionPayload = {
+type RuntimeSessionDetailPayload = {
   id?: string;
   status?: string;
   title?: string;
@@ -218,26 +202,16 @@ type TerminalSessionPayload = {
   tool_ids?: string[];
   skill_ids?: string[];
   mcp_ids?: string[];
-  turns?: TerminalTurnPayload[];
-  turns_paging?: TerminalTurnPaging;
+  turns?: RuntimeSessionTurnPayload[];
+  turns_paging?: RuntimeSessionTurnPagingPayload;
 };
 
-type TerminalTurnPaging = {
-  limit?: number;
-  total?: number;
-  byte_limit?: number;
-  approx_bytes?: number;
-  has_more_before?: boolean;
-  has_more_after?: boolean;
-  oldest_turn_id?: string;
-  newest_turn_id?: string;
-  next_before_turn_id?: string;
-};
+type RuntimeSessionTurnPagingPayload = RuntimeSessionTurnPaging;
 
-type TerminalTurnPayload = {
+type RuntimeSessionTurnPayload = {
   id?: string;
   prompt?: string;
-  attachments?: TerminalAttachmentPayload[];
+  attachments?: RuntimeSessionAttachmentPayload[];
   status?: string;
   started_at?: string | number;
   finished_at?: string | number;
@@ -245,7 +219,7 @@ type TerminalTurnPayload = {
   runtime_trace_events?: RuntimeTraceEvent[];
 };
 
-type TerminalAttachmentPayload = {
+type RuntimeSessionAttachmentPayload = {
   id?: string;
   name?: string;
   content_type?: string;
@@ -257,10 +231,6 @@ type RuntimeTraceEventDetail = {
   turn_id?: string;
   event?: RuntimeTraceEvent;
   blocks?: RuntimeBlock[];
-};
-
-type RuntimeTraceEventDetailResponse = {
-  event?: RuntimeTraceEventDetail;
 };
 
 type ConversationRuntimeContextValue = {
@@ -496,6 +466,7 @@ function cloneChatMessage(message: ChatMessage): ChatMessage {
   return {
     ...message,
     attachments: message.attachments.map((attachment) => ({ ...attachment })),
+    promptAttachments: message.promptAttachments?.map((attachment) => ({ ...attachment })),
     processEvents: message.processEvents.map(cloneRuntimeTraceEvent),
   };
 }
@@ -553,7 +524,7 @@ function normalizeOptionalNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function normalizeTerminalTurnPaging(value: unknown): TerminalTurnPaging | undefined {
+function normalizeRuntimeSessionTurnPagingPayload(value: unknown): RuntimeSessionTurnPagingPayload | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }
@@ -592,9 +563,9 @@ function oldestTurnIDFromMessages(messages: ChatMessage[]): string {
   return "";
 }
 
-function isPagedTerminalTurnPayload(
-  item: TerminalSessionPayload,
-  paging: TerminalTurnPaging | undefined,
+function isPagedRuntimeSessionTurnPayload(
+  item: RuntimeSessionDetailPayload,
+  paging: RuntimeSessionTurnPagingPayload | undefined,
 ): boolean {
   if (!paging || !Array.isArray(item.turns)) {
     return false;
@@ -605,10 +576,10 @@ function isPagedTerminalTurnPayload(
   return typeof paging.total === "number" && item.turns.length < paging.total;
 }
 
-function mergeTerminalTurnPaging(
+function mergeRuntimeSessionTurnPagingPayload(
   previous: ChatSession | null | undefined,
-  incoming: TerminalTurnPaging | undefined,
-): TerminalTurnPaging | undefined {
+  incoming: RuntimeSessionTurnPagingPayload | undefined,
+): RuntimeSessionTurnPagingPayload | undefined {
   if (!incoming) {
     return previous?.turnsPaging ? { ...previous.turnsPaging } : undefined;
   }
@@ -644,7 +615,7 @@ function isRecoverableAssistantMessage(message: ChatMessage): boolean {
   if (message.role !== "assistant") {
     return false;
   }
-  return message.error || normalizeTaskStatus(message.status) === "streaming" || isStreamingPlaceholderText(message.text);
+  return message.error || isConversationBusyStatus(message.status) || isStreamingPlaceholderText(message.text);
 }
 
 function hasRecoverableAssistantState(messages: ChatMessage[]): boolean {
@@ -671,7 +642,7 @@ function hasRecoverableRuntimeState(session: ChatSession | null | undefined): bo
   return hasRecoverableAssistantState(session.messages) || hasUnansweredLatestUserMessage(session.messages);
 }
 
-function shouldPollTerminalBackedSession(session: ChatSession): boolean {
+function shouldPollRuntimeBackedSession(session: ChatSession): boolean {
   if (session.serverBacked !== true) {
     return false;
   }
@@ -683,7 +654,7 @@ function hasPersistedAssistantState(messages: ChatMessage[]): boolean {
     if (message.role !== "assistant") {
       return false;
     }
-    return normalizeTaskStatus(message.status) !== "streaming" && !isStreamingPlaceholderText(message.text);
+    return !isConversationBusyStatus(message.status) && !isStreamingPlaceholderText(message.text);
   });
 }
 
@@ -740,6 +711,18 @@ function normalizeStoredMessage(item: unknown): ChatMessage | null {
     role,
     text: typeof record.text === "string" ? record.text : "",
     attachments: normalizeStoredAttachments(record.attachments),
+    promptText: typeof record.promptText === "string"
+      ? record.promptText
+      : typeof record.prompt_text === "string"
+        ? record.prompt_text
+        : undefined,
+    promptAttachments: normalizeStoredAttachments(record.promptAttachments ?? record.prompt_attachments),
+    assistantTextDerivedFromPrompt:
+      typeof record.assistantTextDerivedFromPrompt === "boolean"
+        ? record.assistantTextDerivedFromPrompt
+        : typeof record.assistant_text_derived_from_prompt === "boolean"
+          ? record.assistant_text_derived_from_prompt
+          : undefined,
     route: normalizeText(record.route),
     source: normalizeText(record.source),
     error: Boolean(record.error),
@@ -757,7 +740,7 @@ function resolveProcessCollapsed(message: ChatMessage): boolean {
   if (typeof message.processCollapsed === "boolean") {
     return message.processCollapsed;
   }
-  return Boolean(message.text.trim()) && normalizeTaskStatus(message.status) !== "streaming";
+  return Boolean(message.text.trim()) && !isConversationBusyStatus(message.status);
 }
 
 function normalizeStoredAttachments(value: unknown): ComposerAttachment[] {
@@ -834,7 +817,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
       : [],
     messagesLoaded: typeof record.messagesLoaded === "boolean" ? record.messagesLoaded : undefined,
     serverBacked: typeof record.serverBacked === "boolean" ? record.serverBacked : undefined,
-    turnsPaging: normalizeTerminalTurnPaging(record.turnsPaging ?? record.turns_paging),
+    turnsPaging: normalizeRuntimeSessionTurnPagingPayload(record.turnsPaging ?? record.turns_paging),
   };
 }
 
@@ -869,6 +852,9 @@ function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
     role: message.role,
     text: message.text,
     attachments: message.attachments,
+    prompt_text: message.promptText,
+    prompt_attachments: message.promptAttachments,
+    assistant_text_derived_from_prompt: message.assistantTextDerivedFromPrompt,
     route: message.route,
     source: message.source,
     error: message.error,
@@ -924,6 +910,21 @@ function writeJSONStorage(key: string, value: unknown) {
   }
 }
 
+function hasJSONStorageItem(key: string): boolean {
+  try {
+    return window.sessionStorage.getItem(key) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function removeJSONStorage(key: string) {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+  }
+}
+
 function readJSONLocalStorage<T>(key: string, fallback: T): T {
   try {
     const raw = window.localStorage.getItem(key);
@@ -955,7 +956,10 @@ function loadActiveSessionState(fallback?: ActiveSessionState | null): ActiveSes
   };
 }
 
-function loadActiveSessionSnapshots(fallback?: SessionsState | null): SessionsState {
+function loadLegacySessionSnapshots(fallback?: SessionsState | null): LegacySessionSnapshotLoad {
+  const migratedLegacySnapshots =
+    hasJSONStorageItem(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY)
+    || hasJSONStorageItem(RECENT_SESSION_SNAPSHOT_STORAGE_KEY);
   const parsedActive = readJSONStorage<StoredActiveSessionSnapshotState>(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY, {});
   const parsedRecent = readJSONStorage<StoredRecentSessionSnapshotState>(RECENT_SESSION_SNAPSHOT_STORAGE_KEY, {});
   const mergeStoredRouteSessions = (routeKey: string) => {
@@ -976,32 +980,16 @@ function loadActiveSessionSnapshots(fallback?: SessionsState | null): SessionsSt
     );
   };
   return {
-    chat: normalizeRouteSessions("chat", [
-      ...mergeStoredRouteSessions("chat"),
-      ...mergeStoredRouteSessions("chat"),
-    ]),
+    sessionsByRoute: {
+      chat: mergeStoredRouteSessions("chat"),
+    },
+    migratedLegacySnapshots,
   };
 }
 
-function persistActiveSessionSnapshots(activeState: ActiveSessionState, sessions: SessionsState) {
-  const payload: StoredActiveSessionSnapshotState = {};
-  const recentPayload: StoredRecentSessionSnapshotState = {};
-  (["chat"] as ConversationRoute[]).forEach((routeKey) => {
-    const activeID = normalizeText(activeState[routeKey]);
-    recentPayload[routeKey] = sessions[routeKey]
-      .slice(0, MAX_RECENT_SESSION_SNAPSHOTS)
-      .map((session) => serializeStoredSession(session));
-    if (!activeID) {
-      return;
-    }
-    const session = sessions[routeKey].find((item) => item.id === activeID);
-    if (!session) {
-      return;
-    }
-    payload[routeKey] = serializeStoredSession(session);
-  });
-  writeJSONStorage(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY, payload);
-  writeJSONStorage(RECENT_SESSION_SNAPSHOT_STORAGE_KEY, recentPayload);
+function clearLegacySessionSnapshots() {
+  removeJSONStorage(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY);
+  removeJSONStorage(RECENT_SESSION_SNAPSHOT_STORAGE_KEY);
 }
 
 function readConversationRuntimeCache(): ConversationRuntimeCacheSnapshot | null {
@@ -1094,9 +1082,17 @@ function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialSta
   const longTermCache = readLongTermConversationRuntimeCache();
   const infoCache = longTermCache ? null : readSessionInfoConversationRuntimeCache();
   const fallbackCache = longTermCache || infoCache;
+  const activeSessionByRoute = loadActiveSessionState(fallbackCache?.activeSessionByRoute || null);
+  const snapshotLoad = loadLegacySessionSnapshots(fallbackCache?.sessionsByRoute || null);
+  if (snapshotLoad.migratedLegacySnapshots) {
+    writeConversationRuntimeCache(activeSessionByRoute, snapshotLoad.sessionsByRoute);
+    writeLongTermConversationRuntimeCache(activeSessionByRoute, snapshotLoad.sessionsByRoute);
+    writeSessionInfoConversationRuntimeCache(activeSessionByRoute, snapshotLoad.sessionsByRoute);
+    clearLegacySessionSnapshots();
+  }
   return {
-    activeSessionByRoute: loadActiveSessionState(fallbackCache?.activeSessionByRoute || null),
-    sessionsByRoute: loadActiveSessionSnapshots(fallbackCache?.sessionsByRoute || null),
+    activeSessionByRoute,
+    sessionsByRoute: snapshotLoad.sessionsByRoute,
   };
 }
 
@@ -1148,30 +1144,6 @@ function normalizeDateValue(value: unknown): number {
   return Date.now();
 }
 
-function normalizeTerminalAttachment(item: TerminalAttachmentPayload): ComposerAttachment | null {
-  const id = normalizeText(item.id);
-  const contentType = normalizeText(item.content_type);
-  const assetURL = normalizeText(item.asset_url);
-  const previewURL = normalizeText(item.preview_url);
-  if (!id || !contentType || !assetURL) {
-    return null;
-  }
-  const kind = contentType.startsWith("image/") ? "image" as const : "file" as const;
-  return {
-    id,
-    kind,
-    name: normalizeText(item.name) || (kind === "image" ? "image" : "file"),
-    contentType,
-    size: 0,
-    assetURL,
-    previewURL: kind === "image" ? previewURL || assetURL : undefined,
-  };
-}
-
-function normalizeTerminalProcessEvents(sessionID: string, turnID: string, turn: TerminalTurnPayload): RuntimeTraceEvent[] {
-  return normalizeRuntimeTraceEvents(turn.runtime_trace_events, { sessionID, turnID });
-}
-
 function normalizeRuntimeTraceEventDetail(
   detail: RuntimeTraceEventDetail | undefined,
   fallback: RuntimeTraceEvent,
@@ -1199,54 +1171,21 @@ function normalizeRuntimeTraceEventDetail(
   };
 }
 
-function normalizeTerminalTurnMessages(sessionID: string, turn: TerminalTurnPayload): ChatMessage[] {
+function normalizeRuntimeTurnMessages(sessionID: string, turn: RuntimeSessionTurnPayload): ChatMessage[] {
   const id = normalizeText(turn.id);
   if (!id) {
     return [];
   }
-  const at = normalizeDateValue(turn.started_at);
-  const prompt = typeof turn.prompt === "string" ? turn.prompt : "";
-  const attachments = Array.isArray(turn.attachments)
-    ? turn.attachments.map(normalizeTerminalAttachment).filter((item): item is ComposerAttachment => item !== null)
-    : [];
-  const messages: ChatMessage[] = [];
-  if (prompt || attachments.length > 0) {
-    messages.push({
-      id: `${id}:prompt`,
-      role: "user",
-      text: prompt,
-      attachments,
-      route: "",
-      source: "",
-      error: false,
-      status: "",
-      at,
-      processEvents: [],
-    });
-  }
-  const status = normalizeTaskStatus(turn.status || "");
-  const finalOutput = typeof turn.final_output === "string" ? turn.final_output : "";
-  const processEvents = normalizeTerminalProcessEvents(sessionID, id, turn);
-  if (finalOutput || processEvents.length > 0 || status === "running" || status === "queued") {
-    messages.push({
-      id: `${id}:response`,
-      role: "assistant",
-      text: finalOutput,
-      attachments: [],
-      route: "terminal",
-      source: "terminal",
-      error: status === "failed" || status === "canceled",
-      status: status === "success" ? "done" : status || "done",
-      at: normalizeDateValue(turn.finished_at || turn.started_at),
-      processEvents,
-      processCollapsed: finalOutput ? undefined : false,
-    });
-  }
-  return messages;
+  return runtimeSessionTurnsToTimelineMessages({
+    sessionID,
+    turns: [turn],
+    route: "chat",
+    source: "runtime",
+  });
 }
 
-function normalizeTerminalSession(
-  item: TerminalSessionPayload,
+function normalizeRuntimeSession(
+  item: RuntimeSessionDetailPayload,
   previous?: ChatSession | null,
   sourceRoute: ConversationRoute = "chat",
 ): ChatSession | null {
@@ -1255,14 +1194,14 @@ function normalizeTerminalSession(
     return null;
   }
   const parsedMessages = Array.isArray(item.turns)
-    ? item.turns.flatMap((turn) => normalizeTerminalTurnMessages(id, turn))
+    ? item.turns.flatMap((turn) => normalizeRuntimeTurnMessages(id, turn))
     : null;
-  const incomingPaging = normalizeTerminalTurnPaging(item.turns_paging);
-  const shouldMergeTerminalMessages = parsedMessages
+  const incomingPaging = normalizeRuntimeSessionTurnPagingPayload(item.turns_paging);
+  const shouldMergeRuntimeMessages = parsedMessages
     && previous?.messages.length
-    && (Boolean(incomingPaging) || isPagedTerminalTurnPayload(item, incomingPaging) || parsedMessages.length < previous.messages.length);
+    && (Boolean(incomingPaging) || isPagedRuntimeSessionTurnPayload(item, incomingPaging) || parsedMessages.length < previous.messages.length);
   const messages = parsedMessages
-    ? (shouldMergeTerminalMessages
+    ? (shouldMergeRuntimeMessages
       ? mergePagedMessages(previous.messages, parsedMessages)
       : previous?.messages.length && !shouldUseParsedMessages(previous.messages, parsedMessages)
         ? previous.messages
@@ -1290,7 +1229,7 @@ function normalizeTerminalSession(
     messages,
     messagesLoaded: Array.isArray(item.turns),
     serverBacked: true,
-    turnsPaging: mergeTerminalTurnPaging(previous, incomingPaging),
+    turnsPaging: mergeRuntimeSessionTurnPagingPayload(previous, incomingPaging),
   };
 }
 
@@ -1447,19 +1386,17 @@ export function ConversationRuntimeProvider({
   if (!initialRuntimeStateRef.current) {
     initialRuntimeStateRef.current = resolveInitialConversationRuntimeState();
   }
-  const [sessionsByRoute, setSessionsByRoute] = useState<SessionsState>(() =>
-    initialRuntimeStateRef.current?.sessionsByRoute || { chat: [] },
-  );
+  const initialSessionsByRoute = initialRuntimeStateRef.current?.sessionsByRoute || { chat: [] };
+  const initialActiveSessionByRoute = initialRuntimeStateRef.current?.activeSessionByRoute || { chat: CANONICAL_CHAT_SESSION_ID };
+  const sessionsByRouteRef = useRef<SessionsState>(initialSessionsByRoute);
   const [sessionsLoadedByRoute, setSessionsLoadedByRoute] = useState<Record<ConversationRoute, boolean>>({
     chat: false,
   });
-  const [activeSessionByRoute, setActiveSessionByRoute] = useState<ActiveSessionState>(() =>
-    initialRuntimeStateRef.current?.activeSessionByRoute || { chat: CANONICAL_CHAT_SESSION_ID },
-  );
-  const [providers, setProviders] = useState<ChatProvider[]>([]);
-  const [skills, setSkills] = useState<ChatCapability[]>([]);
-  const [skillCatalogLoaded, setSkillCatalogLoaded] = useState(false);
-  const [mcps, setMcps] = useState<ChatCapability[]>([]);
+  const runtimeCatalogs = useRuntimeSessionCatalogs(apiClient);
+  const providers = runtimeCatalogs.providers as ChatProvider[];
+  const skills = runtimeCatalogs.skills as ChatCapability[];
+  const skillCatalogLoaded = runtimeCatalogs.skillsLoaded;
+  const mcps = runtimeCatalogs.mcps as ChatCapability[];
   const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());
   const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts());
   const [compact, setCompact] = useState(() => isCompactViewport());
@@ -1470,14 +1407,66 @@ export function ConversationRuntimeProvider({
   const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   const pollTimerRef = useRef<number>(0);
-  const sessionsByRouteRef = useRef(sessionsByRoute);
   const recoveryPromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
-  const progressiveHistoryLoadsRef = useRef(new Set<string>());
   const processEventDetailLoadsRef = useRef(new Set<string>());
   const composerDraftPersistTimerRef = useRef<number>(0);
   const sendPromptRef = useRef<(prompt?: string) => Promise<void>>(async () => undefined);
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
+  const runtimeSessionControllerOptions = useMemo(() => ({
+    route: "chat",
+    initialSessions: initialSessionsByRoute.chat,
+    initialActiveSessionID: initialActiveSessionByRoute.chat,
+    normalizeSession: (payload: RuntimeSessionPayload, previous) => {
+      const sessionID = normalizeText(payload.id);
+      const localPrevious = sessionID
+        ? sessionsByRouteRef.current.chat.find((session) => session.id === sessionID) || null
+        : null;
+      return normalizeRuntimeSession(payload as RuntimeSessionDetailPayload, localPrevious || previous || null, "chat");
+    },
+    mergeSession: (previous, incoming) => mergeRuntimeSessions([incoming], previous ? [previous] : [])[0] || incoming,
+    sortSessions: (items) => normalizeRouteSessions("chat", items),
+    getProgressiveHistoryPaging: (session) => session.turnsPaging,
+    getProgressiveHistoryTurnBefore: (session) =>
+      normalizeText(session.turnsPaging?.next_before_turn_id || session.turnsPaging?.oldest_turn_id)
+      || oldestTurnIDFromMessages(session.messages),
+    canLoadProgressiveHistory: (session) =>
+      session.serverBacked === true
+      && session.messagesLoaded === true
+      && !hasRecoverableRuntimeState(session),
+  }), []);
+  const runtimeSessionController = useRuntimeSessionController<ChatSession>(runtimeSessionControllerOptions);
+  const {
+    createSession: createRuntimeSession,
+    deleteSession: deleteRuntimeSession,
+    setSessionPinned: setRuntimeSessionPinned,
+    refreshList: refreshRuntimeSessions,
+    refreshActiveSession: refreshRuntimeSession,
+    sendInput: sendRuntimeInput,
+    uploadAttachments: uploadRuntimeAttachments,
+    loadEventDetail: loadRuntimeEventDetail,
+    setSessions: setRuntimeSessions,
+    setActiveSessionID: setRuntimeActiveSessionID,
+  } = runtimeSessionController;
+  const sessionsByRoute = useMemo<SessionsState>(
+    () => ({ chat: runtimeSessionController.sessions }),
+    [runtimeSessionController.sessions],
+  );
+  const activeSessionByRoute = useMemo<ActiveSessionState>(
+    () => ({ chat: runtimeSessionController.activeSessionID || CANONICAL_CHAT_SESSION_ID }),
+    [runtimeSessionController.activeSessionID],
+  );
+  const setSessionsByRoute = useCallback((updater: SessionsState | ((current: SessionsState) => SessionsState)) => {
+    const current = { chat: runtimeSessionController.sessionsRef.current };
+    const next = typeof updater === "function" ? updater(current) : updater;
+    sessionsByRouteRef.current = next;
+    setRuntimeSessions(next.chat);
+  }, [runtimeSessionController.sessionsRef, setRuntimeSessions]);
+  const setActiveSessionByRoute = useCallback((updater: ActiveSessionState | ((current: ActiveSessionState) => ActiveSessionState)) => {
+    const current = { chat: runtimeSessionController.activeSessionID || CANONICAL_CHAT_SESSION_ID };
+    const next = typeof updater === "function" ? updater(current) : updater;
+    setRuntimeActiveSessionID(next.chat);
+  }, [runtimeSessionController.activeSessionID, setRuntimeActiveSessionID]);
 
   const activeSessions = sessionsByRoute[route];
   const activeSessionReference = activeSessionByRoute[route];
@@ -1607,10 +1596,8 @@ export function ConversationRuntimeProvider({
     }
     processEventDetailLoadsRef.current.add(requestKey);
     try {
-      const payload = await apiClient.get<RuntimeTraceEventDetailResponse>(
-        chatTerminalSessionEndpoint(`${encodeURIComponent(session.id)}/turns/${encodeURIComponent(turnID)}/events/${encodeURIComponent(detailID)}`),
-      );
-      const detailedEvent = normalizeRuntimeTraceEventDetail(payload.event, runtimeEvent);
+      const detail = await loadRuntimeEventDetail(session.id, turnID, detailID);
+      const detailedEvent = normalizeRuntimeTraceEventDetail(detail as RuntimeTraceEventDetail | undefined, runtimeEvent);
       if (!detailedEvent) {
         return;
       }
@@ -1634,7 +1621,7 @@ export function ConversationRuntimeProvider({
     } finally {
       processEventDetailLoadsRef.current.delete(requestKey);
     }
-  }, [activeSession, activeSessionByRoute, apiClient, patchSession, route]);
+  }, [activeSession, activeSessionByRoute, loadRuntimeEventDetail, patchSession, route]);
 
   const focusSession = useCallback((sessionID: string) => {
     const resolvedSessionID = sessionID;
@@ -1646,7 +1633,7 @@ export function ConversationRuntimeProvider({
 
   const removeSession = useCallback(async (sessionID: string) => {
     try {
-      await apiClient.delete(chatTerminalSessionEndpoint(encodeURIComponent(sessionID)));
+      await deleteRuntimeSession(sessionID);
     } catch {
     }
     const nextSessionsByRoute: SessionsState = {
@@ -1671,7 +1658,7 @@ export function ConversationRuntimeProvider({
     persistComposerDrafts(nextDrafts);
     persistComposerAttachmentDrafts(nextAttachmentDrafts);
     writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
-  }, [activeSessionByRoute, apiClient, route, sessionsByRoute]);
+  }, [activeSessionByRoute, deleteRuntimeSession, route, sessionsByRoute]);
 
   const setSessionPinned = useCallback(async (sessionID: string, pinned: boolean) => {
     const normalizedSessionID = normalizeText(sessionID);
@@ -1686,31 +1673,14 @@ export function ConversationRuntimeProvider({
     };
     setPinningSessionIDs((current) => ({ ...current, [normalizedSessionID]: true }));
     try {
-      const payload = await apiClient.post<{ session?: TerminalSessionPayload }>(
-        chatTerminalSessionEndpoint(`${encodeURIComponent(normalizedSessionID)}/pin`),
-        { pinned },
-      );
-      void payload;
+      await setRuntimeSessionPinned(normalizedSessionID, pinned);
       applyPinnedState();
     } catch {
       applyPinnedState();
     } finally {
       setPinningSessionIDs((current) => ({ ...current, [normalizedSessionID]: false }));
     }
-  }, [apiClient, patchSession, route]);
-
-  const hydrateRuntimeSessionResponse = (
-    routeKey: ConversationRoute,
-    sourceRoute: ConversationRoute,
-    sessionID: string,
-    payload: { session?: TerminalSessionPayload },
-  ): ChatSession | null => {
-    return normalizeTerminalSession(
-      payload.session || {},
-      sessionsByRouteRef.current[routeKey].find((item) => item.id === sessionID) || null,
-      sourceRoute,
-    );
-  };
+  }, [patchSession, route, setRuntimeSessionPinned]);
 
   const upsertRuntimeSession = useCallback((routeKey: ConversationRoute, nextSession: ChatSession) => {
     const normalizedSession = { ...nextSession, sourceRoute: nextSession.sourceRoute || routeKey };
@@ -1728,12 +1698,10 @@ export function ConversationRuntimeProvider({
     });
   }, []);
 
-  const createTerminalRuntimeSession = useCallback(async (routeKey: ConversationRoute, title: string = ""): Promise<ChatSession | null> => {
-    const payload = await apiClient.post<{ session?: TerminalSessionPayload }>(
-      chatTerminalSessionEndpoint(),
+  const createRuntimeBackedSession = useCallback(async (routeKey: ConversationRoute, title: string = ""): Promise<ChatSession | null> => {
+    const nextSession = await createRuntimeSession(
       normalizeText(title) ? { title: normalizeText(title).slice(0, 80) } : {},
     );
-    const nextSession = normalizeTerminalSession(payload.session || {}, null, routeKey);
     if (!nextSession) {
       return null;
     }
@@ -1745,7 +1713,7 @@ export function ConversationRuntimeProvider({
     });
     writeWorkbenchRouteSessionID(routeKey, nextSession.id);
     return nextSession;
-  }, [apiClient, upsertRuntimeSession]);
+  }, [createRuntimeSession, upsertRuntimeSession]);
 
   const persistRuntimeSessionConfig = useCallback(async (routeKey: ConversationRoute, session: ChatSession) => {
     void routeKey;
@@ -1765,13 +1733,8 @@ export function ConversationRuntimeProvider({
     sessionID: string,
     options: { turnBefore?: string; turnLimit?: number } = {},
   ): Promise<ChatSession | null> => {
-    const payload = await apiClient.get<{ session?: TerminalSessionPayload }>(
-      chatTerminalSessionEndpoint(encodeURIComponent(sessionID), {
-        turn_before: normalizeText(options.turnBefore),
-        turn_limit: options.turnLimit,
-      }),
-    );
-    return hydrateRuntimeSessionResponse(routeKey, routeKey, sessionID, payload);
+    void routeKey;
+    return refreshRuntimeSession(sessionID, options);
   };
 
   const refreshActiveSession = useCallback(async () => {
@@ -1859,30 +1822,29 @@ export function ConversationRuntimeProvider({
     const currentActiveSession = activeSessionID
       ? sessionsByRouteRef.current[route].find((item) => item.id === activeSessionID) || null
       : null;
-    if (currentActiveSession && shouldPollTerminalBackedSession(currentActiveSession)) {
+    if (currentActiveSession && shouldPollRuntimeBackedSession(currentActiveSession)) {
       return;
     }
     const session = currentActiveSession?.serverBacked
       ? currentActiveSession
-      : await createTerminalRuntimeSession(route, content);
+      : await createRuntimeBackedSession(route, content);
     if (!session) {
       return;
     }
     patchSession(route, session.id, (currentSession) => ({ ...currentSession, status: "busy" }));
     try {
       attachments = await uploadDraftAttachments(session.id, attachments);
-      const payload = await apiClient.post<{ session?: TerminalSessionPayload }>(
-        chatTerminalSessionEndpoint(`${encodeURIComponent(session.id)}/input`),
-        {
-          input: content,
-          attachments: attachments.map(serializeMessageAttachment),
-          skill_ids: activeSkillIDs,
-        },
-      );
+      const hydrated = await sendRuntimeInput(session.id, {
+        input: content,
+        attachments: attachments.map(serializeMessageAttachment),
+        skill_ids: activeSkillIDs,
+      });
       const latestSession = sessionsByRouteRef.current[route].find((item) => item.id === session.id) || session;
-      const hydrated = normalizeTerminalSession(payload.session || {}, latestSession, route);
-      if (hydrated) {
-        upsertRuntimeSession(route, hydrated);
+      const nextHydrated = hydrated
+        ? mergeRuntimeSessions([hydrated], [latestSession])[0] || hydrated
+        : null;
+      if (nextHydrated) {
+        upsertRuntimeSession(route, nextHydrated);
       } else {
         await recoverRuntimeSession(route, session.id, { requireMessages: true }, 1);
       }
@@ -1920,17 +1882,14 @@ export function ConversationRuntimeProvider({
     if (pending.length === 0) {
       return existing;
     }
-    const payload = await apiClient.post<SessionAttachmentUploadResponse>(
-      chatTerminalSessionEndpoint(`${encodeURIComponent(sessionID)}/attachments`),
-      {
-        attachments: pending.map((attachment) => ({
-          name: attachment.name,
-          content_type: attachment.contentType,
-          data_url: attachment.dataURL,
-          preview_data_url: attachment.previewDataURL || attachment.dataURL,
-        })),
-      },
-    );
+    const payload = await uploadRuntimeAttachments(sessionID, {
+      attachments: pending.map((attachment) => ({
+        name: attachment.name,
+        content_type: attachment.contentType,
+        data_url: attachment.dataURL,
+        preview_data_url: attachment.previewDataURL || attachment.dataURL,
+      })),
+    });
     const items = Array.isArray(payload.items) ? payload.items : [];
     if (items.length !== pending.length) {
       throw new Error("Failed to store attachments.");
@@ -1961,10 +1920,7 @@ export function ConversationRuntimeProvider({
   };
 
   const loadRuntimeSessions = async (routeKey: ConversationRoute) => {
-    const payload = await apiClient.get<{ items?: TerminalSessionPayload[] }>(chatTerminalSessionEndpoint());
-    const remoteSessions = (Array.isArray(payload.items) ? payload.items : [])
-      .map((item) => normalizeTerminalSession(item, undefined, routeKey))
-      .filter((session): session is ChatSession => session !== null);
+    const remoteSessions = await refreshRuntimeSessions();
     const normalizedRemoteSessions = normalizeRouteSessions(routeKey, remoteSessions);
     const nextSessions = normalizeRouteSessions(
       routeKey,
@@ -2003,10 +1959,6 @@ export function ConversationRuntimeProvider({
   }, [activeSession, hydrateRuntimeSession, loadRuntimeSessions, route, upsertRuntimeSession]);
 
   useEffect(() => {
-    persistActiveSessionSnapshots(activeSessionByRoute, sessionsByRoute);
-  }, [activeSessionByRoute, sessionsByRoute]);
-
-  useEffect(() => {
     writeConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
     writeLongTermConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
     writeSessionInfoConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
@@ -2027,78 +1979,6 @@ export function ConversationRuntimeProvider({
     onVisibilityChange: setPageHidden,
     onActive: refreshCurrentRouteOnPageActive,
   });
-
-  useEffect(() => {
-    const sessionID = normalizeText(activeSession?.id);
-    const paging = activeSession?.turnsPaging;
-    const beforeTurnID = normalizeText(paging?.next_before_turn_id || paging?.oldest_turn_id)
-      || oldestTurnIDFromMessages(activeSession?.messages || []);
-    if (
-      !sessionID
-      || activeSession?.serverBacked !== true
-      || activeSession.messagesLoaded !== true
-      || paging?.has_more_before !== true
-      || !beforeTurnID
-      || hasRecoverableRuntimeState(activeSession)
-    ) {
-      return;
-    }
-    const requestKey = `${route}:${sessionID}:${beforeTurnID}`;
-    if (progressiveHistoryLoadsRef.current.has(requestKey)) {
-      return;
-    }
-    let cancelled = false;
-    progressiveHistoryLoadsRef.current.add(requestKey);
-    void (async () => {
-      try {
-        const hydrated = await hydrateRuntimeSession(route, sessionID, {
-          turnBefore: beforeTurnID,
-          turnLimit: CHAT_HISTORY_PAGE_TURN_LIMIT,
-        });
-        if (!cancelled && hydrated) {
-          upsertRuntimeSession(route, hydrated);
-        }
-      } catch {
-      } finally {
-        progressiveHistoryLoadsRef.current.delete(requestKey);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeSession?.id,
-    activeSession?.messages,
-    activeSession?.messagesLoaded,
-    activeSession?.serverBacked,
-    activeSession?.turnsPaging?.has_more_before,
-    activeSession?.turnsPaging?.next_before_turn_id,
-    activeSession?.turnsPaging?.oldest_turn_id,
-    route,
-    upsertRuntimeSession,
-  ]);
-
-  useEffect(() => {
-    const loadCatalogs = async () => {
-      try {
-        const providerPayload = await apiClient.get<{ items?: ChatProvider[] }>("/api/control/llm/providers");
-        setProviders(Array.isArray(providerPayload.items) ? providerPayload.items : []);
-      } catch {
-      }
-      try {
-        const [skillPayload, mcpPayload] = await Promise.all([
-          apiClient.get<{ items?: ChatCapability[] }>("/api/control/skills"),
-          apiClient.get<{ items?: ChatCapability[] }>("/api/control/mcps"),
-        ]);
-        setSkills(Array.isArray(skillPayload.items) ? skillPayload.items : []);
-        setMcps(Array.isArray(mcpPayload.items) ? mcpPayload.items : []);
-      } catch {
-      } finally {
-        setSkillCatalogLoaded(true);
-      }
-    };
-    void loadCatalogs();
-  }, [apiClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2220,7 +2100,7 @@ export function ConversationRuntimeProvider({
     window.clearTimeout(pollTimerRef.current);
     const recoverableSessions = Object.entries(sessionsByRoute).flatMap(([routeKey, sessions]) =>
       sessions
-        .filter(shouldPollTerminalBackedSession)
+        .filter(shouldPollRuntimeBackedSession)
         .map((session) => ({
           route: routeKey as ConversationRoute,
           sessionID: session.id,
@@ -2254,7 +2134,7 @@ export function ConversationRuntimeProvider({
   const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
   const selectedModel = enabledModels(selectedProvider).find((model) => normalizeText(model.id) === selection.modelID) || null;
   const currentTarget = activeSession?.target || defaultChatTarget();
-  const activeSessionBusy = activeSession ? shouldPollTerminalBackedSession(activeSession) : false;
+  const activeSessionBusy = activeSession ? shouldPollRuntimeBackedSession(activeSession) : false;
   const selectedModelSupportsVision = selectedModel ? selectedModel.supports_vision !== false : true;
   const activeMcpIDKey = (activeSession?.mcpIDs || []).join("\u0000");
   const activeSkillIDKey = activeSkillIDs.join("\u0000");
@@ -2449,7 +2329,7 @@ export function ConversationRuntimeProvider({
     toolCount: (activeSession?.toolIDs.length || 0) + (activeSession?.mcpIDs.length || 0),
     skillCount: activeSkillIDs.length,
     createSession: () => {
-      void createTerminalRuntimeSession(route);
+      void createRuntimeBackedSession(route);
     },
     focusSession,
     removeSession,
@@ -2498,7 +2378,7 @@ export function ConversationRuntimeProvider({
     runtimeSkillItems,
     runtimeEventFilter,
     activeSkillIDs,
-    createTerminalRuntimeSession,
+    createRuntimeBackedSession,
     focusSession,
     patchSession,
     refreshActiveSession,
@@ -2540,7 +2420,7 @@ export function ConversationRuntimeProvider({
       const currentActiveSession = readCurrentActiveSession();
       const session = currentActiveSession?.serverBacked
         ? currentActiveSession
-        : await createTerminalRuntimeSession(route);
+        : await createRuntimeBackedSession(route);
       if (!session) {
         return;
       }
@@ -2600,7 +2480,7 @@ export function ConversationRuntimeProvider({
     composerAttachmentDrafts,
     activeSessionID,
     readCurrentActiveSession,
-    createTerminalRuntimeSession,
+    createRuntimeBackedSession,
     sendPrompt,
     toggleInspector,
     closeInspector,
