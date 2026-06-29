@@ -100,14 +100,15 @@ export function deriveMobileViewportState(
     ? Math.max(0, previousState.baselineHeight - reportedViewportHeight)
     : 0;
   const viewportReportsKeyboard =
-    reportedViewportKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
+    (input.hasActiveInput || previousKeyboardActive)
+    && reportedViewportKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
     && !widthChanged;
-  const initialUnfocusedViewportShrink =
+  const unfocusedViewportShrink =
     !input.hasActiveInput
-    && previousState.baselineHeight <= 0
+    && !previousKeyboardActive
     && viewportOffsetTop === 0
     && reportedLayoutHeight > viewportBottomHeight;
-  const effectiveHeight = initialUnfocusedViewportShrink
+  const effectiveHeight = unfocusedViewportShrink
     ? reportedLayoutHeight
     : viewportBottomHeight;
   const keyboardRecentlyAligned =

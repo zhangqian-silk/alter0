@@ -606,17 +606,25 @@ describe("shell layout stylesheet", () => {
   it("keeps mobile Chat thinking and user messages in a top-aligned loading flow", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
-    const finalGuard = stylesheet.slice(stylesheet.lastIndexOf("/* Mobile Chat loading flow final guard */"));
+    const isolationStylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
+    const importedCascade = `${stylesheet}\n${isolationStylesheet}`;
+    const finalGuard = importedCascade.slice(importedCascade.lastIndexOf("/* Mobile Chat loading flow isolation guard */"));
 
-    expect(finalGuard).toContain("/* Mobile Chat loading flow final guard */");
-    expect(finalGuard).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-screen\s*\{[\s\S]*?display:\s*block;[\s\S]*?align-content:\s*start;/,
+    expect(finalGuard).toContain("/* Mobile Chat loading flow isolation guard */");
+    expect(isolationStylesheet.lastIndexOf("/* Mobile Chat loading flow isolation guard */")).toBeGreaterThan(
+      isolationStylesheet.indexOf(".runtime-workspace-screen {"),
     );
     expect(finalGuard).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-timeline\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?height:\s*auto;[\s\S]*?align-content:\s*start;[\s\S]*?justify-content:\s*stretch;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-screen,\s*\.runtime-workspace-body\[data-runtime-view="conversation"\] \.runtime-workspace-screen\s*\{[\s\S]*?display:\s*block;[\s\S]*?align-content:\s*start;/,
     );
     expect(finalGuard).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-thinking-shell\.terminal-process-shell\s*\{[\s\S]*?justify-self:\s*stretch;[\s\S]*?margin:\s*0 0 14px;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-timeline,\s*\.runtime-workspace-body\[data-runtime-view="conversation"\] \.runtime-timeline\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?height:\s*auto;[\s\S]*?align-content:\s*start;[\s\S]*?justify-content:\s*stretch;/,
+    );
+    expect(finalGuard).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-thinking-shell\.terminal-process-shell,\s*\.runtime-workspace-body\[data-runtime-view="conversation"\] \.runtime-thinking-shell\.terminal-process-shell\s*\{[\s\S]*?justify-self:\s*stretch;[\s\S]*?margin:\s*0 0 14px;/,
+    );
+    expect(finalGuard).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="conversation"\] > \.runtime-composer-shell\s*\{[\s\S]*?align-self:\s*stretch;/,
     );
   });
 

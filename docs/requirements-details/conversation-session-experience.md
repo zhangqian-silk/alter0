@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-06-26
+> Last update: 2026-06-30
 
 ## 领域边界
 
@@ -36,7 +36,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 进入窄屏工作台后，主导航切换为贴左侧视口边缘的全高抽屉；当前运行页的会话列表随主导航一起进入同一个左侧抽屉，不再在工作区内部生成独立浮层或上下堆叠列；真手机宽度下抽屉使用近白全高面板、平面菜单和细分割线，会话区按自然高度滚动，不再出现重卡片式列表容器；`info-mode` 页面继续只保留主导航抽屉，避免壳层断点先切换而页面主体仍保留桌面列布局。
 - 窄屏主导航抽屉中的菜单区必须作为独立滚动容器保留纵向滚动能力；一级菜单固定为 `Chat / Terminal`，语言切换入口保持可触达，不得出现底部菜单项被裁切且无法继续下滑的状态。
 - 窄屏主导航抽屉点击任一路由项后需立即收起；切页操作不会保留旧的菜单遮罩或抽屉层，用户进入目标页后直接看到新的正文区域。
-- 窄屏主工作区按页面类型收口为贴顶起始区：Management 管理页继续采用两行头部，第一行承载 `Menu`，第二行承载统一标题，并在正文起始处提供页内分组切换；中等窄屏允许分组入口横向滚动，真手机宽度必须回落为双列换行入口，避免进入 `Tasks / Sessions / Models` 等管理能力后失去主导航入口或管理分区入口；`Chat / Terminal` 在真手机宽度下统一采用单层运行页 workbar，不再叠加第二层 workspace header。运行页标题区必须在一行内承载当前会话标题与状态信号，并通过点击标题打开 `Details`；不得在操作行下重复输出模型、工具或目标摘要，也不得把详情入口再拆成额外按钮层。所有页面正文都需贴近头部下沿起始，不得在顶部留下额外大块空白。
+- 窄屏主工作区按页面类型收口为贴顶起始区：Management 管理页继续采用两行头部，第一行承载 `Menu`，第二行承载统一标题，并在正文起始处提供页内分组切换；中等窄屏允许分组入口横向滚动，真手机宽度必须回落为双列换行入口，避免进入 `Tasks / Sessions / Models` 等管理能力后失去主导航入口或管理分区入口；`Chat / Terminal` 在真手机宽度下统一采用单层运行页 workbar，不再叠加第二层 workspace header。运行页标题区必须在一行内承载当前会话标题与状态信号，并通过点击标题打开 `Details`；不得在操作行下重复输出模型、工具或目标摘要，也不得把详情入口再拆成额外按钮层。所有页面正文都需贴近头部下沿起始，不得在顶部留下额外大块空白；Chat 加载态的 `Thinking` 披露、用户消息和进行中占位必须沿时间线顶部自然排列，不得被满高滚动容器或后加载键盘隔离样式居中、反向拉开或推到中部。
 - `Chat` 空态欢迎区采用紧凑首屏节奏：桌面与中宽度下，欢迎 tag、标题、描述、target picker 与快捷提示需在 header 与 Composer 之间沿欢迎区中轴竖向居中展示；真窄屏继续贴近头部下沿起排。Composer 直接按自然文档流沿主工作区底边贴底排布；桌面与窄屏都不再通过自动顶距把 Composer 推到底边，避免欢迎区与输入区之间出现大块空白。
 - 桌面端主导航采用紧凑间距节奏，主工作流只保留三条，并在底部固定 `Management` 工具入口；控制类与资产类路由在 Management 页内部优先使用高密度主从或表格视图，Management 分组导航自身作为左侧索引常驻，避免在宽屏上保留大块无效留白或把分区入口堆成顶部标签云。
 - `static/dist/assets/*` 使用构建产物哈希文件名并返回长期 immutable 缓存；`/chat` 与 `static/dist/legacy/*` 下的兼容样式资源保持 `no-cache`，确保页面与样式能及时刷新到最新版本。
@@ -253,7 +253,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 仅在输入框实际聚焦或 visual viewport 明确报告键盘收缩时发布键盘诊断偏移；主布局不消费该偏移追加底部位移。
 - 键盘收起或视口回弹后不保留额外底部空白。
 - `Chat / Terminal` 在页面恢复前台可见、浏览器重新激活当前标签页或系统恢复当前 WebView 时，必须立刻重算共享视口诊断变量；第一帧不得沿用后台前遗留的旧可视高度或旧底部空白。
-- `Chat / Terminal` 在刷新、页面初次装载或 WebView 重新激活时，若没有输入框实际聚焦，短暂小于 layout viewport 的 `VisualViewport.height` 不得建立键盘态；App Shell 使用 layout viewport 作为初始可见高度，避免 Composer 停在键盘弹起位置。
+- `Chat / Terminal` 在刷新、页面初次装载或 WebView 重新激活时，若没有输入框实际聚焦且上一帧没有键盘证据，短暂或持续小于 layout viewport 的 `VisualViewport.height` 不得建立键盘态；App Shell 使用 layout viewport 作为可见高度，避免 Composer 停在键盘弹起位置。
 - `Chat / Terminal` 首次触摸主输入框时需保留浏览器原生软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为，不主动 focus，不锁定 `window` page scroll，也不通过 `scrollTo` 干预真实焦点或回放页面级滚动锚点。键盘开合过渡期内，`--mobile-viewport-height` 驱动 App Shell 可见高度，Composer 作为 workspace grid footer 跟随容器底边；输入框后方的 `workspaceBody / runtime-workspace-screen` 等滚动容器不短时锁定，移动 workbar 不消费 `VisualViewport.offsetTop` 做 transform，workspace header 与正文 panel 不单独消费 `VisualViewport` 变量。正文滚动区、空态、命令候选、配置面板和公共操作行由 App Shell 动态视口高度与静态 workspace inset 保持原位，不再做页面级滚动锚回，避免背景滚动与 iOS Safari 原生键盘动画互相竞争。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
 - 主输入框首触后的键盘动画稳定窗口不得回放页面级滚动锚点，也不得通过 `window.scrollTo` 修正背景位置；Chat 在输入框聚焦且消息区原本贴近底部时可保持 `.runtime-workspace-screen` 的底部阅读距离。消息区一旦产生 `touchmove / pointermove / wheel / scroll` 意图，当前滚动容器必须继续即时响应。
 - 主输入框保持聚焦时，消息区单指纵向拖动必须继续走浏览器原生滚动分派；前端不得通过 touch-scroll bridge、`touchmove.preventDefault()` 或脚本写入 `.runtime-workspace-screen.scrollTop` 来模拟滚动，避免破坏 iOS Safari 的惯性滚动与触摸响应。
