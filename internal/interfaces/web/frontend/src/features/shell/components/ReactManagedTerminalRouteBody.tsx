@@ -50,8 +50,10 @@ import {
 } from "./RuntimeProcessDetailBlocks";
 import { ScrollJumpStrip } from "./ScrollJumpStrip";
 import {
+  DEFAULT_RUNTIME_EVENT_FILTER,
   RUNTIME_EVENT_FILTER_OPTIONS,
   runtimeTraceEventDetailID,
+  type RuntimeEventFilterID,
   type RuntimeBlock,
   type RuntimeTraceEvent,
 } from "./runtimeTraceEvents";
@@ -285,9 +287,9 @@ const PAGE_ACTIVE_REFRESH_DEBOUNCE_MS = 400;
 const TERMINAL_NEW_SESSION_PLACEHOLDER_ID = "terminal-new-placeholder";
 const TERMINAL_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.attachments.v1";
 const TERMINAL_RUNTIME_SNAPSHOT_STORAGE_KEY = "alter0.web.terminal.runtime_snapshot.v1";
+const TERMINAL_RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.terminal.runtime.event_filter.v1";
 const TERMINAL_PENDING_DRAFT_KEY = "__pending__";
 export const TERMINAL_RUNTIME_CACHE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-const TERMINAL_RUNTIME_EVENT_FILTER = RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id);
 
 type TerminalPollPlan = RuntimeSessionPollPlan;
 
@@ -364,6 +366,38 @@ function normalizeSelectionIDs(values: unknown): string[] {
     return [];
   }
   return Array.from(new Set(values.map((item) => normalizeAttachmentText(item)).filter(Boolean)));
+}
+
+function normalizeTerminalRuntimeEventFilter(value: unknown): RuntimeEventFilterID[] {
+  const allowed = new Set(RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id));
+  const items = Array.isArray(value) ? value : [];
+  const normalized = items.filter((item): item is RuntimeEventFilterID =>
+    typeof item === "string" && allowed.has(item as RuntimeEventFilterID),
+  );
+  return normalized.length > 0 ? normalized : [...DEFAULT_RUNTIME_EVENT_FILTER];
+}
+
+function loadTerminalRuntimeEventFilter(): RuntimeEventFilterID[] {
+  if (typeof window === "undefined") {
+    return [...DEFAULT_RUNTIME_EVENT_FILTER];
+  }
+  try {
+    return normalizeTerminalRuntimeEventFilter(
+      JSON.parse(window.localStorage.getItem(TERMINAL_RUNTIME_EVENT_FILTER_STORAGE_KEY) || "null"),
+    );
+  } catch {
+    return [...DEFAULT_RUNTIME_EVENT_FILTER];
+  }
+}
+
+function persistTerminalRuntimeEventFilter(filter: RuntimeEventFilterID[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(
+    TERMINAL_RUNTIME_EVENT_FILTER_STORAGE_KEY,
+    JSON.stringify(normalizeTerminalRuntimeEventFilter(filter)),
+  );
 }
 
 function isPublicTerminalSkill(skill: TerminalSkill): boolean {
@@ -820,6 +854,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
   const [inputValue, setInputValue] = useState("");
   const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, ComposerAttachment[]>>(() => loadTerminalAttachmentDrafts());
   const [selectedSkillIDs, setSelectedSkillIDs] = useState<string[]>([]);
+  const [runtimeEventFilter, setRuntimeEventFilter] = useState<RuntimeEventFilterID[]>(() => loadTerminalRuntimeEventFilter());
   const attachmentDraftsRef = useRef<Record<string, ComposerAttachment[]>>(attachmentDrafts);
   const attachmentUploadPromisesRef = useRef<Record<string, {
     pendingIDs: string[];
@@ -946,6 +981,20 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         ? normalizeSelectionIDs([...current, value])
         : current.filter((item) => item !== value),
     );
+  };
+
+  const toggleRuntimeEventFilter = (id: RuntimeEventFilterID, checked: boolean) => {
+    const allowed = new Set(RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id));
+    if (!allowed.has(id)) {
+      return;
+    }
+    setRuntimeEventFilter((current) => {
+      const next = checked
+        ? normalizeTerminalRuntimeEventFilter([...current, id])
+        : normalizeTerminalRuntimeEventFilter(current.filter((item) => item !== id));
+      persistTerminalRuntimeEventFilter(next);
+      return next;
+    });
   };
 
   const releaseMobileSubmitGestureLock = () => {
@@ -1601,6 +1650,24 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
         </button>
       </div>
       <p className="runtime-composer-panel-hint">{shellCopy.runtimeSkillsHint}</p>
+      <section className="conversation-inspector-section">
+        <strong>{language === "zh" ? "过程披露" : "Process disclosure"}</strong>
+        <div className="conversation-check-list">
+          {RUNTIME_EVENT_FILTER_OPTIONS.map((option) => (
+            <label key={option.id} className="conversation-check-item">
+              <input
+                type="checkbox"
+                checked={runtimeEventFilter.includes(option.id)}
+                onChange={(event) => toggleRuntimeEventFilter(option.id, event.target.checked)}
+              />
+              <span>
+                <strong>{option.label[language]}</strong>
+                <small>{option.description[language]}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </section>
       <section className="conversation-inspector-section terminal-skill-section" data-testid="terminal-skill-selector">
         <strong>{copy.skills}</strong>
         <div className="conversation-check-list">
@@ -1650,7 +1717,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     cacheScope: activeSession?.id || "terminal",
     messages: terminalTimelineMessages,
     language,
-    runtimeEventFilter: TERMINAL_RUNTIME_EVENT_FILTER,
+    runtimeEventFilter,
     onToggleProcess: (messageID) => toggleTurn(runtimeTimelineMessageTurnID(messageID)),
     expandedProcessEvents: terminalExpandedProcessEvents,
     onToggleProcessEvent: (messageID, eventID) => {
@@ -1695,6 +1762,7 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     eventDetails,
     eventErrors,
     language,
+    runtimeEventFilter,
     terminalExpandedProcessEvents,
     terminalTimelineMessages,
     toggleEvent,

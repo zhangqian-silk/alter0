@@ -579,7 +579,7 @@ describe("ChatMessageRegion", () => {
       messages: [message],
     });
     expect(JSON.stringify(defaultItems)).toContain("正在处理重要进度。");
-    expect(JSON.stringify(defaultItems)).toContain("内部推理摘要。");
+    expect(JSON.stringify(defaultItems)).not.toContain("内部推理摘要。");
 
     const expandedItems = buildChatTimelineItems({
       cacheScope: "runtime-event-filter-expanded",
@@ -596,6 +596,7 @@ describe("ChatMessageRegion", () => {
       <ChatMessageRegion
         sessionId="session-1"
         language="en"
+        runtimeEventFilter={["important_text", "plan"]}
         messages={[buildAssistantMessage({
           processCollapsed: false,
           processEvents: [

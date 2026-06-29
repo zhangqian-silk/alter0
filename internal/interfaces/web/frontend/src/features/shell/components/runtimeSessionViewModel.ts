@@ -273,7 +273,7 @@ export function runtimeSessionTurnsToTimelineMessages({
   route: string;
   source: string;
 }): RuntimeSessionTimelineMessage[] {
-  return turns.map((turn) => {
+  return turns.flatMap((turn) => {
     const runtimeEvents = runtimeSessionTurnEvents(sessionID, turn);
     const attachments = Array.isArray(turn.attachments) ? turn.attachments : [];
     const status = normalizeRuntimeSessionText(turn.status || "");
@@ -282,23 +282,42 @@ export function runtimeSessionTurnsToTimelineMessages({
     const hasAssistantPayload =
       Boolean(normalizeRuntimeSessionText(finalOutput))
       || runtimeEvents.length > 0;
-    return {
+    const promptAttachments = attachments.map((attachment) => ({
+      id: `${turn.id}:${attachment.id || attachment.name}`,
+      kind: attachment.content_type.startsWith("image/") ? "image" as const : "file" as const,
+      name: attachment.name,
+      contentType: attachment.content_type,
+      size: 0,
+      dataURL: attachment.data_url,
+      assetURL: attachment.asset_url,
+      previewURL: attachment.preview_url,
+    }));
+    const messages: RuntimeSessionTimelineMessage[] = [];
+    if (normalizeRuntimeSessionText(promptText) || promptAttachments.length > 0) {
+      messages.push({
+        id: `${turn.id}:user`,
+        role: "user",
+        text: promptText,
+        attachments: promptAttachments,
+        route,
+        source,
+        error: false,
+        status,
+        at: parseRuntimeSessionTimestamp(turn.started_at || turn.finished_at),
+        processEvents: [],
+      });
+    }
+    if (!hasAssistantPayload) {
+      return messages;
+    }
+    messages.push({
       id: `${turn.id}:assistant`,
       role: "assistant",
-      text: hasAssistantPayload ? finalOutput : promptText,
+      text: finalOutput,
       attachments: [],
-      promptText,
-      assistantTextDerivedFromPrompt: !hasAssistantPayload && Boolean(normalizeRuntimeSessionText(promptText)),
-      promptAttachments: attachments.map((attachment) => ({
-        id: `${turn.id}:${attachment.id || attachment.name}`,
-        kind: attachment.content_type.startsWith("image/") ? "image" : "file",
-        name: attachment.name,
-        contentType: attachment.content_type,
-        size: 0,
-        dataURL: attachment.data_url,
-        assetURL: attachment.asset_url,
-        previewURL: attachment.preview_url,
-      })),
+      promptText: "",
+      promptAttachments: [],
+      assistantTextDerivedFromPrompt: false,
       route,
       source,
       error: status === "failed" || status === "canceled" || status === "cancelled",
@@ -306,7 +325,8 @@ export function runtimeSessionTurnsToTimelineMessages({
       at: parseRuntimeSessionTimestamp(turn.finished_at || turn.started_at),
       processEvents: runtimeEvents,
       processCollapsed: !(expandedTurns?.[turn.id] ?? false),
-    };
+    });
+    return messages;
   });
 }
 

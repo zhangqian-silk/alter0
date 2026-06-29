@@ -158,10 +158,6 @@ export type RuntimeEventFilterID =
 
 export const DEFAULT_RUNTIME_EVENT_FILTER: RuntimeEventFilterID[] = [
   "important_text",
-  "plan",
-  "reasoning",
-  "tools",
-  "system",
 ];
 
 export const RUNTIME_EVENT_FILTER_OPTIONS: Array<{

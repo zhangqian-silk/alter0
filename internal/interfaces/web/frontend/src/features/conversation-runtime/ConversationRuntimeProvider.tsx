@@ -42,13 +42,19 @@ import {
 } from "../shell/components/runtimeTraceEvents";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
+const TERMINAL_ACTIVE_SESSION_STORAGE_KEY = "alter0.web.terminal.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.long_term_snapshot.v1";
+const TERMINAL_LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.terminal.session.long_term_snapshot.v1";
 const SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.session.info_snapshot.v1";
+const TERMINAL_SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.terminal.session.info_snapshot.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
+const TERMINAL_COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.terminal.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
+const TERMINAL_COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.composer.attachments.v1";
 const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
+const TERMINAL_RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.terminal.runtime.event_filter.v1";
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
 const NEW_CHAT_DRAFT_KEY = "__chat_new__";
 const MAX_COMPOSER_CHARS = 10000;
@@ -80,7 +86,8 @@ export function resolveChatSessionPollPlan(options: { sessionCount: number; page
   };
 }
 
-export type ConversationRoute = "chat";
+export type ConversationRoute = "chat" | "terminal";
+const CONVERSATION_ROUTES: ConversationRoute[] = ["chat", "terminal"];
 
 type ChatTarget = {
   type: "model";
@@ -355,26 +362,72 @@ function normalizeRuntimeEventFilter(value: unknown): RuntimeEventFilterID[] {
   return normalized.length > 0 ? normalized : [...DEFAULT_RUNTIME_EVENT_FILTER];
 }
 
-function loadRuntimeEventFilter(): RuntimeEventFilterID[] {
+function activeSessionStorageKey(route: ConversationRoute): string {
+  return route === "terminal" ? TERMINAL_ACTIVE_SESSION_STORAGE_KEY : ACTIVE_SESSION_STORAGE_KEY;
+}
+
+function longTermSessionSnapshotStorageKey(route: ConversationRoute): string {
+  return route === "terminal" ? TERMINAL_LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY : LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY;
+}
+
+function sessionInfoSnapshotStorageKey(route: ConversationRoute): string {
+  return route === "terminal" ? TERMINAL_SESSION_INFO_SNAPSHOT_STORAGE_KEY : SESSION_INFO_SNAPSHOT_STORAGE_KEY;
+}
+
+function composerDraftStorageKey(route: ConversationRoute): string {
+  return route === "terminal" ? TERMINAL_COMPOSER_DRAFT_STORAGE_KEY : COMPOSER_DRAFT_STORAGE_KEY;
+}
+
+function composerAttachmentDraftStorageKey(route: ConversationRoute): string {
+  return route === "terminal" ? TERMINAL_COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY : COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY;
+}
+
+function runtimeEventFilterStorageKey(route: ConversationRoute): string {
+  return route === "terminal" ? TERMINAL_RUNTIME_EVENT_FILTER_STORAGE_KEY : RUNTIME_EVENT_FILTER_STORAGE_KEY;
+}
+
+function loadRuntimeEventFilter(route: ConversationRoute): RuntimeEventFilterID[] {
   if (typeof window === "undefined") {
     return [...DEFAULT_RUNTIME_EVENT_FILTER];
   }
   try {
-    return normalizeRuntimeEventFilter(JSON.parse(window.localStorage.getItem(RUNTIME_EVENT_FILTER_STORAGE_KEY) || "null"));
+    return normalizeRuntimeEventFilter(JSON.parse(window.localStorage.getItem(runtimeEventFilterStorageKey(route)) || "null"));
   } catch {
     return [...DEFAULT_RUNTIME_EVENT_FILTER];
   }
 }
 
-function persistRuntimeEventFilter(filter: RuntimeEventFilterID[]) {
+function persistRuntimeEventFilter(route: ConversationRoute, filter: RuntimeEventFilterID[]) {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem(RUNTIME_EVENT_FILTER_STORAGE_KEY, JSON.stringify(normalizeRuntimeEventFilter(filter)));
+  window.localStorage.setItem(runtimeEventFilterStorageKey(route), JSON.stringify(normalizeRuntimeEventFilter(filter)));
 }
 
-function normalizeConversationRoute(_route: string): ConversationRoute {
-  return "chat";
+function normalizeConversationRoute(route: string): ConversationRoute {
+  return route === "terminal" ? "terminal" : "chat";
+}
+
+function defaultActiveSessionID(route: ConversationRoute): string {
+  return route === "chat" ? CANONICAL_CHAT_SESSION_ID : "";
+}
+
+function newDraftKeyForRoute(route: ConversationRoute): string {
+  return route === "chat" ? NEW_CHAT_DRAFT_KEY : "__terminal_new__";
+}
+
+function emptySessionsState(): SessionsState {
+  return {
+    chat: [],
+    terminal: [],
+  };
+}
+
+function emptyActiveSessionState(): ActiveSessionState {
+  return {
+    chat: CANONICAL_CHAT_SESSION_ID,
+    terminal: "",
+  };
 }
 
 function isPublicSkillCapability(skill: ChatCapability): boolean {
@@ -485,7 +538,8 @@ function cloneChatSession(session: ChatSession): ChatSession {
 
 function cloneSessionsState(sessionsByRoute: SessionsState): SessionsState {
   return {
-    chat: normalizeRouteSessions("chat", sessionsByRoute.chat.map(cloneChatSession)),
+    chat: normalizeRouteSessions("chat", (sessionsByRoute.chat || []).map(cloneChatSession)),
+    terminal: normalizeRouteSessions("terminal", (sessionsByRoute.terminal || []).map(cloneChatSession)),
   };
 }
 
@@ -794,7 +848,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     : {};
   return {
     id,
-    sourceRoute: "chat",
+    sourceRoute: normalizeConversationRoute(normalizeText(record.sourceRoute)),
     status: normalizeText(record.status),
     title: normalizeText(record.title) || "New",
     titleAuto: record.titleAuto !== false,
@@ -823,11 +877,12 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
 
 function normalizeCachedSessionsState(value: unknown): SessionsState {
   if (!value || typeof value !== "object") {
-    return { chat: [] };
+    return emptySessionsState();
   }
   const record = value as Record<string, unknown>;
   return {
     chat: normalizeRouteSessions("chat", normalizeStoredSessionList(record.chat)),
+    terminal: normalizeRouteSessions("terminal", normalizeStoredSessionList(record.terminal)),
   };
 }
 
@@ -945,15 +1000,22 @@ function writeJSONLocalStorage(key: string, value: unknown) {
 }
 
 function loadActiveSessionState(fallback?: ActiveSessionState | null): ActiveSessionState {
-  const parsed = readJSONStorage<Record<string, string>>(ACTIVE_SESSION_STORAGE_KEY, {});
-  return {
-    chat:
-      readWorkbenchRouteSessionID("chat")
-      || normalizeText(parsed.chat)
-      || normalizeText(parsed["chat"])
-      || normalizeText(fallback?.chat)
-      || CANONICAL_CHAT_SESSION_ID,
-  };
+  const legacyParsed = readJSONStorage<Record<string, string>>(ACTIVE_SESSION_STORAGE_KEY, {});
+  return CONVERSATION_ROUTES.reduce<ActiveSessionState>((acc, routeKey) => {
+    acc[routeKey] =
+      readWorkbenchRouteSessionID(routeKey)
+      || normalizeText(readJSONStorage<unknown>(activeSessionStorageKey(routeKey), ""))
+      || normalizeText(legacyParsed[routeKey])
+      || normalizeText(fallback?.[routeKey])
+      || defaultActiveSessionID(routeKey);
+    return acc;
+  }, emptyActiveSessionState());
+}
+
+function writeActiveSessionState(activeSessionByRoute: ActiveSessionState, route?: ConversationRoute) {
+  (route ? [route] : CONVERSATION_ROUTES).forEach((routeKey) => {
+    writeJSONStorage(activeSessionStorageKey(routeKey), normalizeText(activeSessionByRoute[routeKey]));
+  });
 }
 
 function loadLegacySessionSnapshots(fallback?: SessionsState | null): LegacySessionSnapshotLoad {
@@ -962,26 +1024,27 @@ function loadLegacySessionSnapshots(fallback?: SessionsState | null): LegacySess
     || hasJSONStorageItem(RECENT_SESSION_SNAPSHOT_STORAGE_KEY);
   const parsedActive = readJSONStorage<StoredActiveSessionSnapshotState>(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY, {});
   const parsedRecent = readJSONStorage<StoredRecentSessionSnapshotState>(RECENT_SESSION_SNAPSHOT_STORAGE_KEY, {});
-  const mergeStoredRouteSessions = (routeKey: string) => {
+  const mergeStoredRouteSessions = (routeKey: ConversationRoute) => {
     const sessions = new Map<string, ChatSession>();
-    (fallback?.chat || []).forEach((session) => {
-      sessions.set(session.id, { ...cloneChatSession(session), sourceRoute: "chat" });
+    (fallback?.[routeKey] || []).forEach((session) => {
+      sessions.set(session.id, { ...cloneChatSession(session), sourceRoute: routeKey });
     });
     normalizeStoredSessionList(parsedRecent[routeKey]).forEach((session) => {
-      sessions.set(session.id, { ...session, sourceRoute: "chat" });
+      sessions.set(session.id, { ...session, sourceRoute: routeKey });
     });
     const active = normalizeStoredSession(parsedActive[routeKey]);
     if (active) {
-      sessions.set(active.id, { ...active, sourceRoute: "chat" });
+      sessions.set(active.id, { ...active, sourceRoute: routeKey });
     }
     return normalizeRouteSessions(
-      "chat",
+      routeKey,
       Array.from(sessions.values()).sort(compareSessions),
     );
   };
   return {
     sessionsByRoute: {
       chat: mergeStoredRouteSessions("chat"),
+      terminal: mergeStoredRouteSessions("terminal"),
     },
     migratedLegacySnapshots,
   };
@@ -1008,66 +1071,169 @@ function readConversationRuntimeCache(): ConversationRuntimeCacheSnapshot | null
 }
 
 function readLongTermConversationRuntimeCache(): ConversationRuntimeCacheSnapshot | null {
-  const cache = readJSONLocalStorage<ConversationRuntimeCacheSnapshot | null>(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY, null);
-  if (!cache) {
-    return null;
-  }
-  if (Date.now() - Number(cache.cachedAt || 0) > CHAT_LONG_TERM_CACHE_TTL_MS) {
-    try {
-      window.localStorage.removeItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY);
-    } catch {
-    }
-    return null;
-  }
-  return {
-    cachedAt: cache.cachedAt,
-    activeSessionByRoute: { chat: normalizeText(cache.activeSessionByRoute?.chat) },
-    sessionsByRoute: normalizeCachedSessionsState(cache.sessionsByRoute),
-  };
+  const cache = readMergedPersistentConversationRuntimeCache(
+    longTermSessionSnapshotStorageKey,
+    true,
+    [LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY],
+  );
+  return cache;
 }
 
 function readSessionInfoConversationRuntimeCache(): ConversationRuntimeCacheSnapshot | null {
-  const cache = readJSONLocalStorage<ConversationRuntimeCacheSnapshot | null>(SESSION_INFO_SNAPSHOT_STORAGE_KEY, null);
+  const cache = readMergedPersistentConversationRuntimeCache(
+    sessionInfoSnapshotStorageKey,
+    false,
+    [SESSION_INFO_SNAPSHOT_STORAGE_KEY],
+  );
+  return cache;
+}
+
+function readRoutePersistentConversationRuntimeCache(
+  routeKey: ConversationRoute,
+  storageKey: string,
+  removeExpired: boolean,
+): ConversationRuntimeCacheSnapshot | null {
+  const cache = readJSONLocalStorage<ConversationRuntimeCacheSnapshot | null>(storageKey, null);
   if (!cache) {
     return null;
   }
   if (Date.now() - Number(cache.cachedAt || 0) > CHAT_LONG_TERM_CACHE_TTL_MS) {
-    try {
-      window.localStorage.removeItem(SESSION_INFO_SNAPSHOT_STORAGE_KEY);
-    } catch {
+    if (removeExpired) {
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+      }
     }
+    return null;
+  }
+  const normalizedActiveSessionID = normalizeText(cache.activeSessionByRoute?.[routeKey]);
+  const normalizedSessions = normalizeRouteSessions(routeKey, normalizeCachedSessionsState(cache.sessionsByRoute)[routeKey]);
+  if (!normalizedActiveSessionID && normalizedSessions.length === 0) {
     return null;
   }
   return {
     cachedAt: cache.cachedAt,
-    activeSessionByRoute: { chat: normalizeText(cache.activeSessionByRoute?.chat) },
-    sessionsByRoute: normalizeCachedSessionsState(cache.sessionsByRoute),
+    activeSessionByRoute: {
+      ...emptyActiveSessionState(),
+      [routeKey]: normalizedActiveSessionID || defaultActiveSessionID(routeKey),
+    },
+    sessionsByRoute: {
+      ...emptySessionsState(),
+      [routeKey]: normalizedSessions,
+    },
+  };
+}
+
+function readMergedPersistentConversationRuntimeCache(
+  storageKeyForRoute: (route: ConversationRoute) => string,
+  removeExpired: boolean,
+  legacyStorageKeys: string[],
+): ConversationRuntimeCacheSnapshot | null {
+  let cachedAt = 0;
+  const activeSessionByRoute = emptyActiveSessionState();
+  const sessionsByRoute = emptySessionsState();
+  let hasRouteCache = false;
+  CONVERSATION_ROUTES.forEach((routeKey) => {
+    const storageKeys = Array.from(new Set([storageKeyForRoute(routeKey), ...legacyStorageKeys]));
+    const routeCache = storageKeys.reduce<ConversationRuntimeCacheSnapshot | null>((match, storageKey) => {
+      return match || readRoutePersistentConversationRuntimeCache(routeKey, storageKey, removeExpired && storageKey === storageKeyForRoute(routeKey));
+    }, null);
+    if (!routeCache) {
+      return;
+    }
+    hasRouteCache = true;
+    cachedAt = Math.max(cachedAt, Number(routeCache.cachedAt || 0));
+    activeSessionByRoute[routeKey] = routeCache.activeSessionByRoute[routeKey];
+    sessionsByRoute[routeKey] = routeCache.sessionsByRoute[routeKey];
+  });
+  return hasRouteCache
+    ? { cachedAt, activeSessionByRoute, sessionsByRoute }
+    : null;
+}
+
+function hasRouteCacheData(cache: ConversationRuntimeCacheSnapshot | null, route: ConversationRoute): boolean {
+  if (!cache) {
+    return false;
+  }
+  const activeSessionID = normalizeText(cache.activeSessionByRoute?.[route]);
+  return (cache.sessionsByRoute?.[route] || []).length > 0
+    || (!!activeSessionID && activeSessionID !== defaultActiveSessionID(route));
+}
+
+function mergeConversationRuntimeCacheSnapshots(
+  primary: ConversationRuntimeCacheSnapshot | null,
+  fallback: ConversationRuntimeCacheSnapshot | null,
+): ConversationRuntimeCacheSnapshot | null {
+  if (!primary) {
+    return fallback;
+  }
+  if (!fallback) {
+    return primary;
+  }
+  const activeSessionByRoute = emptyActiveSessionState();
+  const sessionsByRoute = emptySessionsState();
+  CONVERSATION_ROUTES.forEach((routeKey) => {
+    const source = hasRouteCacheData(primary, routeKey) ? primary : fallback;
+    activeSessionByRoute[routeKey] = source.activeSessionByRoute[routeKey];
+    sessionsByRoute[routeKey] = source.sessionsByRoute[routeKey];
+  });
+  return {
+    cachedAt: Math.max(Number(primary.cachedAt || 0), Number(fallback.cachedAt || 0)),
+    activeSessionByRoute,
+    sessionsByRoute,
   };
 }
 
 function writeConversationRuntimeCache(activeSessionByRoute: ActiveSessionState, sessionsByRoute: SessionsState) {
   conversationRuntimeCache = {
     cachedAt: Date.now(),
-    activeSessionByRoute: { chat: normalizeText(activeSessionByRoute.chat) },
+    activeSessionByRoute: {
+      chat: normalizeText(activeSessionByRoute.chat) || CANONICAL_CHAT_SESSION_ID,
+      terminal: normalizeText(activeSessionByRoute.terminal),
+    },
     sessionsByRoute: cloneSessionsState(sessionsByRoute),
   };
 }
 
-function writeLongTermConversationRuntimeCache(activeSessionByRoute: ActiveSessionState, sessionsByRoute: SessionsState) {
-  writeJSONLocalStorage(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY, {
-    cachedAt: Date.now(),
-    activeSessionByRoute: { chat: normalizeText(activeSessionByRoute.chat) },
-    sessionsByRoute: cloneSessionsState(sessionsByRoute),
+function writeLongTermConversationRuntimeCache(
+  activeSessionByRoute: ActiveSessionState,
+  sessionsByRoute: SessionsState,
+  route?: ConversationRoute,
+) {
+  const cachedAt = Date.now();
+  (route ? [route] : CONVERSATION_ROUTES).forEach((routeKey) => {
+    writeJSONLocalStorage(longTermSessionSnapshotStorageKey(routeKey), {
+      cachedAt,
+      activeSessionByRoute: {
+        ...emptyActiveSessionState(),
+        [routeKey]: normalizeText(activeSessionByRoute[routeKey]) || defaultActiveSessionID(routeKey),
+      },
+      sessionsByRoute: {
+        ...emptySessionsState(),
+        [routeKey]: normalizeRouteSessions(routeKey, (sessionsByRoute[routeKey] || []).map(cloneChatSession)),
+      },
+    });
   });
 }
 
-function writeSessionInfoConversationRuntimeCache(activeSessionByRoute: ActiveSessionState, sessionsByRoute: SessionsState) {
-  writeJSONLocalStorage(SESSION_INFO_SNAPSHOT_STORAGE_KEY, {
-    cachedAt: Date.now(),
-    activeSessionByRoute: { chat: normalizeText(activeSessionByRoute.chat) },
-    sessionsByRoute: {
-      chat: normalizeRouteSessions("chat", sessionsByRoute.chat.map(trimSessionForInfoCache)),
-    },
+function writeSessionInfoConversationRuntimeCache(
+  activeSessionByRoute: ActiveSessionState,
+  sessionsByRoute: SessionsState,
+  route?: ConversationRoute,
+) {
+  const cachedAt = Date.now();
+  (route ? [route] : CONVERSATION_ROUTES).forEach((routeKey) => {
+    writeJSONLocalStorage(sessionInfoSnapshotStorageKey(routeKey), {
+      cachedAt,
+      activeSessionByRoute: {
+        ...emptyActiveSessionState(),
+        [routeKey]: normalizeText(activeSessionByRoute[routeKey]) || defaultActiveSessionID(routeKey),
+      },
+      sessionsByRoute: {
+        ...emptySessionsState(),
+        [routeKey]: normalizeRouteSessions(routeKey, (sessionsByRoute[routeKey] || []).map(trimSessionForInfoCache)),
+      },
+    });
   });
 }
 
@@ -1080,8 +1246,8 @@ function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialSta
     };
   }
   const longTermCache = readLongTermConversationRuntimeCache();
-  const infoCache = longTermCache ? null : readSessionInfoConversationRuntimeCache();
-  const fallbackCache = longTermCache || infoCache;
+  const infoCache = readSessionInfoConversationRuntimeCache();
+  const fallbackCache = mergeConversationRuntimeCacheSnapshots(longTermCache, infoCache);
   const activeSessionByRoute = loadActiveSessionState(fallbackCache?.activeSessionByRoute || null);
   const snapshotLoad = loadLegacySessionSnapshots(fallbackCache?.sessionsByRoute || null);
   if (snapshotLoad.migratedLegacySnapshots) {
@@ -1096,8 +1262,8 @@ function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialSta
   };
 }
 
-function loadComposerDrafts(): ComposerDraftMap {
-  const parsed = readJSONStorage<Record<string, string>>(COMPOSER_DRAFT_STORAGE_KEY, {});
+function loadComposerDrafts(route: ConversationRoute): ComposerDraftMap {
+  const parsed = readJSONStorage<Record<string, string>>(composerDraftStorageKey(route), {});
   return Object.entries(parsed).reduce<ComposerDraftMap>((acc, [key, value]) => {
     const normalizedKey = normalizeText(key);
     if (!normalizedKey || typeof value !== "string") {
@@ -1108,12 +1274,12 @@ function loadComposerDrafts(): ComposerDraftMap {
   }, {});
 }
 
-function persistComposerDrafts(drafts: ComposerDraftMap) {
-  writeJSONStorage(COMPOSER_DRAFT_STORAGE_KEY, drafts);
+function persistComposerDrafts(route: ConversationRoute, drafts: ComposerDraftMap) {
+  writeJSONStorage(composerDraftStorageKey(route), drafts);
 }
 
-function loadComposerAttachmentDrafts(): ComposerAttachmentDraftMap {
-  const parsed = readJSONStorage<Record<string, unknown>>(COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY, {});
+function loadComposerAttachmentDrafts(route: ConversationRoute): ComposerAttachmentDraftMap {
+  const parsed = readJSONStorage<Record<string, unknown>>(composerAttachmentDraftStorageKey(route), {});
   return Object.entries(parsed).reduce<ComposerAttachmentDraftMap>((acc, [key, value]) => {
     const normalizedKey = normalizeText(key);
     if (!normalizedKey) {
@@ -1127,8 +1293,8 @@ function loadComposerAttachmentDrafts(): ComposerAttachmentDraftMap {
   }, {});
 }
 
-function persistComposerAttachmentDrafts(drafts: ComposerAttachmentDraftMap) {
-  writeJSONStorage(COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY, drafts);
+function persistComposerAttachmentDrafts(route: ConversationRoute, drafts: ComposerAttachmentDraftMap) {
+  writeJSONStorage(composerAttachmentDraftStorageKey(route), drafts);
 }
 
 function normalizeDateValue(value: unknown): number {
@@ -1171,7 +1337,7 @@ function normalizeRuntimeTraceEventDetail(
   };
 }
 
-function normalizeRuntimeTurnMessages(sessionID: string, turn: RuntimeSessionTurnPayload): ChatMessage[] {
+function normalizeRuntimeTurnMessages(sessionID: string, turn: RuntimeSessionTurnPayload, route: ConversationRoute): ChatMessage[] {
   const id = normalizeText(turn.id);
   if (!id) {
     return [];
@@ -1179,7 +1345,7 @@ function normalizeRuntimeTurnMessages(sessionID: string, turn: RuntimeSessionTur
   return runtimeSessionTurnsToTimelineMessages({
     sessionID,
     turns: [turn],
-    route: "chat",
+    route,
     source: "runtime",
   });
 }
@@ -1194,7 +1360,7 @@ function normalizeRuntimeSession(
     return null;
   }
   const parsedMessages = Array.isArray(item.turns)
-    ? item.turns.flatMap((turn) => normalizeRuntimeTurnMessages(id, turn))
+    ? item.turns.flatMap((turn) => normalizeRuntimeTurnMessages(id, turn, sourceRoute))
     : null;
   const incomingPaging = normalizeRuntimeSessionTurnPagingPayload(item.turns_paging);
   const shouldMergeRuntimeMessages = parsedMessages
@@ -1386,24 +1552,25 @@ export function ConversationRuntimeProvider({
   if (!initialRuntimeStateRef.current) {
     initialRuntimeStateRef.current = resolveInitialConversationRuntimeState();
   }
-  const initialSessionsByRoute = initialRuntimeStateRef.current?.sessionsByRoute || { chat: [] };
-  const initialActiveSessionByRoute = initialRuntimeStateRef.current?.activeSessionByRoute || { chat: CANONICAL_CHAT_SESSION_ID };
+  const initialSessionsByRoute = initialRuntimeStateRef.current?.sessionsByRoute || emptySessionsState();
+  const initialActiveSessionByRoute = initialRuntimeStateRef.current?.activeSessionByRoute || emptyActiveSessionState();
   const sessionsByRouteRef = useRef<SessionsState>(initialSessionsByRoute);
   const [sessionsLoadedByRoute, setSessionsLoadedByRoute] = useState<Record<ConversationRoute, boolean>>({
     chat: false,
+    terminal: false,
   });
   const runtimeCatalogs = useRuntimeSessionCatalogs(apiClient);
   const providers = runtimeCatalogs.providers as ChatProvider[];
   const skills = runtimeCatalogs.skills as ChatCapability[];
   const skillCatalogLoaded = runtimeCatalogs.skillsLoaded;
   const mcps = runtimeCatalogs.mcps as ChatCapability[];
-  const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());
-  const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts());
+  const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts(route));
+  const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts(route));
   const [compact, setCompact] = useState(() => isCompactViewport());
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"model" | "capabilities" | "skills">("model");
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
-  const [runtimeEventFilter, setRuntimeEventFilter] = useState<RuntimeEventFilterID[]>(() => loadRuntimeEventFilter());
+  const [runtimeEventFilter, setRuntimeEventFilter] = useState<RuntimeEventFilterID[]>(() => loadRuntimeEventFilter(route));
   const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   const pollTimerRef = useRef<number>(0);
@@ -1414,18 +1581,18 @@ export function ConversationRuntimeProvider({
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
   const runtimeSessionControllerOptions = useMemo(() => ({
-    route: "chat",
-    initialSessions: initialSessionsByRoute.chat,
-    initialActiveSessionID: initialActiveSessionByRoute.chat,
+    route,
+    initialSessions: initialSessionsByRoute[route],
+    initialActiveSessionID: initialActiveSessionByRoute[route],
     normalizeSession: (payload: RuntimeSessionPayload, previous) => {
       const sessionID = normalizeText(payload.id);
       const localPrevious = sessionID
-        ? sessionsByRouteRef.current.chat.find((session) => session.id === sessionID) || null
+        ? sessionsByRouteRef.current[route].find((session) => session.id === sessionID) || null
         : null;
-      return normalizeRuntimeSession(payload as RuntimeSessionDetailPayload, localPrevious || previous || null, "chat");
+      return normalizeRuntimeSession(payload as RuntimeSessionDetailPayload, localPrevious || previous || null, route);
     },
     mergeSession: (previous, incoming) => mergeRuntimeSessions([incoming], previous ? [previous] : [])[0] || incoming,
-    sortSessions: (items) => normalizeRouteSessions("chat", items),
+    sortSessions: (items) => normalizeRouteSessions(route, items),
     getProgressiveHistoryPaging: (session) => session.turnsPaging,
     getProgressiveHistoryTurnBefore: (session) =>
       normalizeText(session.turnsPaging?.next_before_turn_id || session.turnsPaging?.oldest_turn_id)
@@ -1434,7 +1601,7 @@ export function ConversationRuntimeProvider({
       session.serverBacked === true
       && session.messagesLoaded === true
       && !hasRecoverableRuntimeState(session),
-  }), []);
+  }), [initialActiveSessionByRoute, initialSessionsByRoute, route]);
   const runtimeSessionController = useRuntimeSessionController<ChatSession>(runtimeSessionControllerOptions);
   const {
     createSession: createRuntimeSession,
@@ -1449,30 +1616,42 @@ export function ConversationRuntimeProvider({
     setActiveSessionID: setRuntimeActiveSessionID,
   } = runtimeSessionController;
   const sessionsByRoute = useMemo<SessionsState>(
-    () => ({ chat: runtimeSessionController.sessions }),
-    [runtimeSessionController.sessions],
+    () => ({
+      ...initialSessionsByRoute,
+      [route]: runtimeSessionController.sessions,
+    }),
+    [initialSessionsByRoute, route, runtimeSessionController.sessions],
   );
   const activeSessionByRoute = useMemo<ActiveSessionState>(
-    () => ({ chat: runtimeSessionController.activeSessionID || CANONICAL_CHAT_SESSION_ID }),
-    [runtimeSessionController.activeSessionID],
+    () => ({
+      ...initialActiveSessionByRoute,
+      [route]: runtimeSessionController.activeSessionID || defaultActiveSessionID(route),
+    }),
+    [initialActiveSessionByRoute, route, runtimeSessionController.activeSessionID],
   );
   const setSessionsByRoute = useCallback((updater: SessionsState | ((current: SessionsState) => SessionsState)) => {
-    const current = { chat: runtimeSessionController.sessionsRef.current };
+    const current = {
+      ...sessionsByRouteRef.current,
+      [route]: runtimeSessionController.sessionsRef.current,
+    };
     const next = typeof updater === "function" ? updater(current) : updater;
     sessionsByRouteRef.current = next;
-    setRuntimeSessions(next.chat);
-  }, [runtimeSessionController.sessionsRef, setRuntimeSessions]);
+    setRuntimeSessions(next[route]);
+  }, [route, runtimeSessionController.sessionsRef, setRuntimeSessions]);
   const setActiveSessionByRoute = useCallback((updater: ActiveSessionState | ((current: ActiveSessionState) => ActiveSessionState)) => {
-    const current = { chat: runtimeSessionController.activeSessionID || CANONICAL_CHAT_SESSION_ID };
+    const current = {
+      ...activeSessionByRoute,
+      [route]: runtimeSessionController.activeSessionID || defaultActiveSessionID(route),
+    };
     const next = typeof updater === "function" ? updater(current) : updater;
-    setRuntimeActiveSessionID(next.chat);
-  }, [runtimeSessionController.activeSessionID, setRuntimeActiveSessionID]);
+    setRuntimeActiveSessionID(next[route]);
+  }, [activeSessionByRoute, route, runtimeSessionController.activeSessionID, setRuntimeActiveSessionID]);
 
   const activeSessions = sessionsByRoute[route];
   const activeSessionReference = activeSessionByRoute[route];
   const activeSessionID = resolveSessionIDReference(activeSessions, activeSessionReference) || activeSessionReference;
   const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
-  const activeDraftKey = activeSessionID || NEW_CHAT_DRAFT_KEY;
+  const activeDraftKey = activeSessionID || newDraftKeyForRoute(route);
   const activeDraftAttachments = composerAttachmentDrafts[activeDraftKey] || EMPTY_COMPOSER_ATTACHMENTS;
   const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
   const availableSkillIDs = useMemo(
@@ -1487,7 +1666,7 @@ export function ConversationRuntimeProvider({
     latestComposerDraftsRef.current = composerDrafts;
     window.clearTimeout(composerDraftPersistTimerRef.current);
     composerDraftPersistTimerRef.current = window.setTimeout(() => {
-      persistComposerDrafts(latestComposerDraftsRef.current);
+      persistComposerDrafts(route, latestComposerDraftsRef.current);
       composerDraftPersistTimerRef.current = 0;
     }, COMPOSER_DRAFT_PERSIST_DELAY_MS);
     return () => window.clearTimeout(composerDraftPersistTimerRef.current);
@@ -1499,7 +1678,7 @@ export function ConversationRuntimeProvider({
 
   useEffect(() => () => {
     window.clearTimeout(composerDraftPersistTimerRef.current);
-    persistComposerDrafts(latestComposerDraftsRef.current);
+    persistComposerDrafts(route, latestComposerDraftsRef.current);
   }, []);
 
   const patchSession = useCallback((
@@ -1627,7 +1806,7 @@ export function ConversationRuntimeProvider({
     const resolvedSessionID = sessionID;
     const nextActiveState = { ...activeSessionByRoute, [route]: resolvedSessionID };
     setActiveSessionByRoute(nextActiveState);
-    writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+    writeActiveSessionState(nextActiveState, route);
     writeWorkbenchRouteSessionID(route, resolvedSessionID);
   }, [activeSessionByRoute, route]);
 
@@ -1655,9 +1834,9 @@ export function ConversationRuntimeProvider({
     setActiveSessionByRoute(nextActiveState);
     setComposerDrafts(nextDrafts);
     setComposerAttachmentDrafts(nextAttachmentDrafts);
-    persistComposerDrafts(nextDrafts);
-    persistComposerAttachmentDrafts(nextAttachmentDrafts);
-    writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+    persistComposerDrafts(route, nextDrafts);
+    persistComposerAttachmentDrafts(route, nextAttachmentDrafts);
+    writeActiveSessionState(nextActiveState, route);
   }, [activeSessionByRoute, deleteRuntimeSession, route, sessionsByRoute]);
 
   const setSessionPinned = useCallback(async (sessionID: string, pinned: boolean) => {
@@ -1708,7 +1887,7 @@ export function ConversationRuntimeProvider({
     upsertRuntimeSession(routeKey, nextSession);
     setActiveSessionByRoute((current) => {
       const nextActiveState = { ...current, [routeKey]: nextSession.id };
-      writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+      writeActiveSessionState(nextActiveState, routeKey);
       return nextActiveState;
     });
     writeWorkbenchRouteSessionID(routeKey, nextSession.id);
@@ -1848,12 +2027,13 @@ export function ConversationRuntimeProvider({
       } else {
         await recoverRuntimeSession(route, session.id, { requireMessages: true }, 1);
       }
-      const nextDrafts = { ...composerDrafts, [session.id]: "", [NEW_CHAT_DRAFT_KEY]: "" };
-      const nextAttachmentDrafts = { ...composerAttachmentDrafts, [session.id]: [], [NEW_CHAT_DRAFT_KEY]: [] };
+      const routeDraftKey = newDraftKeyForRoute(route);
+      const nextDrafts = { ...composerDrafts, [session.id]: "", [routeDraftKey]: "" };
+      const nextAttachmentDrafts = { ...composerAttachmentDrafts, [session.id]: [], [routeDraftKey]: [] };
       setComposerDrafts(nextDrafts);
       setComposerAttachmentDrafts(nextAttachmentDrafts);
-      persistComposerDrafts(nextDrafts);
-      persistComposerAttachmentDrafts(nextAttachmentDrafts);
+      persistComposerDrafts(route, nextDrafts);
+      persistComposerAttachmentDrafts(route, nextAttachmentDrafts);
     } catch (error) {
       patchSession(route, session.id, (currentSession) => ({
         ...currentSession,
@@ -1960,8 +2140,8 @@ export function ConversationRuntimeProvider({
 
   useEffect(() => {
     writeConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
-    writeLongTermConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
-    writeSessionInfoConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
+    writeLongTermConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route);
+    writeSessionInfoConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route);
   }, [activeSessionByRoute, sessionsByRoute]);
 
   useEffect(() => {
@@ -2024,7 +2204,7 @@ export function ConversationRuntimeProvider({
         if (nextActiveID && nextActiveID !== activeSessionByRoute[route]) {
           const nextActiveState = { ...activeSessionByRoute, [route]: nextActiveID };
           setActiveSessionByRoute(nextActiveState);
-          writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+          writeActiveSessionState(nextActiveState, route);
         }
       } catch {
         if (cancelled) {
@@ -2053,7 +2233,7 @@ export function ConversationRuntimeProvider({
           return current;
         }
         const nextActiveState = { ...current, [route]: nextActiveID };
-        writeJSONStorage(ACTIVE_SESSION_STORAGE_KEY, nextActiveState);
+        writeActiveSessionState(nextActiveState, route);
         return nextActiveState;
       });
     };
@@ -2098,14 +2278,12 @@ export function ConversationRuntimeProvider({
 
   useEffect(() => {
     window.clearTimeout(pollTimerRef.current);
-    const recoverableSessions = Object.entries(sessionsByRoute).flatMap(([routeKey, sessions]) =>
-      sessions
+    const recoverableSessions = sessionsByRoute[route]
         .filter(shouldPollRuntimeBackedSession)
         .map((session) => ({
-          route: routeKey as ConversationRoute,
+          route,
           sessionID: session.id,
-        })),
-    );
+        }));
     if (!recoverableSessions.length) {
       return;
     }
@@ -2290,7 +2468,7 @@ export function ConversationRuntimeProvider({
       const next = checked
         ? normalizeRuntimeEventFilter([...current, value])
         : normalizeRuntimeEventFilter(current.filter((item) => item !== value));
-      persistRuntimeEventFilter(next);
+      persistRuntimeEventFilter(route, next);
       return next;
     });
   }, []);
@@ -2431,9 +2609,9 @@ export function ConversationRuntimeProvider({
         deduped.set(item.id, item);
       });
       const nextAttachments = Array.from(deduped.values()).slice(0, MAX_COMPOSER_IMAGE_ATTACHMENTS);
-      const nextDrafts = { ...composerAttachmentDrafts, [session.id]: nextAttachments, [NEW_CHAT_DRAFT_KEY]: [] };
+      const nextDrafts = { ...composerAttachmentDrafts, [session.id]: nextAttachments, [newDraftKeyForRoute(route)]: [] };
       setComposerAttachmentDrafts(nextDrafts);
-      persistComposerAttachmentDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(route, nextDrafts);
     },
     removeDraftAttachment: (attachmentID: string) => {
       const sessionID = activeSessionID;
@@ -2443,7 +2621,7 @@ export function ConversationRuntimeProvider({
       const nextItems = (composerAttachmentDrafts[sessionID] || []).filter((item) => item.id !== attachmentID);
       const nextDrafts = { ...composerAttachmentDrafts, [sessionID]: nextItems };
       setComposerAttachmentDrafts(nextDrafts);
-      persistComposerAttachmentDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(route, nextDrafts);
     },
     clearDraftAttachments: () => {
       const sessionID = activeSessionID;
@@ -2452,7 +2630,7 @@ export function ConversationRuntimeProvider({
       }
       const nextDrafts = { ...composerAttachmentDrafts, [sessionID]: [] };
       setComposerAttachmentDrafts(nextDrafts);
-      persistComposerAttachmentDrafts(nextDrafts);
+      persistComposerAttachmentDrafts(route, nextDrafts);
     },
     sendPrompt,
     toggleInspector,
