@@ -8,7 +8,6 @@ import {
 import { ReactManagedCodexAccountsRouteBody } from "./ReactManagedCodexAccountsRouteBody";
 import { ReactManagedControlRouteBody } from "./ReactManagedControlRouteBody";
 import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
-import { ReactManagedTerminalRouteBody } from "./ReactManagedTerminalRouteBody";
 import { NavIcon } from "./NavIcon";
 
 type RouteBodyRenderer = (props: { language: LegacyShellLanguage }) => React.JSX.Element;
@@ -18,10 +17,6 @@ const SETTINGS_ROUTE_BODY_RENDERERS: Record<string, RouteBodyRenderer> = {
   memory: ({ language }) => <ReactManagedMemoryRouteBody language={language} />,
   schedules: ({ language }) => <ReactManagedControlRouteBody route="cron-jobs" language={language} />,
   skills: ({ language }) => <ReactManagedControlRouteBody route="skills" language={language} />,
-};
-
-const REACT_MANAGED_ROUTE_BODY_RENDERERS: Record<"terminal", RouteBodyRenderer> = {
-  terminal: () => <ReactManagedTerminalRouteBody />,
 };
 
 export {
@@ -38,10 +33,6 @@ export function ReactManagedRouteBody({
 }) {
   if (!isReactManagedRouteBody(route)) {
     return null;
-  }
-
-  if (route === "terminal") {
-    return REACT_MANAGED_ROUTE_BODY_RENDERERS[route]({ language });
   }
 
   return <SettingsRouteBody language={language} />;

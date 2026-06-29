@@ -27,7 +27,7 @@ type TerminalTurnFixture = {
 };
 
 function terminalRuntimeEventFixture(overrides: Partial<RuntimeTraceEvent> = {}): RuntimeTraceEvent {
-  const kind = overrides.kind || "shell_command";
+  const kind = overrides.kind || "important_text";
   return {
     id: "step-1",
     turn_id: "turn-1",
@@ -44,7 +44,7 @@ function terminalRuntimeEventFixture(overrides: Partial<RuntimeTraceEvent> = {})
     action: kind === "shell_command" ? { family: "shell", name: "shell" } : undefined,
     visibility: "collapsed",
     duration_ms: 1000,
-    raw: { ref: "step-1", type: "command", has_detail: true },
+    raw: { ref: "step-1", type: kind === "shell_command" ? "command" : "important_text", has_detail: true },
     ...overrides,
   };
 }
@@ -935,8 +935,8 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
     expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
     const terminalTurn = document.querySelector("[data-terminal-turn='turn-1']") as HTMLElement;
-    const terminalPrompt = terminalTurn.querySelector(".terminal-turn-prompt") as HTMLElement;
-    const terminalFinal = terminalTurn.querySelector("[data-terminal-final-output='turn-1']") as HTMLElement;
+    const terminalPrompt = document.querySelector("[data-message-id='turn-1:user']") as HTMLElement;
+    const terminalFinal = terminalTurn.querySelector("[data-terminal-final-output='turn-1']")?.closest(".runtime-message-assistant") as HTMLElement;
     expect(terminalPrompt).toHaveClass("runtime-message", "runtime-message-user");
     expect(terminalPrompt.querySelector(".runtime-message-bubble")).toBeInTheDocument();
     expect(terminalPrompt.querySelector(".runtime-message-user-shell")).toBeInTheDocument();
@@ -2084,12 +2084,11 @@ describe("ReactManagedTerminalRouteBody", () => {
                 final_output: "done",
                 runtime_trace_events: [
                   terminalRuntimeEventFixture({
-                    kind: "system_event",
                     lifecycle: "failed",
                     status: "failed",
                     title: "Error log",
                     summary: "Simulated validation error",
-                    raw: { ref: "step-1", type: "log", has_detail: true },
+                    raw: { ref: "step-1", type: "important_text", has_detail: true },
                   }),
                 ],
               },
@@ -2132,12 +2131,121 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   it("discloses runtime event categories on terminal process events", async () => {
+    const defaultFetch = vi.mocked(fetch).getMockImplementation();
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "pwd",
+                status: "completed",
+                started_at: "2026-04-15T10:05:00Z",
+                finished_at: "2026-04-15T10:05:02Z",
+                duration_ms: 2000,
+                final_output: "done",
+                runtime_trace_events: [
+                  terminalRuntimeEventFixture({
+                    kind: "shell_command",
+                    title: "Inspect workspace",
+                    summary: "pwd",
+                    raw: { ref: "step-1", type: "command", has_detail: true },
+                  }),
+                ],
+              },
+            ],
+          },
+        }));
+      }
+      return defaultFetch?.(input, init) ?? Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    });
+
     renderTerminalRouteBody();
+
+    expect(document.querySelector("[data-terminal-step-item='step-1']")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Session" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Commands/i }));
 
     await waitFor(() => {
       const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
       expect(step).toBeInTheDocument();
       expect(step.querySelector(".terminal-step-kind")).toHaveTextContent("Commands");
+    });
+  });
+
+  it("uses the shared process disclosure filter on terminal events", async () => {
+    const defaultFetch = vi.mocked(fetch).getMockImplementation();
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method || "GET").toUpperCase();
+      if (url === "/api/terminal/sessions/terminal-1" && method === "GET") {
+        return Promise.resolve(jsonResponse({
+          session: {
+            id: "terminal-1",
+            title: "Workspace shell",
+            terminal_session_id: "terminal-1",
+            status: "ready",
+            shell: "codex exec",
+            working_dir: "/workspace/alter0",
+            created_at: "2026-04-15T10:00:00Z",
+            updated_at: "2026-04-15T10:10:00Z",
+            turns: [
+              {
+                id: "turn-1",
+                prompt: "inspect",
+                status: "completed",
+                started_at: "2026-04-15T10:05:00Z",
+                finished_at: "2026-04-15T10:05:02Z",
+                duration_ms: 2000,
+                final_output: "done",
+                runtime_trace_events: [
+                  terminalRuntimeEventFixture({
+                    id: "important-1",
+                    kind: "important_text",
+                    title: "Important note",
+                    summary: "Ready to continue",
+                    raw: { ref: "important-1", type: "important_text", has_detail: false },
+                  }),
+                  terminalRuntimeEventFixture({
+                    id: "tool-1",
+                    kind: "tool_result",
+                    title: "Tool output",
+                    summary: "npm test",
+                    raw: { ref: "tool-1", type: "tool", has_detail: false },
+                  }),
+                ],
+              },
+            ],
+          },
+        }));
+      }
+      return defaultFetch?.(input, init) ?? Promise.reject(new Error(`Unhandled fetch: ${method} ${url}`));
+    });
+
+    renderTerminalRouteBody();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-step-item='important-1']")).toBeInTheDocument();
+    });
+
+    expect(document.querySelector("[data-terminal-step-item='tool-1']")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Session" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Tools/i }));
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-step-item='tool-1']")).toBeInTheDocument();
     });
   });
 
@@ -2269,7 +2377,7 @@ describe("ReactManagedTerminalRouteBody", () => {
     });
 
     const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
-    expect(step).toHaveAttribute("data-runtime-event-kind", "shell_command");
+    expect(step).toHaveAttribute("data-runtime-event-kind", "important_text");
     expect(step).toHaveAttribute("data-runtime-event-source", "adapter");
   });
 
@@ -2297,6 +2405,7 @@ describe("ReactManagedTerminalRouteBody", () => {
   });
 
   it("renders terminal narrative event detail as readable text instead of preserving pathological per-glyph line breaks", async () => {
+    window.localStorage.setItem("alter0.web.terminal.runtime.event_filter.v1", JSON.stringify(["important_text", "reasoning"]));
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = String(init?.method || "GET").toUpperCase();

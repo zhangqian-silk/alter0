@@ -57,13 +57,13 @@ describe("runtime trace events", () => {
     expect(runtimeTraceEventDetailID(event({ id: "", seq: 3 }))).toBe("turn-1:event:3");
   });
 
-  it("defaults disclosure to every process type except commands", () => {
+  it("defaults disclosure to important text only", () => {
     const commentary = event({ id: "commentary", kind: "assistant_commentary" });
     const reasoning = event({ id: "reasoning", kind: "reasoning" });
     const command = event({ id: "command", kind: "shell_command" });
 
     expect(runtimeTraceEventVisibleByFilter(commentary, DEFAULT_RUNTIME_EVENT_FILTER)).toBe(true);
-    expect(runtimeTraceEventVisibleByFilter(reasoning, DEFAULT_RUNTIME_EVENT_FILTER)).toBe(true);
+    expect(runtimeTraceEventVisibleByFilter(reasoning, DEFAULT_RUNTIME_EVENT_FILTER)).toBe(false);
     expect(runtimeTraceEventVisibleByFilter(command, DEFAULT_RUNTIME_EVENT_FILTER)).toBe(false);
   });
 

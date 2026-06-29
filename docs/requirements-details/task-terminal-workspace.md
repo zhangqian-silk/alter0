@@ -27,14 +27,10 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 
 ### Terminal Web Shell
 
-- Web Shell 中的 Terminal 路由页主体由 React 原生实现，运行区根节点直接挂在共享 `workbench-pane-shell` 下，不再额外经过 `route-view / route-body` 包裹，避免从 Chat/Chat 切换时出现布局与滚动容器跳变。
-- Terminal 页面直接请求 `/api/terminal/sessions`、`/api/terminal/sessions/{session_id}`、`/api/terminal/sessions/{session_id}/turns/{turn_id}/events/{event_id}` 等接口，并在 React 内维护会话恢复、轮询、输入、删除、事件展开、滚动定位与本地草稿恢复。
-- Terminal 与 Chat 的前端会话生命周期必须完全复用同一套 runtime session controller 与 catalog hook；列表、详情、输入、置顶、删除、附件、事件明细、历史分页以及 model / Skill / MCP catalog 只允许通过 route 参数区分 `terminal` 与 `chat`，不得在 Terminal 页面内保留私有会话状态机、endpoint 拼接或私有分页常量。
-- Terminal 的 session pane 容器、workspace 容器与主视图外壳在 React rerender 期间必须保持稳定实例，不能因语言切换、path 路由变化或壳层状态更新而清空正在运行的终端内容。
-- Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构；Terminal 只注入当前状态值、详情面板内容、Process、跳转四键与 Composer 控件，工作区标题、状态按钮和 `Details` 按钮必须使用 Chat/Chat 同一组共享 header 元素。详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
-- React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管；工作区头部仅复用共享 `RuntimeWorkspaceHeader` 元素，不再保留 Terminal 专属 header kind、标题元素或 details toggle。
-- 移动端 Terminal Composer 在输入框聚焦且软键盘抬起后，必须作为 `position: fixed; bottom: 0` 浮层直接贴住动态视口底边；长历史输出继续由 `terminal-chat-screen` 独立滚动，不允许通过增加 footer padding、锁定背景滚动或让 workspace 改走外层滚动把输入区挤出视口。
-- 移动端 Terminal 在键盘抬起期间，顶部 workbar 必须作为 `position: fixed` 固定在顶层，并通过 `top: var(--mobile-viewport-offset-top, 0px)` 对齐 visual viewport 顶边；工作区正文只消费顶部 header footprint，并由 workspace grid 中间行自然收敛到 Composer 上沿。Terminal 不得把 Composer 自身高度重复计入 viewport shrink，输入框上方不能残留一条与键盘高度等值的空白带，顶部 header 也不能跟随键盘或正文滚动发生位移动画。
+- Web Shell 中的 `/terminal` 路由暂时保留为兼容入口，主体由 `RuntimeRouteHost` 挂载 Conversation runtime UI；该 path 必须继续请求 `/api/terminal/sessions`，并保留 Terminal owner 的独立会话列表、active session、草稿、缓存和短 hash 恢复命名空间。
+- `/terminal` 兼容入口的 session pane、workspace 容器、主视图外壳、workspace header、Composer、Process、Markdown 输出和阅读定位条全部沿用 Conversation runtime 的 DOM 与状态链路；语言切换、path 路由变化或壳层状态更新不得清空正在运行的 Terminal owner 会话内容。
+- `ReactManagedTerminalRouteBody` 保留为独立 Terminal 后端能力的兼容组件和测试对象，允许继续复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线；其会话栏、详情面板、Process、输出渲染和 Composer 继续由 React state 驱动，不恢复 legacy runtime 脚本接管。
+- 移动端 `/terminal` 兼容入口必须遵守 Conversation runtime 的动态视口与 workspace grid 约束：Composer 作为 workspace footer 随 `--mobile-viewport-height` 收缩，不使用 fixed bottom、额外 footer padding 或重复键盘高度补偿；顶部 workbar 不随键盘或正文滚动发生位移动画。
 - `DELETE /api/terminal/sessions/{session_id}` 删除 Terminal 会话与工作区。
 - `GET /api/terminal/sessions/{session_id}/turns/{turn_id}/events/{event_id}` 查询 Terminal 运行事件明细。
 
@@ -160,7 +156,7 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 - Terminal 单会话详情默认裁剪到最新 `20` 个 turns，并按约 `256KiB` 的 turns 页预算控制单次响应体；接口支持 `turn_limit` 与 `turn_before` 分批读取更早 turns，并返回 `turns_paging` 标识总量、页边界、`byte_limit / approx_bytes` 和是否仍有更早内容。前端访问、切换或刷新当前活动会话时先拉取最新详情，再按 `turns_paging.has_more_before` 自动带 `turn_before` 渐进补齐更早 turns，并按 turn id 合并分页结果，避免长会话在 page-activation、轮询或输入返回中被最新片段截断；后台补页不得覆盖当前输入、详情面板、选择态或主动阅读滚动，也不得在同一 `session_id + turn_before` 边界无进展时反复请求。
 - Terminal 打开已有 turn 的会话、刷新恢复当前会话或切换到其他已有输出会话后，`terminal-chat-screen` 初始视口必须落到最新输出所在底部；该定位只作用于会话进入阶段，后续轮询刷新、前后台恢复、Process 展开收起或用户正在滚动输出区时不得强制把视口拉回底部。
 - 页面从后台恢复到前台、浏览器重新把当前 Terminal 页激活为可见页、bfcache 恢复或网络恢复在线时，必须复用运行页共享的 page-activation 链路，立即补拉会话列表与当前活动会话详情，再回到对应状态下的轮询节奏。
-- Terminal 前端在 SPA 路由切换导致组件卸载后，应保留浏览器内存级运行态缓存，用于回到 Terminal 时立即恢复最近会话列表和当前活动会话的完整已加载 turns。缓存只作为首屏快照使用，必须在接口响应后按现有列表与单会话详情合并规则更新；缓存写入不裁剪已加载 turns，TTL 为 24 小时，每次访问、切换、刷新或前台恢复都会按最新合并结果刷新缓存时间，超过 TTL 后不得参与首屏渲染。
+- Terminal 前端在 SPA 路由切换导致组件卸载后，应保留浏览器内存级运行态缓存，用于回到 Terminal 时立即恢复最近会话列表和当前活动会话的完整已加载 turns。缓存只作为首屏快照使用，必须在接口响应后按现有列表与单会话详情合并规则更新；缓存写入不裁剪已加载 turns，TTL 为 24 小时，每次访问、切换、刷新或前台恢复都会按最新合并结果刷新缓存时间，超过 TTL 后不得参与首屏渲染。Terminal 的 active session、文本草稿、附件草稿、过程披露过滤、完整消息快照与轻量会话信息快照必须使用 Terminal 独立 `sessionStorage / localStorage` key；旧合并 Conversation runtime 快照只可作为迁移读取来源，不得作为 Terminal 写入目标。
 - Terminal 会话在列表中执行删除并确认成功后，前端必须保持当前会话列表面板状态不变；无论删除的是历史会话还是当前活动会话，都不得因为删除动作自动收起移动端 `Sessions` 抽屉或桌面侧栏上下文。该恢复只允许兜住删除造成的那一次被动收起，不能劫持用户后续的主动关闭；用户点击 `Hide`、再次点击 `Sessions` 按钮或点击抽屉外部遮罩后，面板必须正常关闭。同时继续在本地屏蔽该 `session_id`，即使后续轮询或 page-activation 补拉暂时返回陈旧列表，也不得把已删除项重新插回当前会话侧栏。
 - Terminal 当前稳定入口为 `/terminal`，当前活动会话需同步写入 URL query `session_id=<8位短hash>`；刷新、直接打开 `/terminal?session_id=<8位短hash>` 或浏览器恢复标签页时，前端先按该参数恢复指定 Terminal 会话，只有参数缺失或目标会话已不存在时，才允许回退到列表首项或本地草稿恢复逻辑。
 - Terminal 单步过程详情与 Chat `Thinking / 已思考` 单步详情共用同一套 step meta 与 detail block 渲染规则：步骤行统一展示来自 `RuntimeTraceEvent` 的类型、耗时与状态；说明、markdown、reasoning、plan、log 和文本型 tool output 使用富文本正文块，terminal、代码、diff、tool input 与 JSON 输出使用等宽内容块；block 标题、文件名与起始行号保留在详情头部，状态只在步骤行 meta 中展示。

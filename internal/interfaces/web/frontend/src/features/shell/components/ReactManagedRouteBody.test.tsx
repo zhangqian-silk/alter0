@@ -146,13 +146,12 @@ describe("ReactManagedRouteBody", () => {
   it("tracks the full set of routes now owned by React", () => {
     expect(getReactManagedRouteBodyRoutes()).toEqual([
       "settings",
-      "terminal",
     ]);
     expect(isReactManagedRouteBody("settings")).toBe(true);
     expect(isReactManagedRouteBody("overview")).toBe(false);
     expect(isReactManagedRouteBody("skill")).toBe(false);
     expect(isReactManagedRouteBody("memory")).toBe(false);
     expect(isReactManagedRouteBody("products")).toBe(false);
-    expect(isReactManagedRouteBody("terminal")).toBe(true);
+    expect(isReactManagedRouteBody("terminal")).toBe(false);
   });
 });
