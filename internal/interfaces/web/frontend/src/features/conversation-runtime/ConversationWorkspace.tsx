@@ -40,9 +40,38 @@ type ConversationWorkspaceSharedRefs = {
 const INITIAL_VISIBLE_CHAT_MESSAGES = 32;
 const CHAT_MESSAGE_LOAD_BATCH_SIZE = 32;
 const CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET = 32;
+const CHAT_VIEWPORT_SCROLL_ANCHOR_MIN_THRESHOLD = 96;
+const CHAT_VIEWPORT_SCROLL_ANCHOR_MAX_THRESHOLD = 240;
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const MARKDOWN_SYNTAX_DEMO_QUERY_KEY = "markdown_demo";
+
+type ConversationScrollMetrics = {
+  scrollHeight: number;
+  clientHeight: number;
+  scrollTop: number;
+  bottomDistance: number;
+  anchoredToBottom: boolean;
+};
+
+function resolveConversationBottomAnchorThreshold(clientHeight: number) {
+  return Math.max(
+    CHAT_VIEWPORT_SCROLL_ANCHOR_MIN_THRESHOLD,
+    Math.min(CHAT_VIEWPORT_SCROLL_ANCHOR_MAX_THRESHOLD, clientHeight * 0.25),
+  );
+}
+
+function readConversationScrollMetrics(node: HTMLDivElement): ConversationScrollMetrics {
+  const bottomDistance = Math.max(node.scrollHeight - node.clientHeight - node.scrollTop, 0);
+  const scrollable = node.scrollHeight > node.clientHeight + 1;
+  return {
+    scrollHeight: node.scrollHeight,
+    clientHeight: node.clientHeight,
+    scrollTop: node.scrollTop,
+    bottomDistance,
+    anchoredToBottom: scrollable && bottomDistance <= resolveConversationBottomAnchorThreshold(node.clientHeight),
+  };
+}
 
 function shouldShowConversationMarkdownSyntaxDemo(route: string) {
   if (route !== "chat" || typeof window === "undefined") {
@@ -158,6 +187,8 @@ function useConversationWorkspaceController(
   const activeTimelineSessionRef = useRef("");
   const previousActiveMessageCountRef = useRef(0);
   const previousTimelineMessageIDsRef = useRef<string[]>([]);
+  const inputFocusedRef = useRef(inputFocused);
+  const timelineViewportAnchorRef = useRef<ConversationScrollMetrics | null>(null);
   const pendingHistoryScrollRestoreRef = useRef<{
     sessionID: string;
     scrollHeight: number;
@@ -182,6 +213,13 @@ function useConversationWorkspaceController(
   useEffect(() => {
     toggleProcessRef.current = runtime.toggleProcess;
   }, [runtime.toggleProcess]);
+  useEffect(() => {
+    inputFocusedRef.current = inputFocused;
+  }, [inputFocused]);
+  const captureTimelineViewportAnchor = useCallback(() => {
+    const node = timelineScreenRef.current;
+    timelineViewportAnchorRef.current = node ? readConversationScrollMetrics(node) : null;
+  }, [timelineScreenRef]);
   const toggleProcess = useCallback((messageID: string) => {
     const processStepKeyPrefix = `${messageID}:`;
     setExpandedProcessSteps((current) => {
@@ -428,6 +466,7 @@ function useConversationWorkspaceController(
       return undefined;
     }
     const handleScroll = () => {
+      captureTimelineViewportAnchor();
       if (node.scrollTop <= CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET && hiddenMessageCount > 0) {
         loadEarlierMessages();
       }
@@ -436,7 +475,84 @@ function useConversationWorkspaceController(
     return () => {
       node.removeEventListener("scroll", handleScroll);
     };
-  }, [hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
+  }, [captureTimelineViewportAnchor, hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
+  useEffect(() => {
+    const node = timelineScreenRef.current;
+    if (!node || !workbench.isMobileViewport) {
+      return undefined;
+    }
+    const isConversationInputFocused = () => {
+      const activeElement = document.activeElement;
+      return activeElement instanceof HTMLElement
+        && activeElement.matches("[data-composer-input='conversation']");
+    };
+    const restoreViewportAnchor = () => {
+      if (!inputFocusedRef.current && !isConversationInputFocused()) {
+        return;
+      }
+      const snapshot = timelineViewportAnchorRef.current;
+      if (!snapshot?.anchoredToBottom) {
+        captureTimelineViewportAnchor();
+        return;
+      }
+      const current = readConversationScrollMetrics(node);
+      if (
+        current.clientHeight === snapshot.clientHeight
+        && current.scrollHeight === snapshot.scrollHeight
+      ) {
+        timelineViewportAnchorRef.current = current;
+        return;
+      }
+      node.scrollTop = Math.max(0, node.scrollHeight - node.clientHeight - snapshot.bottomDistance);
+      timelineViewportAnchorRef.current = readConversationScrollMetrics(node);
+    };
+    let frame = 0;
+    let settleFrame = 0;
+    const scheduleViewportAnchorRestore = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        restoreViewportAnchor();
+        settleFrame = window.requestAnimationFrame(() => {
+          settleFrame = 0;
+          restoreViewportAnchor();
+        });
+      });
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (event.target instanceof HTMLElement && event.target.matches("[data-composer-input='conversation']")) {
+        captureTimelineViewportAnchor();
+      }
+    };
+
+    if (inputFocusedRef.current || isConversationInputFocused()) {
+      captureTimelineViewportAnchor();
+    }
+    document.addEventListener("focusin", handleFocusIn);
+    window.addEventListener("resize", scheduleViewportAnchorRestore);
+    window.visualViewport?.addEventListener("resize", scheduleViewportAnchorRestore);
+    window.visualViewport?.addEventListener("scroll", scheduleViewportAnchorRestore);
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(scheduleViewportAnchorRestore);
+    resizeObserver?.observe(node);
+
+    return () => {
+      document.removeEventListener("focusin", handleFocusIn);
+      window.removeEventListener("resize", scheduleViewportAnchorRestore);
+      window.visualViewport?.removeEventListener("resize", scheduleViewportAnchorRestore);
+      window.visualViewport?.removeEventListener("scroll", scheduleViewportAnchorRestore);
+      resizeObserver?.disconnect();
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      if (settleFrame) {
+        window.cancelAnimationFrame(settleFrame);
+      }
+    };
+  }, [captureTimelineViewportAnchor, timelineScreenRef, workbench.isMobileViewport]);
   useLayoutEffect(() => {
     const pending = pendingHistoryScrollRestoreRef.current;
     if (!pending || pending.sessionID !== timelineSessionID) {
@@ -507,6 +623,7 @@ function useConversationWorkspaceController(
     }
     const pinToBottom = () => {
       node.scrollTop = node.scrollHeight;
+      captureTimelineViewportAnchor();
     };
     pinToBottom();
     const pinnedTop = node.scrollTop;

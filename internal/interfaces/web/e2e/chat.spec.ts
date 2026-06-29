@@ -1124,6 +1124,7 @@ test.describe("Chat composer", () => {
         workspaceScreenScreenTop: workspaceScreenRect.top - viewport.offsetTop,
         workspaceScreenHeight: workspaceScreenRect.height,
         workspaceScreenScrollTop: workspaceScreen.scrollTop,
+        workspaceScreenBottomDistance: workspaceScreen.scrollHeight - workspaceScreen.clientHeight - workspaceScreen.scrollTop,
         composerTop: composerRect.top,
         composerBottom: composerRect.bottom,
         composerScreenBottom: composerRect.bottom - viewport.offsetTop,
@@ -1157,7 +1158,7 @@ test.describe("Chat composer", () => {
     expect(Math.abs((opened?.workspaceBodyScrollTop ?? 0) - (baseline?.workspaceBodyScrollTop ?? 0))).toBeLessThanOrEqual(1);
     expect(Math.abs((opened?.workspaceScreenTop ?? 0) - (baseline?.workspaceScreenTop ?? 0))).toBeLessThanOrEqual(2);
     expect(opened?.workspaceScreenHeight ?? 0).toBeLessThanOrEqual((baseline?.workspaceScreenHeight ?? Number.POSITIVE_INFINITY) + 2);
-    expect(Math.abs((opened?.workspaceScreenScrollTop ?? 0) - (baseline?.workspaceScreenScrollTop ?? 0))).toBeLessThanOrEqual(1);
+    expect(opened?.workspaceScreenBottomDistance ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(24);
     expect((baseline?.composerTop ?? 0) - (opened?.composerTop ?? 0)).toBeGreaterThan(120);
 
     await page.evaluate(() => {
@@ -1340,6 +1341,9 @@ test.describe("Chat composer", () => {
     await expect.poll(async () => page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
     )).toBe("312px");
+    await expect.poll(async () => screen.evaluate((node) =>
+      Math.round(node.scrollHeight - node.clientHeight - node.scrollTop)
+    )).toBeLessThanOrEqual(24);
     await expect.poll(async () => page.evaluate(() => {
       const screenNode = document.querySelector("[data-runtime-screen='conversation']");
       const workspaceBody = screenNode?.closest(".runtime-workspace-body");
