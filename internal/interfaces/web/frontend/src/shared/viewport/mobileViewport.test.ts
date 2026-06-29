@@ -100,6 +100,27 @@ describe("shared viewport mobileViewport", () => {
     });
   });
 
+  it("uses the layout viewport on initial mobile refresh when no input is focused", () => {
+    const next = deriveMobileViewportState(createDefaultMobileViewportState(), {
+      mobileViewport: true,
+      windowWidth: 430,
+      windowHeight: 932,
+      viewportWidth: 430,
+      viewportHeight: 620,
+      viewportOffsetTop: 0,
+      hasActiveInput: false
+    });
+
+    expect(next.state.baselineHeight).toBe(932);
+    expect(next.state.height).toBe(932);
+    expect(next.state.keyboardOffset).toBe(0);
+    expect(next.cssVars).toEqual({
+      mobileViewportHeight: "932px",
+      mobileViewportOffsetTop: "0px",
+      keyboardOffset: "0px",
+    });
+  });
+
   it("drops keyboard offset below the minimum threshold", () => {
     const previous = {
       ...createDefaultMobileViewportState(),

@@ -253,6 +253,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 仅在输入框实际聚焦或 visual viewport 明确报告键盘收缩时发布键盘诊断偏移；主布局不消费该偏移追加底部位移。
 - 键盘收起或视口回弹后不保留额外底部空白。
 - `Chat / Terminal` 在页面恢复前台可见、浏览器重新激活当前标签页或系统恢复当前 WebView 时，必须立刻重算共享视口诊断变量；第一帧不得沿用后台前遗留的旧可视高度或旧底部空白。
+- `Chat / Terminal` 在刷新、页面初次装载或 WebView 重新激活时，若没有输入框实际聚焦，短暂小于 layout viewport 的 `VisualViewport.height` 不得建立键盘态；App Shell 使用 layout viewport 作为初始可见高度，避免 Composer 停在键盘弹起位置。
 - `Chat / Terminal` 首次触摸主输入框时需保留浏览器原生软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为，不主动 focus，不锁定 `window` page scroll，也不通过 `scrollTo` 干预真实焦点或回放页面级滚动锚点。键盘开合过渡期内，`--mobile-viewport-height` 驱动 App Shell 可见高度，Composer 作为 workspace grid footer 跟随容器底边；输入框后方的 `workspaceBody / runtime-workspace-screen` 等滚动容器不短时锁定，移动 workbar 不消费 `VisualViewport.offsetTop` 做 transform，workspace header 与正文 panel 不单独消费 `VisualViewport` 变量。正文滚动区、空态、命令候选、配置面板和公共操作行由 App Shell 动态视口高度与静态 workspace inset 保持原位，不再做页面级滚动锚回，避免背景滚动与 iOS Safari 原生键盘动画互相竞争。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
 - 主输入框首触后的键盘动画稳定窗口不得回放页面级滚动锚点，也不得通过 `window.scrollTo` 修正背景位置；Chat 在输入框聚焦且消息区原本贴近底部时可保持 `.runtime-workspace-screen` 的底部阅读距离。消息区一旦产生 `touchmove / pointermove / wheel / scroll` 意图，当前滚动容器必须继续即时响应。
 - 主输入框保持聚焦时，消息区单指纵向拖动必须继续走浏览器原生滚动分派；前端不得通过 touch-scroll bridge、`touchmove.preventDefault()` 或脚本写入 `.runtime-workspace-screen.scrollTop` 来模拟滚动，避免破坏 iOS Safari 的惯性滚动与触摸响应。
@@ -310,6 +311,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 移动端软键盘弹起与收起后输入区贴底，无回顶和残留空白。
 - 长会话结果回填不触发整段消息列表重建。
 - Chat 时间线顶部滚动只展开本地已加载历史；服务端更早历史由后台分页自动补齐。
+- Chat 移动端加载态下，`Thinking / 已思考` 披露行、用户消息与状态标签按正常时间线顶部起排，不得居中、错行或与用户气泡拉出异常间距。
 - Chat 后台补齐更早历史时只更新完整消息缓存和隐藏历史，不刷新当前可见消息批次；用户滚到顶部或点击加载更早消息后才展开下一批本地缓存。
 - Chat 滚动触顶自动加载与点击“加载更早消息”使用同一批次扩展逻辑和滚动坐标恢复；连续触顶 scroll 事件在当前批次恢复完成前只合并为一次加载，不得把阅读区强制带回顶部。
 - Chat 发送新消息后仍保留已加载历史；轻量输入响应不得把旧消息从时间线中替换掉。

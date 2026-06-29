@@ -179,6 +179,22 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).not.toMatch(/\.runtime-composer-shell,\s*\.runtime-composer-portal-host \.runtime-composer-shell\s*\{/);
   });
 
+  it("keeps the mobile runtime composer in normal grid flow during viewport refreshes", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
+    const mobileComposerBlocks = Array.from(stylesheet.matchAll(
+      /@media \(max-width: (?:1100|760)px\) \{[\s\S]*?\.runtime-workspace-body(?:\[data-runtime-view="(?:conversation|terminal)"\])? > \.runtime-composer-shell[^{]*\{([^}]*)\}/g,
+    ));
+    const composerRules = mobileComposerBlocks.map((match) => match[1]).join("\n");
+
+    expect(mobileComposerBlocks.length).toBeGreaterThan(0);
+    expect(composerRules).toContain("position: relative !important;");
+    expect(composerRules).toContain("bottom: auto !important;");
+    expect(composerRules).toContain("transform: none !important;");
+    expect(composerRules).not.toContain("bottom: 0;");
+    expect(composerRules).not.toContain("var(--keyboard-offset)");
+  });
+
   it("keeps the mobile runtime header fixed while preserving the first workspace grid row footprint", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
@@ -585,6 +601,23 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("grid-auto-rows: max-content;");
     expect(stylesheet).toContain("padding: var(--terminal-chat-screen-padding-top) calc(var(--terminal-chat-screen-padding-x) + 4px) 26px;");
     expect(stylesheet).toContain("border-radius: 12px;");
+  });
+
+  it("keeps mobile Chat thinking and user messages in a top-aligned loading flow", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const finalGuard = stylesheet.slice(stylesheet.lastIndexOf("/* Mobile Chat loading flow final guard */"));
+
+    expect(finalGuard).toContain("/* Mobile Chat loading flow final guard */");
+    expect(finalGuard).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-screen\s*\{[\s\S]*?display:\s*block;[\s\S]*?align-content:\s*start;/,
+    );
+    expect(finalGuard).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-timeline\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?height:\s*auto;[\s\S]*?align-content:\s*start;[\s\S]*?justify-content:\s*stretch;/,
+    );
+    expect(finalGuard).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-thinking-shell\.terminal-process-shell\s*\{[\s\S]*?justify-self:\s*stretch;[\s\S]*?margin:\s*0 0 14px;/,
+    );
   });
 
   it("renders the shared header signal as a soft status dot with visible ripple pulses", () => {
