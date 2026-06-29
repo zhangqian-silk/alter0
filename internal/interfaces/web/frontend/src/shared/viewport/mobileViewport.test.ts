@@ -71,7 +71,7 @@ describe("shared viewport mobileViewport", () => {
     });
   });
 
-  it("treats a keyboard-sized visual viewport shrink as keyboard state even when activeElement is stale", () => {
+  it("keeps the layout viewport during unfocused mobile refresh shrink after the baseline is known", () => {
     const previous = {
       ...createDefaultMobileViewportState(),
       baselineHeight: 932,
@@ -88,6 +88,37 @@ describe("shared viewport mobileViewport", () => {
       viewportHeight: 620,
       viewportOffsetTop: 0,
       hasActiveInput: false
+    });
+
+    expect(next.state.baselineHeight).toBe(932);
+    expect(next.state.height).toBe(932);
+    expect(next.state.keyboardOffset).toBe(0);
+    expect(next.cssVars).toEqual({
+      mobileViewportHeight: "932px",
+      mobileViewportOffsetTop: "0px",
+      keyboardOffset: "0px",
+    });
+  });
+
+  it("keeps a stale activeElement keyboard shrink only when the previous state already had keyboard evidence", () => {
+    const previous = {
+      ...createDefaultMobileViewportState(),
+      baselineHeight: 932,
+      width: 430,
+      height: 620,
+      keyboardOffset: 312,
+      lastAlignedAt: 1200
+    };
+
+    const next = deriveMobileViewportState(previous, {
+      mobileViewport: true,
+      windowWidth: 430,
+      windowHeight: 932,
+      viewportWidth: 430,
+      viewportHeight: 620,
+      viewportOffsetTop: 0,
+      hasActiveInput: false,
+      currentTimeMS: 1260
     });
 
     expect(next.state.baselineHeight).toBe(932);

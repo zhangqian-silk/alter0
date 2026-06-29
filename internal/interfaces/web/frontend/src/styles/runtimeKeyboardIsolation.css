@@ -157,3 +157,30 @@
     grid-row: 3;
   }
 }
+
+/* Mobile Chat loading flow isolation guard */
+@media (max-width: 760px) {
+  [data-runtime-view="conversation"] .runtime-workspace-screen,
+  .runtime-workspace-body[data-runtime-view="conversation"] .runtime-workspace-screen {
+    display: block;
+    align-content: start;
+  }
+
+  [data-runtime-view="conversation"] .runtime-timeline,
+  .runtime-workspace-body[data-runtime-view="conversation"] .runtime-timeline {
+    min-height: 0;
+    height: auto;
+    align-content: start;
+    justify-content: stretch;
+  }
+
+  [data-runtime-view="conversation"] .runtime-thinking-shell.terminal-process-shell,
+  .runtime-workspace-body[data-runtime-view="conversation"] .runtime-thinking-shell.terminal-process-shell {
+    justify-self: stretch;
+    margin: 0 0 14px;
+  }
+
+  .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-composer-shell {
+    align-self: stretch;
+  }
+}

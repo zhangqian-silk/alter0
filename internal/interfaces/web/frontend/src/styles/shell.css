@@ -11384,23 +11384,3 @@ body {
   transition: none;
   transform: none;
 }
-
-/* Mobile Chat loading flow final guard */
-@media (max-width: 760px) {
-  [data-runtime-view="conversation"] .runtime-workspace-screen {
-    display: block;
-    align-content: start;
-  }
-
-  [data-runtime-view="conversation"] .runtime-timeline {
-    min-height: 0;
-    height: auto;
-    align-content: start;
-    justify-content: stretch;
-  }
-
-  [data-runtime-view="conversation"] .runtime-thinking-shell.terminal-process-shell {
-    justify-self: stretch;
-    margin: 0 0 14px;
-  }
-}
