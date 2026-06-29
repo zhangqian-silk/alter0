@@ -1280,8 +1280,11 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".scroll-jump-control.is-visible {");
     expect(stylesheet).toContain(".scroll-jump-control-icon {");
     expect(stylesheet).toMatch(/\.scroll-jump-strip\s*\{[\s\S]*?position:\s*absolute;/);
-    expect(stylesheet).toMatch(/\.scroll-jump-control\s*\{[\s\S]*?border-radius:\s*999px;/);
-    expect(stylesheet).toMatch(/\.terminal-jump-control\s*\{[\s\S]*?border-radius:\s*999px;/);
+    expect(stylesheet).toMatch(/\.terminal-jump-cluster\s*\{[\s\S]*?position:\s*absolute;/);
+    expect(stylesheet).toMatch(/\.scroll-jump-control\s*\{[\s\S]*?display:\s*none;[\s\S]*?border-radius:\s*999px;/);
+    expect(stylesheet).toMatch(/\.scroll-jump-control\.is-visible\s*\{[\s\S]*?display:\s*inline-flex;/);
+    expect(stylesheet).toMatch(/\.terminal-jump-control\s*\{[\s\S]*?display:\s*none;[\s\S]*?border-radius:\s*999px;/);
+    expect(stylesheet).toMatch(/\.terminal-jump-control\.is-visible\s*\{[\s\S]*?display:\s*inline-flex;/);
   });
 
   it("keeps terminal output text selectable while preserving scroll controls", () => {
@@ -1402,20 +1405,25 @@ describe("shell layout stylesheet", () => {
     );
   });
 
-  it("keeps the mobile runtime composer above jump controls in the primary shell stylesheet", () => {
+  it("keeps mobile runtime jump controls inside the workspace panel instead of fixed to the viewport", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const isolationStylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
 
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-workspace-screen,\s*\[data-runtime-view="terminal"\] \.runtime-workspace-screen\s*\{[\s\S]*?height:\s*100%;[\s\S]*?max-height:\s*100%;/,
     );
     expect(stylesheet).toContain("padding-bottom: 20px;");
     expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?z-index:\s*24;/,
+      /\.runtime-workspace-panel\s*\{[\s\S]*?position:\s*relative;/,
     );
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.terminal-jump-cluster\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?bottom:\s*calc\(var\(--runtime-composer-rest-inset, var\(--runtime-composer-inset, 0px\)\) \+ 24px\);[\s\S]*?right:\s*12px;/,
+    expect(isolationStylesheet).toMatch(
+      /Mobile runtime keyboard isolation:[\s\S]*?\.runtime-workspace-body > \.runtime-composer-shell\s*\{[\s\S]*?position:\s*relative !important;[\s\S]*?bottom:\s*auto !important;/,
     );
+    expect(stylesheet).toMatch(/\.terminal-jump-cluster\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?bottom:\s*18px;/);
+    expect(stylesheet).not.toContain("--runtime-composer-rest-inset");
+    expect(stylesheet).not.toContain("--runtime-composer-inset");
+    expect(stylesheet).not.toContain("bottom: calc(var(--runtime-composer-rest-inset");
     expect(stylesheet).toMatch(/\.terminal-jump-control\s*\{[\s\S]*?border-radius:\s*999px;/);
     expect(stylesheet).not.toContain("transition: bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);");
   });
