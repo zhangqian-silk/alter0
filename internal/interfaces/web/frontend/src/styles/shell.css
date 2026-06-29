@@ -4539,7 +4539,7 @@ body::after {
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: none;
   color: var(--shell-muted-strong);
-  display: inline-flex;
+  display: none;
   align-items: center;
   justify-content: center;
   font: inherit;
@@ -4559,6 +4559,7 @@ body::after {
 }
 
 .scroll-jump-control.is-visible {
+  display: inline-flex;
   opacity: 1;
   transform: translateY(0) scale(1);
   pointer-events: auto;
@@ -4680,7 +4681,7 @@ body::after {
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: none;
   color: var(--shell-muted-strong);
-  display: inline-flex;
+  display: none;
   align-items: center;
   justify-content: center;
   font: inherit;
@@ -4698,6 +4699,7 @@ body::after {
 }
 
 .terminal-jump-control.is-visible {
+  display: inline-flex;
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
@@ -5620,12 +5622,6 @@ body::after {
 }
 
 @media (max-width: 760px) {
-  .terminal-jump-cluster {
-    position: fixed;
-    bottom: calc(var(--runtime-composer-rest-inset, var(--runtime-composer-inset, 0px)) + 24px);
-    right: 12px;
-  }
-
   .primary-nav {
     width: min(calc(100vw - 24px), 280px);
   }
@@ -7391,7 +7387,6 @@ body::after {
 }
 
 .runtime-workspace-body {
-  --runtime-composer-inset: 0px;
   min-width: 0;
   max-width: 100%;
   min-height: 0;
