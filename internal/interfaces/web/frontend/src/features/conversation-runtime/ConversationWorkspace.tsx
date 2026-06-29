@@ -45,6 +45,137 @@ const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const MARKDOWN_SYNTAX_DEMO_QUERY_KEY = "markdown_demo";
 
+type TimelineViewportAnchor = {
+  messageID: string;
+  topOffset: number;
+};
+
+type TimelineMessageIdentity = {
+  id: string;
+};
+
+type TimelineRenderWindowSnapshot = {
+  sessionID: string;
+  messageIDs: string[];
+  visibleMessageIDs: string[];
+};
+
+const EMPTY_TIMELINE_RENDER_WINDOW: TimelineRenderWindowSnapshot = {
+  sessionID: "",
+  messageIDs: [],
+  visibleMessageIDs: [],
+};
+
+function timelineMessageIDs(messages: TimelineMessageIdentity[]): string[] {
+  return messages.map((message) => message.id);
+}
+
+function isTailPreservingHistoryPrepend(
+  previous: TimelineRenderWindowSnapshot,
+  sessionID: string,
+  messageIDs: string[],
+): boolean {
+  return Boolean(
+    sessionID
+    && previous.sessionID === sessionID
+    && previous.messageIDs.length > 0
+    && messageIDs.length > previous.messageIDs.length
+    && previous.messageIDs.every((id, index) =>
+      messageIDs[messageIDs.length - previous.messageIDs.length + index] === id,
+    ),
+  );
+}
+
+function resolveVisibleTimelineMessages<T extends TimelineMessageIdentity>(options: {
+  messages: T[];
+  visibleCount: number;
+  previousWindow: TimelineRenderWindowSnapshot;
+  sessionID: string;
+  historyExpansionRequested: boolean;
+}): T[] {
+  const { messages, visibleCount, previousWindow, sessionID, historyExpansionRequested } = options;
+  const messageIDs = timelineMessageIDs(messages);
+  const shouldPreservePreviousWindow =
+    isTailPreservingHistoryPrepend(previousWindow, sessionID, messageIDs)
+    && !historyExpansionRequested
+    && previousWindow.visibleMessageIDs.length > 0;
+  if (shouldPreservePreviousWindow) {
+    const visibleIDs = new Set(previousWindow.visibleMessageIDs);
+    const preserved = messages.filter((message) => visibleIDs.has(message.id));
+    if (preserved.length > 0) {
+      return preserved;
+    }
+  }
+  return messages.length > visibleCount ? messages.slice(-visibleCount) : messages;
+}
+
+function snapshotTimelineRenderWindow(
+  sessionID: string,
+  messages: TimelineMessageIdentity[],
+  visibleMessages: TimelineMessageIdentity[],
+): TimelineRenderWindowSnapshot {
+  return {
+    sessionID,
+    messageIDs: timelineMessageIDs(messages),
+    visibleMessageIDs: timelineMessageIDs(visibleMessages),
+  };
+}
+
+function findTimelineMessageElement(container: HTMLElement, messageID: string): HTMLElement | null {
+  for (const item of container.querySelectorAll<HTMLElement>("[data-message-id]")) {
+    if (item.getAttribute("data-message-id") === messageID) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function readTimelineViewportAnchor(container: HTMLElement | null): TimelineViewportAnchor | null {
+  if (!container) {
+    return null;
+  }
+  const containerRect = container.getBoundingClientRect();
+  if (containerRect.height <= 0 && containerRect.bottom <= containerRect.top) {
+    return null;
+  }
+  for (const item of container.querySelectorAll<HTMLElement>("[data-message-id]")) {
+    const messageID = item.getAttribute("data-message-id")?.trim() || "";
+    if (!messageID) {
+      continue;
+    }
+    const itemRect = item.getBoundingClientRect();
+    const itemHeight = itemRect.height || itemRect.bottom - itemRect.top;
+    if (itemHeight <= 0) {
+      continue;
+    }
+    if (itemRect.bottom >= containerRect.top && itemRect.top <= containerRect.bottom) {
+      return {
+        messageID,
+        topOffset: itemRect.top - containerRect.top,
+      };
+    }
+  }
+  return null;
+}
+
+function restoreTimelineViewportAnchor(container: HTMLElement, anchor: TimelineViewportAnchor | null | undefined): boolean {
+  if (!anchor?.messageID) {
+    return false;
+  }
+  const item = findTimelineMessageElement(container, anchor.messageID);
+  if (!item) {
+    return false;
+  }
+  const containerRect = container.getBoundingClientRect();
+  const itemRect = item.getBoundingClientRect();
+  const currentTopOffset = itemRect.top - containerRect.top;
+  const delta = currentTopOffset - anchor.topOffset;
+  if (Math.abs(delta) > 0.5) {
+    container.scrollTop += delta;
+  }
+  return true;
+}
+
 function shouldShowConversationMarkdownSyntaxDemo(route: string) {
   if (route !== "chat" || typeof window === "undefined") {
     return false;
@@ -159,10 +290,13 @@ function useConversationWorkspaceController(
   const activeTimelineSessionRef = useRef("");
   const previousActiveMessageCountRef = useRef(0);
   const previousTimelineMessageIDsRef = useRef<string[]>([]);
+  const previousTimelineRenderWindowRef = useRef<TimelineRenderWindowSnapshot>(EMPTY_TIMELINE_RENDER_WINDOW);
+  const historyExpansionRequestedRef = useRef(false);
   const pendingHistoryScrollRestoreRef = useRef<{
     sessionID: string;
     scrollHeight: number;
     scrollTop: number;
+    anchor: TimelineViewportAnchor | null;
   } | null>(null);
   const [timelineWindow, setTimelineWindow] = useState({
     sessionID: "",
@@ -221,11 +355,15 @@ function useConversationWorkspaceController(
   const visibleMessageCount = timelineWindow.sessionID === timelineSessionID
     ? timelineWindow.visibleCount
     : INITIAL_VISIBLE_CHAT_MESSAGES;
-  const hiddenMessageCount = Math.max(0, timelineMessages.length - visibleMessageCount);
-  const visibleMessages = useMemo(
-    () => hiddenMessageCount > 0 ? timelineMessages.slice(-visibleMessageCount) : timelineMessages,
-    [hiddenMessageCount, timelineMessages, visibleMessageCount],
-  );
+  const previousRenderWindow = previousTimelineRenderWindowRef.current;
+  const visibleMessages = resolveVisibleTimelineMessages({
+    messages: timelineMessages,
+    visibleCount: visibleMessageCount,
+    previousWindow: previousRenderWindow,
+    sessionID: timelineSessionID,
+    historyExpansionRequested: historyExpansionRequestedRef.current,
+  });
+  const hiddenMessageCount = Math.max(0, timelineMessages.length - visibleMessages.length);
   const isEmptyState = timelineMessages.length === 0;
   const isMobileEmptyHeader = workbench.isMobileViewport && isEmptyState;
   const emptyStateTitle = language === "zh" ? "开始新的工作流" : "Start a new workspace flow";
@@ -398,11 +536,16 @@ function useConversationWorkspaceController(
     if (!timelineSessionID || hiddenMessageCount <= 0) {
       return;
     }
+    if (pendingHistoryScrollRestoreRef.current?.sessionID === timelineSessionID) {
+      return;
+    }
+    historyExpansionRequestedRef.current = true;
     const node = timelineScreenRef.current;
     pendingHistoryScrollRestoreRef.current = {
       sessionID: timelineSessionID,
       scrollHeight: node?.scrollHeight || 0,
       scrollTop: node?.scrollTop || 0,
+      anchor: readTimelineViewportAnchor(node),
     };
     setTimelineWindow((current) => {
       const currentVisibleCount = current.sessionID === timelineSessionID
@@ -428,7 +571,16 @@ function useConversationWorkspaceController(
       };
     });
     pendingHistoryScrollRestoreRef.current = null;
+    historyExpansionRequestedRef.current = false;
   }, [timelineSessionID]);
+  useLayoutEffect(() => {
+    previousTimelineRenderWindowRef.current = snapshotTimelineRenderWindow(
+      timelineSessionID,
+      timelineMessages,
+      visibleMessages,
+    );
+    historyExpansionRequestedRef.current = false;
+  }, [timelineMessages, timelineSessionID, visibleMessages]);
   useEffect(() => {
     const node = timelineScreenRef.current;
     if (!node) {
@@ -454,8 +606,24 @@ function useConversationWorkspaceController(
     if (!node) {
       return;
     }
-    pendingHistoryScrollRestoreRef.current = null;
-    node.scrollTop = Math.max(0, node.scrollHeight - pending.scrollHeight + pending.scrollTop);
+    const restore = () => {
+      if (!restoreTimelineViewportAnchor(node, pending.anchor)) {
+        node.scrollTop = Math.max(0, node.scrollHeight - pending.scrollHeight + pending.scrollTop);
+      }
+    };
+    restore();
+    const frame = window.requestAnimationFrame(() => {
+      restore();
+      if (pendingHistoryScrollRestoreRef.current === pending) {
+        pendingHistoryScrollRestoreRef.current = null;
+      }
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (pendingHistoryScrollRestoreRef.current === pending) {
+        pendingHistoryScrollRestoreRef.current = null;
+      }
+    };
   }, [timelineItems.length, timelineScreenRef, timelineSessionID]);
   useLayoutEffect(() => {
     const previousMessageCount = previousActiveMessageCountRef.current;
@@ -543,7 +711,7 @@ function useConversationWorkspaceController(
         scope="chat"
         language={language}
         containerRef={timelineScreenRef}
-        itemSelector="[data-message-id]"
+        itemSelector=".runtime-message-user[data-message-id]"
         itemAttribute="data-message-id"
         watchKey={`${runtime.route}:${timelineMessages.length}:${isEmptyState ? "empty" : "active"}`}
       />

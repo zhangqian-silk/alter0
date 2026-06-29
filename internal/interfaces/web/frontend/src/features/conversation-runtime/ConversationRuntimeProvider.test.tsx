@@ -673,6 +673,95 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("message-texts")).toHaveTextContent(`durable answer ${cachedTurnCount}`);
   });
 
+  it("uses a full cached Chat session on page activation without reloading its detail", async () => {
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "cached-chat" }));
+    window.localStorage.setItem(
+      LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        activeSessionByRoute: { chat: "cached-chat" },
+        sessionsByRoute: {
+          chat: [{
+            id: "cached-chat",
+            status: "ready",
+            title: "Fully cached chat",
+            createdAt: Date.parse("2026-04-23T03:30:00Z"),
+            pinned: false,
+            targetID: "codex",
+            targetName: "Codex",
+            messages: [
+              {
+                id: "cached-turn:user",
+                role: "user",
+                text: "cached prompt",
+                attachments: [],
+                route: "chat",
+                source: "runtime",
+                error: false,
+                status: "",
+                at: Date.parse("2026-04-23T03:30:00Z"),
+                processEvents: [],
+              },
+              {
+                id: "cached-turn:assistant",
+                role: "assistant",
+                text: "cached answer",
+                attachments: [],
+                route: "chat",
+                source: "runtime",
+                error: false,
+                status: "done",
+                at: Date.parse("2026-04-23T03:30:02Z"),
+                processEvents: [],
+              },
+            ],
+            messagesLoaded: true,
+            serverBacked: true,
+            turnsPaging: { has_more_before: false },
+          }],
+        },
+      }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return {
+            items: [{
+              id: "cached-chat",
+              title: "Fully cached chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [],
+              turns_paging: { has_more_before: false },
+            }],
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("cached answer"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    apiClientMock.get.mockClear();
+
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions/cached-chat");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("cached answer");
+  });
+
   it("does not hydrate expired Chat browser caches", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1000);
     apiClientMock.get.mockImplementation(async (path: string) => {
