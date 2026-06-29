@@ -109,7 +109,7 @@ describe("RuntimeWorkspaceShell", () => {
     }
   });
 
-  it("publishes mobile drawer layout state and suspends the runtime composer layer", () => {
+  it("publishes mobile drawer layout state and makes the runtime composer non-interactive", () => {
     renderMobileShell({}, {
       mobileLayoutState: "mobile-session-drawer",
       sessionPaneClassName: "is-open",
@@ -122,9 +122,9 @@ describe("RuntimeWorkspaceShell", () => {
 
     expect(shell.dataset.runtimeMobileLayout).toBe("mobile-session-drawer");
     expect(shell.dataset.runtimeSessionPaneOpen).toBe("true");
-    expect(shell.dataset.runtimeComposerSuspended).toBe("true");
+    expect(shell.dataset.runtimeComposerInteractive).toBe("false");
     expect(workspaceBody.dataset.runtimeMobileLayout).toBe("mobile-session-drawer");
-    expect(workspaceBody.dataset.runtimeComposerSuspended).toBe("true");
+    expect(workspaceBody.dataset.runtimeComposerInteractive).toBe("false");
     expect(sessionPane).toHaveClass("is-open");
   });
 
@@ -146,7 +146,7 @@ describe("RuntimeWorkspaceShell", () => {
     }
   });
 
-  it("suspends the composer layer when the primary navigation drawer owns mobile layout", () => {
+  it("keeps the composer layer visible but non-interactive when the primary navigation drawer owns mobile layout", () => {
     renderMobileShell({}, {
       mobileLayoutState: "mobile-primary-nav-drawer",
       workspaceFooter: <div data-testid="runtime-composer-spacer" />,
@@ -157,7 +157,7 @@ describe("RuntimeWorkspaceShell", () => {
 
     expect(shell.dataset.runtimeMobileLayout).toBe("mobile-primary-nav-drawer");
     expect(shell.dataset.runtimeSessionPaneOpen).toBe("false");
-    expect(shell.dataset.runtimeComposerSuspended).toBe("true");
-    expect(workspaceBody.dataset.runtimeComposerSuspended).toBe("true");
+    expect(shell.dataset.runtimeComposerInteractive).toBe("false");
+    expect(workspaceBody.dataset.runtimeComposerInteractive).toBe("false");
   });
 });

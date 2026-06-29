@@ -15,7 +15,7 @@ import { RuntimeComposer } from "../shell/components/RuntimeComposer";
 import { resolveRuntimeMobileLayoutState } from "../shell/components/runtimeMobileLayout";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
 import { ScrollJumpStrip } from "../shell/components/ScrollJumpStrip";
-import { useRuntimeComposerViewportSync } from "../shell/components/useRuntimeComposerViewportSync";
+import { useViewportScrollAnchor } from "../shell/components/useViewportScrollAnchor";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShellCopy";
 import {
   isComposerImageAttachment,
@@ -183,6 +183,12 @@ function useConversationWorkspaceController(
   useEffect(() => {
     toggleProcessRef.current = runtime.toggleProcess;
   }, [runtime.toggleProcess]);
+  const captureTimelineViewportAnchor = useViewportScrollAnchor({
+    active: inputFocused,
+    containerRef: timelineScreenRef,
+    enabled: workbench.isMobileViewport,
+    focusSelector: "[data-composer-input='conversation']",
+  });
   const toggleProcess = useCallback((messageID: string) => {
     const processStepKeyPrefix = `${messageID}:`;
     setExpandedProcessSteps((current) => {
@@ -429,6 +435,7 @@ function useConversationWorkspaceController(
       return undefined;
     }
     const handleScroll = () => {
+      captureTimelineViewportAnchor();
       if (node.scrollTop <= CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET && hiddenMessageCount > 0) {
         loadEarlierMessages();
       }
@@ -437,7 +444,7 @@ function useConversationWorkspaceController(
     return () => {
       node.removeEventListener("scroll", handleScroll);
     };
-  }, [hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
+  }, [captureTimelineViewportAnchor, hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
   useLayoutEffect(() => {
     const pending = pendingHistoryScrollRestoreRef.current;
     if (!pending || pending.sessionID !== timelineSessionID) {
@@ -508,6 +515,7 @@ function useConversationWorkspaceController(
     }
     const pinToBottom = () => {
       node.scrollTop = node.scrollHeight;
+      captureTimelineViewportAnchor();
     };
     pinToBottom();
     const pinnedTop = node.scrollTop;
@@ -875,13 +883,6 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
     event.preventDefault();
     void handleComposerAttachmentSelection(imageFiles);
   }, [handleComposerAttachmentSelection]);
-
-  useRuntimeComposerViewportSync({
-    isMobileViewport: workbench.isMobileViewport,
-    inputFocused,
-    workspaceBodyRef,
-    composerShellRef,
-  });
 
   const configPanelHint = modelInspectorOpen
       ? copy.runtimeModelHint

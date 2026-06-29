@@ -34,7 +34,6 @@ describe("shared viewport mobileViewportSync", () => {
     document.documentElement.style.removeProperty("--mobile-viewport-height");
     document.documentElement.style.removeProperty("--mobile-viewport-offset-top");
     document.documentElement.style.removeProperty("--keyboard-offset");
-    document.documentElement.style.removeProperty("--keyboard-composer-offset");
   });
 
   it("writes keyboard offset css vars when the mobile visual viewport shrinks around a focused input", () => {
@@ -56,7 +55,6 @@ describe("shared viewport mobileViewportSync", () => {
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("520px");
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-offset-top")).toBe("0px");
     expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("332px");
-    expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("332px");
 
     controller.destroy();
     input.remove();
@@ -78,16 +76,14 @@ describe("shared viewport mobileViewportSync", () => {
     visualViewport.height = 620;
     visualViewport.dispatchEvent(new Event("resize"));
     expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
-    expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("312px");
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-offset-top")).toBe("0px");
 
     visualViewport.offsetTop = 312;
     visualViewport.dispatchEvent(new Event("scroll"));
 
-    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("620px");
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("932px");
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-offset-top")).toBe("312px");
-    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
-    expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("0px");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("0px");
 
     controller.destroy();
     input.remove();

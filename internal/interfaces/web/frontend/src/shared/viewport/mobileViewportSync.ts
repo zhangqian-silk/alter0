@@ -63,7 +63,6 @@ export function createMobileViewportSyncController(
     root.style.setProperty("--mobile-viewport-height", result.cssVars.mobileViewportHeight);
     root.style.setProperty("--mobile-viewport-offset-top", result.cssVars.mobileViewportOffsetTop);
     root.style.setProperty("--keyboard-offset", result.cssVars.keyboardOffset);
-    root.style.setProperty("--keyboard-composer-offset", result.cssVars.keyboardComposerOffset);
     clearCooldownSync();
     const reportedViewportHeight = Math.round(visualViewport?.height ?? win.innerHeight);
     const focusedFullHeightReport =
@@ -107,7 +106,6 @@ export function createMobileViewportSyncController(
       root.style.setProperty("--mobile-viewport-height", "100dvh");
       root.style.setProperty("--mobile-viewport-offset-top", "0px");
       root.style.setProperty("--keyboard-offset", "0px");
-      root.style.setProperty("--keyboard-composer-offset", "0px");
     },
   };
 }

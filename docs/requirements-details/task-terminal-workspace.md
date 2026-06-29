@@ -34,7 +34,7 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 - Terminal 运行页需挂载在共享 runtime workspace framework 上：统一复用会话侧栏、workspace body、slot 化头部/正文/底部区域与 backdrop 结构；Terminal 只注入当前状态值、详情面板内容、Process、跳转四键与 Composer 控件，工作区标题、状态按钮和 `Details` 按钮必须使用 Chat/Chat 同一组共享 header 元素。详情面板首屏先复用共享紧凑摘要栅格，再承接终端会话专属字段。
 - React 版 Terminal 允许复用旧版 `terminal-*` DOM class 与布局关系作为视觉基线，但会话栏、详情面板、Process、输出渲染和 Composer 必须继续由 React state 驱动，不恢复 legacy runtime 脚本接管；工作区头部仅复用共享 `RuntimeWorkspaceHeader` 元素，不再保留 Terminal 专属 header kind、标题元素或 details toggle。
 - 移动端 Terminal Composer 在输入框聚焦且软键盘抬起后，必须作为 `position: fixed; bottom: 0` 浮层直接贴住动态视口底边；长历史输出继续由 `terminal-chat-screen` 独立滚动，不允许通过增加 footer padding、锁定背景滚动或让 workspace 改走外层滚动把输入区挤出视口。
-- 移动端 Terminal 在键盘抬起期间，顶部 workbar 必须作为 `position: fixed; top: 0` 固定在顶层，并通过无 transition 的合成层 transform 对齐 visual viewport 顶边；工作区正文只消费顶部 header footprint 与 Composer 静态 footprint。Terminal 不得把 Composer 自身的静态高度重复计入 viewport shrink，输入框上方不能残留一条与键盘高度等值的空白带，顶部 header 也不能跟随键盘或正文滚动发生位移动画。
+- 移动端 Terminal 在键盘抬起期间，顶部 workbar 必须作为 `position: fixed` 固定在顶层，并通过 `top: var(--mobile-viewport-offset-top, 0px)` 对齐 visual viewport 顶边；工作区正文只消费顶部 header footprint，并由 workspace grid 中间行自然收敛到 Composer 上沿。Terminal 不得把 Composer 自身高度重复计入 viewport shrink，输入框上方不能残留一条与键盘高度等值的空白带，顶部 header 也不能跟随键盘或正文滚动发生位移动画。
 - `DELETE /api/terminal/sessions/{session_id}` 删除 Terminal 会话与工作区。
 - `GET /api/terminal/sessions/{session_id}/turns/{turn_id}/events/{event_id}` 查询 Terminal 运行事件明细。
 
@@ -135,8 +135,8 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 - 长输出阅读取消消息与区块头部吸顶，保持自然文档流滚动。
 - 右侧平面四键组支持回到顶部、上一条、下一条与回到底部；`上一条` 固定指向当前视口中最上方的可见 turn，`下一条` 在单条 turn 可见时指向真实下一条、在多条 turn 同屏可见时指向最下方的可见 turn；但只要最后一条 turn 已经参与当前视口，无论底部剩余内容是否还存在，都隐藏 `下一条`，剩余阅读交给 `回到底部`。当用户刚触发一轮新对话、提交请求尚未稳定到最新 turn 结构时，`下一个` 还需额外先抑制显示，待 turn 结构稳定后再恢复正常计算。按钮本体不参与正文文本选中与长按选中，只提供点击跳转；当前 `terminal-chat-screen` 一旦存在有效文本选区，四键需立即隐藏，避免压住复制拖拽路径与选区手柄。
 - 浏览器底部工具栏伸缩、软键盘收起或视口回弹后，底部输入条立即回贴可见底边。
-- 输入框聚焦时仅允许通过顶层 portal 渲染的 fixed Composer 自身贴住动态视口底边；真实输入框不再作为 Terminal workspace body 的 DOM 后代参与 iOS 焦点滚动链路。运行页不再通过页面级滚动锚回或正文滚动锁接管浏览器键盘动画，Terminal 主工作区由 App Shell 的 `100dvh` 高度链对齐可见视口；移动 workbar 单独用 `VisualViewport.offsetTop` 驱动合成层 transform 对齐 visual viewport 顶边，workspace header 与正文 panel 不做屏幕坐标对冲，长对话下输入框仍需保持可见、可聚焦、可提交。
-- Terminal 移动端只把底部 Composer 的静态 footprint 同步给 `terminal-chat-screen`；真实 Composer 位于 workspace body 外的顶层 fixed portal，软键盘弹起期间输出区、空态和 Process 展开态保持原高度和原位置，不跟随键盘高度变化压缩或回弹。
+- 输入框聚焦时 Terminal Composer 作为 workspace grid footer 贴住动态视口底边；真实输入框保留在 Terminal workspace body 内，不再通过顶层 portal 或 fixed bottom 脱离布局。运行页不通过页面级滚动锚回或正文滚动锁接管浏览器键盘动画，Terminal 主工作区由 App Shell 的动态视口高度链对齐可见视口；workspace header、正文 panel 与 Composer 都留在同一 grid 闭合链路内，长对话下输入框仍需保持可见、可聚焦、可提交。
+- Terminal 移动端输出区、空态和 Process 展开态由 workspace grid 中间行自然压缩到 Composer 上沿；软键盘弹起期间不使用 Composer spacer、键盘高度 padding 或额外 bottom inset 扩展可滚范围。
 - Terminal 移动端软键盘弹起期间，底部 Composer 必须保持为工作区最高交互层；右侧 `terminal-jump-cluster` 四键定位条在主输入框聚焦后必须主动隐藏，待输入框失焦、键盘收起后再恢复，不得压到输入框、附件条或键盘上方。
 - Terminal 的主输入框在移动端必须关闭系统自动填充、卡片、地址与密码类输入辅助条；键盘上沿不得再挂出会暴露底部残留页面层的系统输入助手。
 - Terminal 移动端的命令与 prompt 气泡必须维持自然整词换行：shell 命令、路径、flag 与短参数块优先按空格或真实长单词边界换行，不允许把 `/usr/bin/bash -lc 'pwd'` 这类输入压成逐字或逐 token 断裂的碎行。
@@ -145,12 +145,12 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 - Terminal 移动端的顶部操作行、prompt 气泡、`Process` 容器、最终输出和 Composer 都必须绑定到当前运行页宽度；长路径、超长错误日志、inline code、pre/code 与 diff 只能在自身内容块内换行或内部横向滚动，不得制造页面级横向滚动，也不得把 `Menu / 标题 / New` 或输入区挤出可视宽度。
 - Terminal 移动端的 `Menu` 与 `Sessions` 抽屉共用同一份当前面板状态：从顶部操作行或工作区工具栏打开会话列表时，主导航抽屉必须立即收起；重新打开 `Menu` 时，会话列表也必须立即关闭，避免双层覆盖和残留展开态。
 - Terminal 会话抽屉内的条目统一采用工作台列表项语义：头部展示当前态信号，正文展示标题与同一行中的时间信息、8 位短标识，删除入口固定在尾侧；列表容器保持独立滚动并输出稳定 `role="list"` 语义，视觉层级保持克制，不使用多余胶囊装饰；PC 端状态、详情、发送、上传、短标识与跳转控件统一使用平面化工具控件节奏。
-- Terminal 在移动端键盘弹起和收回期间，除 fixed Composer 外的公共控件都保持在 App Shell 内部 `100dvh` 高度链上；工作区头部、状态区、输出区、命令候选与配置面板不跟随键盘高度做布局动画，右侧四键定位条在输入框聚焦期间隐藏。Composer 通过 `bottom: 0` 贴住动态视口底边，避免输入区突跳、消失或页面整体被重复顶起。
+- Terminal 在移动端键盘弹起和收回期间，公共控件都保持在 App Shell 动态视口高度链上；工作区头部、状态区、输出区、命令候选与配置面板不跟随键盘高度做布局动画，右侧四键定位条在输入框聚焦期间隐藏。Composer 作为 workspace grid footer 贴住动态视口底边，避免输入区突跳、消失或页面整体被重复顶起。
 - Terminal 的移动端发送按钮支持在软键盘保持打开时直接点按提交；首触发送需覆盖 `pointerdown(touch)` 与 `touchstart` 提交链路，并在同一次触摸内去重，立即进入 `submitInput`，不允许先触发键盘收起或焦点切换，再要求第二次点击。
 - Terminal 的 Composer 不再额外叠加 `bottom` 过渡动画；键盘收起与输入区回弹阶段直接按动态视口底边回贴，避免明显卡顿。
 - Terminal 在输入框失焦后，必须随 `100dvh` 恢复逐步释放高度；不能先闪回到底边再被后续 resize 顶起。
-- Terminal 移动端的 `terminal-jump-cluster` 只按静态 Composer footprint 停靠，不跟随键盘位移一起上移：四键按钮在输入框聚焦且键盘弹起时主动隐藏，键盘取消与视口回弹后再稳定回到 Composer 上沿之上，不允许落到底部输入条下方或留下半截可见残影。
-- Terminal 在输入框失焦、键盘收起和 Composer 回弹到底边的过渡阶段，`terminal-chat-screen` 与 `terminal-jump-cluster` 保持静态 Composer footprint；页面底部不得残留上一轮键盘高度对应的空白带。
+- Terminal 移动端的 `terminal-jump-cluster` 停靠在 Composer 上沿之上，不跟随键盘位移一起上移：四键按钮在输入框聚焦且键盘弹起时主动隐藏，键盘取消与视口回弹后再稳定回到 Composer 上沿之上，不允许落到底部输入条下方或留下半截可见残影。
+- Terminal 在输入框失焦、键盘收起和 Composer 回弹到底边的过渡阶段，`terminal-chat-screen` 与 `terminal-jump-cluster` 继续由 workspace grid 和 Composer footer 边界约束；页面底部不得残留上一轮键盘高度对应的空白带。
 
 ### 性能
 

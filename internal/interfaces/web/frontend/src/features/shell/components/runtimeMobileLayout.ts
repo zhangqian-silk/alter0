@@ -36,12 +36,12 @@ export function resolveRuntimeMobileLayoutState({
   return inputFocused ? "mobile-keyboard" : "mobile-rest";
 }
 
-export function runtimeMobileLayoutSuspendsComposer(state: RuntimeMobileLayoutState | undefined): boolean {
+export function runtimeMobileLayoutAllowsComposerInteraction(state: RuntimeMobileLayoutState | undefined): boolean {
   switch (state) {
     case "mobile-primary-nav-drawer":
     case "mobile-session-drawer":
-      return true;
-    default:
       return false;
+    default:
+      return true;
   }
 }

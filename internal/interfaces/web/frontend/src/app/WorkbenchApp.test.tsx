@@ -172,6 +172,28 @@ describe("WorkbenchApp", () => {
     expect(shell).not.toHaveClass("overlay-open");
   });
 
+  it("blurs the active input before opening a mobile drawer", async () => {
+    mockIsLegacyShellMobileViewport.mockReturnValue(true);
+    render(<WorkbenchApp />);
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "toggle nav" }));
+      expect(document.activeElement).not.toBe(input);
+
+      fireEvent.click(screen.getByRole("button", { name: "Close panels" }));
+      input.focus();
+      expect(document.activeElement).toBe(input);
+      fireEvent.click(screen.getByRole("button", { name: "open sessions" }));
+      expect(document.activeElement).not.toBe(input);
+    } finally {
+      input.remove();
+    }
+  });
+
   it("opens the mobile primary nav when runtime sessions are owned by the left rail", async () => {
     mockIsLegacyShellMobileViewport.mockReturnValue(true);
     const { container } = render(<WorkbenchApp />);

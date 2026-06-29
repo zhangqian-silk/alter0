@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { WorkbenchContext, type WorkbenchSessionRail } from "./WorkbenchContext";
 import { isConversationRoute, useWorkbenchRoute } from "./routeState";
 import {
@@ -20,6 +21,37 @@ function RouteMobileMenuIcon() {
       <path d="M4.5 10h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
       <path d="M4.5 13.75h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
+  );
+}
+
+function blurActiveRuntimeInput() {
+  const active = document.activeElement;
+  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+    active.blur();
+  }
+}
+
+function MobileOverlayPortal({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: ReactNode;
+}) {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  return createPortal(
+    <div
+      className={[
+        "workbench-mobile-overlay-portal",
+        active ? "nav-open overlay-open" : "",
+      ].filter(Boolean).join(" ")}
+      data-workbench-mobile-overlay-portal="true"
+    >
+      {children}
+    </div>,
+    document.body,
   );
 }
 
@@ -88,6 +120,29 @@ export function WorkbenchApp() {
   const runtimeSessionsUseNav = Boolean(visibleSessionRail);
   const navOpen = mobilePanel === "nav";
   const sessionPaneOpen = !runtimeSessionsUseNav && mobilePanel === "sessions";
+  const toggleMobileNav = useCallback(() => {
+    setMobilePanel((current) => {
+      const opening = current !== "nav";
+      if (opening) {
+        blurActiveRuntimeInput();
+      }
+      return opening ? "nav" : null;
+    });
+  }, []);
+  const toggleMobileSessionPane = useCallback(() => {
+    setMobilePanel((current) => {
+      const nextPanel = runtimeSessionsUseNav ? "nav" : "sessions";
+      const opening = current !== nextPanel;
+      if (opening) {
+        blurActiveRuntimeInput();
+      }
+      return opening ? nextPanel : null;
+    });
+  }, [runtimeSessionsUseNav]);
+  const openMobileSessionPane = useCallback(() => {
+    blurActiveRuntimeInput();
+    setMobilePanel(runtimeSessionsUseNav ? "nav" : "sessions");
+  }, [runtimeSessionsUseNav]);
 
   useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
@@ -131,14 +186,9 @@ export function WorkbenchApp() {
     isMobileViewport,
     mobileNavOpen: navOpen,
     mobileSessionPaneOpen: sessionPaneOpen,
-    toggleMobileNav: () => setMobilePanel((current) => current === "nav" ? null : "nav"),
-    toggleMobileSessionPane: () => setMobilePanel((current) => {
-      if (runtimeSessionsUseNav) {
-        return current === "nav" ? null : "nav";
-      }
-      return current === "sessions" ? null : "sessions";
-    }),
-    openMobileSessionPane: () => setMobilePanel(runtimeSessionsUseNav ? "nav" : "sessions"),
+    toggleMobileNav,
+    toggleMobileSessionPane,
+    openMobileSessionPane,
     closeMobileNav: () => setMobilePanel((current) => current === "nav" ? null : current),
     closeMobileSessionPane: () => setMobilePanel((current) => {
       if (runtimeSessionsUseNav) {
@@ -147,31 +197,53 @@ export function WorkbenchApp() {
       return current === "sessions" ? null : current;
     }),
     setRuntimeSessionRail,
-  }), [route, language, navigate, isMobileViewport, navOpen, sessionPaneOpen, runtimeSessionsUseNav]);
+  }), [
+    route,
+    language,
+    navigate,
+    isMobileViewport,
+    navOpen,
+    sessionPaneOpen,
+    runtimeSessionsUseNav,
+    toggleMobileNav,
+    toggleMobileSessionPane,
+    openMobileSessionPane,
+  ]);
+  const primaryNav = (
+    <PrimaryNav
+      currentRoute={route}
+      language={language}
+      navCollapsed={navCollapsed}
+      sessionRail={visibleSessionRail}
+      onNavigate={(nextRoute) => {
+        navigate(nextRoute);
+        if (isMobileViewport) {
+          setMobilePanel(null);
+        }
+      }}
+      onToggleLanguage={() => setLanguage((current) => current === "zh" ? "en" : "zh")}
+      onToggleNavCollapsed={() => {
+        if (isMobileViewport) {
+          toggleMobileNav();
+          return;
+        }
+        setNavCollapsed((current) => !current);
+      }}
+    />
+  );
+  const mobileBackdrop = (
+    <button
+      className="mobile-backdrop"
+      type="button"
+      aria-label="Close panels"
+      onClick={() => setMobilePanel(null)}
+    ></button>
+  );
 
   return (
     <WorkbenchContext.Provider value={contextValue}>
       <div className={shellClassName} data-workbench-route={route}>
-        <PrimaryNav
-          currentRoute={route}
-          language={language}
-          navCollapsed={navCollapsed}
-          sessionRail={visibleSessionRail}
-          onNavigate={(nextRoute) => {
-            navigate(nextRoute);
-            if (isMobileViewport) {
-              setMobilePanel(null);
-            }
-          }}
-          onToggleLanguage={() => setLanguage((current) => current === "zh" ? "en" : "zh")}
-          onToggleNavCollapsed={() => {
-            if (isMobileViewport) {
-              setMobilePanel((current) => current === "nav" ? null : "nav");
-              return;
-            }
-            setNavCollapsed((current) => !current);
-          }}
-        />
+        {isMobileViewport ? null : primaryNav}
         <main className="workbench-main">
           <div className="chat-pane page-mode workbench-pane-shell" data-route={route} data-workbench-pane-shell>
             {isConversationRoute(route) || route === "terminal" ? (
@@ -182,18 +254,19 @@ export function WorkbenchApp() {
                 language={language}
                 isMobileViewport={isMobileViewport}
                 mobileNavOpen={navOpen}
-                onToggleMobileNav={() => setMobilePanel((current) => current === "nav" ? null : "nav")}
+                onToggleMobileNav={toggleMobileNav}
               />
             )}
           </div>
         </main>
-        <button
-          className="mobile-backdrop"
-          type="button"
-          aria-label="Close panels"
-          onClick={() => setMobilePanel(null)}
-        ></button>
+        {isMobileViewport ? null : mobileBackdrop}
       </div>
+      {isMobileViewport ? (
+        <MobileOverlayPortal active={navOpen || sessionPaneOpen}>
+          {primaryNav}
+          {mobileBackdrop}
+        </MobileOverlayPortal>
+      ) : null}
     </WorkbenchContext.Provider>
   );
 }

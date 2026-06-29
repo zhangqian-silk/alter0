@@ -189,7 +189,7 @@ describe("RuntimeWorkspacePage", () => {
     }
   });
 
-  it("renders the mobile composer in a top-level portal and leaves only a spacer in the workspace body", () => {
+  it("renders the mobile composer as the workspace footer instead of portaling it to body", () => {
     const controller = buildController();
     controller.composerNode = (
       <footer className="runtime-composer-shell" data-testid="runtime-composer">
@@ -204,21 +204,17 @@ describe("RuntimeWorkspacePage", () => {
     try {
       const workspaceBody = container.querySelector(".runtime-workspace-body");
       const composer = screen.getByTestId("runtime-composer");
-      const portalHost = document.body.querySelector("[data-runtime-composer-portal-host='chat']");
 
       expect(workspaceBody).toBeInTheDocument();
-      expect(workspaceBody?.querySelector(".runtime-composer-shell")).not.toBeInTheDocument();
-      expect(workspaceBody?.querySelector("[data-runtime-composer-spacer='chat']")).toBeInTheDocument();
-      expect(portalHost).toContainElement(composer);
-      expect(portalHost).toHaveAttribute("data-runtime-composer-view", "conversation");
-      expect(portalHost).not.toHaveAttribute("data-runtime-view");
+      expect(workspaceBody).toContainElement(composer);
+      expect(workspaceBody?.querySelector("[data-runtime-composer-spacer='chat']")).not.toBeInTheDocument();
+      expect(document.body.querySelector("[data-runtime-composer-portal-host='chat']")).not.toBeInTheDocument();
     } finally {
       unmount();
-      expect(document.body.querySelector("[data-runtime-composer-portal-host='chat']")).not.toBeInTheDocument();
     }
   });
 
-  it("suspends the mobile composer portal while the session drawer owns the viewport", () => {
+  it("keeps the mobile composer visible but non-interactive while the session drawer owns the viewport", () => {
     const controller = buildController();
     controller.shell.mobileLayoutState = "mobile-session-drawer";
     controller.shell.sessionPaneClassName = "is-open";
@@ -236,18 +232,17 @@ describe("RuntimeWorkspacePage", () => {
     try {
       const shell = container.querySelector(".runtime-workspace-shell");
       const workspaceBody = container.querySelector(".runtime-workspace-body");
-      const portalHost = document.body.querySelector("[data-runtime-composer-portal-host='chat']");
 
       expect(shell).toHaveAttribute("data-runtime-mobile-layout", "mobile-session-drawer");
-      expect(workspaceBody).toHaveAttribute("data-runtime-composer-suspended", "true");
-      expect(portalHost).toHaveAttribute("data-runtime-composer-suspended", "true");
-      expect(portalHost).toHaveAttribute("aria-hidden", "true");
+      expect(workspaceBody).toHaveAttribute("data-runtime-composer-interactive", "false");
+      expect(workspaceBody?.querySelector(".runtime-composer-shell")).toBeInTheDocument();
+      expect(document.body.querySelector("[data-runtime-composer-portal-host='chat']")).not.toBeInTheDocument();
     } finally {
       unmount();
     }
   });
 
-  it("suspends the mobile composer portal while the primary nav drawer owns the viewport", () => {
+  it("keeps the mobile composer visible but non-interactive while the primary nav drawer owns the viewport", () => {
     const controller = buildController();
     controller.shell.mobileLayoutState = "mobile-primary-nav-drawer";
     controller.composerNode = (
@@ -264,12 +259,11 @@ describe("RuntimeWorkspacePage", () => {
     try {
       const shell = container.querySelector(".runtime-workspace-shell");
       const workspaceBody = container.querySelector(".runtime-workspace-body");
-      const portalHost = document.body.querySelector("[data-runtime-composer-portal-host='chat']");
 
       expect(shell).toHaveAttribute("data-runtime-mobile-layout", "mobile-primary-nav-drawer");
-      expect(workspaceBody).toHaveAttribute("data-runtime-composer-suspended", "true");
-      expect(portalHost).toHaveAttribute("data-runtime-composer-suspended", "true");
-      expect(portalHost).toHaveAttribute("aria-hidden", "true");
+      expect(workspaceBody).toHaveAttribute("data-runtime-composer-interactive", "false");
+      expect(workspaceBody?.querySelector(".runtime-composer-shell")).toBeInTheDocument();
+      expect(document.body.querySelector("[data-runtime-composer-portal-host='chat']")).not.toBeInTheDocument();
     } finally {
       unmount();
     }
