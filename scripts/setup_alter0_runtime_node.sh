@@ -16,25 +16,29 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-RUN_AS="${ALTER0_RUN_AS:-alter0}"
+RUN_AS="${ALTER0_RUN_AS:-$(id -un)}"
 if ! id "${RUN_AS}" >/dev/null 2>&1; then
   echo "user not found: ${RUN_AS}" >&2
   exit 1
 fi
 RUN_GROUP="$(id -gn "${RUN_AS}")"
 
-RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-/var/lib/alter0}"
-HOME_DIR="${ALTER0_HOME:-${RUNTIME_ROOT}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+DEFAULT_HOME="${HOME:-$(getent passwd "${RUN_AS}" | cut -d: -f6)}"
+RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-${DEFAULT_HOME}/.alter0}"
+HOME_DIR="${ALTER0_HOME:-${HOME:-${DEFAULT_HOME}}}"
 if [[ "${HOME_DIR}" == "${RUNTIME_ROOT}/codex-home" ]]; then
   HOME_DIR="${RUNTIME_ROOT}"
 fi
 
-# Keep node/npm under the service account HOME so alter0 can use a private,
-# reproducible toolchain without relying on host-level npm or mutating /usr/local.
+# Keep node/npm under the configured HOME unless the deployment points PATH at
+# an existing user toolchain.
 LOCAL_DIR="${HOME_DIR}/.local"
 LOCAL_BIN_DIR="${LOCAL_DIR}/bin"
 NODE_INSTALL_ROOT="${ALTER0_NODE_INSTALL_ROOT:-${LOCAL_DIR}/nodejs}"
-PLAYWRIGHT_PROJECT_DIR="${ALTER0_PLAYWRIGHT_PROJECT_DIR:-/srv/alter0/app/internal/interfaces/web}"
+PLAYWRIGHT_PROJECT_DIR="${ALTER0_PLAYWRIGHT_PROJECT_DIR:-${REPO_DIR}/internal/interfaces/web}"
 FRONTEND_PROJECT_DIR="${ALTER0_FRONTEND_PROJECT_DIR:-${PLAYWRIGHT_PROJECT_DIR}/frontend}"
 INSTALL_E2E_DEPS="${ALTER0_INSTALL_E2E_DEPS:-true}"
 PREPARE_PNPM="${ALTER0_PREPARE_PNPM:-true}"

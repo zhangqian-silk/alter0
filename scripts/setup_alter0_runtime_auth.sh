@@ -16,22 +16,26 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-RUN_AS="${ALTER0_RUN_AS:-alter0}"
+RUN_AS="${ALTER0_RUN_AS:-$(id -un)}"
 if ! id "${RUN_AS}" >/dev/null 2>&1; then
   echo "user not found: ${RUN_AS}" >&2
   exit 1
 fi
 RUN_GROUP="$(id -gn "${RUN_AS}")"
 
-RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-/var/lib/alter0}"
-HOME_DIR="${ALTER0_HOME:-${RUNTIME_ROOT}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+DEFAULT_HOME="${HOME:-$(getent passwd "${RUN_AS}" | cut -d: -f6)}"
+RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-${DEFAULT_HOME}/.alter0}"
+HOME_DIR="${ALTER0_HOME:-${HOME:-${DEFAULT_HOME}}}"
 if [[ "${HOME_DIR}" == "${RUNTIME_ROOT}/codex-home" ]]; then
   HOME_DIR="${RUNTIME_ROOT}"
 fi
 
 GIT_USER_NAME="${ALTER0_GIT_USER_NAME:-alter0-silk[bot]}"
 GIT_USER_EMAIL="${ALTER0_GIT_USER_EMAIL:-264108545+alter0-silk[bot]@users.noreply.github.com}"
-REPO_DIR="${ALTER0_REPO_DIR:-/srv/alter0/app}"
+REPO_DIR="${ALTER0_REPO_DIR:-${DEFAULT_REPO_DIR}}"
 SOURCE_SIGNING_KEY="${ALTER0_GIT_SSH_SIGNING_KEY_SOURCE:-/root/.ssh/id_ed25519}"
 SOURCE_SIGNING_PUB="${ALTER0_GIT_SSH_SIGNING_PUB_SOURCE:-${SOURCE_SIGNING_KEY}.pub}"
 TARGET_SIGNING_KEY="${HOME_DIR}/.ssh/id_ed25519"
@@ -66,8 +70,12 @@ if [[ -d "${GITHUB_APP_DIR}" ]]; then
   find "${GITHUB_APP_DIR}" -maxdepth 1 -type f -exec chmod 640 {} +
 fi
 
-install -m 600 -o "${RUN_AS}" -g "${RUN_GROUP}" "${SOURCE_SIGNING_KEY}" "${TARGET_SIGNING_KEY}"
-install -m 644 -o "${RUN_AS}" -g "${RUN_GROUP}" "${SOURCE_SIGNING_PUB}" "${TARGET_SIGNING_PUB}"
+if [[ "$(readlink -f "${SOURCE_SIGNING_KEY}")" != "$(readlink -f "${TARGET_SIGNING_KEY}" 2>/dev/null || true)" ]]; then
+  install -m 600 -o "${RUN_AS}" -g "${RUN_GROUP}" "${SOURCE_SIGNING_KEY}" "${TARGET_SIGNING_KEY}"
+fi
+if [[ "$(readlink -f "${SOURCE_SIGNING_PUB}")" != "$(readlink -f "${TARGET_SIGNING_PUB}" 2>/dev/null || true)" ]]; then
+  install -m 644 -o "${RUN_AS}" -g "${RUN_GROUP}" "${SOURCE_SIGNING_PUB}" "${TARGET_SIGNING_PUB}"
+fi
 printf '%s %s\n' "${GIT_USER_EMAIL}" "$(cat "${TARGET_SIGNING_PUB}")" >"${ALLOWED_SIGNERS_PATH}"
 chown "${RUN_AS}:${RUN_GROUP}" "${ALLOWED_SIGNERS_PATH}"
 chmod 644 "${ALLOWED_SIGNERS_PATH}"
@@ -139,7 +147,7 @@ chmod 640 "${GITCONFIG_PATH}"
 tmp_gitconfig="$(mktemp)"
 cat >"${tmp_gitconfig}" <<EOF
 [safe]
-	directory = /srv/alter0/app
+	directory = ${REPO_DIR}
 [user]
 	name = ${GIT_USER_NAME}
 	email = ${GIT_USER_EMAIL}
