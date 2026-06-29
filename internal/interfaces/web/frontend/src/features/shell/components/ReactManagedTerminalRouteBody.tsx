@@ -55,6 +55,7 @@ import {
   type RuntimeBlock,
   type RuntimeTraceEvent,
 } from "./runtimeTraceEvents";
+import { useViewportScrollAnchor } from "./useViewportScrollAnchor";
 
 type TerminalStatus = "ready" | "busy" | "exited" | "failed" | "interrupted";
 
@@ -878,6 +879,12 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     pageHidden,
     scrollingActive,
     inputFocused,
+  });
+  useViewportScrollAnchor({
+    active: inputFocused,
+    containerRef: chatScreenRef,
+    enabled: workbench.isMobileViewport,
+    focusSelector: "[data-composer-input='terminal']",
   });
 
   const focusComposerInputWithoutScroll = () => {
