@@ -289,12 +289,12 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 		`const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";`,
 		`const MAX_COMPOSER_CHARS = 10000;`,
 		`const NEW_CHAT_DRAFT_KEY = "__chat_new__";`,
-		"function loadComposerDrafts()",
-		"function persistComposerDrafts(drafts: ComposerDraftMap)",
-		"const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts());",
-		"const activeDraftKey = activeSessionID || NEW_CHAT_DRAFT_KEY;",
+		"function loadComposerDrafts(route: ConversationRoute): ComposerDraftMap",
+		"function persistComposerDrafts(route: ConversationRoute, drafts: ComposerDraftMap)",
+		"const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts(route));",
+		"const activeDraftKey = activeSessionID || newDraftKeyForRoute(route);",
 		"const nextDrafts = { ...composerDrafts, [activeDraftKey]: value.slice(0, MAX_COMPOSER_CHARS) };",
-		"const nextDrafts = { ...composerDrafts, [session.id]: \"\", [NEW_CHAT_DRAFT_KEY]: \"\" };",
+		"const nextDrafts = { ...composerDrafts, [session.id]: \"\", [routeDraftKey]: \"\" };",
 	}
 	for _, marker := range runtimeMarkers {
 		if !strings.Contains(runtimeSource, marker) {

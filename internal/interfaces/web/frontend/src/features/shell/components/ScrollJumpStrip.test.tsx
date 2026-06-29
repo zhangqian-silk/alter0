@@ -223,6 +223,69 @@ describe("ScrollJumpStrip", () => {
     expect(scrollContainer.scrollTop).toBe(0);
   });
 
+  it("remeasures jump targets after earlier messages are prepended", async () => {
+    const containerRef = createRef<HTMLElement>();
+    const initialMessages = Array.from({ length: 41 }, (_value, index) => `message-${index + 40}`);
+    const renderStrip = (messages: string[]) => (
+      <section ref={containerRef}>
+        {messages.map((id) => (
+          <article key={id} data-message-id={id}>{id}</article>
+        ))}
+        <ScrollJumpStrip
+          scope="chat"
+          language="zh"
+          containerRef={containerRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+        />
+      </section>
+    );
+    const { container, rerender } = render(renderStrip(initialMessages));
+
+    const scrollContainer = container.firstElementChild as HTMLElement;
+    let targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-message-id]")];
+    applyScrollableMetrics(
+      scrollContainer,
+      targets,
+      targets.map((_target, index) => index * 100),
+      {
+        clientHeight: 260,
+        scrollHeight: 4300,
+        scrollTop: 3921,
+      },
+    );
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveAttribute(
+        "data-scroll-jump-target",
+        "message-79",
+      );
+    });
+
+    const expandedMessages = Array.from({ length: 65 }, (_value, index) => `message-${index + 16}`);
+    rerender(renderStrip(expandedMessages));
+    targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-message-id]")];
+    applyScrollableMetrics(
+      scrollContainer,
+      targets,
+      targets.map((_target, index) => index * 100),
+      {
+        clientHeight: 260,
+        scrollHeight: 6700,
+        scrollTop: 2421,
+      },
+    );
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveAttribute(
+        "data-scroll-jump-target",
+        "message-40",
+      );
+    });
+  });
+
   it("assigns route anchor ids to visible sections before jumping", async () => {
     const containerRef = createRef<HTMLElement>();
     const { container } = render(

@@ -325,11 +325,15 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
       }
       frame = window.requestAnimationFrame(sync);
     };
+    const scheduleDirtySync = () => {
+      measurementDirtyRef.current = true;
+      scheduleSync();
+    };
 
     scheduleSync();
     container.addEventListener("scroll", scheduleSync, { passive: true });
-    window.addEventListener("resize", scheduleSync);
-    const observer = new MutationObserver(scheduleSync);
+    window.addEventListener("resize", scheduleDirtySync);
+    const observer = new MutationObserver(scheduleDirtySync);
     observer.observe(container, {
       childList: true,
       subtree: true,
@@ -339,7 +343,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
 
     return () => {
       container.removeEventListener("scroll", scheduleSync);
-      window.removeEventListener("resize", scheduleSync);
+      window.removeEventListener("resize", scheduleDirtySync);
       observer.disconnect();
       if (frame) {
         window.cancelAnimationFrame(frame);

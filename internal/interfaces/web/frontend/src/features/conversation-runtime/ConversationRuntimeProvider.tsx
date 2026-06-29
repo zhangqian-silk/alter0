@@ -703,6 +703,16 @@ function shouldPollRuntimeBackedSession(session: ChatSession): boolean {
   return isConversationBusyStatus(session.status) || hasRecoverableRuntimeState(session);
 }
 
+function hasFullStableRuntimeSessionCache(session: ChatSession | null | undefined): session is ChatSession {
+  return Boolean(
+    session
+    && session.serverBacked === true
+    && session.messagesLoaded === true
+    && session.turnsPaging?.has_more_before === false
+    && !hasRecoverableRuntimeState(session),
+  );
+}
+
 function hasPersistedAssistantState(messages: ChatMessage[]): boolean {
   return messages.some((message) => {
     if (message.role !== "assistant") {
@@ -1913,6 +1923,14 @@ export function ConversationRuntimeProvider({
     options: { turnBefore?: string; turnLimit?: number } = {},
   ): Promise<ChatSession | null> => {
     void routeKey;
+    const normalizedSessionID = normalizeText(sessionID);
+    const isProgressiveHistoryRequest = Boolean(normalizeText(options.turnBefore));
+    const cachedSession = normalizedSessionID
+      ? sessionsByRouteRef.current[routeKey].find((session) => session.id === normalizedSessionID) || null
+      : null;
+    if (!isProgressiveHistoryRequest && hasFullStableRuntimeSessionCache(cachedSession)) {
+      return cachedSession;
+    }
     return refreshRuntimeSession(sessionID, options);
   };
 

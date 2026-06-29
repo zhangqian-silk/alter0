@@ -1,14 +1,16 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { ConversationWorkspace } from "./ConversationWorkspace";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../app/WorkbenchContext";
 import { conversationMarkdownSyntaxFixture } from "../shell/components/MessageMarkdownSyntaxFixture";
 
 const { buildChatTimelineItemsMock } = vi.hoisted(() => ({
-  buildChatTimelineItemsMock: vi.fn(({ messages }: { messages: Array<{ id: string }> }) =>
+  buildChatTimelineItemsMock: vi.fn(({ messages }: { messages: Array<{ id: string; role?: string }> }) =>
     messages.map((message) => ({
       id: message.id,
-      className: "msg assistant",
+      className: message.role === "user"
+        ? "msg user runtime-message-user"
+        : "msg assistant runtime-message-assistant",
       articleProps: { "data-message-id": message.id },
       bubbleClassName: "msg-bubble",
       blocks: [],
@@ -499,6 +501,67 @@ describe("ConversationWorkspace", () => {
     }));
   });
 
+  it("uses user messages as the Chat jump targets in both directions", async () => {
+    const messages = [
+      { id: "msg-1-user", role: "user", text: "One", at: Date.now(), status: "done" },
+      { id: "msg-1-assistant", role: "assistant", text: "Answer one", at: Date.now(), status: "done" },
+      { id: "msg-2-user", role: "user", text: "Two", at: Date.now(), status: "done" },
+      { id: "msg-2-assistant", role: "assistant", text: "Answer two", at: Date.now(), status: "done" },
+      { id: "msg-3-user", role: "user", text: "Three", at: Date.now(), status: "done" },
+      { id: "msg-3-assistant", role: "assistant", text: "Answer three", at: Date.now(), status: "done" },
+    ];
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Jump target session",
+      messages,
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+    expect(screenNode).toBeInTheDocument();
+    Object.defineProperty(screenNode, "clientHeight", {
+      configurable: true,
+      value: 180,
+    });
+    Object.defineProperty(screenNode, "scrollHeight", {
+      configurable: true,
+      value: 700,
+    });
+    Object.defineProperty(screenNode, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 330,
+    });
+    const items = Array.from(screenNode.querySelectorAll<HTMLElement>("[data-message-id]"));
+    items.forEach((item, index) => {
+      Object.defineProperty(item, "offsetTop", {
+        configurable: true,
+        value: index * 100,
+      });
+      Object.defineProperty(item, "offsetHeight", {
+        configurable: true,
+        value: 80,
+      });
+    });
+
+    fireEvent.scroll(screenNode);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Previous" })).toHaveAttribute("data-scroll-jump-target", "msg-2-user");
+    });
+
+    screenNode.scrollTop = 150;
+    fireEvent.scroll(screenNode);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Next" })).toHaveAttribute("data-scroll-jump-target", "msg-3-user");
+    });
+  });
+
   it("keeps the already visible Chat history in the render window after a new turn is appended", () => {
     const initialMessages = Array.from({ length: 32 }, (_value, index) => ({
       id: `msg-${index + 1}`,
@@ -625,6 +688,148 @@ describe("ConversationWorkspace", () => {
     }));
   });
 
+  it("coalesces repeated scroll-triggered Chat history loads before restoring the viewport", () => {
+    const messages = Array.from({ length: 96 }, (_value, index) => ({
+      id: `msg-${index + 1}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      text: `Message ${index + 1}`,
+      attachments: [],
+      route: "chat",
+      source: "chat",
+      error: false,
+      status: "done",
+      at: Date.parse("2026-04-23T09:00:00Z") + index,
+      processEvents: [],
+    }));
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Session with repeated top scroll",
+      messages,
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: messages.slice(-32),
+    }));
+    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+    expect(screenNode).toBeInTheDocument();
+    Object.defineProperty(screenNode, "scrollHeight", {
+      configurable: true,
+      get() {
+        const latestCall = buildChatTimelineItemsMock.mock.calls[buildChatTimelineItemsMock.mock.calls.length - 1];
+        return (latestCall?.[0]?.messages.length || 0) * 10;
+      },
+    });
+    Object.defineProperty(screenNode, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    act(() => {
+      screenNode.dispatchEvent(new Event("scroll"));
+      screenNode.dispatchEvent(new Event("scroll"));
+    });
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: messages.slice(-64),
+    }));
+    expect(screenNode.scrollTop).toBe(320);
+  });
+
+  it("preserves the visible Chat message anchor when scroll-triggered history load changes measured height", () => {
+    const messages = Array.from({ length: 96 }, (_value, index) => ({
+      id: `msg-${index + 1}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      text: `Message ${index + 1}`,
+      attachments: [],
+      route: "chat",
+      source: "chat",
+      error: false,
+      status: "done",
+      at: Date.parse("2026-04-23T09:00:00Z") + index,
+      processEvents: [],
+    }));
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Session with unstable measured height",
+      messages,
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+    expect(screenNode).toBeInTheDocument();
+    Object.defineProperty(screenNode, "scrollHeight", {
+      configurable: true,
+      get() {
+        const latestCall = buildChatTimelineItemsMock.mock.calls[buildChatTimelineItemsMock.mock.calls.length - 1];
+        return (latestCall?.[0]?.messages.length || 0) > 32 ? 1300 : 1000;
+      },
+    });
+    Object.defineProperty(screenNode, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 24,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getTestRect() {
+      if (this === screenNode) {
+        return {
+          x: 0,
+          y: 0,
+          width: 720,
+          height: 400,
+          top: 0,
+          right: 720,
+          bottom: 400,
+          left: 0,
+          toJSON: () => ({}),
+        };
+      }
+      if (this instanceof HTMLElement && this.hasAttribute("data-message-id")) {
+        const items = Array.from(screenNode.querySelectorAll<HTMLElement>("[data-message-id]"));
+        const index = Math.max(0, items.indexOf(this));
+        const top = index * 100 - screenNode.scrollTop;
+        return {
+          x: 0,
+          y: top,
+          width: 640,
+          height: 100,
+          top,
+          right: 640,
+          bottom: top + 100,
+          left: 0,
+          toJSON: () => ({}),
+        };
+      }
+      return {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        toJSON: () => ({}),
+      };
+    });
+
+    fireEvent.scroll(screenNode, { target: { scrollTop: 24 } });
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: messages.slice(-64),
+    }));
+    expect(screenNode.scrollTop).toBe(3224);
+  });
+
   it("keeps the visible Chat window stable when background history is prepended", () => {
     const messages = Array.from({ length: 40 }, (_value, index) => ({
       id: `msg-${index + 1}`,
@@ -686,6 +891,78 @@ describe("ConversationWorkspace", () => {
       messages: messages.slice(-32),
     }));
     expect(screenNode.scrollTop).toBe(120);
+  });
+
+  it("keeps the current Chat viewport unchanged while a short session receives background history", () => {
+    const latestMessage = {
+      id: "msg-latest",
+      role: "assistant",
+      text: "Latest answer",
+      attachments: [],
+      route: "chat",
+      source: "chat",
+      error: false,
+      status: "done",
+      at: Date.parse("2026-04-23T09:30:00Z"),
+      processEvents: [],
+    };
+    const olderMessages = [
+      {
+        id: "msg-older-1",
+        role: "user",
+        text: "Older prompt",
+        attachments: [],
+        route: "chat",
+        source: "chat",
+        error: false,
+        status: "done",
+        at: Date.parse("2026-04-23T09:00:00Z"),
+        processEvents: [],
+      },
+      {
+        id: "msg-older-2",
+        role: "assistant",
+        text: "Older answer",
+        attachments: [],
+        route: "chat",
+        source: "chat",
+        error: false,
+        status: "done",
+        at: Date.parse("2026-04-23T09:00:01Z"),
+        processEvents: [],
+      },
+    ];
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Session with short cached tail",
+      messages: [latestMessage],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    const { rerender } = render(<WorkspaceTestFrame overrides={{ isMobileViewport: false }} />);
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: [latestMessage],
+    }));
+
+    runtimeMock.activeSession = {
+      ...runtimeMock.activeSession,
+      messages: [...olderMessages, latestMessage],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    rerender(<WorkspaceTestFrame overrides={{ isMobileViewport: false }} />);
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: [latestMessage],
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Load earlier messages" }));
+
+    expect(buildChatTimelineItemsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: [...olderMessages, latestMessage],
+    }));
   });
 
   it("keeps Details focused on Chat metadata without Chat panels", () => {
