@@ -3392,6 +3392,48 @@ describe("ReactManagedTerminalRouteBody", () => {
     }
   });
 
+  it("keeps the terminal output anchored when the mobile keyboard resizes the viewport", async () => {
+    installImmediateAnimationFrame();
+
+    renderTerminalRouteBody({
+      isMobileViewport: true,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-terminal-turn='turn-1']")).toBeInTheDocument();
+    });
+
+    const chatScreen = document.querySelector("[data-runtime-screen='terminal']") as HTMLDivElement;
+    const input = document.querySelector("[data-composer-input='terminal']") as HTMLTextAreaElement;
+    const metrics = {
+      clientHeight: 500,
+      scrollHeight: 1000,
+      scrollTop: 500,
+    };
+
+    Object.defineProperty(chatScreen, "clientHeight", {
+      configurable: true,
+      get: () => metrics.clientHeight,
+    });
+    Object.defineProperty(chatScreen, "scrollHeight", {
+      configurable: true,
+      get: () => metrics.scrollHeight,
+    });
+    Object.defineProperty(chatScreen, "scrollTop", {
+      configurable: true,
+      get: () => metrics.scrollTop,
+      set: (value) => {
+        metrics.scrollTop = Number(value || 0);
+      },
+    });
+
+    fireEvent.focus(input);
+    metrics.clientHeight = 300;
+    window.dispatchEvent(new Event("resize"));
+
+    await waitFor(() => expect(metrics.scrollTop).toBe(700));
+  });
+
   it("targets the visible turn for previous and the real next turn when only one terminal turn is visible", async () => {
     installImmediateAnimationFrame();
     stubTerminalTurnsFetch([
