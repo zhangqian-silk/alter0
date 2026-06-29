@@ -17,9 +17,10 @@ fi
 WEB_ADDR="${ALTER0_WEB_ADDR:-127.0.0.1:18088}"
 WEB_BIND_LOCALHOST_ONLY="${ALTER0_WEB_BIND_LOCALHOST_ONLY:-true}"
 WEB_LOGIN_PASSWORD="${ALTER0_WEB_LOGIN_PASSWORD:-}"
-RUN_AS="${ALTER0_RUN_AS:-alter0}"
+RUN_AS="${ALTER0_RUN_AS:-$(id -un)}"
 
-RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-/var/lib/alter0}"
+DEFAULT_HOME="${HOME:-$(getent passwd "$(id -un)" | cut -d: -f6)}"
+RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-${DEFAULT_HOME}/.alter0}"
 HOME_DIR="${ALTER0_HOME:-}"
 if [[ -z "${HOME_DIR}" ]]; then
   case "${HOME:-}" in
@@ -32,9 +33,9 @@ if [[ "${HOME_DIR}" == "${RUNTIME_ROOT}/codex-home" ]]; then
   HOME_DIR="${RUNTIME_ROOT}"
 fi
 if [[ -z "${HOME_DIR}" ]]; then
-  HOME_DIR="${RUNTIME_ROOT}"
+  HOME_DIR="${DEFAULT_HOME}"
 fi
-LOG_FILE="${ALTER0_LOG_FILE:-/var/log/alter0/alter0.log}"
+LOG_FILE="${ALTER0_LOG_FILE:-${HOME_DIR}/alter0/logs/alter0.log}"
 LOCK_FILE="${RUNTIME_ROOT}/run.lock"
 ALTER0_RUNTIME_MANAGER="${ALTER0_RUNTIME_MANAGER:-systemd}"
 ALTER0_SYSTEMD_UNIT="${ALTER0_SYSTEMD_UNIT:-alter0.service}"
@@ -50,12 +51,6 @@ chmod 700 "${REPO_DIR}/.alter0" || true
 touch "${LOG_FILE}"
 chmod 640 "${LOG_FILE}" || true
 export HOME="${HOME_DIR}"
-
-if [[ "$(id -un)" == "root" ]]; then
-  echo "start_alter0_service.sh should run as ${RUN_AS}, not root" >&2
-  echo "configure systemd User=${RUN_AS} Group=${RUN_AS}" >&2
-  exit 1
-fi
 
 exec 9>"${LOCK_FILE}"
 flock -n 9 || {

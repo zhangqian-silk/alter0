@@ -61,7 +61,9 @@ if ! "$SYSTEMCTL" cat "$UNIT" >/dev/null 2>&1; then
 fi
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOCK_DIR="${ALTER0_DEPLOY_LOCK_DIR:-/var/lib/alter0}"
+DEFAULT_HOME="${HOME:-$(getent passwd "$(id -un)" | cut -d: -f6)}"
+RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-${DEFAULT_HOME}/.alter0}"
+LOCK_DIR="${ALTER0_DEPLOY_LOCK_DIR:-${RUNTIME_ROOT}}"
 mkdir -p "$LOCK_DIR"
 LOCK_FILE="$LOCK_DIR/relaunch.lock"
 exec 9>"$LOCK_FILE"

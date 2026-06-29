@@ -13,6 +13,8 @@ func TestServiceBuildScriptsUseUnifiedFrontendAwareBuild(t *testing.T) {
 	buildScript := readRepositoryFile(t, repoRoot, "scripts/build_alter0_service.sh")
 	startScript := readRepositoryFile(t, repoRoot, "scripts/start_alter0_service.sh")
 	relaunchScript := readRepositoryFile(t, repoRoot, "scripts/relaunch_service.sh")
+	authSetupScript := readRepositoryFile(t, repoRoot, "scripts/setup_alter0_runtime_auth.sh")
+	nodeSetupScript := readRepositoryFile(t, repoRoot, "scripts/setup_alter0_runtime_node.sh")
 	makefile := readRepositoryFile(t, repoRoot, "Makefile")
 	buildScriptInfo, err := os.Stat(buildScriptPath)
 	if err != nil {
@@ -36,6 +38,17 @@ func TestServiceBuildScriptsUseUnifiedFrontendAwareBuild(t *testing.T) {
 	assertNotContains(t, startScript, "-long-term-memory-path")
 	assertNotContains(t, startScript, "-mandatory-context-file")
 	assertNotContains(t, startScript, "ALTER0_STORAGE_DIR")
+	for _, script := range map[string]string{
+		"start_alter0_service.sh":      startScript,
+		"relaunch_service.sh":          relaunchScript,
+		"setup_alter0_runtime_auth.sh": authSetupScript,
+		"setup_alter0_runtime_node.sh": nodeSetupScript,
+	} {
+		assertNotContains(t, script, "/srv/alter0")
+		assertNotContains(t, script, "/var/lib/alter0")
+		assertNotContains(t, script, "should run as")
+		assertNotContains(t, script, "runuser -u")
+	}
 	assertContains(t, makefile, "build:")
 	assertContains(t, makefile, "scripts/build_alter0_service.sh")
 }

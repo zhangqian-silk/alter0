@@ -171,8 +171,10 @@ func TestWorkbenchMobileNavOverlayStylesPresent(t *testing.T) {
 
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	styleMarkers := []string{
-		".app-shell.nav-open .primary-nav {",
-		".app-shell.overlay-open .mobile-backdrop {",
+		".app-shell.nav-open .primary-nav,",
+		".workbench-mobile-overlay-portal.nav-open .primary-nav {",
+		".app-shell.overlay-open .mobile-backdrop,",
+		".workbench-mobile-overlay-portal.overlay-open .mobile-backdrop {",
 		".mobile-backdrop {",
 	}
 	for _, marker := range styleMarkers {
