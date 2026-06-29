@@ -39,9 +39,6 @@
   --mobile-viewport-height: 100dvh;
   --mobile-viewport-offset-top: 0px;
   --keyboard-offset: 0px;
-  --keyboard-composer-offset: 0px;
-  --runtime-scroll-bottom-inset: 0px;
-  --runtime-composer-height: 0px;
 }
 
 /* UI UX Pro Max lightweight workbench refresh */

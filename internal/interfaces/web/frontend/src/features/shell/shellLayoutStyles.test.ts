@@ -465,9 +465,6 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("--mobile-viewport-height: 100dvh;");
     expect(stylesheet).toContain("--mobile-viewport-offset-top: 0px;");
     expect(stylesheet).toContain("--keyboard-offset: 0px;");
-    expect(stylesheet).toContain("--keyboard-composer-offset: 0px;");
-    expect(stylesheet).toContain("--runtime-scroll-bottom-inset: 0px;");
-    expect(stylesheet).toContain("--runtime-composer-height: 0px;");
     expect(isolationStylesheet).toMatch(/Mobile runtime keyboard isolation:[\s\S]*?height:\s*max\(0px, calc\(var\(--mobile-viewport-height, 100dvh\) - var\(--mobile-viewport-offset-top, 0px\)\)\);/);
     expect(stylesheet).toContain(".chat-pane:not(.page-mode) {");
     expect(stylesheet).toContain(".chat-pane.page-mode {");

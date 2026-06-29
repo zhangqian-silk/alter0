@@ -1100,7 +1100,6 @@ test.describe("Chat composer", () => {
       const mobileHeaderStyle = getComputedStyle(mobileHeader);
       return {
         keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
-        keyboardComposerOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-composer-offset").trim(),
         mobileViewportOffsetTop: getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-offset-top").trim(),
         viewportHeight: viewport.height,
         viewportOffsetTop: viewport.offsetTop,
@@ -1357,12 +1356,10 @@ test.describe("Chat composer", () => {
       const screenRect = screenNode.getBoundingClientRect();
       const composerRect = composer.getBoundingClientRect();
       return {
-        scrollBottomInset: workspaceBody.style.getPropertyValue("--runtime-scroll-bottom-inset").trim(),
         screenPaddingBottom: getComputedStyle(screenNode).paddingBottom,
         screenEndsBeforeComposer: screenRect.bottom <= composerRect.top + 2,
       };
     })).toEqual({
-      scrollBottomInset: "",
       screenPaddingBottom: "20px",
       screenEndsBeforeComposer: true,
     });

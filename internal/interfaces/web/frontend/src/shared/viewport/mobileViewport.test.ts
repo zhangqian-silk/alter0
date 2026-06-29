@@ -39,7 +39,6 @@ describe("shared viewport mobileViewport", () => {
       mobileViewportHeight: "100dvh",
       mobileViewportOffsetTop: "0px",
       keyboardOffset: "0px",
-      keyboardComposerOffset: "0px"
     });
   });
 
@@ -69,7 +68,6 @@ describe("shared viewport mobileViewport", () => {
       mobileViewportHeight: "650px",
       mobileViewportOffsetTop: "0px",
       keyboardOffset: "150px",
-      keyboardComposerOffset: "150px"
     });
   });
 
@@ -99,7 +97,6 @@ describe("shared viewport mobileViewport", () => {
       mobileViewportHeight: "620px",
       mobileViewportOffsetTop: "0px",
       keyboardOffset: "312px",
-      keyboardComposerOffset: "312px"
     });
   });
 
@@ -153,7 +150,6 @@ describe("shared viewport mobileViewport", () => {
       mobileViewportHeight: "620px",
       mobileViewportOffsetTop: "0px",
       keyboardOffset: "312px",
-      keyboardComposerOffset: "312px"
     });
 
     const settled = deriveMobileViewportState(previous, {
@@ -199,11 +195,10 @@ describe("shared viewport mobileViewport", () => {
       mobileViewportHeight: "932px",
       mobileViewportOffsetTop: "312px",
       keyboardOffset: "0px",
-      keyboardComposerOffset: "0px"
     });
   });
 
-  it("does not apply an extra composer inset when the layout viewport already resized for the keyboard", () => {
+  it("keeps the keyboard offset when the layout viewport already resized for the keyboard", () => {
     const previous = {
       ...createDefaultMobileViewportState(),
       baselineHeight: 932,
@@ -230,7 +225,6 @@ describe("shared viewport mobileViewport", () => {
       mobileViewportHeight: "620px",
       mobileViewportOffsetTop: "0px",
       keyboardOffset: "312px",
-      keyboardComposerOffset: "0px"
     });
   });
 
@@ -261,7 +255,6 @@ describe("shared viewport mobileViewport", () => {
       mobileViewportHeight: "932px",
       mobileViewportOffsetTop: "312px",
       keyboardOffset: "0px",
-      keyboardComposerOffset: "0px"
     });
 
     const recovered = deriveMobileViewportState(recovering.state, {
@@ -280,7 +273,6 @@ describe("shared viewport mobileViewport", () => {
       mobileViewportHeight: "932px",
       mobileViewportOffsetTop: "0px",
       keyboardOffset: "0px",
-      keyboardComposerOffset: "0px"
     });
   });
 

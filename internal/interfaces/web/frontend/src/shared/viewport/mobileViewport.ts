@@ -30,7 +30,6 @@ export type DeriveMobileViewportResult = {
     mobileViewportHeight: string;
     mobileViewportOffsetTop: string;
     keyboardOffset: string;
-    keyboardComposerOffset: string;
   };
   changed: {
     width: boolean;
@@ -57,16 +56,6 @@ export function isTerminalSessionSheetViewportWidth(width: number): boolean {
   return Number(width) <= TERMINAL_SESSION_SHEET_BREAKPOINT_PX;
 }
 
-function resolveKeyboardComposerOffset(
-  keyboardOffset: number,
-  layoutViewportResizedForKeyboard = false,
-): number {
-  if (layoutViewportResizedForKeyboard) {
-    return 0;
-  }
-  return Math.max(0, keyboardOffset);
-}
-
 export function deriveMobileViewportState(
   previous: MobileViewportState,
   input: DeriveMobileViewportInput,
@@ -79,7 +68,6 @@ export function deriveMobileViewportState(
         mobileViewportHeight: "100dvh",
         mobileViewportOffsetTop: "0px",
         keyboardOffset: "0px",
-        keyboardComposerOffset: "0px"
       },
       changed: {
         width: previousState.width !== 0,
@@ -113,10 +101,6 @@ export function deriveMobileViewportState(
   const viewportReportsKeyboard =
     reportedViewportKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
     && !widthChanged;
-  const layoutViewportResizedForKeyboard =
-    viewportReportsKeyboard
-    && Math.abs(Math.round(input.windowHeight) - reportedViewportHeight) <= 2
-    && viewportOffsetTop <= 2;
   const effectiveHeight = viewportBottomHeight;
   const keyboardRecentlyAligned =
     previousState.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
@@ -139,7 +123,6 @@ export function deriveMobileViewportState(
         mobileViewportHeight: `${previousState.height}px`,
         mobileViewportOffsetTop: `${viewportOffsetTop}px`,
         keyboardOffset: `${previousState.keyboardOffset}px`,
-        keyboardComposerOffset: `${resolveKeyboardComposerOffset(previousState.keyboardOffset, layoutViewportResizedForKeyboard)}px`
       },
       changed: {
         width: false,
@@ -192,7 +175,6 @@ export function deriveMobileViewportState(
       mobileViewportHeight: `${effectiveHeight}px`,
       mobileViewportOffsetTop: `${viewportOffsetTop}px`,
       keyboardOffset: `${keyboardOffset}px`,
-      keyboardComposerOffset: `${resolveKeyboardComposerOffset(keyboardOffset, layoutViewportResizedForKeyboard)}px`
     },
     changed: {
       width: widthChanged,

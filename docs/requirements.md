@@ -102,9 +102,8 @@
 - `Chat / Terminal` 的移动端 Composer 作为 workspace grid footer 时不得拦截消息区滚动手势：外层 footer 和 form surface 空白不应制造独立滚动层或捕获正文拖动，只有 textarea、附件、工具、发送、附件预览和配置面板等真实控件接收事件。
 - `Chat / Terminal` 在移动端软键盘打开期间，只允许主输入框自身和正文消息滚动区保留键盘焦点；移动 workbar、左侧抽屉、Composer 工具栏、附件、发送、设置面板、遮罩与其他运行页控件在触发动作前必须释放当前输入焦点，避免出现“抽屉/面板已打开但键盘仍占用视口”的叠层状态。
 - `Chat` 的移动端发送按钮在触摸提交时，必须先让当前主输入框失焦，再提交当前草稿；键盘回收与 composer 回弹由 `--mobile-viewport-height` 和 workspace grid 自然恢复，不允许发送后键盘停留不收或残留悬空底部占位。
-- `Chat / Terminal` 在移动端采用 fixed 底部 Composer 时，真实 Composer 必须位于 workspace body 外的顶层 portal，消息滚动区与空态工作区只保留静态 Composer footprint，不随软键盘高度动态压缩；对话、长输出与空态说明不得被键盘链路改写高度或位置。
 - `Chat / Terminal` 在移动端的 Composer 回弹到底边时，运行区保持原位；键盘收起、输入框失焦和视口回弹后，不允许遗留额外底部空白、悬空按钮或上一轮键盘高度对应的占位残影。
-- `Chat / Terminal` 在移动端键盘弹起与收回期间，只允许 App Shell 的 `--mobile-viewport-height` 改变可见高度；底部 Composer 必须是 workspace grid footer，随容器底边移动，不得通过 fixed bottom、`--keyboard-composer-offset`、transform 或 spacer 追加位移。顶部操作行、紧凑 workspace header、正文滚动区、空态、命令候选与配置面板保持布局原位，不跟随键盘位移做额外动画。
+- `Chat / Terminal` 在移动端键盘弹起与收回期间，只允许 App Shell 的 `--mobile-viewport-height` 改变可见高度；底部 Composer 必须是 workspace grid footer，随容器底边移动，不得通过 fixed bottom、transform 或 spacer 追加位移。顶部操作行、紧凑 workspace header、正文滚动区、空态、命令候选与配置面板保持布局原位，不跟随键盘位移做额外动画。
 - `Chat / Terminal` 在移动端软键盘弹起期间，底部 Composer 必须高于消息阅读定位按钮与 Terminal 四键定位条；消息阅读定位按钮与 Terminal 四键定位条在主输入框聚焦后必须主动隐藏，待输入框失焦、键盘收起后再恢复，不得压到输入框、附件条或键盘上方。左侧抽屉打开时先 blur 当前输入框并收起键盘，抽屉和遮罩层级高于 Composer，Composer 保持可见但退出交互层。
 - `Chat / Terminal` 的主输入框在移动端必须显式关闭系统自动填充、卡片、地址与密码类输入辅助条；键盘上沿不得再额外挂出会暴露底部残留页面层的系统输入助手。
 - `Chat / Terminal` 的移动端主输入框必须保持不低于 16px 的可编辑文本字号，避免 iOS Safari 聚焦输入法时触发页面自动缩放、横向裁切或分辨率突变。
@@ -113,7 +112,7 @@
 - 运行页 Composer 的键盘跟随只依赖 CSS 动态视口和 workspace grid，不额外叠加 `bottom`、transform、scrollTop 或 spacer 过渡动画；键盘收起与输入区回弹阶段应保持直接、稳定的回贴节奏。
 - 输入框 blur 后，运行页应沿着 `--mobile-viewport-height` 的实际回弹过程恢复高度，不额外保留键盘占位，避免底部输入区和正文区出现闪烁。
 - 输入框聚焦且软键盘已确认弹出后，移动端运行页不得用 `VisualViewport.offsetTop`、页面级 scroll 锚点或 JS 变量驱动 App Shell、workspace header、正文 panel 或 Composer 位移；高度收缩以 `--mobile-viewport-height` 为准，Composer 作为 workspace grid footer 随容器底边移动，避免浏览器键盘动画和脚本位移叠加造成页面整体再次上移或输入区先消失再出现。
-- `Chat / Terminal` 在页面从后台恢复到前台、浏览器重新激活当前页，或系统把当前 WebView 恢复为可见状态时，除补拉会话与任务数据外，还必须立刻重算共享视口诊断变量和 Composer 静态 footprint；前台恢复后的第一帧不允许沿用后台前的旧输入区高度或旧底部占位。
+- `Chat / Terminal` 在页面从后台恢复到前台、浏览器重新激活当前页，或系统把当前 WebView 恢复为可见状态时，除补拉会话与任务数据外，还必须立刻重算共享视口诊断变量；前台恢复后的第一帧不允许沿用后台前的旧可视高度或旧底部空白。
 - Web Shell 的抽屉式单列布局仅在主视口宽度 `1100px` 及以下触发；高于该阈值时保留左侧固定主导航与右侧主面板。进入窄屏后主导航切换为贴边抽屉，当前运行页的会话列表随主导航一起展示，由工作区头部的 `Menu` 入口打开；运行页空列表需优先展示一条 `New` 占位会话，Terminal 的占位会话在首次发送输入或添加附件时才落成真实服务端会话，点击列表占位或移动端顶部 `New` 必须关闭会话抽屉并聚焦输入框，不直接显示空态卡片或提前创建服务端会话；真实 Terminal 会话在首条输入命名前也必须使用 `New` 作为默认标题。`Terminal` 与其他 `page-mode` 页面继续保持单主面板，但 `page-mode` 路由页标题上方必须稳定提供 `Menu` 入口；`760px` 及以下再进一步压缩按钮与间距，避免窄屏下出现不可触达区域。主导航抽屉必须独立承担纵向滚动，小高度视口下不允许出现菜单或会话列表被裁切且无法滑动的状态。
 - 窄屏主导航抽屉点击任一路由项后需立即关闭；页面切换完成后不得继续保留旧菜单层覆盖在目标页之上。
 - 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页继续采用“两行头部 + 贴顶正文起始区”节奏，第一行承载抽屉入口与主操作，第二行承载当前标题；`Chat / Terminal` 在真手机宽度下统一收敛为单层运行页 workbar，左侧保留 `Menu`，中间显示“状态信号 + 当前会话标题”的单行标题按钮，右侧固定承载 `New`，通过点击真实会话标题打开 `Details`，草稿/占位 `New` 标题不触发详情，不再把 `Details` 作为独立顶部按钮或再叠一层 header。所有页面都不得在顶部遗留额外大块留白。
@@ -171,14 +170,14 @@
 - Terminal 刷新节奏需按会话状态自适配：执行中的会话保留实时刷新，空闲会话停止周期轮询并依靠页面激活补偿刷新；用户正在滚动阅读输出时，不得因明细轮询而打断当前滚动。
 - Chat / Terminal 在同一浏览器工作台内切换到其他页面后再返回时，前端需优先使用未过期的 24 小时运行态内存缓存恢复会话列表和当前活动会话的已加载内容；`Chat` 缓存完整已加载消息，`Terminal` 缓存完整已加载 turns，接口返回后继续合并更新。缓存不作为跨设备或服务端事实来源；每次访问、切换、刷新或前台恢复都会按最新合并结果刷新缓存时间。
 - Terminal 窄屏消息页必须保持 `workbench-main -> chat-pane -> terminal-view -> terminal-chat-screen` 的闭合高度链，由 `terminal-chat-screen` 独立承担纵向滚动；外层容器不得因 `overflow: hidden` 或高度塌陷吃掉滚动。
-- Terminal 移动端在输入框聚焦且软键盘抬起后，Composer 必须作为 workspace grid footer 贴住动态视口底边；长对话或长输出期间不得通过 `position: fixed`、`--keyboard-composer-offset`、拉高 footer padding、改变滚动容器或破坏高度闭合链把输入区挤出屏幕。
+- Terminal 移动端在输入框聚焦且软键盘抬起后，Composer 必须作为 workspace grid footer 贴住动态视口底边；长对话或长输出期间不得通过 `position: fixed`、拉高 footer padding、改变滚动容器或破坏高度闭合链把输入区挤出屏幕。
 - Terminal 移动端的 `terminal-chat-screen` 必须继续按当前 Composer 的真实遮挡高度动态收口；会话空态、长输出与 Process 阅读都要稳定停在输入区上沿，不允许被底部 Composer 覆盖。
 - Terminal 移动端的命令与 prompt 气泡需保持自然整词换行；路径、flag 和短 shell 片段优先按空格或真实长单词边界断行，不允许因窄屏收缩把命令压成逐字或逐 token 的碎行。
 - Terminal `Process` 的步骤头必须保持稳定三列：左侧独立展开图标列、中间标题主列、右侧耗时与状态列。标题只能在中间主列内截断，不允许因为节点缺失、DOM 顺序错误或 grid 列错位把标题挤进图标列，导致移动端只显示单个字符。
 - Terminal `Process` 展开后的自然语言步骤详情需使用同一套阅读修正：`reasoning / plan / message / text` 等说明类内容优先按 markdown 正文块整列换行，展示前移除零宽断行字符，并把“每字一行”的病态段落归一回可读正文；仅终端输出、diff 与代码类块继续保留预格式化渲染。
 - Chat 的 `Thinking / 已思考` 外层披露展开时只进入步骤列表态；该动作会收起同一 assistant 消息下已打开的单步详情，避免移动端把历史详情重新展开并造成视口突跳。单步详情仍由用户点开具体步骤后展示。
 - Chat 与 Terminal 的过程详情必须共用同一套最终 detail surface 渲染规则：终端、代码、diff、tool input 与 JSON 类输出直接使用等宽内容块，说明、markdown、thinking、文本型 tool output 与 error 直接使用富文本正文块，并保留 block 标题、文件名与起始行号；Terminal 中需要单独拉取 detail 的步骤，必须在 detail 返回后再展开步骤体，不允许先显示 preview 兜底再二次跳变。
-- Terminal 移动端的四键阅读定位条只按静态 Composer footprint 停靠，不跟随软键盘位移动态上移；输入框聚焦且键盘弹起时按钮组主动隐藏，键盘收起或浏览器视口回弹后再恢复到 Composer 上沿之上，不得留下悬空残影。
+- Terminal 移动端的四键阅读定位条停靠在 Composer 上沿之上，不跟随软键盘位移动态上移；输入框聚焦且键盘弹起时按钮组主动隐藏，键盘收起或浏览器视口回弹后再恢复到 Composer 上沿之上，不得留下悬空残影。
 
 ## Control, Operations & Governance
 

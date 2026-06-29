@@ -595,7 +595,6 @@ test.describe("Terminal route", () => {
       const mobileHeaderRect = mobileHeader.getBoundingClientRect();
       return {
         keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
-        keyboardComposerOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-composer-offset").trim(),
         mobileViewportOffsetTop: getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-offset-top").trim(),
         viewportHeight: viewport.height,
         viewportOffsetTop: viewport.offsetTop,
