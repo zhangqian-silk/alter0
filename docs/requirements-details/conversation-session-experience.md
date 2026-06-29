@@ -83,6 +83,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
 - `GET /api/chat/sessions` 返回 Chat owner 会话摘要，`GET /api/terminal/sessions` 返回 Terminal owner 会话摘要，至少包含标题、Skills 选择、创建时间、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。两类 owner 列表互不包含对方会话。
 - `GET /api/chat/sessions/{session_id}` 返回单个 Chat 运行页会话详情，默认只返回最新 turns 页，并通过 `turns_paging` 提供总量、页边界、`next_before_turn_id` 与是否仍有更早内容；前端继续按 `turn_before` 后台补齐更早 turns。详情至少包含 runtime `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
+- `POST /api/chat/sessions/{session_id}/pin` 与 `POST /api/terminal/sessions/{session_id}/pin` 更新当前 owner 会话置顶状态，并在返回的 session payload 中显式携带 `pinned` 布尔值；取消置顶返回 `pinned:false`，前端刷新恢复必须以该服务端状态覆盖本地旧快照。
 - `Chat / Terminal` 前端会话列表、详情刷新、输入、置顶、删除、附件、事件明细、历史分页、timeline item 构造和 model / Skill / MCP catalog 加载必须由共享 runtime session controller、runtime timeline builder 与 catalog hook 承担；`chat / terminal` 仍是 API owner、缓存和草稿命名空间分叉点，页面不得保留消息或 turn 的私有展示转换链路。
 - `GET /api/sessions` 查询会话摘要列表，支持来源和时间过滤。
 - `GET /api/sessions/{session_id}/messages` 查询会话消息。

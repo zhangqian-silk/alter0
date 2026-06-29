@@ -1402,6 +1402,41 @@ func TestServiceSetPinnedPersistsAndSortsPinnedSessionsFirst(t *testing.T) {
 	}
 }
 
+func TestServiceSetPinnedFalsePersistsAcrossRestore(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	workingDir := t.TempDir()
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: workingDir})
+	session, err := service.Recover(RecoverRequest{
+		OwnerID:   "owner-unpin",
+		SessionID: "terminal-unpin",
+		CreatedAt: now.Add(-20 * time.Minute),
+		UpdatedAt: now.Add(-20 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("recover session: %v", err)
+	}
+
+	if _, err := service.SetPinned("owner-unpin", session.ID, true); err != nil {
+		t.Fatalf("pin session: %v", err)
+	}
+	unpinned, err := service.SetPinned("owner-unpin", session.ID, false)
+	if err != nil {
+		t.Fatalf("unpin session: %v", err)
+	}
+	if unpinned.Pinned {
+		t.Fatalf("expected unpinned snapshot")
+	}
+
+	reloaded := NewService(context.Background(), nil, nil, Options{WorkingDir: workingDir})
+	restored, ok := reloaded.Get("owner-unpin", session.ID)
+	if !ok {
+		t.Fatalf("expected persisted session to restore")
+	}
+	if restored.Pinned {
+		t.Fatalf("expected restored session to stay unpinned")
+	}
+}
+
 func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *testing.T) {
 	session := &runtimeSession{
 		summary: terminaldomain.Session{

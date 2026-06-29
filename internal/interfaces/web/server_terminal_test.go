@@ -574,6 +574,46 @@ func TestTerminalSessionItemHandlerPinsSession(t *testing.T) {
 	}
 }
 
+func TestTerminalSessionItemHandlerUnpinsSessionWithExplicitFalse(t *testing.T) {
+	service := &stubWebTerminalService{
+		pinResp: terminaldomain.Session{
+			ID:        "terminal-4",
+			OwnerID:   terminalSessionOwnerID,
+			Title:     "terminal-4",
+			Status:    terminaldomain.SessionStatusReady,
+			Pinned:    false,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-4/pin", bytes.NewBufferString(`{"pinned":false}`))
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if service.lastPinned {
+		t.Fatalf("expected pinned false")
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	session, ok := payload["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session payload, got %v", payload)
+	}
+	pinned, ok := session["pinned"].(bool)
+	if !ok || pinned {
+		t.Fatalf("expected explicit pinned false payload, got value=%v present=%v", session["pinned"], ok)
+	}
+}
+
 func TestTerminalSessionItemHandlerDeletesSession(t *testing.T) {
 	service := &stubWebTerminalService{
 		deleteResp: terminaldomain.Session{
