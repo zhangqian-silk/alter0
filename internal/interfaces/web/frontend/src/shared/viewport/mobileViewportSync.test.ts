@@ -84,9 +84,9 @@ describe("shared viewport mobileViewportSync", () => {
     visualViewport.offsetTop = 312;
     visualViewport.dispatchEvent(new Event("scroll"));
 
-    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("620px");
+    expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("932px");
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-offset-top")).toBe("312px");
-    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("312px");
+    expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("0px");
     expect(document.documentElement.style.getPropertyValue("--keyboard-composer-offset")).toBe("0px");
 
     controller.destroy();

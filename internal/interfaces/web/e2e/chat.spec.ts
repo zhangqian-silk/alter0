@@ -986,15 +986,7 @@ test.describe("Chat composer", () => {
     await page.setViewportSize({ width: 760, height: 980 });
     const { composer } = await openChatWorkspace(page);
     const input = composer.input();
-
-    await input.click();
-    await setVisualViewport(page, { width: 760, height: 620, offsetTop: 0 });
-
-    await expect.poll(async () => page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
-    )).toBe("360px");
-
-    const opened = await page.evaluate(() => {
+    const readComposerMetrics = async () => page.evaluate(() => {
       const shell = document.querySelector("[data-runtime-composer-kind='chat']");
       const inputNode = document.querySelector("[data-composer-input='conversation']");
       const viewport = window.visualViewport;
@@ -1010,9 +1002,37 @@ test.describe("Chat composer", () => {
       };
     });
 
+    await input.click();
+    await setVisualViewport(page, { width: 760, height: 620, offsetTop: 0 });
+
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("360px");
+
+    const opened = await readComposerMetrics();
     expect(opened).not.toBeNull();
     expect(opened?.shellBottom ?? 0).toBeLessThanOrEqual((opened?.viewportBottom ?? 0) + 2);
     expect(opened?.inputBottom ?? 0).toBeLessThanOrEqual((opened?.viewportBottom ?? 0) - 8);
+
+    await setVisualViewport(page, { width: 760, height: 700, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("280px");
+
+    const tallerViewportKeyboard = await readComposerMetrics();
+    expect(tallerViewportKeyboard).not.toBeNull();
+    expect(tallerViewportKeyboard?.shellBottom ?? 0).toBeLessThanOrEqual((tallerViewportKeyboard?.viewportBottom ?? 0) + 2);
+    expect(tallerViewportKeyboard?.inputBottom ?? 0).toBeLessThanOrEqual((tallerViewportKeyboard?.viewportBottom ?? 0) - 8);
+
+    await setVisualViewport(page, { width: 760, height: 560, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("420px");
+
+    const shorterViewportKeyboard = await readComposerMetrics();
+    expect(shorterViewportKeyboard).not.toBeNull();
+    expect(shorterViewportKeyboard?.shellBottom ?? 0).toBeLessThanOrEqual((shorterViewportKeyboard?.viewportBottom ?? 0) + 2);
+    expect(shorterViewportKeyboard?.inputBottom ?? 0).toBeLessThanOrEqual((shorterViewportKeyboard?.viewportBottom ?? 0) - 8);
 
     await setVisualViewport(page, { width: 760, height: 980, offsetTop: 0 });
 
@@ -1041,7 +1061,7 @@ test.describe("Chat composer", () => {
     expect(Math.abs((closed?.viewportBottom ?? 0) - (closed?.shellBottom ?? 0))).toBeLessThan(20);
   });
 
-  test("keeps chat chrome fixed while only the composer follows the mobile keyboard", async ({ page }) => {
+  test("keeps chat chrome in the workspace grid while the composer follows the dynamic viewport", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     await page.goto("/chat");
     await loginIfNeeded(page);
@@ -1167,7 +1187,207 @@ test.describe("Chat composer", () => {
     expect(Math.abs((closed?.composerTop ?? 0) - (baseline?.composerTop ?? 0))).toBeLessThanOrEqual(20);
   });
 
-  test("keeps the mobile runtime header pinned to shifted visual viewport top", async ({ page }) => {
+  test("keeps the mobile composer visible under the nav drawer after dismissing the keyboard", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+    const { composer } = await openChatWorkspace(page);
+    const input = composer.input();
+
+    await input.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+
+    await page.getByRole("button", { name: "Menu" }).first().click();
+    await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
+
+    await expect(input).not.toBeFocused();
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("0px");
+
+    const metrics = await page.evaluate(() => {
+      const composerShell = document.querySelector("[data-runtime-composer-kind='chat']");
+      const workspaceBody = document.querySelector(".runtime-workspace-body");
+      const backdrop = document.querySelector(".workbench-mobile-overlay-portal .mobile-backdrop");
+      const drawer = document.querySelector(".workbench-mobile-overlay-portal .primary-nav");
+      if (
+        !(composerShell instanceof HTMLElement) ||
+        !(workspaceBody instanceof HTMLElement) ||
+        !(backdrop instanceof HTMLElement) ||
+        !(drawer instanceof HTMLElement)
+      ) {
+        return null;
+      }
+      const composerStyle = getComputedStyle(composerShell);
+      const backdropStyle = getComputedStyle(backdrop);
+      const drawerStyle = getComputedStyle(drawer);
+      return {
+        composerVisibility: composerStyle.visibility,
+        composerOpacity: composerStyle.opacity,
+        bodyInteractive: workspaceBody.getAttribute("data-runtime-composer-interactive"),
+        composerInWorkspace: workspaceBody.contains(composerShell),
+        portalHostExists: Boolean(document.querySelector("[data-runtime-composer-portal-host='chat']")),
+        composerPointerEvents: composerStyle.pointerEvents,
+        backdropPointerEvents: backdropStyle.pointerEvents,
+        composerZIndex: Number(composerStyle.zIndex),
+        backdropZIndex: Number(backdropStyle.zIndex),
+        drawerZIndex: Number(drawerStyle.zIndex),
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics?.composerVisibility).toBe("visible");
+    expect(metrics?.composerOpacity).toBe("1");
+    expect(metrics?.bodyInteractive).toBe("false");
+    expect(metrics?.composerInWorkspace).toBe(true);
+    expect(metrics?.portalHostExists).toBe(false);
+    expect(metrics?.composerPointerEvents).toBe("none");
+    expect(metrics?.backdropPointerEvents).toBe("auto");
+    expect(metrics?.backdropZIndex ?? 0).toBeGreaterThan(metrics?.composerZIndex ?? 0);
+    expect(metrics?.drawerZIndex ?? 0).toBeGreaterThan(metrics?.composerZIndex ?? 0);
+  });
+
+  test("lets the mobile chat transcript scroll back to the top while the keyboard is open", async ({ page }) => {
+    await installVisualViewportMock(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+    await mockChatRuntimeSessions(page, [{
+      id: "mobile-keyboard-scroll-top-chat",
+      title: "成都旅游攻略",
+      title_auto: false,
+      title_score: 8,
+      created_at: "2026-06-28T10:00:00Z",
+      target_type: "model",
+      target_id: "codex",
+      target_name: "Codex",
+      status: "done",
+      turns: [
+        {
+          id: "mobile-keyboard-scroll-top-turn",
+          prompt: "成都旅游攻略",
+          started_at: "2026-06-28T10:00:00Z",
+          finished_at: "2026-06-28T10:01:00Z",
+          status: "success",
+          final_output: [
+            "按第一次来成都、3天2晚/4天3晚、不自驾来排。",
+            "",
+            "## 推荐池",
+            "",
+            "景点优先级：",
+            "",
+            "- 必去：成都大熊猫繁育研究基地、武侯祠/锦里、杜甫草堂、成都博物馆、人民公园/鹤鸣茶社、宽窄巷子、春熙路/太古里/IFS。",
+            "- 博物馆线：成都博物馆、金沙遗址博物馆、三星堆博物馆。成都博物馆周一闭馆，周五周六夜间开放到20:30；金沙9:00-18:00，17:00停止入馆。",
+            "- 体验线：盖碗茶、川剧变脸、采耳、夜游九眼桥。",
+            "- 周边加一天：三星堆；或都江堰+青城山。",
+            "",
+            "美食推荐池：",
+            "",
+            "- 火锅：蜀大侠、小龙坎、青年火锅。",
+            "- 串串：钢管厂五区小郡肝、冒椒火辣。",
+            "- 小吃：钟水饺、龙抄手、赖汤圆、蛋烘糕、甜水面、担担面。",
+            "- 茶馆：鹤鸣茶社、望江楼公园茶馆。",
+            "",
+            "行程建议：",
+            "",
+            "D1：抵达后人民公园喝茶，晚上春熙路、太古里、IFS。D2：熊猫基地早起，下午武侯祠和锦里，晚上川剧。D3：杜甫草堂、成都博物馆，晚上九眼桥。D4：三星堆或都江堰青城山。",
+            "",
+            "交通建议：市区优先地铁，熊猫基地建议早出发。热门博物馆和三星堆提前预约。熊猫基地尽量上午去，避开中午高温和人流。",
+            "",
+            "预算参考：",
+            "",
+            "- 市区公共交通和打车结合，人均交通按每天60-100元预留。",
+            "- 餐饮按小吃、茶馆、火锅搭配，人均每天160-260元更稳妥。",
+            "- 博物馆和景区按预约规则执行，临时改线优先保留熊猫基地和成都博物馆。",
+            "",
+            "避坑提醒：",
+            "",
+            "- 熊猫基地不要中午到，上午入园更容易看到活跃状态。",
+            "- 宽窄巷子适合顺路扫街，不建议把整晚都押在这里。",
+            "- 三星堆和都江堰青城山都适合单独占一天，不建议同一天硬拼。",
+            "",
+            "补充路线：",
+            "",
+            "- 慢节奏版：人民公园、杜甫草堂、武侯祠、夜游锦江。",
+            "- 博物馆版：成都博物馆、金沙遗址、三星堆。",
+            "- 城市夜游版：太古里、IFS、九眼桥、玉林路。",
+            "",
+            "如果只有2天，第一天熊猫基地、武侯祠、锦里、川剧；第二天成都博物馆、人民公园、春熙路和太古里。这样不会太赶，也能覆盖第一次来成都的核心体验。",
+          ].join("\n"),
+        },
+      ],
+    }]);
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
+        chat: "mobile-keyboard-scroll-top-chat",
+      }));
+    });
+
+    await page.goto(`/chat?session_id=${hashSessionIDShort("mobile-keyboard-scroll-top-chat")}`);
+    await loginIfNeeded(page);
+    await waitForAppReady(page);
+    await page.waitForSelector("[data-message-id='mobile-keyboard-scroll-top-turn:prompt']", { timeout: 20000 });
+    const screen = page.locator("[data-runtime-screen='conversation']");
+    const input = page.locator("[data-composer-input='conversation']");
+
+    await expect.poll(async () => screen.evaluate((node) => node.scrollHeight > node.clientHeight + 240)).toBe(true);
+    await screen.evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+      node.dispatchEvent(new Event("scroll"));
+    });
+    await input.click();
+    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
+    await expect.poll(async () => page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
+    )).toBe("312px");
+    await expect.poll(async () => page.evaluate(() => {
+      const screenNode = document.querySelector("[data-runtime-screen='conversation']");
+      const workspaceBody = screenNode?.closest(".runtime-workspace-body");
+      const composer = document.querySelector("[data-runtime-composer-kind='chat']");
+      if (!(workspaceBody instanceof HTMLElement) || !(screenNode instanceof HTMLElement)) {
+        return null;
+      }
+      if (!(composer instanceof HTMLElement)) {
+        return null;
+      }
+      const screenRect = screenNode.getBoundingClientRect();
+      const composerRect = composer.getBoundingClientRect();
+      return {
+        scrollBottomInset: workspaceBody.style.getPropertyValue("--runtime-scroll-bottom-inset").trim(),
+        screenPaddingBottom: getComputedStyle(screenNode).paddingBottom,
+        screenEndsBeforeComposer: screenRect.bottom <= composerRect.top + 2,
+      };
+    })).toEqual({
+      scrollBottomInset: "",
+      screenPaddingBottom: "20px",
+      screenEndsBeforeComposer: true,
+    });
+
+    const screenBox = await screen.boundingBox();
+    expect(screenBox).not.toBeNull();
+    await page.mouse.move((screenBox?.x ?? 0) + (screenBox?.width ?? 0) / 2, (screenBox?.y ?? 0) + 96);
+    await page.mouse.wheel(0, -2600);
+
+    await expect.poll(async () => screen.evaluate((node) => Math.round(node.scrollTop))).toBeLessThanOrEqual(8);
+    const metrics = await page.evaluate(() => {
+      const header = document.querySelector("[data-runtime-mobile-variant='conversation']");
+      const screenNode = document.querySelector("[data-runtime-screen='conversation']");
+      const firstMessage = document.querySelector("[data-message-id='mobile-keyboard-scroll-top-turn:prompt']");
+      if (!(header instanceof HTMLElement) || !(screenNode instanceof HTMLElement) || !(firstMessage instanceof HTMLElement)) {
+        return null;
+      }
+      return {
+        headerBottom: header.getBoundingClientRect().bottom,
+        screenTop: screenNode.getBoundingClientRect().top,
+        firstMessageTop: firstMessage.getBoundingClientRect().top,
+      };
+    });
+    expect(metrics).not.toBeNull();
+    expect(metrics?.screenTop ?? 0).toBeGreaterThanOrEqual((metrics?.headerBottom ?? 0) - 1);
+    expect(metrics?.firstMessageTop ?? 0).toBeGreaterThanOrEqual((metrics?.screenTop ?? 0) - 1);
+  });
+
+  test("keeps the mobile runtime header in the workspace grid when visual viewport offset changes", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
     await page.goto("/chat");
@@ -1190,7 +1410,10 @@ test.describe("Chat composer", () => {
       }
       const rect = mobileHeader.getBoundingClientRect();
       return {
+        mobileViewportHeight: getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim(),
+        keyboardOffset: getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim(),
         offsetTop: viewport.offsetTop,
+        viewportBottom: viewport.height + viewport.offsetTop,
         headerTop: rect.top,
         headerScreenTop: rect.top - viewport.offsetTop,
         headerPosition: getComputedStyle(mobileHeader).position,
@@ -1200,9 +1423,11 @@ test.describe("Chat composer", () => {
     });
 
     expect(metrics).not.toBeNull();
+    expect(metrics?.mobileViewportHeight).toBe(`${metrics?.viewportBottom}px`);
+    expect(metrics?.keyboardOffset).toBe("0px");
     expect(metrics?.headerPosition).toBe("fixed");
-    expect(metrics?.headerTopStyle).toBe("0px");
-    expect(metrics?.headerTransform).toContain("312");
+    expect(metrics?.headerTopStyle).toBe(`${metrics?.offsetTop}px`);
+    expect(metrics?.headerTransform).toBe("none");
     expect(Math.abs((metrics?.headerTop ?? 0) - (metrics?.offsetTop ?? 0))).toBeLessThanOrEqual(2);
     expect(Math.abs(metrics?.headerScreenTop ?? 0)).toBeLessThanOrEqual(2);
   });

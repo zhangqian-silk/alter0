@@ -57,8 +57,14 @@ export function isTerminalSessionSheetViewportWidth(width: number): boolean {
   return Number(width) <= TERMINAL_SESSION_SHEET_BREAKPOINT_PX;
 }
 
-function resolveKeyboardComposerOffset(keyboardOffset: number, viewportOffsetTop: number): number {
-  return Math.max(0, keyboardOffset - viewportOffsetTop);
+function resolveKeyboardComposerOffset(
+  keyboardOffset: number,
+  layoutViewportResizedForKeyboard = false,
+): number {
+  if (layoutViewportResizedForKeyboard) {
+    return 0;
+  }
+  return Math.max(0, keyboardOffset);
 }
 
 export function deriveMobileViewportState(
@@ -106,10 +112,12 @@ export function deriveMobileViewportState(
     : 0;
   const viewportReportsKeyboard =
     reportedViewportKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
-    && (input.hasActiveInput || previousKeyboardActive);
-  const effectiveHeight = viewportReportsKeyboard
-    ? reportedViewportHeight
-    : viewportBottomHeight;
+    && !widthChanged;
+  const layoutViewportResizedForKeyboard =
+    viewportReportsKeyboard
+    && Math.abs(Math.round(input.windowHeight) - reportedViewportHeight) <= 2
+    && viewportOffsetTop <= 2;
+  const effectiveHeight = viewportBottomHeight;
   const keyboardRecentlyAligned =
     previousState.keyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
     && (currentTimeMS - (previousState.lastAlignedAt || 0)) < MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS;
@@ -119,6 +127,7 @@ export function deriveMobileViewportState(
     && keyboardRecentlyAligned
     && previousState.baselineHeight > 0
     && previousState.height > 0
+    && reportedViewportHeight >= previousState.baselineHeight - 2
     && effectiveHeight >= previousState.baselineHeight - 2
   ) {
     return {
@@ -130,7 +139,7 @@ export function deriveMobileViewportState(
         mobileViewportHeight: `${previousState.height}px`,
         mobileViewportOffsetTop: `${viewportOffsetTop}px`,
         keyboardOffset: `${previousState.keyboardOffset}px`,
-        keyboardComposerOffset: `${resolveKeyboardComposerOffset(previousState.keyboardOffset, viewportOffsetTop)}px`
+        keyboardComposerOffset: `${resolveKeyboardComposerOffset(previousState.keyboardOffset, layoutViewportResizedForKeyboard)}px`
       },
       changed: {
         width: false,
@@ -151,13 +160,15 @@ export function deriveMobileViewportState(
   }
   if (keyboardClosing) {
     baselineHeight = Math.max(previousState.baselineHeight, effectiveHeight);
+  } else if (viewportReportsKeyboard) {
+    baselineHeight = Math.max(baselineHeight, previousState.baselineHeight);
   } else if (!input.hasActiveInput || effectiveHeight >= baselineHeight - 2) {
     baselineHeight = effectiveHeight;
   } else {
     baselineHeight = Math.max(baselineHeight, effectiveHeight);
   }
 
-  const rawKeyboardOffset = input.hasActiveInput || keyboardClosing
+  const rawKeyboardOffset = input.hasActiveInput || viewportReportsKeyboard || keyboardClosing
     ? Math.max(0, baselineHeight - effectiveHeight)
     : 0;
   const keyboardOffset = rawKeyboardOffset >= MOBILE_KEYBOARD_MIN_OFFSET_PX
@@ -181,7 +192,7 @@ export function deriveMobileViewportState(
       mobileViewportHeight: `${effectiveHeight}px`,
       mobileViewportOffsetTop: `${viewportOffsetTop}px`,
       keyboardOffset: `${keyboardOffset}px`,
-      keyboardComposerOffset: `${resolveKeyboardComposerOffset(keyboardOffset, viewportOffsetTop)}px`
+      keyboardComposerOffset: `${resolveKeyboardComposerOffset(keyboardOffset, layoutViewportResizedForKeyboard)}px`
     },
     changed: {
       width: widthChanged,

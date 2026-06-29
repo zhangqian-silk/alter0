@@ -15,7 +15,6 @@ import { RuntimeComposer } from "../shell/components/RuntimeComposer";
 import { resolveRuntimeMobileLayoutState } from "../shell/components/runtimeMobileLayout";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
 import { ScrollJumpStrip } from "../shell/components/ScrollJumpStrip";
-import { useRuntimeComposerViewportSync } from "../shell/components/useRuntimeComposerViewportSync";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../shell/legacyShellCopy";
 import {
   isComposerImageAttachment,
@@ -875,13 +874,6 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
     event.preventDefault();
     void handleComposerAttachmentSelection(imageFiles);
   }, [handleComposerAttachmentSelection]);
-
-  useRuntimeComposerViewportSync({
-    isMobileViewport: workbench.isMobileViewport,
-    inputFocused,
-    workspaceBodyRef,
-    composerShellRef,
-  });
 
   const configPanelHint = modelInspectorOpen
       ? copy.runtimeModelHint

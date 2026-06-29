@@ -49,7 +49,6 @@ import {
   runtimeTraceEventToProcessDetailBlocks,
 } from "./RuntimeProcessDetailBlocks";
 import { ScrollJumpStrip } from "./ScrollJumpStrip";
-import { useRuntimeComposerViewportSync } from "./useRuntimeComposerViewportSync";
 import {
   RUNTIME_EVENT_FILTER_OPTIONS,
   runtimeTraceEventDetailID,
@@ -1008,13 +1007,6 @@ export function useTerminalRuntimeController(): RuntimeWorkspacePageController {
     event.preventDefault();
     openMobileSessionPanelOnPress();
   };
-
-  useRuntimeComposerViewportSync({
-    isMobileViewport: workbench.isMobileViewport,
-    inputFocused,
-    workspaceBodyRef,
-    composerShellRef,
-  });
 
   const captureScrollSnapshot = () => {
     const node = chatScreenRef.current;

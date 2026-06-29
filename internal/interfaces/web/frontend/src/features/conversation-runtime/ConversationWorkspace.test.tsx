@@ -366,7 +366,7 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
   });
 
-  it("suspends the mobile composer while the primary navigation drawer is open", () => {
+  it("keeps the mobile composer visible but non-interactive while the primary navigation drawer is open", () => {
     const { unmount } = renderWorkspace({
       isMobileViewport: true,
       mobileNavOpen: true,
@@ -374,11 +374,12 @@ describe("ConversationWorkspace", () => {
 
     try {
       const shell = document.querySelector("[data-runtime-view='conversation']");
-      const portalHost = document.body.querySelector("[data-runtime-composer-portal-host='chat']");
+      const workspaceBody = document.querySelector(".runtime-workspace-body");
 
       expect(shell).toHaveAttribute("data-runtime-mobile-layout", "mobile-primary-nav-drawer");
-      expect(portalHost).toHaveAttribute("data-runtime-composer-suspended", "true");
-      expect(portalHost).toHaveAttribute("aria-hidden", "true");
+      expect(workspaceBody).toHaveAttribute("data-runtime-composer-interactive", "false");
+      expect(workspaceBody?.querySelector("[data-runtime-composer-kind='chat']")).toBeInTheDocument();
+      expect(document.body.querySelector("[data-runtime-composer-portal-host='chat']")).not.toBeInTheDocument();
     } finally {
       unmount();
     }

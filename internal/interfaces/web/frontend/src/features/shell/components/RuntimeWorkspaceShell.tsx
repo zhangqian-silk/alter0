@@ -1,6 +1,6 @@
 import { useEffect, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "react";
 import { RuntimeWorkspaceFrame } from "./RuntimeWorkspaceFrame";
-import { runtimeMobileLayoutSuspendsComposer, type RuntimeMobileLayoutState } from "./runtimeMobileLayout";
+import { runtimeMobileLayoutAllowsComposerInteraction, type RuntimeMobileLayoutState } from "./runtimeMobileLayout";
 import { runWithKeyboardDismissal } from "./runtimeKeyboardDismissal";
 import { useRuntimeMobilePressAction, type RuntimeMobilePressButtonProps } from "./useRuntimeMobilePressAction";
 
@@ -191,13 +191,13 @@ export function RuntimeWorkspaceShell({
   const mobilePrimaryPressProps = createMobilePressHandlers("primary", onMobilePrimary, mobilePrimaryButtonProps);
   const sessionPaneOpen = classNameIncludes(sessionPaneClassName, "is-open")
     || mobileLayoutState === "mobile-session-drawer";
-  const composerSuspendedState = runtimeMobileLayoutSuspendsComposer(mobileLayoutState);
+  const composerInteractiveState = runtimeMobileLayoutAllowsComposerInteraction(mobileLayoutState);
   useEffect(() => {
-    if (!composerSuspendedState) {
+    if (composerInteractiveState) {
       return;
     }
     runWithKeyboardDismissal();
-  }, [composerSuspendedState]);
+  }, [composerInteractiveState]);
   const mobileHeader = mobileHeaderPlacement ? (
     <header
       className={joinClassNames("runtime-workspace-mobile-header", mobileHeaderClassName)}
@@ -298,7 +298,7 @@ export function RuntimeWorkspaceShell({
         ...rootProps,
         "data-runtime-mobile-layout": mobileLayoutState,
         "data-runtime-session-pane-open": sessionPaneOpen ? "true" : "false",
-        "data-runtime-composer-suspended": composerSuspendedState ? "true" : "false",
+        "data-runtime-composer-interactive": composerInteractiveState ? "true" : "false",
       }}
       leadingContent={mobileHeaderPlacement === "leading" ? mobileHeader : undefined}
       sessionPaneClassName={joinClassNames(
@@ -396,7 +396,7 @@ export function RuntimeWorkspaceShell({
         ...workspaceBodyProps,
         "data-runtime-mobile-layout": mobileLayoutState,
         "data-runtime-session-pane-open": sessionPaneOpen ? "true" : "false",
-        "data-runtime-composer-suspended": composerSuspendedState ? "true" : "false",
+        "data-runtime-composer-interactive": composerInteractiveState ? "true" : "false",
       }}
       mobileHeader={mobileHeaderPlacement === "body" ? mobileHeader : undefined}
       workspaceHeader={workspaceHeader}

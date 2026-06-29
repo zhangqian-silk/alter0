@@ -245,32 +245,33 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 ### 输入与键盘
 
-- Chat 输入区基于 `100dvh` 动态视口高度适配软键盘。
-- 移动端 root 不做 fixed 页面锁，也不对 `html / body / #frontend-root` 使用 `overflow: hidden` 根层锁；App Shell 使用 `height: 100dvh` 承接键盘后的可见高度。键盘占位只作为 Composer 静态 footprint 事实，不再用于拉伸 App Shell、workspace header 或正文 panel，也不通过 transform 反向移动后方运行层，避免浏览器工具栏状态切换、输入聚焦或键盘动画造成底部留白、内容裁切或整页位移。
+- Chat 输入区基于 `--mobile-viewport-height` 动态视口高度适配软键盘。
+- 移动端 root 不做 fixed 页面锁，也不对 `html / body / #frontend-root` 使用 `overflow: hidden` 根层锁；App Shell 使用 `height: var(--mobile-viewport-height, 100dvh)` 承接键盘后的可见高度。键盘占位只作为 Composer 静态 footprint 事实，不再用于拉伸 App Shell、workspace header 或正文 panel，也不通过 transform 反向移动后方运行层，避免浏览器工具栏状态切换、输入聚焦或键盘动画造成底部留白、内容裁切或整页位移。
 - `Chat / Terminal` 的移动端会话列表共用左侧主导航抽屉：运行页顶部只保留 `Menu` 抽屉入口，并在抽屉中直接展示主工作流入口与当前运行页会话列表；点击遮罩、切换路由、切换会话或新建会话后，不保留旧的抽屉展开态。
 - `Chat` 的移动端左侧抽屉在真机上优先保证稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不再叠加多层位移、条目级顺序动画或生硬的整板平推过渡。
-- 输入区在软键盘弹起、收起、浏览器工具栏伸缩时持续贴住键盘或动态视口底部；fixed Composer 使用 `--keyboard-composer-offset`，正文滚动区、空态、命令候选和配置面板不消费键盘高度。
+- 输入区在软键盘弹起、收起、浏览器工具栏伸缩时持续贴住动态视口底部；Composer 作为 workspace grid footer 随 `--mobile-viewport-height` 变化，不使用 fixed bottom、`--keyboard-composer-offset`、transform 或 spacer 驱动主布局，正文滚动区、空态、命令候选和配置面板不消费键盘高度。
 - 仅在输入框实际聚焦且软键盘占位达到阈值时追加键盘底部偏移。
 - 键盘收起或视口回弹后不保留额外底部空白。
 - `Chat / Terminal` 在页面恢复前台可见、浏览器重新激活当前标签页或系统恢复当前 WebView 时，必须立刻重算共享视口诊断变量和 Composer 静态 footprint；第一帧不得沿用后台前遗留的旧输入区高度或旧底部遮挡量。
-- `Chat / Terminal` 首次触摸主输入框时需保留浏览器原生软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为，不主动 focus，不锁定 `window` page scroll，也不通过 `scrollTo` 干预真实焦点或回放页面级滚动锚点。键盘开合过渡期内，`100dvh` 只驱动 App Shell 可见高度，fixed Composer 通过 `--keyboard-composer-offset` 贴住键盘或动态视口底边；输入框后方的 `workspaceBody / runtime-workspace-screen` 等滚动容器不短时锁定，移动 workbar 只消费 `VisualViewport.offsetTop` 做独立 transform 坐标对齐，workspace header 与正文 panel 不单独消费 `VisualViewport` 变量。正文滚动区、空态、命令候选、配置面板和公共操作行由 App Shell 动态视口高度与静态 workspace inset 保持原位，不再做页面级滚动锚回，避免背景滚动与 iOS Safari 原生键盘动画互相竞争。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
-- 主输入框首触后的键盘动画稳定窗口只允许恢复 workspace screen 与 workspace body 的输入前滚动快照，防止 iOS Safari 自动把后方消息内容推到新的阅读位置；消息区一旦产生新的 `touchmove / pointermove / wheel / scroll` 意图就取消待执行恢复，该恢复窗口结束后不再干预用户对消息区的手动滚动。
-- 主输入框保持聚焦时，消息区单指纵向拖动必须通过 touch-scroll bridge 直接更新 `.runtime-workspace-screen.scrollTop`，不再把键盘态消息滚动完全交给 iOS Safari 的嵌套 overflow 原生滚动分派。
-- fixed Composer 的透明外壳、渐变背景、form surface 空白和外层留白不得接收 pointer/touch 事件；只有输入胶囊内部真实控件接收事件，确保视觉上露出的后方消息区仍能直接拖动滚动。
-- `Chat` 在移动端触摸发送按钮时，必须先 blur 当前主输入框，再继续原有发送链路；键盘收起期间 composer 继续随 `100dvh` 的真实回弹贴底，不能在发送后继续维持聚焦态或把输入区悬停在空白带上。
-- `Chat` 的移动端顶部 workbar 必须作为 fixed 顶层固定在 `top: 0`，并通过无 transition 的合成层 transform 对齐 visual viewport top；workspace body 只保留对应高度的 header footprint。底部 Composer 通过顶层 portal 作为 fixed 浮层独立贴底，不再是 `.runtime-workspace-body` 的普通流后代；正文只保留静态 Composer footprint；`.conversation-chat-screen` 与空态欢迎区在软键盘弹起期间只在内部滚动，不能因键盘高度变化带动顶部 header、正文或输入区出现压缩、回弹或位移动画。
+- `Chat / Terminal` 首次触摸主输入框时需保留浏览器原生软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为，不主动 focus，不锁定 `window` page scroll，也不通过 `scrollTo` 干预真实焦点或回放页面级滚动锚点。键盘开合过渡期内，`--mobile-viewport-height` 驱动 App Shell 可见高度，Composer 作为 workspace grid footer 跟随容器底边；输入框后方的 `workspaceBody / runtime-workspace-screen` 等滚动容器不短时锁定，移动 workbar 不消费 `VisualViewport.offsetTop` 做 transform，workspace header 与正文 panel 不单独消费 `VisualViewport` 变量。正文滚动区、空态、命令候选、配置面板和公共操作行由 App Shell 动态视口高度与静态 workspace inset 保持原位，不再做页面级滚动锚回，避免背景滚动与 iOS Safari 原生键盘动画互相竞争。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
+- 主输入框首触后的键盘动画稳定窗口不得回放页面级滚动锚点，也不得通过 `window.scrollTo` 或 workspace 级滚动快照修正背景位置；消息区一旦产生 `touchmove / pointermove / wheel / scroll` 意图，当前滚动容器必须继续即时响应。
+- 主输入框保持聚焦时，消息区单指纵向拖动必须继续走浏览器原生滚动分派；前端不得通过 touch-scroll bridge、`touchmove.preventDefault()` 或脚本写入 `.runtime-workspace-screen.scrollTop` 来模拟滚动，避免破坏 iOS Safari 的惯性滚动与触摸响应。
+- 软键盘打开时，真手机宽度下消息区实际高度必须由 App Shell 的 `--mobile-viewport-height` 和 workspace grid 共同收敛到当前可见阅读窗口，避免内部滚动容器仍以键盘未弹起时的过大高度参与触摸滚动。软键盘以 overlay 方式覆盖 layout viewport 时，也只能更新 App Shell 可见高度；`.runtime-workspace-panel` 只作为 grid 中间行，`.runtime-workspace-screen` 只保留固定阅读留白，不得通过额外底部 inset、手写 panel 高度、workspace grid 行高或 `runtime-composer-spacer` 扩展可滚范围，也不得改变顶部 workbar、workspace header 或空态的布局高度。
+- Composer 的外层 footer、渐变背景、form surface 空白和外层留白不得制造独立滚动层或吞掉正文滚动手势；只有输入胶囊内部真实控件接收事件，确保视觉上露出的后方消息区仍能直接拖动滚动。
+- `Chat` 在移动端触摸发送按钮时，必须先 blur 当前主输入框，再继续原有发送链路；键盘收起期间 composer 继续随 `--mobile-viewport-height` 的真实回弹贴底，不能在发送后继续维持聚焦态或把输入区悬停在空白带上。
+- `Chat` 的移动端顶部 workbar 必须作为 fixed 顶层固定在 `top: 0`，不通过 `VisualViewport.offsetTop` 或 CSS transform 跟随浏览器栏滚动；workspace body 只保留对应高度的 header footprint。底部 Composer 通过顶层 portal 作为 fixed 浮层独立贴底，不再是 `.runtime-workspace-body` 的普通流后代；正文只保留静态 Composer footprint；`.conversation-chat-screen` 与空态欢迎区在软键盘弹起期间只在内部滚动，不能因键盘高度变化带动顶部 header、正文或输入区出现压缩、回弹或位移动画。
 - `Chat` 在键盘收起和 composer 回弹到底边时，工作区滚动面保持原位；最后一屏消息、空态说明和阅读定位控件都不能在底边留下额外空白或残留占位。
-- `Chat / Terminal` 在移动端软键盘弹起期间，底部 Composer 必须高于阅读定位按钮；阅读定位按钮在主输入框聚焦后需主动隐藏，待输入框失焦、键盘收起后再恢复，不得压到输入框、附件条或键盘上方。左侧主导航抽屉打开时，当前主输入框必须 blur，portal Composer 进入 suspended 状态并退出交互层，抽屉与遮罩保持最高可触达层级。
-- `Chat / Terminal` 的移动端 overlay owner 由统一状态机发布，状态包括 `mobile-primary-nav-drawer`、`mobile-session-drawer`、`mobile-composer-panel`、`mobile-details-dialog` 与 `mobile-attachment-preview`；Composer 是否 suspended 只由该状态机推导，不由具体 route 或单个按钮额外传递局部开关。
+- `Chat / Terminal` 在移动端软键盘弹起期间，底部 Composer 必须高于阅读定位按钮；阅读定位按钮在主输入框聚焦后需主动隐藏，待输入框失焦、键盘收起后再恢复，不得压到输入框、附件条或键盘上方。左侧主导航抽屉打开时，当前主输入框必须 blur，workspace footer Composer 保持可见但设置为不可交互，抽屉与遮罩保持最高可触达层级。
+- `Chat / Terminal` 的移动端 overlay owner 由统一状态机发布，状态包括 `mobile-primary-nav-drawer`、`mobile-session-drawer`、`mobile-composer-panel`、`mobile-details-dialog` 与 `mobile-attachment-preview`；Composer 是否可交互只由该状态机推导，不由具体 route 或单个按钮额外传递局部开关。抽屉态不得通过 `visibility: hidden`、`opacity: 0` 或卸载 Composer 修正层级。
 - 软键盘打开期间，除主输入框自身和正文消息滚动区的滚动手势外，运行页其他交互入口都必须先释放当前输入焦点再执行动作；该规则覆盖移动 workbar、主导航抽屉、Composer 工具栏、附件、发送、会话设置、遮罩和详情/配置入口。
 - `Chat` 的主输入框在移动端必须按普通命令文本输入处理：关闭系统自动填充、卡片、地址与密码类输入辅助条，避免键盘上沿再挂出额外输入助手并露出底部残留页面层。
 - `Chat / Terminal` 的移动端主输入框需显式保持 16px 及以上可编辑文本字号；重新打开浏览器后首次聚焦输入法时，页面不得因 iOS Safari 自动输入框缩放而出现横向裁切、整体放大或分辨率突变。
-- `Chat / Terminal` 在移动端键盘弹起和收回期间，仅允许顶部 workbar 通过 fixed top 加合成层 transform 对齐 visual viewport 顶边、底部 Composer 通过 fixed bottom 与 `--keyboard-composer-offset` 贴住键盘或动态视口底边；紧凑 workspace header、正文滚动区、空态、命令候选与配置面板保持布局原位，不跟随键盘做额外动画或跳变；阅读定位按钮在输入框聚焦期间隐藏。
+- `Chat / Terminal` 在移动端键盘弹起和收回期间，仅允许 App Shell 使用 `--mobile-viewport-height` 收缩到可见高度；顶部 workbar 是 workspace grid 第一行，底部 Composer 是 workspace grid footer，不得通过 fixed bottom、`--keyboard-composer-offset` 或 `VisualViewport.offsetTop` transform 追加位移；紧凑 workspace header、正文滚动区、空态、命令候选与配置面板保持布局原位，不跟随键盘做额外动画或跳变；阅读定位按钮在输入框聚焦期间隐藏。
 - `Chat` 的移动端发送按钮支持在键盘保持打开时直接点按提交；首触发送需覆盖 `pointerdown(touch)` 与 `touchstart` 提交链路，并在同一次触摸内去重，立即进入当前 `sendPrompt` 链路，不需要先收键盘或补第二次点击。
 - `Chat` 的 Composer 不额外叠加 `bottom` 过渡动画；键盘回弹与输入区回贴底边时只消费动态视口底边，避免补间动画与视口收缩/回弹叠加造成拖滞。
-- `Chat` 在输入框失焦后，必须随 `100dvh` 恢复逐步释放高度；不允许先把 composer 闪回到底边，再被后续视口变化顶回去。
-- `Chat / Terminal` 在输入框保持聚焦且软键盘占位已建立后，不再用 `VisualViewport.height + offsetTop` 或 JS 键盘占位作为恢复判定；root、App Shell、workspace header 与正文 panel 不得被脚本变量驱动位移，Composer 只通过 CSS fixed bottom 与 `--keyboard-composer-offset` 贴住键盘或动态视口，避免输入区被浏览器键盘动画和 CSS bottom 双重上移。
-- `Chat / Terminal` 的共享 runtime Composer 在真手机宽度下必须通过 `runtime-composer-portal-host` 渲染到 `document.body` 顶层，脱离 workspace grid 与输入框后方滚动容器，再作为 `position: fixed; bottom: var(--keyboard-composer-offset, var(--keyboard-offset, 0px))` 浮层贴住键盘或动态视口底边，不使用 `transform` 承载软键盘位移；workspace body 只保留 `runtime-composer-spacer` 作为静态 footprint，且 footprint 只等于 Composer 可见高度，不包含键盘高度；输入框阴影和白色 surface 在键盘弹起、收起或浏览器工具栏回弹期间不得留下灰色残影、旧层缓存或底部悬空阴影块。
+- `Chat` 在输入框失焦后，必须随 `--mobile-viewport-height` 恢复逐步释放高度；不允许先把 composer 闪回到底边，再被后续视口变化顶回去。
+- `Chat / Terminal` 在输入框保持聚焦且软键盘占位已建立后，不再用 `VisualViewport.height + offsetTop`、JS 键盘占位或 scroll 锚点作为恢复判定；root、App Shell、workspace header、正文 panel 与 Composer 不得被脚本变量驱动位移。若浏览器已通过 `interactive-widget=resizes-content` 把布局视口缩到键盘后的高度，运行页只消费 `--mobile-viewport-height`，避免输入区被浏览器键盘动画和 CSS bottom 双重上移。
+- `Chat / Terminal` 的共享 runtime Composer 在真手机宽度下必须作为 `.runtime-workspace-body` 的真实 footer 行渲染，不得通过 `runtime-composer-portal-host` 渲染到 `document.body`，不得作为 fixed bottom 浮层，也不得依赖 `runtime-composer-spacer` 伪造 footprint；输入框阴影和白色 surface 在键盘弹起、收起或浏览器工具栏回弹期间不得留下灰色残影、旧层缓存或底部悬空阴影块。
 - `Chat / Terminal` 的四键阅读定位条统一使用同一套圆形按钮样式和触摸反馈，避免不同运行页在跳转控件上分叉出独立实现。
 - `760px` 及以下的真手机宽度下，主导航抽屉、会话列表区、头部按钮高度与间距继续压缩，避免头部按钮挤占可用阅读高度。
 - 小高度窄屏下，主导航抽屉仍需保留稳定的触摸滚动链：菜单内容滚动不把整个页面带离当前上下文，抽屉底部固定区域与菜单滚动区域边界清晰。

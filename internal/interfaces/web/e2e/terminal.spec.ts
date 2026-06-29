@@ -343,7 +343,7 @@ test.describe("Terminal route", () => {
 
     const readMetrics = async () => page.evaluate(() => {
       const viewport = window.visualViewport;
-      const composer = document.querySelector(".terminal-composer-shell");
+      const composer = document.querySelector("[data-runtime-composer-kind='terminal'], .terminal-composer-shell");
       const workspace = document.querySelector("[data-runtime-workspace='terminal']");
       const chatScreen = document.querySelector("[data-runtime-screen='terminal']");
       if (
@@ -373,8 +373,8 @@ test.describe("Terminal route", () => {
     expect(metrics?.mobileViewportHeight).toBe("620px");
     expect(metrics?.keyboardOffset).toBe("312px");
     expect(metrics?.chatScrollable).toBe(true);
-    expect(metrics?.composerPosition).toBe("fixed");
-    expect(metrics?.composerBottomStyle).toBe("312px");
+    expect(metrics?.composerPosition).toBe("relative");
+    expect(metrics?.composerBottomStyle).toBe("0px");
     expect(Math.abs((metrics?.composerBottom ?? 0) - (metrics?.viewportBottom ?? 0))).toBeLessThanOrEqual(2);
     expect(metrics?.composerTop ?? 0).toBeGreaterThanOrEqual((metrics?.viewportBottom ?? 0) - 220);
 
@@ -560,7 +560,7 @@ test.describe("Terminal route", () => {
     }).toBeGreaterThanOrEqual(12);
   });
 
-  test("keeps the mobile terminal workspace fixed while only the composer follows the keyboard", async ({ page, request }) => {
+  test("keeps the mobile terminal workspace in the dynamic viewport grid while the composer stays in the footer", async ({ page, request }) => {
     await page.setViewportSize({ width: 430, height: 932 });
     const { terminalPage } = await openReadyTerminalWorkspace(page, request, { scope: "mobile-shell-height" });
 
@@ -641,7 +641,7 @@ test.describe("Terminal route", () => {
     expect(metrics?.mobileHeaderPosition).toBe("fixed");
     expect(Math.abs(metrics?.mobileHeaderTop ?? 0)).toBeLessThanOrEqual(2);
     expect(Math.abs((metrics?.mobileHeaderBottom ?? 0) - (baseline?.mobileHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
-    expect(metrics?.composerPosition).toBe("fixed");
+    expect(metrics?.composerPosition).toBe("relative");
     expect(metrics?.windowScrollY ?? 0).toBeLessThanOrEqual(1);
     expect(metrics?.maxWindowScrollY ?? 0).toBeLessThanOrEqual(1);
     expect(metrics?.composerBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
@@ -661,7 +661,7 @@ test.describe("Terminal route", () => {
     expect(nextMetrics?.mobileHeaderPosition).toBe("fixed");
     expect(Math.abs(nextMetrics?.mobileHeaderTop ?? 0)).toBeLessThanOrEqual(2);
     expect(Math.abs((nextMetrics?.mobileHeaderBottom ?? 0) - (baseline?.mobileHeaderBottom ?? 0))).toBeLessThanOrEqual(2);
-    expect(nextMetrics?.composerPosition).toBe("fixed");
+    expect(nextMetrics?.composerPosition).toBe("relative");
     expect(nextMetrics?.windowScrollY ?? 0).toBeLessThanOrEqual(1);
     expect(nextMetrics?.maxWindowScrollY ?? 0).toBeLessThanOrEqual(1);
     expect(Math.abs((nextMetrics?.composerBottom ?? 0) - (nextMetrics?.viewportBottom ?? 0))).toBeLessThanOrEqual(2);

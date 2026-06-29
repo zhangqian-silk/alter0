@@ -73,6 +73,36 @@ describe("shared viewport mobileViewport", () => {
     });
   });
 
+  it("treats a keyboard-sized visual viewport shrink as keyboard state even when activeElement is stale", () => {
+    const previous = {
+      ...createDefaultMobileViewportState(),
+      baselineHeight: 932,
+      width: 430,
+      height: 932,
+      keyboardOffset: 0
+    };
+
+    const next = deriveMobileViewportState(previous, {
+      mobileViewport: true,
+      windowWidth: 430,
+      windowHeight: 932,
+      viewportWidth: 430,
+      viewportHeight: 620,
+      viewportOffsetTop: 0,
+      hasActiveInput: false
+    });
+
+    expect(next.state.baselineHeight).toBe(932);
+    expect(next.state.height).toBe(620);
+    expect(next.state.keyboardOffset).toBe(312);
+    expect(next.cssVars).toEqual({
+      mobileViewportHeight: "620px",
+      mobileViewportOffsetTop: "0px",
+      keyboardOffset: "312px",
+      keyboardComposerOffset: "312px"
+    });
+  });
+
   it("drops keyboard offset below the minimum threshold", () => {
     const previous = {
       ...createDefaultMobileViewportState(),
@@ -142,7 +172,7 @@ describe("shared viewport mobileViewport", () => {
     expect(settled.cssVars.keyboardOffset).toBe("0px");
   });
 
-  it("keeps root chrome static and subtracts shifted visual offsets from the composer inset", () => {
+  it("keeps root chrome static and uses shifted visual viewport bottom as the visible height", () => {
     const previous = {
       ...createDefaultMobileViewportState(),
       baselineHeight: 932,
@@ -163,11 +193,42 @@ describe("shared viewport mobileViewport", () => {
       currentTimeMS: 1600
     });
 
-    expect(shifted.state.height).toBe(620);
-    expect(shifted.state.keyboardOffset).toBe(312);
+    expect(shifted.state.height).toBe(932);
+    expect(shifted.state.keyboardOffset).toBe(0);
     expect(shifted.cssVars).toEqual({
-      mobileViewportHeight: "620px",
+      mobileViewportHeight: "932px",
       mobileViewportOffsetTop: "312px",
+      keyboardOffset: "0px",
+      keyboardComposerOffset: "0px"
+    });
+  });
+
+  it("does not apply an extra composer inset when the layout viewport already resized for the keyboard", () => {
+    const previous = {
+      ...createDefaultMobileViewportState(),
+      baselineHeight: 932,
+      width: 430,
+      height: 932,
+      keyboardOffset: 0,
+      lastAlignedAt: 0
+    };
+
+    const resized = deriveMobileViewportState(previous, {
+      mobileViewport: true,
+      windowWidth: 430,
+      windowHeight: 620,
+      viewportWidth: 430,
+      viewportHeight: 620,
+      viewportOffsetTop: 0,
+      hasActiveInput: true,
+      currentTimeMS: 1600
+    });
+
+    expect(resized.state.height).toBe(620);
+    expect(resized.state.keyboardOffset).toBe(312);
+    expect(resized.cssVars).toEqual({
+      mobileViewportHeight: "620px",
+      mobileViewportOffsetTop: "0px",
       keyboardOffset: "312px",
       keyboardComposerOffset: "0px"
     });
@@ -194,12 +255,12 @@ describe("shared viewport mobileViewport", () => {
       currentTimeMS: 1600
     });
 
-    expect(recovering.state.height).toBe(620);
-    expect(recovering.state.keyboardOffset).toBe(312);
+    expect(recovering.state.height).toBe(932);
+    expect(recovering.state.keyboardOffset).toBe(0);
     expect(recovering.cssVars).toEqual({
-      mobileViewportHeight: "620px",
+      mobileViewportHeight: "932px",
       mobileViewportOffsetTop: "312px",
-      keyboardOffset: "312px",
+      keyboardOffset: "0px",
       keyboardComposerOffset: "0px"
     });
 

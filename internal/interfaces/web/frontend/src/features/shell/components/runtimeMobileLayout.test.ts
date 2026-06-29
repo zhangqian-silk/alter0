@@ -1,4 +1,7 @@
-import { resolveRuntimeMobileLayoutState } from "./runtimeMobileLayout";
+import {
+  resolveRuntimeMobileLayoutState,
+  runtimeMobileLayoutAllowsComposerInteraction,
+} from "./runtimeMobileLayout";
 
 describe("resolveRuntimeMobileLayoutState", () => {
   it("keeps desktop layouts outside the mobile viewport", () => {
@@ -56,5 +59,13 @@ describe("resolveRuntimeMobileLayoutState", () => {
       sessionPaneOpen: false,
       composerPanelOpen: false,
     })).toBe("mobile-rest");
+  });
+
+  it("keeps drawer-owned composers visible but non-interactive", () => {
+    expect(runtimeMobileLayoutAllowsComposerInteraction("mobile-rest")).toBe(true);
+    expect(runtimeMobileLayoutAllowsComposerInteraction("mobile-keyboard")).toBe(true);
+    expect(runtimeMobileLayoutAllowsComposerInteraction("mobile-composer-panel")).toBe(true);
+    expect(runtimeMobileLayoutAllowsComposerInteraction("mobile-primary-nav-drawer")).toBe(false);
+    expect(runtimeMobileLayoutAllowsComposerInteraction("mobile-session-drawer")).toBe(false);
   });
 });
