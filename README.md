@@ -59,22 +59,22 @@
 2. `IntentClassifier` 判断是命令还是自然语言。
 3. 命令交由 `CommandRegistry` 与 `CommandHandler` 执行。
 4. Agent 请求交由 Runtime Resolver 选择 CLI Runtime。
-5. 已配置可用 Model Provider 时使用 `Claude Code + provider profile`，未配置或不可用时使用 `Codex Direct`；Claude 执行失败直接返回错误，不自动改走 Codex。
+5. Agent 请求默认使用 `Codex Direct`；只有消息显式选择 Provider/Model 或声明 `alter0.execution.engine=claude` 时进入 `Claude Code + provider profile`，Claude 执行失败直接返回错误，不自动改走 Codex。
 6. 定时任务由 `SchedulerManager` 触发，并复用同一编排链路。
 
 ## Chat
 
 `alter0` 不自研多业务编排 执行框架，服务侧只负责会话、工作区、Skill、记忆与 CLI 运行时调度；具体任务执行交给成熟 CLI Runtime：
 
-1. `Claude Code + configured provider`
-- 当控制面存在启用的 Model Provider 时作为首选运行时。
-- Provider 维护 `base_url / api_key / model / profile`，用于手动接入 Claude Code 可用的模型网关或供应商配置。
-- 每个会话使用隔离的 Claude 运行目录和 profile 环境，避免并发会话共享全局切换状态。
-
-2. `Codex Direct`
-- 当未配置 Model Provider，或 provider 不可用、未通过健康状态时作为运行时；已选择 Claude 后执行失败直接返回错误。
+1. `Codex Direct`
+- 作为 Chat、Terminal 与普通 Agent 请求的默认运行时。
 - 使用当前服务运行账户的 Codex 登录态、额度与 Codex 配置。
 - 每个会话维护独立 `CODEX_HOME` 与 Codex thread。
+
+2. `Claude Code + configured provider`
+- 当消息显式选择具体 Provider/Model，或 metadata 声明 `alter0.execution.engine=claude` 时使用。
+- Provider 维护 `base_url / api_key / model / profile`，用于手动接入 Claude Code 可用的模型网关或供应商配置。
+- 每个会话使用隔离的 Claude 运行目录和 profile 环境，避免并发会话共享全局切换状态；已选择 Claude 后执行失败直接返回错误，不自动改走 Codex。
 
 启动运行时前，服务会为当前会话工作区注入：
 
@@ -180,7 +180,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时；`Te
 - `Chat` 的 Web 会话执行已与浏览器请求生命周期解耦：页面刷新、请求断开或标签页短暂切走不会取消服务端已接受的会话执行；刷新后的恢复继续优先按当前 `session_id` 回源服务端详情与状态 registry，避免本轮已发出的消息因为前端断连而整轮丢失。
 - `Chat` 主入口不把浏览器上次活动会话当作固定锚点：访问 `/chat` 或从主导航切回 `Chat` 时会清理旧 `session_id`，并按服务端会话列表与本地最近快照的合并结果打开最新会话。用户在会话列表中显式点选某个 Chat 会话时，URL 使用 `/chat?session_id=<8位短hash>` 精确恢复该会话；`/terminal?session_id=<8位短hash>` 恢复 Terminal owner 下的对应会话。历史 `/chat?session_id=<8位短hash>` 继续按 Chat 会话恢复对应历史会话。Settings 统一进入 `/settings`，页内切换 Runtime、Skills、Memory 与 Schedules 时不改写工作台 path。
 - `Chat / Terminal` 在页面从后台回到前台、浏览器重新把当前页激活为可见工作页、bfcache 恢复或网络恢复在线时，共享 Conversation runtime page-activation 刷新链路：当前 route 只补拉对应 owner 的会话列表、当前活动会话详情和 pending 状态，避免后台期间的最新输出、标题或状态停留在旧视图。
-- `Chat / Terminal` 在同一浏览器工作台内维护 24 小时 Conversation runtime 内存缓存：切到 Settings、Chat、Terminal 或其他页面后再返回时，当前 route 的未过期会话列表会先用于首屏恢复；运行态缓存保留当前已加载会话的完整消息或 turns，不裁剪历史。`Chat` 与 `Terminal` 分别使用独立 `sessionStorage / localStorage` key 保存 active session、草稿、附件草稿、过程披露过滤、完整消息快照和轻量会话信息快照；旧合并快照仅作为迁移读取来源，不再作为 Terminal 写入目标。刷新、关闭后重开或 `sessionStorage` 丢失时，前端先用当前 route 快照恢复首屏，再等待当前 owner 的会话列表与单会话详情接口回源合并；若当前活动会话已有 `has_more_before=false` 的完整稳定缓存，前台恢复或切回该会话只刷新列表与缓存时间，不重复拉取同一会话详情。过期快照不会参与首屏渲染；服务端 Session history 仍是最终事实源。
+- `Chat / Terminal` 在同一浏览器工作台内维护 24 小时 Conversation runtime 内存缓存：切到 Settings、Chat、Terminal 或其他页面后再返回时，当前 route 的未过期会话列表会先用于首屏恢复；运行态缓存保留当前已加载会话的完整消息或 turns，不裁剪历史。`Chat` 与 `Terminal` 分别使用独立 `sessionStorage / localStorage` key 保存 active session、草稿、附件草稿、模型/Provider、Tools/MCP、Skills、过程披露过滤、完整消息快照和轻量会话信息快照；旧合并快照仅作为迁移读取来源，不再作为 Terminal 写入目标。刷新、关闭后重开或 `sessionStorage` 丢失时，前端先用当前 route 快照恢复首屏，再等待当前 owner 的会话列表与单会话详情接口回源合并；若当前活动会话已有 `has_more_before=false` 的完整稳定缓存，前台恢复或切回该会话只刷新列表与缓存时间，不重复拉取同一会话详情。过期快照不会参与首屏渲染；服务端 Session history 仍是最终事实源。
 - `Chat` 不再维护独立 Conversation Runtime registry；会话存在性、状态、置顶、turn 历史和恢复都沿用 Terminal session store。前端发送前会再次按当前 Skill 目录计算有效选择，确保历史会话里的删除项不会随旧状态重新注入。即使浏览器刷新或请求中断，服务端仍保留该会话的存在性、最近输出与恢复状态，不再把会话可见性完全交给客户端判断。
 - 独立 Terminal 后端能力继续支持最多 5 个附件：图片继续提供缩略图预览与移除，常见文本/文档文件以文件条目展示；用户可通过附件按钮选择文件，也可在 PC 输入框内直接使用 `Ctrl+V` 粘贴剪贴板图片，普通文本粘贴继续保持原生输入行为。附件统一先写入 `.alter0/workspaces/sessions/<session_id>/attachments/<asset_id>/`，提交时仅发送稳定附件引用。图片继续映射为 Codex CLI `-i` 输入；普通文件会同步写入当前 Terminal 工作区 `input-attachments/<turn_id>/`，并在同轮 prompt 中注入可直接读取的 workspace 相对路径，供 Codex 按需直接读盘。Terminal turn 历史里的图片再次查看时统一优先使用原图资源，缩略位仍保留预览图。Terminal Codex CLI 远端 compact 失败时仅把当前 turn 标记失败，保留已持久化线程标识、会话历史和工作区；下一次输入继续 resume 同一运行线程。`ReactManagedTerminalRouteBody` 保留为兼容组件与测试对象，不作为当前 `/terminal` Shell 运行入口；`/terminal` 的会话列表、header、Composer、Process 与阅读定位由 Conversation runtime 以 Terminal owner 输出。
 - `Terminal` 移动端的命令与 prompt 气泡保持自然整词换行：路径、flag 和短 shell 片段优先按空格或真实长单词边界断行，不允许因为窄屏收缩把 `/usr/bin/bash -lc 'ls -la'` 这类输入压成逐字或逐 token 的碎行。
@@ -189,7 +189,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时；`Te
 - 移动端运行页的左侧导航抽屉统一使用同一套面板开合语义：`Chat / Terminal` 都只通过 `Menu` 打开抽屉；点击遮罩、切换路由、切换会话或创建新会话后，不保留旧的抽屉覆盖层。
 - 移动端运行页的左侧导航抽屉在真机上优先保证稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不再叠加容易闪烁的多层位移、淡出或条目级顺序动画；抽屉内置顶会话单独位于 `Pinned / 置顶` 分组，其余会话再按最近时间分组展示，统一收敛为标题与尾侧三点菜单，只有处理中会话显示 loading。
 - `/chat`、登录页和主工作区品牌文案对外统一展示为 `Alter0`，浏览器标题、登录标题、导航品牌位、会话栏标题与欢迎区 tag 不再混用小写服务名。
-- `Chat` 的会话操作、模型选择、Tools / MCP、Skills 与过程披露过滤都收敛到工作台内部；运行页输入框工具栏的 `Session` 面板内置 `Codex` 直选项，选中后后续消息会直接走 `Codex Direct`；未选 `Codex` 时按 Provider 健康状态直接走 Claude Code CLI 或 Codex CLI，不再经过内置业务编排层。`Session` 面板展示本轮可注入的公有 Skill，并允许按结构化事件类型控制过程披露内容；`Details` 只保留当前会话元信息。窄屏下主导航仍走抽屉，小高度视口中导航分组、底部设置项与语言切换入口保持独立纵向滚动并全部可触达。
+- `Chat` 的会话操作、模型选择、Tools / MCP、Skills 与过程披露过滤都收敛到工作台内部；运行页输入框工具栏的 `Session` 面板内置 `Codex` 直选项，默认选中 Codex 并让后续消息直接走 `Codex Direct`。用户显式选择具体 Provider/Model 后，本 route 的模型、Tools/MCP、Skills 与过程披露过滤都会写入浏览器本地配置，刷新或重开后继续恢复，并随下一次输入 payload 提交；取消全部 Skills 或 MCP 会按空选择保存。`Session` 面板展示本轮可注入的公有 Skill，并允许按结构化事件类型控制过程披露内容；`Details` 只保留当前会话元信息。窄屏下主导航仍走抽屉，小高度视口中导航分组、底部设置项与语言切换入口保持独立纵向滚动并全部可触达。
 - 窄屏主导航抽屉在点击路由项后会立即收起；切页后不保留覆盖在新页面上的菜单层，用户直接进入目标页内容区。
 - 左侧主导航内的 Session 列表保持工作台式紧凑结构：置顶会话单独维护在 `Pinned / 置顶` 分组并固定在 `Today / 今天` 上方，其余会话按最近时间分组，并与主导航 `menu` 复用同一套分组外壳、hover、激活态语言和桌面会话列宽；条目采用独立卡片，主体只保留标题且在可用宽度内单行截断，长标题只能在条目内部省略，新增会话插入或列表刚好跨过滚动阈值时也不改变 `Sessions / New` 区块的宽度或纵向位置，尾侧保留单个三点更多按钮，展开后承载置顶、详情与删除操作，不再展示摘要、短 hash、Skill 标签、完整会话 id、状态灯或额外 footer 区块。
 - Runtime 配置统一通过 workspace `Details` 面板切换，不再使用独立 bridge sheet；`Details` 默认先展示高密度摘要区，面板顶部保留标题栏与显式关闭按钮，字段标签、复制按钮和多行内容按统一紧凑规格排列，并以顶层浮层方式覆盖在运行页上方，打开时不再推动消息区或对话框位置；浮层最大可视区域保持克制，内部 tab/按钮支持再次点击只收起当前配置内容且保留 `Details` 面板，点击浮层外区域、关闭按钮或按 `Escape` 才关闭整个面板，移动端仍要求面板与输入区互不遮挡，切换时优先保证输入焦点、键盘占位和主动作可达。
@@ -207,17 +207,17 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时；`Te
 - 移动端 `Terminal` 在输入框聚焦且软键盘抬起后，底部 Composer 作为 workspace grid footer 随 App Shell 的动态视口底边移动；Terminal 工作区主体、workspace header、输出区布局高度和配置浮层保持原位，键盘弹起不会把页面整体向上推出，也不会压缩长历史输出区；长历史输出继续留在 `terminal-chat-screen` 内独立滚动，不允许通过增大 footer padding 把输入区整体挤出屏幕。
 - `Chat / Terminal` 统一使用同一套四键阅读定位条组件，承载 `回到顶部 / 上一条 / 下一条 / 回到底部` 四个动作，并按当前视口中的可见消息块或 Terminal turn 动态计算上下目标。Terminal 的 `上一条` 固定指向当前视口中最靠上的可见 turn，`下一条` 在单条 turn 可见时指向它后面的真实下一条、在多条 turn 同屏可见时指向最靠下的可见 turn；但只要最后一条 turn 已经进入当前视口，无论底部剩余内容是否还存在，都隐藏 `下一条`，剩余阅读交给 `回到底部`。`回到底部` 本身只在最后一条内容的底边仍位于视口外时显示；如果最后只剩容器 padding 或空白余量，不再保留伪底部跳转。这组按钮继续使用原有箭头字形，但按钮本体不参与正文文本选中或长按选中；当消息区存在有效文本选区时，四键会自动隐藏，释放完整复制操作面。
 - `Chat / Terminal` 的四键阅读定位条统一使用独立圆形按钮外观与触摸反馈；移动端固定停靠在工作区右侧、输入区上沿之上，避免落回正文流内或压住输入区。
-- `Chat` 与 `Terminal` 的会话设置入口统一位于底部输入框工具栏的 `Session` 按钮。新空白 Chat 会话默认勾选全部可用公有 Skill；用户可在该面板中调整 `Provider / Model`、`Tools / MCP`、`Skills`，变更会立即保存到当前会话并作用于后续发送的消息；取消全部勾选会按空选择保存，不会被旧会话配置自动补回。
+- `Chat` 与 `Terminal` 的会话设置入口统一位于底部输入框工具栏的 `Session` 按钮。新空白 Chat 会话默认选择 Codex，并默认勾选全部可用公有 Skill；用户可在该面板中调整 `Provider / Model`、`Tools / MCP`、`Skills`，变更会立即保存到当前 route 的浏览器本地配置并作用于后续发送的消息；取消全部勾选会按空选择保存，不会被旧会话配置自动补回。
 - Agent 请求默认由 Claude Code CLI 或 Codex CLI 直接执行；领域规则通过会话选择的 Skill 注入。
 - 选中的 Skill、MCP、Memory 摘要与工作区事实会在启动 CLI runtime 前注入当前会话工作区。
 - `Models` 控制面支持同时维护 `OpenAI Compatible` 与 `OpenRouter` Provider；`OpenRouter` 可直接配置 `Site URL`、`App Name`、回退模型和 Provider 路由偏好，系统会分别注入官方请求头与请求体扩展字段。
 - `OpenAI Compatible` / `OpenRouter` Provider 均支持按 `api_type` 选择上游接口：`openai-responses` 走 `/responses`，`openai-completions` 走 `/chat/completions`；配置自定义 `base_url` 时，需要目标服务兼容所选接口。`OpenRouter` 默认使用 `https://openrouter.ai/api/v1` 与 `openai-completions`。
-- 启用且健康的 Provider 会生成 Claude Code provider profile；显式选择 `Codex` 或 Provider 不可用时进入 Codex Direct；Claude 执行失败不自动回退。
+- 启用且健康的 Provider 会生成 Claude Code provider profile；默认执行器为 Codex Direct，只有显式选择具体 Provider/Model 或声明 Claude 执行器时进入 Claude Code；Claude 执行失败不自动回退。
 - `Models` 控制面保存 Provider 时，`api_key` 输入框留空表示保持现有密钥；若前端中间态传入占位值 `-`，服务端会按空值处理，不会把 `-` 持久化为真实凭据。
 - 历史 `model_config.json` 若残留缺失 `api_key` 的 Provider，加载阶段会自动收敛为禁用态并保留在 `Models` 控制面中，页面不会因旧配置直接返回 500；补齐密钥后可重新启用。
 - `Codex Runtime` 控制面位于 `Settings`，只管理当前服务运行账户的 Codex Direct 配置。页面在单一顶部面板中展示当前 `auth.json` 解析出的账号名、邮箱、计划、认证模式、profile、hourly / weekly 额度与 LLM Provider 注册状态；model 与思考深度的可选项来自 Codex app-server 的 `model/list`，当前生效值来自 `config/read`，选择变更后立即通过 `config/batchWrite` 写回当前用户配置。前端首屏并行读取 Codex Runtime 状态与 LLM Provider 状态，避免互不依赖的接口串行拖慢设置页加载。前端不提供多账号导入、登录、保存或切换入口，不展示 Account ID / User ID、保存名称、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。
 - 默认 Provider 只会落在已启用配置上；若默认 Provider 被禁用、删除或历史配置已失效，系统会自动切换到下一可用 Provider，无可用项时清空默认值。
-- 复杂度评估阶段会优先复用当前消息选中的 `Provider / Model`；未显式选择时，回退到默认 Provider 与默认模型。若 Chat 当前显式选择 `Codex`，前端会改写消息 metadata 为 `alter0.execution.engine=codex`，由执行层进入 `Codex CLI` 链路；已注册的 alter0 内置命令仍优先由命令注册表执行，未注册的 `/goal` 等斜线前缀输入会原样交给 Agent 链路并按用户选择进入 Codex 或 Claude。Web 对话框在直连 Codex 且输入以 `/` 开头时会展示 Web 适用的 Codex CLI 斜线命令候选，覆盖 `/apps`、`/plugins`、`/compact`、`/diff`、`/mcp`、`/model`、`/goal`、`/status` 等命令；候选按命令作用分组顺序展示，并使用短动作说明。权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入 Web 候选。Terminal 在当前会话明确为 `codex` shell 时也提供同一候选补全，点击候选会补全当前命令前缀。
+- 复杂度评估阶段会优先复用当前消息选中的 `Provider / Model`；未显式选择 Provider 时默认进入 Codex Direct。已注册的 alter0 内置命令仍优先由命令注册表执行，未注册的 `/goal` 等斜线前缀输入会原样交给 Agent 链路并按用户选择进入 Codex 或 Claude。Web 对话框在直连 Codex 且输入以 `/` 开头时会展示 Web 适用的 Codex CLI 斜线命令候选，覆盖 `/apps`、`/plugins`、`/compact`、`/diff`、`/mcp`、`/model`、`/goal`、`/status` 等命令；候选按命令作用分组顺序展示，并使用短动作说明。权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入 Web 候选。Terminal 在当前会话明确为 `codex` shell 时也提供同一候选补全，点击候选会补全当前命令前缀。
 - 默认走实时执行。
 - `Chat` 消息提交统一调用 `POST /api/chat/sessions/{session_id}/input`，前端不再接入 `/api/messages`、`/api/messages/stream`、SSE parser 或本地流式 `Thinking` 步骤；发送后当前会话按 Terminal session 状态进入 busy，并由返回或恢复到的 `turns` 重建消息区。
 - `Chat` 消息区在 assistant 结果与 `Process` 展开收起期间采用逐条 patch；时间线渲染按单条消息缓存稳定 Markdown 与 Process 装配结果，避免长输出时反复重建历史消息、Markdown 与消息列表，确保导航、发送、详情和会话切换按钮保持可响应。
@@ -235,7 +235,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时；`Te
 2. `Skill`
 - 面向“持续协助并推进执行”的目标型任务。
 - Chat 使用同一个 CLI Runtime 执行任务，由 Claude Code 或 Codex CLI 承担任务推理、工具调用和会话内上下文压缩。
-- Runtime Resolver 按选择结果进入执行器：显式 `Codex` 使用 `Codex Direct`；存在启用且可用的 Model Provider 时使用 `Claude Code + provider profile`；未配置或不可用时使用 `Codex Direct`；Claude 执行失败直接返回错误。
+- Runtime Resolver 按选择结果进入执行器：默认与显式 `Codex` 使用 `Codex Direct`；显式选择具体 Provider/Model 或声明 Claude 执行器时使用 `Claude Code + provider profile`；Claude 执行失败直接返回错误。
 - 代码开发、旅行攻略、结构化写作等业务场景由 Skill 组合和交付契约表达，不再对应单独执行框架。代码开发复用全栈开发、测试、评审、重构、预览发布等现有 Skill；旅行攻略、前端设计、部署预览、文档协作、测试、评审与记忆整理都由 `docs/skills/<skill_id>/SKILL.md` 表达规则。
 - 启动前，服务会在当前 Session 工作区注入 `CLAUDE.md` 或 `AGENTS.md`、选中 Skill、Memory 摘要、MCP 配置、仓库/附件/产物路径和可写边界。Claude Code 使用 `.alter0/claude-runtime/`，Codex Direct 使用 `.alter0/codex-runtime/` 与独立 `CODEX_HOME`。
 - 代码开发任务默认在当前 Session 工作区维护独立 repo clone，并在同一会话内复用仓库、分支、预览服务和交付状态。旅行任务通过 `travel` Skill 产出移动端优先的 HTML 攻略，按行程密度生成 Codex 行程地图图片，并通过当前 Session 的只读 `travel` workspace service 暴露。

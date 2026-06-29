@@ -28,9 +28,9 @@ Skill & Memory 负责 CLI Runtime 的上下文注入、Skill 仓库、Markdown �
 ### 运行时选择
 
 - Agent 请求统一进入 CLI Runtime。
-- 存在启用且健康的 Model Provider 时，运行时优先启动 `Claude Code + provider profile`。
-- Model Provider 未配置或不可用时，运行时使用 `Codex Direct`；已进入 Claude 后执行失败直接返回错误，不自动改走 Codex。
-- Web 对话显式选择 `Codex` 或消息 metadata 声明 `alter0.execution.engine=codex` 时，本轮直接使用 `Codex Direct`。
+- 运行时默认启动 `Codex Direct`。
+- Web 对话显式选择具体 Provider/Model，或消息 metadata 声明 `alter0.execution.engine=claude` 时，运行时启动 `Claude Code + provider profile`；已进入 Claude 后执行失败直接返回错误，不自动改走 Codex。
+- Web 对话保持默认 Codex、显式选择 `Codex` 或消息 metadata 声明 `alter0.execution.engine=codex` 时，本轮直接使用 `Codex Direct`。
 - Cron 任务、会话归档、系统记忆维护与普通用户消息复用同一运行时选择规则。
 
 ### 运行时注入
@@ -149,7 +149,7 @@ memory/
 
 ## 验收口径
 
-- Agent 请求能按 Provider 优先级进入 Claude Code 或 Codex Direct。
+- Agent 请求默认进入 Codex Direct，显式 Provider/Claude 请求进入 Claude Code。
 - 每次运行前都能在会话工作区看到对应 CLI runtime 的上下文注入文件。
 - Skill 文件从独立仓库目录注入，不依赖固定业务 Skill 实现。
 - Memory Files 以 Markdown 主存存在，并能按会话、项目和日期被召回。
