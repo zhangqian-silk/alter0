@@ -187,6 +187,33 @@ function SkillSelectionHarness() {
   );
 }
 
+function RuntimeConfigSelectionHarness() {
+  const runtime = useConversationRuntime();
+  const filesystemMCP = runtime.capabilities.find((item) => item.id === "filesystem");
+  const memorySkill = runtime.skills.find((item) => item.id === "memory");
+
+  return (
+    <div>
+      <button type="button" onClick={() => runtime.selectModel("openrouter", "anthropic/claude-sonnet")}>
+        select openrouter
+      </button>
+      <button type="button" onClick={() => runtime.toggleCapability("filesystem", "mcp", true)}>
+        enable filesystem
+      </button>
+      <button type="button" onClick={() => runtime.toggleSkill("memory", false)}>
+        disable memory
+      </button>
+      <button type="button" onClick={() => void runtime.sendPrompt("Run with stored config")}>
+        send with stored config
+      </button>
+      <output data-testid="selected-provider">{runtime.selectedProviderId}</output>
+      <output data-testid="selected-model">{runtime.selectedModelId}</output>
+      <output data-testid="filesystem-state">{filesystemMCP?.active ? "active" : "inactive"}</output>
+      <output data-testid="memory-skill-state">{memorySkill?.active ? "active" : "inactive"}</output>
+    </div>
+  );
+}
+
 function SessionListHarness() {
   const runtime = useConversationRuntimeWorkspace();
   return (
@@ -1915,8 +1942,123 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(requestBody?.input).toBe("Run this with Codex"));
     expect(requestBody).not.toHaveProperty("metadata");
+    expect(requestBody?.execution_engine).toBe("codex");
+    expect(requestBody).not.toHaveProperty("model_provider_id");
     expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat/input", expect.any(Object));
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("defaults the executor selection to Codex and restores changed runtime config from browser storage", async () => {
+    let requestBody: Record<string, unknown> | null = null;
+    apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
+        requestBody = body || null;
+        return {
+          session: {
+            id: "alter0-chat",
+            title: "Stored config session",
+            status: "ready",
+            created_at: "2026-04-23T03:30:00Z",
+            turns: [{ id: "turn-stored-config", prompt: "Run with stored config", status: "success", final_output: "Done" }],
+          },
+        };
+      }
+      return {};
+    });
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return {
+            items: [
+              {
+                id: "alter0-chat",
+                title: "Stored config session",
+                status: "ready",
+                created_at: "2026-04-23T03:30:00Z",
+                turns: [],
+              },
+            ],
+          };
+        case "/api/chat/sessions/alter0-chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Stored config session",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [],
+            },
+          };
+        case "/api/control/llm/providers":
+          return {
+            items: [
+              {
+                id: "openrouter",
+                name: "OpenRouter",
+                is_enabled: true,
+                is_default: true,
+                default_model: "anthropic/claude-sonnet",
+                models: [
+                  { id: "anthropic/claude-sonnet", name: "Claude Sonnet", is_enabled: true },
+                ],
+              },
+            ],
+          };
+        case "/api/control/skills":
+          return {
+            items: [
+              { id: "memory", name: "Memory", description: "Use workspace memory", enabled: true },
+            ],
+          };
+        case "/api/control/mcps":
+          return {
+            items: [
+              { id: "filesystem", name: "Filesystem", description: "Read files", enabled: true },
+            ],
+          };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const firstView = render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeConfigSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("selected-provider")).toHaveTextContent("alter0-codex"));
+    expect(screen.getByTestId("selected-model")).toHaveTextContent("codex");
+    expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("active");
+
+    fireEvent.click(screen.getByRole("button", { name: "select openrouter" }));
+    fireEvent.click(screen.getByRole("button", { name: "enable filesystem" }));
+    fireEvent.click(screen.getByRole("button", { name: "disable memory" }));
+
+    await waitFor(() => expect(screen.getByTestId("selected-provider")).toHaveTextContent("openrouter"));
+    expect(screen.getByTestId("filesystem-state")).toHaveTextContent("active");
+    expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("inactive");
+
+    firstView.unmount();
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeConfigSelectionHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("selected-provider")).toHaveTextContent("openrouter"));
+    expect(screen.getByTestId("selected-model")).toHaveTextContent("anthropic/claude-sonnet");
+    expect(screen.getByTestId("filesystem-state")).toHaveTextContent("active");
+    expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("inactive");
+
+    fireEvent.click(screen.getByRole("button", { name: "send with stored config" }));
+
+    await waitFor(() => expect(requestBody?.input).toBe("Run with stored config"));
+    expect(requestBody?.model_provider_id).toBe("openrouter");
+    expect(requestBody?.model_id).toBe("anthropic/claude-sonnet");
+    expect(requestBody?.mcp_ids).toEqual(["filesystem"]);
+    expect(requestBody?.skill_ids).toEqual([]);
   });
 
   it("persists Chat skill selections to the runtime session before the next message is sent", async () => {

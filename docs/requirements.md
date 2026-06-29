@@ -7,7 +7,7 @@
 稳定默认约定：
 
 - Web 前端所有需要可见时间的设置视图、会话列表、详情面板与任务视图统一固定为上海时间（`Asia/Shanghai`）与 24 小时制；`Chat / Terminal` 的消息正文区不显示逐条消息或 turn 时间。
-- 自然语言任务默认通过 CLI Runtime 执行：存在启用且可用的 Model Provider 时优先使用 `Claude Code + provider profile`，未配置、不可用或鉴权失败时兜底使用 `Codex Direct`。
+- 自然语言任务默认通过 `Codex Direct` 执行；显式选择具体 Provider/Model 或声明 Claude 执行器时使用 `Claude Code + provider profile`，Claude 执行失败不自动回退。
 - 服务侧负责会话、工作区、Skill 仓库、Markdown 记忆文件、运行时注入与结果归档；会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理，跨会话长期记忆由定时任务加载 `memory-maintenance` Skill 整理。
 - 系统维护任务不提供复杂配置项：记忆维护与会话清理作为 Scheduler 内置任务每日自动运行，内置任务不可删除，但可在 Scheduler 控制面停用或重新启用；会话清理默认每日清理超过 7 天不活跃且未置顶、无 queued/running 任务关联的会话，置顶会话始终跳过自动清理。
 
@@ -61,7 +61,7 @@
 - 若当前活动会话的服务端历史只包含最新 `user` 消息且尚无对应 assistant 或失败消息，前端必须继续按单会话详情恢复，不得把该 user-only 历史判定为稳定完成态。
 - 刷新页面时，`Chat` 必须优先保住当前活动会话：若服务端会话列表暂时尚未返回该 `session_id`，前端先从浏览器侧活动会话快照恢复当前条目与最近消息，再按 `session_id` 单独回源详情；若集合接口返回的消息历史短于本地已追加历史，且本地仍有未完成助手消息或更新中的本轮消息，前端不得用较短远端历史覆盖本地时间线；在确认服务端不存在该会话前，不得直接把当前活动会话替换成新的空白 `New` 会话。
 - 刷新页面或切到其他会话后，`Chat` 仍需保住最近已知会话列表：浏览器侧最近会话快照至少覆盖当前活动会话之外的最近若干条会话；当服务端集合接口暂时漏掉其中某条会话时，左侧会话列表不得立刻把该会话删除，而应继续保留本地条目并等待单会话详情或后续集合结果确认。
-- `Chat / Terminal` 前端缓存需保留当前已加载会话的完整消息或 turns：同一工作台内的 24 小时运行态缓存不得裁剪已加载历史；浏览器侧按 `chat / terminal` 分别维护独立 `sessionStorage / localStorage` key，覆盖 active session、文本草稿、附件草稿、过程披露过滤、24 小时完整消息快照与轻量会话信息快照，用于刷新、重开或 `sessionStorage` 丢失时优先恢复当前 route 首屏。旧合并快照只作为迁移 fallback 读取，不再作为 Terminal 写入目标。缓存只作为本地加速与断网前置恢复，服务端 Session history 与后续单会话详情回源仍是最终事实源；每次访问、切换、刷新或前台恢复都会按最新合并结果刷新缓存时间。若当前活动会话已有 `has_more_before=false` 的完整稳定缓存，前台恢复或切回该会话只刷新列表与缓存时间，不重复拉取同一会话详情。
+- `Chat / Terminal` 前端缓存需保留当前已加载会话的完整消息或 turns：同一工作台内的 24 小时运行态缓存不得裁剪已加载历史；浏览器侧按 `chat / terminal` 分别维护独立 `sessionStorage / localStorage` key，覆盖 active session、文本草稿、附件草稿、模型/Provider、Tools/MCP、Skills、过程披露过滤、24 小时完整消息快照与轻量会话信息快照，用于刷新、重开或 `sessionStorage` 丢失时优先恢复当前 route 首屏。旧合并快照只作为迁移 fallback 读取，不再作为 Terminal 写入目标。缓存只作为本地加速与断网前置恢复，服务端 Session history 与后续单会话详情回源仍是最终事实源；每次访问、切换、刷新或前台恢复都会按最新合并结果刷新缓存时间。若当前活动会话已有 `has_more_before=false` 的完整稳定缓存，前台恢复或切回该会话只刷新列表与缓存时间，不重复拉取同一会话详情。
 - `Chat` 的会话存在性、配置与恢复状态需由 Terminal session store 承担第一责任：输入入口在请求开始、完成、失败时分别写入 `busy / ready / failed` 等稳定状态；会话置顶、删除、列表、详情与恢复均复用 Terminal session API。前端展示、计数和发送 payload 需以当前可用公有 Skill 目录过滤后的有效选择为准，避免因浏览器刷新、请求断开、前端本地状态丢失或 Skill 目录变化导致会话“消失”、失效 Skill 继续注入或直接 `load failed`。
 - 运行时执行过程需以统一 `RuntimeTraceEvent` 数据模型承载，并覆盖 Terminal turn、Terminal input 结果与会话历史持久化。当前 owner 的 turn 摘要需直接输出 `runtime_trace_events` 作为过程展示的 canonical 数据；事件详情通过当前 route owner 的 `session_id / turn_id / event_id` 索引读取，并只在用户展开具体 `Thinking / Process` 步骤时懒加载完整 detail，首屏与会话详情分页不得提前返回大段 thinking 明细。事件类型、来源、角色、生命周期、状态、block 与 action 信息只能来自底层 provider、工程 adapter 或 alter0 自身确定生成的字段，不允许通过自然语言内容 heuristic 猜测。前端优先消费结构化事件，并仅按 `RuntimeTraceEvent.kind` 执行过程披露过滤，不依赖解析自然语言过程文本。
 - 消息区支持 Markdown 安全渲染、一键复制最终回复、Process 折叠状态、逐条 patch 与逐帧合并刷新；Chat / Terminal 最终输出统一使用稳定的 `MessageMarkdownShell` 承载，正文先于复制工具栏渲染，不安装脚本长按选区、假选中态或编辑态兜底，且父级无关重渲染不得重写相同 markdown 的文本 DOM；React 托管的普通页面也需对正文型字段提供同一安全 Markdown 渲染能力，覆盖 Memory 文档、Task 请求/结果/日志/产物摘要、Control 描述、Cron 输入、Skill 说明、Codex 运行时说明与 Session Profile 非等宽字段。Markdown 视觉需保持正文阅读节奏：ATX/Setext 标题紧凑、段落自然、删除线和自动链接按正文渲染、嵌套列表按 Markdown 缩进保留真实层级，列表项内允许继续承载引用与代码块，普通链接显示外链箭头，代码块保留浅灰弱边界；Markdown 表格需渲染为真实表格结构并保留列对齐，只保留横向分割线、无外框卡片和表头灰底，短表格至少铺满消息宽度，普通长文本在单元格内自动换行，链接、URL 与代码保持不硬断开，只有真实不可断内容超宽时才在消息容器内滚动；ID、路径、密钥、配置值、时间戳等元数据字段继续按纯文本或等宽字段展示。

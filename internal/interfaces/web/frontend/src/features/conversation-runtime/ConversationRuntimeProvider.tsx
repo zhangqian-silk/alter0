@@ -55,6 +55,8 @@ const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v
 const TERMINAL_COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.composer.attachments.v1";
 const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
 const TERMINAL_RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.terminal.runtime.event_filter.v1";
+const RUNTIME_CONFIG_STORAGE_KEY = "alter0.web.runtime.config.v1";
+const TERMINAL_RUNTIME_CONFIG_STORAGE_KEY = "alter0.web.terminal.runtime.config.v1";
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
 const NEW_CHAT_DRAFT_KEY = "__chat_new__";
 const MAX_COMPOSER_CHARS = 10000;
@@ -150,6 +152,18 @@ type ComposerDraftMap = Record<string, string>;
 type ComposerAttachmentDraftMap = Record<string, ComposerAttachment[]>;
 type StoredActiveSessionSnapshotState = Record<string, unknown>;
 type StoredRecentSessionSnapshotState = Record<string, unknown>;
+type RuntimeComposerConfig = {
+  modelProviderID: string;
+  modelID: string;
+  toolIDs: string[];
+  skillIDs: string[];
+  skillIDsExplicit: boolean;
+  mcpIDs: string[];
+};
+
+type RuntimeComposerConfigState = RuntimeComposerConfig & {
+  stored: boolean;
+};
 
 type LegacySessionSnapshotLoad = {
   sessionsByRoute: SessionsState;
@@ -386,6 +400,68 @@ function runtimeEventFilterStorageKey(route: ConversationRoute): string {
   return route === "terminal" ? TERMINAL_RUNTIME_EVENT_FILTER_STORAGE_KEY : RUNTIME_EVENT_FILTER_STORAGE_KEY;
 }
 
+function runtimeConfigStorageKey(route: ConversationRoute): string {
+  return route === "terminal" ? TERMINAL_RUNTIME_CONFIG_STORAGE_KEY : RUNTIME_CONFIG_STORAGE_KEY;
+}
+
+function emptyRuntimeComposerConfig(stored = false): RuntimeComposerConfigState {
+  return {
+    modelProviderID: "",
+    modelID: "",
+    toolIDs: [],
+    skillIDs: [],
+    skillIDsExplicit: false,
+    mcpIDs: [],
+    stored,
+  };
+}
+
+function normalizeRuntimeComposerConfig(value: unknown, stored = false): RuntimeComposerConfigState {
+  if (!value || typeof value !== "object") {
+    return emptyRuntimeComposerConfig(stored);
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    modelProviderID: normalizeText(record.modelProviderID),
+    modelID: normalizeText(record.modelID),
+    toolIDs: normalizeSelectionIDs(record.toolIDs),
+    skillIDs: normalizeSelectionIDs(record.skillIDs),
+    skillIDsExplicit: record.skillIDsExplicit === true,
+    mcpIDs: normalizeSelectionIDs(record.mcpIDs),
+    stored,
+  };
+}
+
+function loadRuntimeConfig(route: ConversationRoute): RuntimeComposerConfigState {
+  if (typeof window === "undefined") {
+    return emptyRuntimeComposerConfig(false);
+  }
+  try {
+    const raw = window.localStorage.getItem(runtimeConfigStorageKey(route));
+    if (!raw) {
+      return emptyRuntimeComposerConfig(false);
+    }
+    return normalizeRuntimeComposerConfig(JSON.parse(raw), true);
+  } catch {
+    return emptyRuntimeComposerConfig(false);
+  }
+}
+
+function persistRuntimeConfig(route: ConversationRoute, config: RuntimeComposerConfigState) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const normalized = normalizeRuntimeComposerConfig(config, true);
+  window.localStorage.setItem(runtimeConfigStorageKey(route), JSON.stringify({
+    modelProviderID: normalized.modelProviderID,
+    modelID: normalized.modelID,
+    toolIDs: normalized.toolIDs,
+    skillIDs: normalized.skillIDs,
+    skillIDsExplicit: normalized.skillIDsExplicit,
+    mcpIDs: normalized.mcpIDs,
+  }));
+}
+
 function loadRuntimeEventFilter(route: ConversationRoute): RuntimeEventFilterID[] {
   if (typeof window === "undefined") {
     return [...DEFAULT_RUNTIME_EVENT_FILTER];
@@ -453,14 +529,26 @@ function effectiveChatSkillIDs(selectedIDs: string[] | undefined, availableSkill
   return normalized.filter((item) => available.has(item));
 }
 
-function effectiveSessionSkillIDs(session: ChatSession | null | undefined, availableSkillIDs: string[] | null): string[] {
+function runtimeConfigFromSession(session: ChatSession | null | undefined): RuntimeComposerConfigState {
   if (!session) {
+    return emptyRuntimeComposerConfig(false);
+  }
+  return {
+    modelProviderID: normalizeText(session.modelProviderID),
+    modelID: normalizeText(session.modelID),
+    toolIDs: normalizeSelectionIDs(session.toolIDs),
+    skillIDs: normalizeSelectionIDs(session.skillIDs),
+    skillIDsExplicit: session.skillIDsExplicit === true,
+    mcpIDs: normalizeSelectionIDs(session.mcpIDs),
+    stored: false,
+  };
+}
+
+function effectiveRuntimeSkillIDs(config: RuntimeComposerConfigState, availableSkillIDs: string[] | null): string[] {
+  if (config.skillIDsExplicit === false) {
     return availableSkillIDs === null ? [] : [...availableSkillIDs];
   }
-  if (session.skillIDsExplicit === false && availableSkillIDs !== null) {
-    return [...availableSkillIDs];
-  }
-  return effectiveChatSkillIDs(session.skillIDs, availableSkillIDs);
+  return effectiveChatSkillIDs(config.skillIDs, availableSkillIDs);
 }
 
 function makeID(prefix: string): string {
@@ -1485,7 +1573,10 @@ function enabledProviders(providers: ChatProvider[]): ChatProvider[] {
 
 function defaultModelSelection(providers: ChatProvider[]) {
   const available = enabledProviders(providers);
-  const provider = available.find((item) => item.is_default) || available[0] || null;
+  const provider = available.find((item) => normalizeText(item.id) === CODEX_RUNTIME_PROVIDER_ID)
+    || available.find((item) => item.is_default)
+    || available[0]
+    || null;
   if (!provider) {
     return { providerID: "", modelID: "" };
   }
@@ -1498,15 +1589,15 @@ function defaultModelSelection(providers: ChatProvider[]) {
   };
 }
 
-function resolveModelSelection(session: ChatSession | null, providers: ChatProvider[]) {
+function resolveModelSelection(selectionConfig: Pick<RuntimeComposerConfigState, "modelProviderID" | "modelID"> | null, providers: ChatProvider[]) {
   const fallback = defaultModelSelection(providers);
-  const providerID = normalizeText(session?.modelProviderID) || fallback.providerID;
+  const providerID = normalizeText(selectionConfig?.modelProviderID) || fallback.providerID;
   const provider = enabledProviders(providers).find((item) => normalizeText(item.id) === providerID) || null;
   if (!provider) {
     return fallback;
   }
   const models = enabledModels(provider);
-  const preferredModelID = normalizeText(session?.modelID);
+  const preferredModelID = normalizeText(selectionConfig?.modelID);
   const model = models.find((item) => normalizeText(item.id) === preferredModelID)
     || models.find((item) => normalizeText(item.id) === normalizeText(provider.default_model))
     || models[0]
@@ -1541,6 +1632,16 @@ function serializeMessageAttachment(attachment: ComposerAttachment) {
     content_type: attachment.contentType,
     data_url: attachment.dataURL,
     preview_data_url: isComposerImageAttachment(attachment) ? attachment.previewDataURL : undefined,
+  };
+}
+
+function runtimeSelectionInputPayload(selection: { providerID: string; modelID: string }): Record<string, string> {
+  if (normalizeText(selection.providerID) === CODEX_RUNTIME_PROVIDER_ID) {
+    return { execution_engine: "codex" };
+  }
+  return {
+    model_provider_id: normalizeText(selection.providerID),
+    model_id: normalizeText(selection.modelID),
   };
 }
 
@@ -1580,6 +1681,7 @@ export function ConversationRuntimeProvider({
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"model" | "capabilities" | "skills">("model");
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
+  const [runtimeConfig, setRuntimeConfig] = useState<RuntimeComposerConfigState>(() => loadRuntimeConfig(route));
   const [runtimeEventFilter, setRuntimeEventFilter] = useState<RuntimeEventFilterID[]>(() => loadRuntimeEventFilter(route));
   const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
@@ -1668,10 +1770,27 @@ export function ConversationRuntimeProvider({
     () => skillCatalogLoaded ? defaultChatSkillIDs(skills) : null,
     [skillCatalogLoaded, skills],
   );
-  const activeSkillIDs = useMemo(
-    () => effectiveSessionSkillIDs(activeSession, availableSkillIDs),
-    [activeSession, availableSkillIDs],
+  const activeSessionConfigKey = [
+    activeSession?.modelProviderID || "",
+    activeSession?.modelID || "",
+    (activeSession?.toolIDs || []).join("\u0000"),
+    (activeSession?.skillIDs || []).join("\u0000"),
+    activeSession?.skillIDsExplicit === true ? "skills-explicit" : "skills-default",
+    (activeSession?.mcpIDs || []).join("\u0000"),
+  ].join("\u0001");
+  const activeRuntimeConfig = useMemo(
+    () => runtimeConfig.stored ? runtimeConfig : runtimeConfigFromSession(activeSession),
+    // activeSessionConfigKey intentionally keeps history/message merges out of Composer context.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeSessionConfigKey, runtimeConfig],
   );
+  const activeSkillIDs = useMemo(
+    () => effectiveRuntimeSkillIDs(activeRuntimeConfig, availableSkillIDs),
+    [activeRuntimeConfig, availableSkillIDs],
+  );
+  useEffect(() => {
+    setRuntimeConfig(loadRuntimeConfig(route));
+  }, [route]);
   useEffect(() => {
     latestComposerDraftsRef.current = composerDrafts;
     window.clearTimeout(composerDraftPersistTimerRef.current);
@@ -1917,6 +2036,12 @@ export function ConversationRuntimeProvider({
     }));
   }, [patchSession, route]);
 
+  const commitRuntimeConfig = useCallback((nextConfig: RuntimeComposerConfigState) => {
+    const normalized = normalizeRuntimeComposerConfig(nextConfig, true);
+    setRuntimeConfig(normalized);
+    persistRuntimeConfig(route, normalized);
+  }, [route]);
+
   const hydrateRuntimeSession = async (
     routeKey: ConversationRoute,
     sessionID: string,
@@ -2034,7 +2159,10 @@ export function ConversationRuntimeProvider({
       const hydrated = await sendRuntimeInput(session.id, {
         input: content,
         attachments: attachments.map(serializeMessageAttachment),
+        ...runtimeSelectionInputPayload(selection),
+        tool_ids: normalizeSelectionIDs(activeRuntimeConfig.toolIDs),
         skill_ids: activeSkillIDs,
+        mcp_ids: normalizeSelectionIDs(activeRuntimeConfig.mcpIDs),
       });
       const latestSession = sessionsByRouteRef.current[route].find((item) => item.id === session.id) || session;
       const nextHydrated = hydrated
@@ -2326,13 +2454,13 @@ export function ConversationRuntimeProvider({
     return () => window.clearTimeout(pollTimerRef.current);
   }, [pageHidden, sessionsByRoute, upsertRuntimeSession]);
 
-  const selection = resolveModelSelection(activeSession, availableProviders);
+  const selection = resolveModelSelection(activeRuntimeConfig, availableProviders);
   const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
   const selectedModel = enabledModels(selectedProvider).find((model) => normalizeText(model.id) === selection.modelID) || null;
   const currentTarget = activeSession?.target || defaultChatTarget();
   const activeSessionBusy = activeSession ? shouldPollRuntimeBackedSession(activeSession) : false;
   const selectedModelSupportsVision = selectedModel ? selectedModel.supports_vision !== false : true;
-  const activeMcpIDKey = (activeSession?.mcpIDs || []).join("\u0000");
+  const activeMcpIDKey = activeRuntimeConfig.mcpIDs.join("\u0000");
   const activeSkillIDKey = activeSkillIDs.join("\u0000");
   const availableSkillIDKey = availableSkillIDs === null ? "__loading__" : availableSkillIDs.join("\u0000");
   const runtimeProviderItems = useMemo(() => enabledProviders(availableProviders).map((provider) => ({
@@ -2348,7 +2476,7 @@ export function ConversationRuntimeProvider({
     })),
   })), [availableProviders, selection.modelID, selection.providerID]);
   const runtimeCapabilityItems = useMemo(() => {
-    const activeMcpIDs = new Set((activeSession?.mcpIDs || []).map(normalizeText));
+    const activeMcpIDs = new Set(activeRuntimeConfig.mcpIDs.map(normalizeText));
     return [
       ...mcps
         .filter((item) => item.enabled !== false)
@@ -2363,7 +2491,7 @@ export function ConversationRuntimeProvider({
     ];
   // activeMcpIDKey intentionally decouples Composer from activeSession.messages changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMcpIDKey, mcps]);
+  }, [activeMcpIDKey, activeRuntimeConfig.mcpIDs, mcps]);
   const runtimeSkillItems = useMemo(() => {
     const selectedSkillIDs = new Set(activeSkillIDs);
     return [
@@ -2412,13 +2540,19 @@ export function ConversationRuntimeProvider({
   const closeInspector = useCallback(() => setInspectorOpen(false), []);
   const selectModel = useCallback((providerID: string, modelID: string) => {
     const session = readCurrentActiveSession();
+    const nextConfig = normalizeRuntimeComposerConfig({
+      ...activeRuntimeConfig,
+      modelProviderID: normalizeText(providerID),
+      modelID: normalizeText(modelID),
+    }, true);
+    commitRuntimeConfig(nextConfig);
     if (!session) {
       return;
     }
     const nextSession = {
       ...session,
-      modelProviderID: normalizeText(providerID),
-      modelID: normalizeText(modelID),
+      modelProviderID: nextConfig.modelProviderID,
+      modelID: nextConfig.modelID,
     };
     patchSession(route, session.id, (currentSession) => ({
       ...currentSession,
@@ -2426,12 +2560,9 @@ export function ConversationRuntimeProvider({
       modelID: nextSession.modelID,
     }));
     void persistRuntimeSessionConfig(route, nextSession);
-  }, [patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
+  }, [activeRuntimeConfig, commitRuntimeConfig, patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
   const toggleCapability = useCallback((id: string, kind: "tool" | "mcp", checked: boolean) => {
     const session = readCurrentActiveSession();
-    if (!session) {
-      return;
-    }
     const value = normalizeText(id);
     if (!value) {
       return;
@@ -2440,6 +2571,13 @@ export function ConversationRuntimeProvider({
       checked
         ? normalizeSelectionIDs([...items, value])
         : items.filter((item) => item !== value);
+    const nextConfig = kind === "tool"
+      ? normalizeRuntimeComposerConfig({ ...activeRuntimeConfig, toolIDs: mutate(activeRuntimeConfig.toolIDs) }, true)
+      : normalizeRuntimeComposerConfig({ ...activeRuntimeConfig, mcpIDs: mutate(activeRuntimeConfig.mcpIDs) }, true);
+    commitRuntimeConfig(nextConfig);
+    if (!session) {
+      return;
+    }
     const nextSession = kind === "tool"
       ? { ...session, toolIDs: mutate(session.toolIDs) }
       : { ...session, mcpIDs: mutate(session.mcpIDs) };
@@ -2449,12 +2587,9 @@ export function ConversationRuntimeProvider({
         : { ...currentSession, mcpIDs: mutate(currentSession.mcpIDs) },
     );
     void persistRuntimeSessionConfig(route, nextSession);
-  }, [patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
+  }, [activeRuntimeConfig, commitRuntimeConfig, patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
   const toggleSkill = useCallback((id: string, checked: boolean) => {
     const session = readCurrentActiveSession();
-    if (!session) {
-      return;
-    }
     const value = normalizeText(id);
     if (!value) {
       return;
@@ -2462,20 +2597,30 @@ export function ConversationRuntimeProvider({
     if (availableSkillIDs !== null && !availableSkillIDs.includes(value)) {
       return;
     }
+    const currentSkillIDs = effectiveRuntimeSkillIDs(activeRuntimeConfig, availableSkillIDs);
     const mutate = () =>
       checked
-        ? normalizeSelectionIDs([...effectiveSessionSkillIDs(session, availableSkillIDs), value])
-        : effectiveSessionSkillIDs(session, availableSkillIDs).filter((item) => item !== value);
+        ? normalizeSelectionIDs([...currentSkillIDs, value])
+        : currentSkillIDs.filter((item) => item !== value);
+    const nextConfig = normalizeRuntimeComposerConfig({
+      ...activeRuntimeConfig,
+      skillIDs: mutate(),
+      skillIDsExplicit: true,
+    }, true);
+    commitRuntimeConfig(nextConfig);
+    if (!session) {
+      return;
+    }
     const nextSession = {
       ...session,
-      skillIDs: mutate(),
+      skillIDs: nextConfig.skillIDs,
       skillIDsExplicit: true,
     };
     patchSession(route, session.id, () => nextSession);
     void persistRuntimeSessionConfig(route, nextSession);
   // availableSkillIDKey intentionally decouples Composer from availableSkillIDs array identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableSkillIDKey, patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
+  }, [activeRuntimeConfig, availableSkillIDKey, commitRuntimeConfig, patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
   const toggleRuntimeEventFilter = useCallback((id: RuntimeEventFilterID, checked: boolean) => {
     const value = normalizeText(id) as RuntimeEventFilterID;
     const allowed = new Set(RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id));
@@ -2522,7 +2667,7 @@ export function ConversationRuntimeProvider({
     capabilities: runtimeCapabilityItems,
     skills: runtimeSkillItems,
     runtimeEventFilter,
-    toolCount: (activeSession?.toolIDs.length || 0) + (activeSession?.mcpIDs.length || 0),
+    toolCount: activeRuntimeConfig.toolIDs.length + activeRuntimeConfig.mcpIDs.length,
     skillCount: activeSkillIDs.length,
     createSession: () => {
       void createRuntimeBackedSession(route);
@@ -2574,6 +2719,8 @@ export function ConversationRuntimeProvider({
     runtimeSkillItems,
     runtimeEventFilter,
     activeSkillIDs,
+    activeRuntimeConfig.toolIDs.length,
+    activeRuntimeConfig.mcpIDs.length,
     createRuntimeBackedSession,
     focusSession,
     patchSession,

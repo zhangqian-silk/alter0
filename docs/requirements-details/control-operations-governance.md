@@ -92,7 +92,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - 支持 OpenRouter Provider。
 - Provider 支持启用、禁用、默认切换、模型列表、base URL、API type、Claude Code profile 名称和健康状态。
 - Runtime 页的 Claude Code Provider 快速注册创建或更新 OpenAI Compatible Provider，支持连续维护多个 Provider，并把每个 Provider 填写的 models 同步为启用模型列表，首个 model 作为默认模型。
-- 启用且健康的默认 Provider 作为 Agent 请求的 Claude Code 首选运行来源。
+- 启用且健康的默认 Provider 作为用户显式选择 Provider/Model 或显式 Claude 执行器时的 Claude Code 运行来源；普通 Agent 请求默认仍进入 Codex Direct。
 
 ### API type
 
@@ -115,10 +115,10 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 ### 会话级选择
 
-- Chat 发送区支持会话级 `Provider / Model` 选择。
-- 当前消息显式选择 `Codex` 时，前端写入 `alter0.execution.engine=codex`，本轮进入 `Codex Direct`。
+- Chat 发送区支持 route 级 `Provider / Model`、Tools/MCP 与 Skills 选择，并把选择持久化到浏览器本地配置。
+- 当前消息默认选择 `Codex` 并进入 `Codex Direct`。
 - 当前消息选择具体 Provider / Model 时，Runtime Resolver 使用对应 Claude Code provider profile。
-- 未显式选择时，回退到 Runtime Profile，再回退到系统默认 Provider 与默认模型；无可用 Provider 时进入 `Codex Direct`。
+- 未显式选择 Provider 时不回退到系统默认 Provider，直接进入 `Codex Direct`；显式 Provider 不可用时也回到 `Codex Direct`。
 
 ## Runtime Service Controls
 

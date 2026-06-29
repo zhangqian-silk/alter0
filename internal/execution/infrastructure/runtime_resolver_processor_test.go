@@ -52,7 +52,7 @@ func copyTestMetadata(metadata map[string]string) map[string]string {
 	return out
 }
 
-func TestRuntimeResolverProcessorUsesClaudeWhenProviderIsEnabled(t *testing.T) {
+func TestRuntimeResolverProcessorUsesCodexByDefaultWhenProviderIsEnabled(t *testing.T) {
 	claude := &recordingRuntimeProcessor{output: "claude result"}
 	codex := &recordingRuntimeProcessor{output: "codex result"}
 	processor := NewRuntimeResolverProcessor(RuntimeResolverOptions{
@@ -72,14 +72,49 @@ func TestRuntimeResolverProcessorUsesClaudeWhenProviderIsEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
+	if output != "codex result" {
+		t.Fatalf("Process() output = %q, want codex result", output)
+	}
+	if claude.called != 0 {
+		t.Fatalf("claude called %d times, want 0", claude.called)
+	}
+	if codex.called != 1 {
+		t.Fatalf("codex called %d times, want 1", codex.called)
+	}
+	if codex.lastMeta[execdomain.ExecutionSourceMetadataKey] != execdomain.ExecutionSourceCodexCLI {
+		t.Fatalf("execution source = %q, want %q", codex.lastMeta[execdomain.ExecutionSourceMetadataKey], execdomain.ExecutionSourceCodexCLI)
+	}
+}
+
+func TestRuntimeResolverProcessorUsesClaudeWhenProviderIsExplicit(t *testing.T) {
+	claude := &recordingRuntimeProcessor{output: "claude result"}
+	codex := &recordingRuntimeProcessor{output: "codex result"}
+	processor := NewRuntimeResolverProcessor(RuntimeResolverOptions{
+		ProviderSource: stubProviderSource{
+			providers: map[string]*llmdomain.ModelProvider{
+				"openrouter": {
+					ID:           "openrouter",
+					APIKey:       "token",
+					DefaultModel: "anthropic/claude-3.7-sonnet",
+					IsEnabled:    true,
+				},
+			},
+		},
+		Claude: claude,
+		Codex:  codex,
+	})
+
+	output, err := processor.Process(context.Background(), "整理方案", map[string]string{
+		execdomain.LLMProviderIDMetadataKey: "openrouter",
+	})
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
 	if output != "claude result" {
 		t.Fatalf("Process() output = %q, want claude result", output)
 	}
-	if claude.called != 1 {
-		t.Fatalf("claude called %d times, want 1", claude.called)
-	}
-	if codex.called != 0 {
-		t.Fatalf("codex called %d times, want 0", codex.called)
+	if claude.called != 1 || codex.called != 0 {
+		t.Fatalf("calls claude=%d codex=%d, want 1/0", claude.called, codex.called)
 	}
 	if claude.lastMeta[execdomain.ExecutionSourceMetadataKey] != execdomain.ExecutionSourceClaudeCode {
 		t.Fatalf("execution source = %q, want %q", claude.lastMeta[execdomain.ExecutionSourceMetadataKey], execdomain.ExecutionSourceClaudeCode)
@@ -105,7 +140,9 @@ func TestRuntimeResolverProcessorReturnsClaudeErrorWithoutCodexFallback(t *testi
 		Codex:  codex,
 	})
 
-	output, err := processor.Process(context.Background(), "整理方案", map[string]string{})
+	output, err := processor.Process(context.Background(), "整理方案", map[string]string{
+		execdomain.ExecutionEngineMetadataKey: execdomain.ExecutionEngineClaude,
+	})
 	if err == nil {
 		t.Fatalf("Process() error = nil, want claude error")
 	}

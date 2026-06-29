@@ -52,7 +52,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 - 命令请求必须优先于复杂度评估执行，避免 `/help` 等命令进入模型或任务分流。
 - 当 `UnifiedMessage.Metadata` 显式声明 `alter0.execution.engine=codex` 时，斜线前缀输入不进入 alter0 `CommandRegistry`；该内容作为直连 Codex 会话输入原样交给 `ExecutionPort`，用于支持 Codex CLI 内置斜线命令。
 - Web 直连 Codex 会话的斜线命令候选属于前端输入辅助，不改变编排层路由语义；候选补全后的文本仍按原始用户输入进入统一消息链路。该辅助覆盖 Chat / Chat 的直连 Codex 模型选择，以及 Terminal 中 shell 明确为 Codex 的活动会话；候选集合按 Web 适用的 Codex CLI 斜线命令维护，并按命令作用分组顺序与短动作说明展示。权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选。
-- Agent 请求进入 `ExecutionPort`，再由 `RuntimeResolver` 选择 `Claude Code + provider profile` 或 `Codex Direct`。
+- Agent 请求进入 `ExecutionPort`，再由 `RuntimeResolver` 选择默认 `Codex Direct` 或显式 `Claude Code + provider profile`。
 
 ### 命令执行
 
@@ -63,7 +63,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 ### Agent 执行
 
 - 执行端口只表达执行契约，不直接绑定具体模型。
-- Runtime Resolver 按优先级执行：显式 `alter0.execution.engine=codex` 直接进入 `Codex Direct`；存在启用且健康的 Model Provider 时进入 `Claude Code + provider profile`；其余情况进入 `Codex Direct`。Claude Code 执行失败时返回原始错误，不自动切换到 Codex。
+- Runtime Resolver 按优先级执行：显式 `alter0.execution.engine=codex`、空执行器或 `auto` 均进入 `Codex Direct`；显式 `alter0.execution.engine=claude` 或携带 `alter0.llm.provider_id` 时解析对应 Provider 并进入 `Claude Code + provider profile`；Provider 不可用时回到 `Codex Direct`。Claude Code 执行失败时返回原始错误，不自动切换到 Codex。
 - Claude Code 运行时启动前需要注入 `CLAUDE.md`、provider profile、Skill、Memory、MCP 和工作区事实。
 - Codex Direct 运行时启动前需要注入 `AGENTS.md`、独立 `CODEX_HOME/config.toml`、Skill、Memory、MCP 和工作区事实。
 - 运行时执行结果统一回写 `OrchestrationResult`、Session history、Task 或 Cron run。
@@ -125,7 +125,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 
 - CLI、Web、Cron 三类输入都能进入统一编排链路。
 - 命令请求不进入模型执行。
-- Agent 请求能按 Provider 优先级进入 Claude Code 或 Codex Direct。
+- Agent 请求默认进入 Codex Direct；显式 Provider/Claude 请求进入 Claude Code。
 - Cron 触发可在会话与任务视图中追踪来源。
 - 结构化日志、metrics、healthz、readyz 均可用。
 - 存储实现替换不要求改动 domain 对象。

@@ -164,7 +164,7 @@
 - 原生 Codex Runtime 资产生成、Session 工作区解析、repo root 与 session repo clone 模式。
 - 直连 Codex 路径解析 `thread.started.thread_id`，持久化 `.alter0/codex-runtime/thread.json`，后续同 Session 使用 `codex exec resume <thread_id> -` 续写。
 - Claude Code 执行器的 provider 环境变量、`CLAUDE.md`、runtime/skill 文件注入与 file-backed Skill 工作区副本。
-- Runtime Resolver 的执行器选择：显式 Codex、可用 Provider 优先 Claude Code、Claude 失败直接返回错误且不自动切换 Codex。
+- Runtime Resolver 的执行器选择：默认 Codex、显式 Provider/Claude 进入 Claude Code、显式 Codex 进入 Codex、Claude 失败直接返回错误且不自动切换 Codex。
 - RuntimeResolver 的 Claude/Codex 选择、执行源 metadata、流式输出和 Memory 注入兼容行为。
 
 边界：

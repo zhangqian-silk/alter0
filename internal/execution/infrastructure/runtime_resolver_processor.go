@@ -49,10 +49,12 @@ func (p *RuntimeResolverProcessor) Process(ctx context.Context, content string, 
 	if p.shouldForceCodex(metadata) {
 		return p.processCodex(ctx, content, metadata)
 	}
-	if provider := p.resolveClaudeProvider(ctx, metadata); provider != nil && p.claude != nil {
-		p.applyProviderMetadata(metadata, *provider)
-		setExecutionSource(metadata, execdomain.ExecutionSourceClaudeCode)
-		return p.claude.Process(ctx, content, metadata)
+	if p.shouldUseClaude(metadata) {
+		if provider := p.resolveClaudeProvider(ctx, metadata); provider != nil && p.claude != nil {
+			p.applyProviderMetadata(metadata, *provider)
+			setExecutionSource(metadata, execdomain.ExecutionSourceClaudeCode)
+			return p.claude.Process(ctx, content, metadata)
+		}
 	}
 	return p.processCodex(ctx, content, metadata)
 }
@@ -66,17 +68,33 @@ func (p *RuntimeResolverProcessor) ProcessStream(
 	if p.shouldForceCodex(metadata) {
 		return p.processCodexStream(ctx, content, metadata, emit)
 	}
-	if provider := p.resolveClaudeProvider(ctx, metadata); provider != nil && p.claude != nil {
-		p.applyProviderMetadata(metadata, *provider)
-		setExecutionSource(metadata, execdomain.ExecutionSourceClaudeCode)
-		return processRuntimeStream(ctx, p.claude, content, metadata, emit)
+	if p.shouldUseClaude(metadata) {
+		if provider := p.resolveClaudeProvider(ctx, metadata); provider != nil && p.claude != nil {
+			p.applyProviderMetadata(metadata, *provider)
+			setExecutionSource(metadata, execdomain.ExecutionSourceClaudeCode)
+			return processRuntimeStream(ctx, p.claude, content, metadata, emit)
+		}
 	}
 	return p.processCodexStream(ctx, content, metadata, emit)
 }
 
 func (p *RuntimeResolverProcessor) shouldForceCodex(metadata map[string]string) bool {
 	engine := strings.ToLower(strings.TrimSpace(metadataValue(metadata, execdomain.ExecutionEngineMetadataKey)))
-	return engine == execdomain.ExecutionEngineCodex
+	if engine == execdomain.ExecutionEngineCodex {
+		return true
+	}
+	if engine == "" || engine == execdomain.ExecutionEngineAuto {
+		return strings.TrimSpace(metadataValue(metadata, execdomain.LLMProviderIDMetadataKey)) == ""
+	}
+	return false
+}
+
+func (p *RuntimeResolverProcessor) shouldUseClaude(metadata map[string]string) bool {
+	engine := strings.ToLower(strings.TrimSpace(metadataValue(metadata, execdomain.ExecutionEngineMetadataKey)))
+	if engine == execdomain.ExecutionEngineClaude {
+		return true
+	}
+	return strings.TrimSpace(metadataValue(metadata, execdomain.LLMProviderIDMetadataKey)) != ""
 }
 
 func (p *RuntimeResolverProcessor) resolveClaudeProvider(ctx context.Context, metadata map[string]string) *llmdomain.ModelProvider {

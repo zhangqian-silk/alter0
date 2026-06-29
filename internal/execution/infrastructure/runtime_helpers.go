@@ -75,7 +75,7 @@ func renderDeliverablesInstruction(metadata map[string]string) string {
 }
 
 func setExecutionSource(metadata map[string]string, source string) {
-	if len(metadata) == 0 {
+	if metadata == nil {
 		return
 	}
 	metadata[execdomain.ExecutionSourceMetadataKey] = strings.TrimSpace(source)
