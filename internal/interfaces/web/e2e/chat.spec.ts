@@ -44,10 +44,10 @@ async function mockRuntimeSession(
   if (!sessionID) {
     throw new Error("mockRuntimeSession requires a session id");
   }
-  await page.context().route("**/api/terminal/sessions**", async (route) => {
+  await page.context().route("**/api/chat/sessions**", async (route) => {
     const url = new URL(route.request().url());
     void options;
-    if (url.pathname.endsWith("/api/terminal/sessions")) {
+    if (url.pathname.endsWith("/api/chat/sessions")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -57,7 +57,7 @@ async function mockRuntimeSession(
       });
       return;
     }
-    if (url.pathname.endsWith(`/api/terminal/sessions/${sessionID}`)) {
+    if (url.pathname.endsWith(`/api/chat/sessions/${sessionID}`)) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -84,9 +84,9 @@ async function mockChatRuntimeSessions(
   page: Parameters<typeof loginIfNeeded>[0],
   sessions: Array<Record<string, unknown>>,
 ): Promise<void> {
-  await page.context().route("**/api/terminal/sessions**", async (route) => {
+  await page.context().route("**/api/chat/sessions**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/api/terminal/sessions")) {
+    if (url.pathname.endsWith("/api/chat/sessions")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -95,7 +95,7 @@ async function mockChatRuntimeSessions(
       return;
     }
     const session = sessions.find((item) => url.pathname.endsWith(
-      `/api/terminal/sessions/${encodeURIComponent(String(item.id || ""))}`,
+      `/api/chat/sessions/${encodeURIComponent(String(item.id || ""))}`,
     ));
     if (session) {
       await route.fulfill({
@@ -1068,6 +1068,7 @@ test.describe("Chat composer", () => {
     await waitForAppReady(page);
     await page.waitForSelector("[data-composer-form='conversation']", { timeout: 20000 });
     const input = page.locator("[data-composer-input='conversation']");
+    const screen = page.locator("[data-runtime-screen='conversation']");
 
     const readMetrics = async () => page.evaluate(() => {
       const appShell = document.querySelector(".app-shell");
@@ -1133,6 +1134,13 @@ test.describe("Chat composer", () => {
     const baseline = await readMetrics();
     expect(baseline).not.toBeNull();
     expect(baseline?.keyboardOffset).toBe("0px");
+    await screen.evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+      node.dispatchEvent(new Event("scroll"));
+    });
+    await expect.poll(async () => screen.evaluate((node) =>
+      Math.round(node.scrollHeight - node.clientHeight - node.scrollTop)
+    )).toBeLessThanOrEqual(24);
 
     await input.click();
     await page.setViewportSize({ width: 430, height: 620 });
@@ -1326,7 +1334,7 @@ test.describe("Chat composer", () => {
     await page.goto(`/chat?session_id=${hashSessionIDShort("mobile-keyboard-scroll-top-chat")}`);
     await loginIfNeeded(page);
     await waitForAppReady(page);
-    await page.waitForSelector("[data-message-id='mobile-keyboard-scroll-top-turn:prompt']", { timeout: 20000 });
+    await page.waitForSelector("[data-message-id='mobile-keyboard-scroll-top-turn:assistant']", { timeout: 20000 });
     const screen = page.locator("[data-runtime-screen='conversation']");
     const input = page.locator("[data-composer-input='conversation']");
 
@@ -1373,7 +1381,7 @@ test.describe("Chat composer", () => {
     const metrics = await page.evaluate(() => {
       const header = document.querySelector("[data-runtime-mobile-variant='conversation']");
       const screenNode = document.querySelector("[data-runtime-screen='conversation']");
-      const firstMessage = document.querySelector("[data-message-id='mobile-keyboard-scroll-top-turn:prompt']");
+      const firstMessage = document.querySelector("[data-message-id='mobile-keyboard-scroll-top-turn:assistant']");
       if (!(header instanceof HTMLElement) || !(screenNode instanceof HTMLElement) || !(firstMessage instanceof HTMLElement)) {
         return null;
       }
