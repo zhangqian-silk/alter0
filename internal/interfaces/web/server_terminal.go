@@ -98,6 +98,7 @@ func (s *Server) terminalSessionCollectionHandler(w http.ResponseWriter, r *http
 			s.writeTerminalError(w, err)
 			return
 		}
+		s.publishTerminalSessionEvent(ownerID, session.ID, "session.created", session)
 		writeJSON(w, http.StatusCreated, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -143,6 +144,7 @@ func (s *Server) terminalSessionRecoverHandler(w http.ResponseWriter, r *http.Re
 		s.writeTerminalError(w, err)
 		return
 	}
+	s.publishTerminalSessionEvent(ownerID, session.ID, "session.updated", session)
 	writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 }
 
@@ -192,11 +194,12 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 	ownerID := resolveTerminalClientID(r)
 	if len(parts) == 1 {
 		if r.Method == http.MethodDelete {
-			_, err := s.terminals.Delete(ownerID, sessionID)
+			session, err := s.terminals.Delete(ownerID, sessionID)
 			if err != nil {
 				s.writeTerminalError(w, err)
 				return
 			}
+			s.publishTerminalSessionEvent(ownerID, sessionID, "session.deleted", session)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -242,6 +245,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			s.writeTerminalError(w, err)
 			return
 		}
+		s.publishTerminalSessionEvent(ownerID, session.ID, "session.updated", session)
 		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 	case "turns":
 		if len(parts) == 2 {
@@ -325,6 +329,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		s.touchSessionActivity(sessionID)
+		s.publishTerminalSessionEvent(ownerID, session.ID, "session.updated", session)
 		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})

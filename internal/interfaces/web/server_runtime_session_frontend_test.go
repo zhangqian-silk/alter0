@@ -67,8 +67,9 @@ func TestConversationRuntimeMigratesLegacySnapshotsToRuntimeCache(t *testing.T) 
 	for _, marker := range []string{
 		"loadLegacySessionSnapshots",
 		"clearLegacySessionSnapshots",
-		"writeLongTermConversationRuntimeCache(activeSessionByRoute, snapshotLoad.sessionsByRoute)",
-		"writeSessionInfoConversationRuntimeCache(activeSessionByRoute, snapshotLoad.sessionsByRoute)",
+		"writeConversationRuntimeCaches(activeSessionByRoute, snapshotLoad.sessionsByRoute)",
+		"writeLongTermConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route)",
+		"writeSessionInfoConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route)",
 	} {
 		if !strings.Contains(chat, marker) {
 			t.Fatalf("expected legacy snapshot migration marker %q", marker)
@@ -123,6 +124,14 @@ func TestRuntimePagesDoNotForkSessionStateMachines(t *testing.T) {
 	if strings.Contains(terminal, "buildTerminalTimelineItems") {
 		t.Fatalf("did not expect Terminal to keep a private timeline item builder")
 	}
+	for _, marker := range []string{
+		"enableProgressiveHistory: false",
+		"loadEarlierHistory",
+	} {
+		if !strings.Contains(chat, marker) {
+			t.Fatalf("expected Chat page to own explicit history loading marker %q", marker)
+		}
+	}
 
 	for _, source := range []struct {
 		name string
@@ -133,7 +142,6 @@ func TestRuntimePagesDoNotForkSessionStateMachines(t *testing.T) {
 	} {
 		for _, forbidden := range []string{
 			"manageState: false",
-			"enableProgressiveHistory: false",
 			"progressiveHistoryLoadsRef",
 			"progressiveHistoryLoadedRef",
 			"buildTerminalTimelineItems",
@@ -147,5 +155,8 @@ func TestRuntimePagesDoNotForkSessionStateMachines(t *testing.T) {
 				t.Fatalf("did not expect %s page to fork runtime session state with %q", source.name, forbidden)
 			}
 		}
+	}
+	if strings.Contains(terminal, "enableProgressiveHistory: false") {
+		t.Fatalf("did not expect terminal page to disable shared progressive history")
 	}
 }

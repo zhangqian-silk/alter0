@@ -539,6 +539,33 @@ func TestServiceInputUpgradesStableAutoTitleWhenLaterPromptIsMoreSpecific(t *tes
 	}
 }
 
+func TestServiceInputKeepsTopicTitleWhenLaterPromptIsSupplementalConstraint(t *testing.T) {
+	service := newTestService("success")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-topic-title-constraint",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-topic-title-constraint", session.ID, "成都旅游攻略"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	firstSnapshot, _ := waitForSessionEntries(t, service, "owner-topic-title-constraint", session.ID, 2)
+	if firstSnapshot.Title != "成都旅游攻略" {
+		t.Fatalf("expected topic title after first input, got %q", firstSnapshot.Title)
+	}
+
+	if _, err := service.Input("owner-topic-title-constraint", session.ID, "图片要用模型生成的，而不是代码绘制的"); err != nil {
+		t.Fatalf("second input: %v", err)
+	}
+	secondSnapshot, _ := waitForSessionEntries(t, service, "owner-topic-title-constraint", session.ID, 4)
+	if secondSnapshot.Title != "成都旅游攻略" {
+		t.Fatalf("expected supplemental constraint not to replace topic title, got %q", secondSnapshot.Title)
+	}
+}
+
 func TestServiceInputKeepsManualTitleWhenLaterPromptChanges(t *testing.T) {
 	service := newTestService("success")
 
@@ -698,6 +725,13 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 	}
 
 	restarted := newTestServiceWithBaseDir("success", baseDir)
+	listed := restarted.List("owner-restart")
+	if len(listed) != 1 || listed[0].ID != session.ID {
+		t.Fatalf("expected persisted session in list after restart, got %+v", listed)
+	}
+	if listed[0].Title != "persisted-session" {
+		t.Fatalf("expected listed persisted title, got %q", listed[0].Title)
+	}
 	restored, ok := restarted.Get("owner-restart", session.ID)
 	if !ok {
 		t.Fatalf("expected restored session after restart")
@@ -721,6 +755,76 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 	}
 	if got := entries[3].Text; got != "mock:after restart" {
 		t.Fatalf("expected resumed reply after restart, got %q", got)
+	}
+}
+
+func TestServiceListLoadsPersistedSessionsCreatedAfterServiceStart(t *testing.T) {
+	baseDir := t.TempDir()
+	service := newTestServiceWithBaseDir("success", baseDir)
+	writer := newTestServiceWithBaseDir("success", baseDir)
+
+	session, err := writer.Recover(RecoverRequest{
+		OwnerID:   "owner-late-list",
+		SessionID: "terminal-late-list",
+		Title:     "late persisted session",
+	})
+	if err != nil {
+		t.Fatalf("recover persisted session: %v", err)
+	}
+
+	items := service.List("owner-late-list")
+	if len(items) != 1 || items[0].ID != session.ID {
+		t.Fatalf("expected list to load late persisted session, got %+v", items)
+	}
+	if items[0].Title != "late persisted session" {
+		t.Fatalf("expected late persisted title, got %q", items[0].Title)
+	}
+}
+
+func TestServiceLoadPersistedSessionRepairsSupplementalConstraintAutoTitle(t *testing.T) {
+	baseDir := t.TempDir()
+	statePath, err := resolveTerminalSessionStateFilePath(baseDir, "persisted-supplemental-title")
+	if err != nil {
+		t.Fatalf("resolve state path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatalf("prepare state dir: %v", err)
+	}
+	record := `{
+  "summary": {
+    "id": "persisted-supplemental-title",
+    "owner_id": "owner-title-repair",
+    "title": "图片要用模型生成的，而不是代码绘制的",
+    "status": "ready"
+  },
+  "title_auto": true,
+  "title_score": 3,
+  "turns": [
+    {
+      "id": "turn-1",
+      "prompt": "成都旅游攻略",
+      "status": "completed",
+      "final_output": "已完成成都旅游攻略"
+    },
+    {
+      "id": "turn-2",
+      "prompt": "图片要用模型生成的，而不是代码绘制的",
+      "status": "completed",
+      "final_output": "当前无法替换"
+    }
+  ]
+}`
+	if err := os.WriteFile(statePath, []byte(record), 0o644); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
+	restored, ok := service.Get("owner-title-repair", "persisted-supplemental-title")
+	if !ok {
+		t.Fatalf("expected restored session")
+	}
+	if restored.Title != "成都旅游攻略" {
+		t.Fatalf("expected restored topic title, got %q", restored.Title)
 	}
 }
 
@@ -1111,6 +1215,110 @@ func TestServiceInputReturnsBusySnapshotWhileTurnRuns(t *testing.T) {
 	}
 }
 
+func TestServiceSessionUpdateHookPublishesBusyAndFinalSnapshots(t *testing.T) {
+	service := newTestService("success")
+	statuses := make(chan string, 8)
+	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session terminaldomain.Session) {
+		if ownerID == "owner-hook" && sessionID == session.ID {
+			statuses <- string(session.Status)
+		}
+	})
+
+	session, err := service.Create(CreateRequest{OwnerID: "owner-hook"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := service.Input("owner-hook", session.ID, "first prompt"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+
+	deadline := time.After(5 * time.Second)
+	seenBusy := false
+	seenReady := false
+	for !seenBusy || !seenReady {
+		select {
+		case status := <-statuses:
+			if status == string(terminaldomain.SessionStatusBusy) {
+				seenBusy = true
+			}
+			if status == string(terminaldomain.SessionStatusReady) {
+				seenReady = true
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for busy and ready hook snapshots; busy=%v ready=%v", seenBusy, seenReady)
+		}
+	}
+}
+
+func TestServiceCreateReleasesGlobalLockBeforeSessionUpdateHook(t *testing.T) {
+	service := newTestService("success")
+	hookCanReadSession := make(chan bool, 1)
+	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session terminaldomain.Session) {
+		_, ok := service.Get(ownerID, sessionID)
+		hookCanReadSession <- ok
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.Create(CreateRequest{OwnerID: "owner-create-hook"})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("create session deadlocked while publishing session update hook")
+	}
+
+	select {
+	case ok := <-hookCanReadSession:
+		if !ok {
+			t.Fatal("expected update hook to read the newly created session")
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for session update hook")
+	}
+}
+
+func TestServiceRecoverReleasesGlobalLockBeforeSessionUpdateHook(t *testing.T) {
+	service := newTestService("success")
+	hookCanReadSession := make(chan bool, 1)
+	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session terminaldomain.Session) {
+		_, ok := service.Get(ownerID, sessionID)
+		hookCanReadSession <- ok
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.Recover(RecoverRequest{
+			OwnerID:   "owner-recover-hook",
+			SessionID: "terminal-recovered-hook",
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("recover session: %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("recover session deadlocked while publishing session update hook")
+	}
+
+	select {
+	case ok := <-hookCanReadSession:
+		if !ok {
+			t.Fatal("expected update hook to read the recovered session")
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for session update hook")
+	}
+}
+
 func TestServiceShutdownAppendsInterruptedNoticeOnce(t *testing.T) {
 	service := newTestService("sleep")
 
@@ -1328,6 +1536,98 @@ func TestServiceListSeparatesSessionsByOwner(t *testing.T) {
 	}
 }
 
+func TestServiceListReconcilesOrphanedBusySession(t *testing.T) {
+	service := newTestService("success")
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	sessionID := "terminal-orphan-list"
+	insertOrphanedBusyRuntimeSession(t, service, "owner-orphan-list", sessionID, now)
+
+	items := service.List("owner-orphan-list")
+	if len(items) != 1 {
+		t.Fatalf("expected orphaned session in list, got %+v", items)
+	}
+	if items[0].Status != terminaldomain.SessionStatusInterrupted {
+		t.Fatalf("expected list to reconcile interrupted status, got %q", items[0].Status)
+	}
+	if items[0].ErrorMessage != terminalHostUnavailableMessage {
+		t.Fatalf("expected terminal host error, got %q", items[0].ErrorMessage)
+	}
+
+	turns, err := service.ListTurns("owner-orphan-list", sessionID)
+	if err != nil {
+		t.Fatalf("list turns: %v", err)
+	}
+	if len(turns) != 1 || turns[0].Status != "interrupted" {
+		t.Fatalf("expected interrupted turn after list reconciliation, got %+v", turns)
+	}
+	if len(turns[0].RuntimeTraceEvents) == 0 || turns[0].RuntimeTraceEvents[len(turns[0].RuntimeTraceEvents)-1].Title != "Interrupted" {
+		t.Fatalf("expected interrupted runtime event, got %+v", turns[0].RuntimeTraceEvents)
+	}
+
+	reloaded := NewService(context.Background(), nil, nil, Options{WorkingDir: service.options.WorkingDir})
+	restored, ok := reloaded.Get("owner-orphan-list", sessionID)
+	if !ok {
+		t.Fatalf("expected reconciled session to persist")
+	}
+	if restored.Status != terminaldomain.SessionStatusInterrupted {
+		t.Fatalf("expected persisted interrupted status, got %q", restored.Status)
+	}
+}
+
+func TestServiceInputReconcilesOrphanedBusySessionBeforeBusyCheck(t *testing.T) {
+	service := newTestService("success")
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	sessionID := "terminal-orphan-input"
+	insertOrphanedBusyRuntimeSession(t, service, "owner-orphan-input", sessionID, now)
+
+	snapshot, err := service.Input("owner-orphan-input", sessionID, "continue after restart")
+	if err != nil {
+		t.Fatalf("expected input to continue reconciled session, got %v", err)
+	}
+	if snapshot.Status != terminaldomain.SessionStatusBusy {
+		t.Fatalf("expected new input to start a busy turn, got %q", snapshot.Status)
+	}
+
+	final, entries := waitForSessionEntries(t, service, "owner-orphan-input", sessionID, 3)
+	if final.Status != terminaldomain.SessionStatusReady {
+		t.Fatalf("expected continued session to finish ready, got %q", final.Status)
+	}
+	if len(entries) < 3 {
+		t.Fatalf("expected interrupt notice, input and output entries, got %+v", entries)
+	}
+	foundInterruptedEntry := false
+	for _, entry := range entries {
+		if entry.Stream == "system" && strings.Contains(entry.Text, "terminal interrupted") {
+			foundInterruptedEntry = true
+			break
+		}
+	}
+	if !foundInterruptedEntry {
+		t.Fatalf("expected entries to record interrupted orphan, got %+v", entries)
+	}
+}
+
+func TestServiceListDoesNotInterruptLiveWorker(t *testing.T) {
+	service := newTestService("sleep")
+	session, err := service.Create(CreateRequest{OwnerID: "owner-live-worker"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := service.Input("owner-live-worker", session.ID, "long prompt"); err != nil {
+		t.Fatalf("start input: %v", err)
+	}
+
+	items := service.List("owner-live-worker")
+	if len(items) != 1 {
+		t.Fatalf("expected live session in list, got %+v", items)
+	}
+	if items[0].Status != terminaldomain.SessionStatusBusy {
+		t.Fatalf("expected live worker to remain busy, got %q", items[0].Status)
+	}
+
+	waitForSessionEntries(t, service, "owner-live-worker", session.ID, 2)
+}
+
 func TestServiceNormalizesLegacySharedOwnerToTerminal(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	service := &Service{
@@ -1489,6 +1789,62 @@ func newTestServiceWithBaseDir(mode string, baseDir string) *Service {
 		return cmd
 	}
 	return service
+}
+
+func insertOrphanedBusyRuntimeSession(t *testing.T, service *Service, ownerID string, sessionID string, now time.Time) {
+	t.Helper()
+
+	workspaceDir, err := resolveSessionWorkspaceDir(service.options.WorkingDir, sessionID)
+	if err != nil {
+		t.Fatalf("prepare workspace: %v", err)
+	}
+	item := &runtimeSession{
+		summary: terminaldomain.Session{
+			ID:                sessionID,
+			TerminalSessionID: sessionID,
+			OwnerID:           ownerID,
+			Title:             "Orphaned session",
+			Shell:             defaultCodexCommand,
+			WorkingDir:        workspaceDir,
+			Status:            terminaldomain.SessionStatusBusy,
+			CreatedAt:         now.Add(-time.Minute),
+			UpdatedAt:         now,
+		},
+		entries: []terminaldomain.Entry{
+			{
+				Cursor:    0,
+				Stream:    "input",
+				Text:      "long running prompt",
+				CreatedAt: now,
+			},
+		},
+		nextID:       1,
+		activeTurnID: "turn-1",
+		nextTurnID:   2,
+		nextEventID:  2,
+		turns: []*runtimeTurn{
+			{
+				ID:        "turn-1",
+				Prompt:    "long running prompt",
+				Status:    "running",
+				StartedAt: now,
+				events: []*runtimeEventRecord{
+					{
+						ID:        "event-1",
+						Type:      "reasoning",
+						Title:     "Thinking",
+						Status:    "running",
+						StartedAt: now,
+					},
+				},
+			},
+		},
+	}
+
+	service.mu.Lock()
+	service.sessions[sessionID] = item
+	service.mu.Unlock()
+	service.persistSession(item)
 }
 
 func waitForSessionEntries(t *testing.T, service *Service, ownerID string, sessionID string, want int) (terminaldomain.Session, []terminaldomain.Entry) {

@@ -364,6 +364,11 @@ function useConversationWorkspaceController(
     historyExpansionRequested: historyExpansionRequestedRef.current,
   });
   const hiddenMessageCount = Math.max(0, timelineMessages.length - visibleMessages.length);
+  const hasRemoteEarlierMessages = Boolean(
+    runtime.activeSession?.serverBacked === true
+    && runtime.activeSession.messagesLoaded === true
+    && runtime.activeSession.turnsPaging?.has_more_before === true,
+  );
   const isEmptyState = timelineMessages.length === 0;
   const isMobileEmptyHeader = workbench.isMobileViewport && isEmptyState;
   const emptyStateTitle = language === "zh" ? "开始新的工作流" : "Start a new workspace flow";
@@ -533,7 +538,7 @@ function useConversationWorkspaceController(
     [expandedProcessEvents, language, runtime.runtimeEventFilter, timelineSessionID, toggleProcess, toggleProcessStep, visibleMessages],
   );
   const loadEarlierMessages = useCallback(() => {
-    if (!timelineSessionID || hiddenMessageCount <= 0) {
+    if (!timelineSessionID || (hiddenMessageCount <= 0 && !hasRemoteEarlierMessages)) {
       return;
     }
     if (pendingHistoryScrollRestoreRef.current?.sessionID === timelineSessionID) {
@@ -547,19 +552,31 @@ function useConversationWorkspaceController(
       scrollTop: node?.scrollTop || 0,
       anchor: readTimelineViewportAnchor(node),
     };
-    setTimelineWindow((current) => {
-      const currentVisibleCount = current.sessionID === timelineSessionID
-        ? current.visibleCount
-        : INITIAL_VISIBLE_CHAT_MESSAGES;
-      return {
-        sessionID: timelineSessionID,
-        visibleCount: Math.min(
-          timelineMessages.length,
-          currentVisibleCount + CHAT_MESSAGE_LOAD_BATCH_SIZE,
-        ),
-      };
+    if (hiddenMessageCount > 0) {
+      setTimelineWindow((current) => {
+        const currentVisibleCount = current.sessionID === timelineSessionID
+          ? current.visibleCount
+          : INITIAL_VISIBLE_CHAT_MESSAGES;
+        return {
+          sessionID: timelineSessionID,
+          visibleCount: Math.min(
+            timelineMessages.length,
+            currentVisibleCount + CHAT_MESSAGE_LOAD_BATCH_SIZE,
+          ),
+        };
+      });
+      return;
+    }
+    void runtime.loadEarlierHistory().then((loaded) => {
+      if (!loaded && pendingHistoryScrollRestoreRef.current?.sessionID === timelineSessionID) {
+        pendingHistoryScrollRestoreRef.current = null;
+      }
+    }).catch(() => {
+      if (pendingHistoryScrollRestoreRef.current?.sessionID === timelineSessionID) {
+        pendingHistoryScrollRestoreRef.current = null;
+      }
     });
-  }, [hiddenMessageCount, timelineMessages.length, timelineScreenRef, timelineSessionID]);
+  }, [hasRemoteEarlierMessages, hiddenMessageCount, runtime, timelineMessages.length, timelineScreenRef, timelineSessionID]);
   useEffect(() => {
     setTimelineWindow((current) => {
       if (current.sessionID === timelineSessionID) {
@@ -588,7 +605,7 @@ function useConversationWorkspaceController(
     }
     const handleScroll = () => {
       captureTimelineViewportAnchor();
-      if (node.scrollTop <= CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET && hiddenMessageCount > 0) {
+      if (node.scrollTop <= CHAT_HISTORY_AUTO_LOAD_TOP_OFFSET && (hiddenMessageCount > 0 || hasRemoteEarlierMessages)) {
         loadEarlierMessages();
       }
     };
@@ -596,7 +613,7 @@ function useConversationWorkspaceController(
     return () => {
       node.removeEventListener("scroll", handleScroll);
     };
-  }, [captureTimelineViewportAnchor, hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
+  }, [captureTimelineViewportAnchor, hasRemoteEarlierMessages, hiddenMessageCount, loadEarlierMessages, timelineScreenRef]);
   useLayoutEffect(() => {
     const pending = pendingHistoryScrollRestoreRef.current;
     if (!pending || pending.sessionID !== timelineSessionID) {
@@ -719,13 +736,13 @@ function useConversationWorkspaceController(
     [inputFocused, isEmptyState, language, runtime.route, timelineMessages.length, workbench.isMobileViewport],
   );
   const timelineTopContent = useMemo(() => {
-    if (hiddenMessageCount <= 0) {
+    if (hiddenMessageCount <= 0 && !hasRemoteEarlierMessages) {
       return null;
     }
     const label = language === "zh" ? "加载更早消息" : "Load earlier messages";
     const countLabel = language === "zh"
-      ? `还有 ${hiddenMessageCount} 条`
-      : `${hiddenMessageCount} earlier`;
+      ? hiddenMessageCount > 0 ? `还有 ${hiddenMessageCount} 条` : "继续加载"
+      : hiddenMessageCount > 0 ? `${hiddenMessageCount} earlier` : "Load more";
     return (
       <div className="conversation-history-loader" data-conversation-history-loader="true">
         <button
@@ -740,7 +757,7 @@ function useConversationWorkspaceController(
         </button>
       </div>
     );
-  }, [hiddenMessageCount, language, loadEarlierMessages]);
+  }, [hasRemoteEarlierMessages, hiddenMessageCount, language, loadEarlierMessages]);
   const mobileLayoutState = resolveRuntimeMobileLayoutState({
     isMobileViewport: workbench.isMobileViewport,
     inputFocused,

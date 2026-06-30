@@ -20,6 +20,10 @@ import {
   useRuntimeSessionController,
   type RuntimeSessionPayload,
 } from "../shell/components/runtimeSessionController";
+import {
+  RUNTIME_SESSION_HISTORY_PAGE_TURN_LIMIT,
+  runtimeSessionDetailEndpoint,
+} from "../shell/components/runtimeSessionApi";
 import { useRuntimeSessionCatalogs } from "../shell/components/runtimeSessionCatalogs";
 import {
   runtimeSessionTurnsToTimelineMessages,
@@ -60,7 +64,13 @@ const TERMINAL_RUNTIME_CONFIG_STORAGE_KEY = "alter0.web.terminal.runtime.config.
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
 const NEW_CHAT_DRAFT_KEY = "__chat_new__";
 const MAX_COMPOSER_CHARS = 10000;
-const CHAT_SESSION_RECOVERY_POLL_INTERVAL_MS = 3000;
+const CHAT_SESSION_FAST_COMPENSATION_POLL_INTERVAL_MS = 1000;
+const CHAT_SESSION_SLOW_COMPENSATION_POLL_INTERVAL_MS = 5000;
+const CHAT_SESSION_FAST_COMPENSATION_ATTEMPTS = 8;
+const CHAT_SESSION_UPDATE_POLL_LIMIT = 50;
+const CHAT_SESSION_UPDATE_POLL_BYTE_LIMIT = 64 * 1024;
+const CHAT_SESSION_UPDATE_ACK_TURN_LIMIT = 16;
+const CHAT_SESSION_UPDATE_ACK_EVENT_ID_LIMIT = 128;
 const CODEX_RUNTIME_PROVIDER_ID = "alter0-codex";
 const CODEX_RUNTIME_MODEL_ID = "codex";
 const CANONICAL_CHAT_SESSION_ID = "alter0-chat";
@@ -74,13 +84,20 @@ type ChatSessionPollPlan = {
   interval: number;
 };
 
-export function resolveChatSessionPollPlan(options: { sessionCount: number; pageHidden: boolean }): ChatSessionPollPlan {
+export function resolveChatSessionPollPlan(options: {
+  sessionCount: number;
+  pageHidden: boolean;
+  fallbackAttempt?: number;
+}): ChatSessionPollPlan {
+  const pollInterval = Math.max(0, options.fallbackAttempt || 0) < CHAT_SESSION_FAST_COMPENSATION_ATTEMPTS
+    ? CHAT_SESSION_FAST_COMPENSATION_POLL_INTERVAL_MS
+    : CHAT_SESSION_SLOW_COMPENSATION_POLL_INTERVAL_MS;
   const plan = resolveRuntimeSessionPollPlan({
     sessionCount: options.sessionCount,
     status: "busy",
     pageHidden: options.pageHidden,
     pollWhenHidden: false,
-    pollInterval: CHAT_SESSION_RECOVERY_POLL_INTERVAL_MS,
+    pollInterval,
   });
   return {
     enabled: plan.enabled,
@@ -99,7 +116,7 @@ type ChatTarget = {
 
 export type ChatMessage = RuntimeSessionTimelineMessage;
 
-type ChatSession = {
+export type ChatSession = {
   id: string;
   sourceRoute?: ConversationRoute;
   status: string;
@@ -227,6 +244,44 @@ type RuntimeSessionDetailPayload = {
   turns_paging?: RuntimeSessionTurnPagingPayload;
 };
 
+type RuntimeSessionUpdateEventPayload = {
+  event_id?: number | string;
+  owner_id?: string;
+  session_id?: string;
+  event_type?: string;
+  revision?: number | string;
+  created_at?: string | number;
+  payload?: {
+    session?: RuntimeSessionDetailPayload;
+  };
+};
+
+type RuntimeSessionUpdatesResponse = {
+  owner_id?: string;
+  cursor?: number | string;
+  resync_required?: boolean;
+  has_more?: boolean;
+  events?: RuntimeSessionUpdateEventPayload[];
+};
+
+type RuntimeSessionUpdateAckTurn = {
+  id: string;
+  event_ids?: string[];
+  event_seq_ranges?: Array<[number, number]>;
+};
+
+type RuntimeSessionUpdateAckSession = {
+  id: string;
+  turns?: RuntimeSessionUpdateAckTurn[];
+};
+
+type RuntimeSessionUpdatesRequest = {
+  since_event_id: string;
+  limit: number;
+  byte_limit: number;
+  sessions: RuntimeSessionUpdateAckSession[];
+};
+
 type RuntimeSessionTurnPagingPayload = RuntimeSessionTurnPaging;
 
 type RuntimeSessionTurnPayload = {
@@ -238,6 +293,7 @@ type RuntimeSessionTurnPayload = {
   finished_at?: string | number;
   final_output?: string;
   runtime_trace_events?: RuntimeTraceEvent[];
+  runtime_trace_events_partial?: boolean;
 };
 
 type RuntimeSessionAttachmentPayload = {
@@ -294,6 +350,7 @@ type ConversationRuntimeContextValue = {
   removeSession: (sessionID: string) => Promise<void>;
   setSessionPinned: (sessionID: string, pinned: boolean) => Promise<void>;
   refreshActiveSession: () => Promise<void>;
+  loadEarlierHistory: () => Promise<boolean>;
   setDraft: (value: string) => void;
   addDraftAttachments: (attachments: ComposerAttachment[]) => Promise<void>;
   removeDraftAttachment: (attachmentID: string) => void;
@@ -609,6 +666,7 @@ function cloneChatMessage(message: ChatMessage): ChatMessage {
     attachments: message.attachments.map((attachment) => ({ ...attachment })),
     promptAttachments: message.promptAttachments?.map((attachment) => ({ ...attachment })),
     processEvents: message.processEvents.map(cloneRuntimeTraceEvent),
+    processEventsPartial: message.processEventsPartial,
   };
 }
 
@@ -688,6 +746,85 @@ function messageTurnID(messageID: string): string {
   const normalized = normalizeText(messageID);
   const separatorIndex = normalized.lastIndexOf(":");
   return separatorIndex > 0 ? normalized.slice(0, separatorIndex) : "";
+}
+
+function compactRuntimeEventSeqRanges(events: RuntimeTraceEvent[]): Array<[number, number]> {
+  const seqs = Array.from(new Set(events
+    .map((event) => Number(event.seq))
+    .filter((seq) => Number.isFinite(seq) && seq > 0)
+    .map((seq) => Math.floor(seq))))
+    .sort((left, right) => left - right);
+  const ranges: Array<[number, number]> = [];
+  seqs.forEach((seq) => {
+    const last = ranges[ranges.length - 1];
+    if (last && seq <= last[1] + 1) {
+      last[1] = Math.max(last[1], seq);
+      return;
+    }
+    ranges.push([seq, seq]);
+  });
+  return ranges;
+}
+
+function runtimeEventIDsWithoutSeq(events: RuntimeTraceEvent[]): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const event of events) {
+    if (Number.isFinite(Number(event.seq)) && Number(event.seq) > 0) {
+      continue;
+    }
+    const id = normalizeText(runtimeTraceEventDetailID(event));
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= CHAT_SESSION_UPDATE_ACK_EVENT_ID_LIMIT) {
+      break;
+    }
+  }
+  return ids;
+}
+
+function buildRuntimeSessionUpdateAckManifest(
+  sessions: ChatSession[],
+  sessionIDs: string[],
+): RuntimeSessionUpdateAckSession[] {
+  const requested = new Set(sessionIDs.map(normalizeText).filter(Boolean));
+  return sessions
+    .filter((session) => requested.has(session.id))
+    .map((session) => {
+      const latestTurnIDs: string[] = [];
+      const latestTurnIDSet = new Set<string>();
+      for (let index = session.messages.length - 1; index >= 0; index -= 1) {
+        const turnID = messageTurnID(session.messages[index].id);
+        if (!turnID || latestTurnIDSet.has(turnID)) {
+          continue;
+        }
+        latestTurnIDSet.add(turnID);
+        latestTurnIDs.push(turnID);
+        if (latestTurnIDs.length >= CHAT_SESSION_UPDATE_ACK_TURN_LIMIT) {
+          break;
+        }
+      }
+      latestTurnIDs.reverse();
+      const turns = latestTurnIDs.map((turnID) => {
+        const processEvents = session.messages
+          .filter((message) => message.role === "assistant" && messageTurnID(message.id) === turnID)
+          .flatMap((message) => message.processEvents);
+        const seqRanges = compactRuntimeEventSeqRanges(processEvents);
+        const eventIDs = runtimeEventIDsWithoutSeq(processEvents);
+        const ack: RuntimeSessionUpdateAckTurn = { id: turnID };
+        if (seqRanges.length > 0) {
+          ack.event_seq_ranges = seqRanges;
+        }
+        if (eventIDs.length > 0) {
+          ack.event_ids = eventIDs;
+        }
+        return ack;
+      });
+      return { id: session.id, turns };
+    });
 }
 
 function sessionHasTurn(session: ChatSession | null | undefined, turnID: string): boolean {
@@ -802,6 +939,12 @@ function shouldPollRuntimeBackedSession(session: ChatSession): boolean {
   return isConversationBusyStatus(session.status) || hasRecoverableRuntimeState(session);
 }
 
+export function resolveRuntimeResyncSessionIDs(sessions: ChatSession[]): string[] {
+  return sessions
+    .filter(shouldPollRuntimeBackedSession)
+    .map((session) => session.id);
+}
+
 function hasFullStableRuntimeSessionCache(session: ChatSession | null | undefined): session is ChatSession {
   return Boolean(
     session
@@ -831,32 +974,190 @@ function shouldUseParsedMessages(previous: ChatMessage[], parsed: ChatMessage[])
   return hasRecoverableAssistantState(previous) && hasPersistedAssistantState(parsed);
 }
 
-function mergePagedMessages(previous: ChatMessage[], parsed: ChatMessage[]): ChatMessage[] {
-  if (previous.length === 0) {
-    return parsed;
-  }
-  if (parsed.length === 0) {
+function isOptimisticRuntimeUserMessage(message: ChatMessage): boolean {
+  return message.role === "user"
+    && message.source === "runtime"
+    && messageTurnID(message.id) === ""
+    && normalizeText(message.status || "queued") === "queued";
+}
+
+function compactOptimisticUserMessagesForParsedTurn(previous: ChatMessage[], parsed: ChatMessage[]): ChatMessage[] {
+  const parsedHasUserMessage = parsed.some((message) => message.role === "user");
+  if (!parsedHasUserMessage && !hasPersistedAssistantState(parsed)) {
     return previous;
   }
+  const parsedUserTexts = new Set(
+    parsed
+      .filter((message) => message.role === "user")
+      .map((message) => normalizeText(message.text)),
+  );
+  return previous.filter((message) => {
+    if (!isOptimisticRuntimeUserMessage(message)) {
+      return true;
+    }
+    if (parsedUserTexts.size === 0) {
+      return false;
+    }
+    return !parsedUserTexts.has(normalizeText(message.text));
+  });
+}
+
+function previousMessageForIncomingRuntimeMessage(previous: ChatMessage[], incoming: ChatMessage): ChatMessage | undefined {
+  const exact = previous.find((message) => message.id === incoming.id);
+  if (exact) {
+    return exact;
+  }
+  const incomingTurnID = messageTurnID(incoming.id);
+  if (!incomingTurnID) {
+    return undefined;
+  }
+  return previous.find((message) =>
+    message.role === incoming.role
+    && messageTurnID(message.id) === incomingTurnID,
+  );
+}
+
+function runtimeTraceEventMergeKey(event: RuntimeTraceEvent): string {
+  const detailID = normalizeText(runtimeTraceEventDetailID(event));
+  if (detailID) {
+    return detailID;
+  }
+  const eventID = normalizeText(event.id);
+  if (eventID) {
+    return eventID;
+  }
+  return `${normalizeText(event.turn_id)}:event:${Number(event.seq) || 0}`;
+}
+
+function compareRuntimeTraceEvents(left: RuntimeTraceEvent, right: RuntimeTraceEvent): number {
+  const leftSeq = Number(left.seq) || 0;
+  const rightSeq = Number(right.seq) || 0;
+  if (leftSeq !== rightSeq) {
+    return leftSeq - rightSeq;
+  }
+  return runtimeTraceEventMergeKey(left).localeCompare(runtimeTraceEventMergeKey(right), undefined, { numeric: true });
+}
+
+function mergeRuntimeProcessEvents(previous: RuntimeTraceEvent[], incoming: RuntimeTraceEvent[]): RuntimeTraceEvent[] {
+  if (previous.length === 0) {
+    return incoming.map(cloneRuntimeTraceEvent).sort(compareRuntimeTraceEvents);
+  }
+  if (incoming.length === 0) {
+    return previous.map(cloneRuntimeTraceEvent).sort(compareRuntimeTraceEvents);
+  }
+  const merged = new Map<string, RuntimeTraceEvent>();
+  previous.forEach((event) => {
+    merged.set(runtimeTraceEventMergeKey(event), cloneRuntimeTraceEvent(event));
+  });
+  incoming.forEach((event) => {
+    merged.set(runtimeTraceEventMergeKey(event), cloneRuntimeTraceEvent(event));
+  });
+  return Array.from(merged.values()).sort(compareRuntimeTraceEvents);
+}
+
+function incomingRuntimeMessageCarriesProcessPatch(previous: ChatMessage | undefined, incoming: ChatMessage): previous is ChatMessage {
+  if (!previous) {
+    return false;
+  }
+  if (incoming.processEventsPartial === true) {
+    return true;
+  }
+  return previous.processEvents.length > 0 && incoming.processEvents.length === 0;
+}
+
+function mergeIncomingRuntimeMessage(previous: ChatMessage[], incoming: ChatMessage): ChatMessage {
+  if (incoming.role !== "assistant") {
+    return incoming;
+  }
+  const previousMessage = previousMessageForIncomingRuntimeMessage(previous, incoming);
+  const processEvents = incomingRuntimeMessageCarriesProcessPatch(previousMessage, incoming)
+    ? mergeRuntimeProcessEvents(previousMessage.processEvents, incoming.processEvents)
+    : incoming.processEvents;
+  return {
+    ...incoming,
+    processEvents,
+    processEventsPartial: undefined,
+    processCollapsed: typeof previousMessage?.processCollapsed === "boolean"
+      ? previousMessage.processCollapsed
+      : incoming.processCollapsed,
+  };
+}
+
+function runtimeMessageRoleOrder(message: ChatMessage): number {
+  return message.role === "user" ? 0 : 1;
+}
+
+function compareRuntimeMessages(left: ChatMessage, right: ChatMessage): number {
+  const leftTurnID = messageTurnID(left.id);
+  const rightTurnID = messageTurnID(right.id);
+  if (leftTurnID && leftTurnID === rightTurnID) {
+    const roleDelta = runtimeMessageRoleOrder(left) - runtimeMessageRoleOrder(right);
+    if (roleDelta !== 0) {
+      return roleDelta;
+    }
+  }
+
+  const leftOptimisticUser = isOptimisticRuntimeUserMessage(left);
+  const rightOptimisticUser = isOptimisticRuntimeUserMessage(right);
+  const leftBusyAssistant = left.role === "assistant" && isConversationBusyStatus(left.status);
+  const rightBusyAssistant = right.role === "assistant" && isConversationBusyStatus(right.status);
+  if (leftOptimisticUser && rightBusyAssistant) {
+    return -1;
+  }
+  if (rightOptimisticUser && leftBusyAssistant) {
+    return 1;
+  }
+
+  const leftAt = Number(left.at) || 0;
+  const rightAt = Number(right.at) || 0;
+  if (leftAt !== rightAt) {
+    return leftAt - rightAt;
+  }
+  if (leftTurnID && rightTurnID && leftTurnID !== rightTurnID) {
+    return leftTurnID.localeCompare(rightTurnID, undefined, { numeric: true });
+  }
+  const roleDelta = runtimeMessageRoleOrder(left) - runtimeMessageRoleOrder(right);
+  if (roleDelta !== 0) {
+    return roleDelta;
+  }
+  return left.id.localeCompare(right.id, undefined, { numeric: true });
+}
+
+function sortRuntimeMessages(messages: ChatMessage[]): ChatMessage[] {
+  return [...messages].sort(compareRuntimeMessages);
+}
+
+function mergePagedMessages(previous: ChatMessage[], parsed: ChatMessage[]): ChatMessage[] {
+  if (previous.length === 0) {
+    return sortRuntimeMessages(parsed);
+  }
+  if (parsed.length === 0) {
+    return sortRuntimeMessages(previous);
+  }
+  const parsedWithUIState = parsed.map((message) => mergeIncomingRuntimeMessage(previous, message));
   const previousIDs = new Set(previous.map((message) => message.id));
-  const hasOverlap = parsed.some((message) => previousIDs.has(message.id));
+  const hasOverlap = parsedWithUIState.some((message) => previousIDs.has(message.id));
   if (!hasOverlap) {
     const previousFirstAt = previous[0]?.at || 0;
     const previousLastAt = previous[previous.length - 1]?.at || 0;
-    const parsedFirstAt = parsed[0]?.at || 0;
-    const parsedLastAt = parsed[parsed.length - 1]?.at || 0;
+    const parsedFirstAt = parsedWithUIState[0]?.at || 0;
+    const parsedLastAt = parsedWithUIState[parsedWithUIState.length - 1]?.at || 0;
+    const shouldAppendNonOverlappingParsedTurn = hasUnansweredLatestUserMessage(previous)
+      && hasPersistedAssistantState(parsedWithUIState);
     if (
+      shouldAppendNonOverlappingParsedTurn
+      ||
       (parsedLastAt > 0 && previousFirstAt > 0 && parsedLastAt < previousFirstAt)
       || (parsedFirstAt > 0 && previousLastAt > 0 && parsedFirstAt > previousLastAt)
     ) {
-      return [...previous, ...parsed].sort((left, right) => left.at - right.at);
+      return sortRuntimeMessages([...compactOptimisticUserMessagesForParsedTurn(previous, parsedWithUIState), ...parsedWithUIState]);
     }
-    return shouldUseParsedMessages(previous, parsed) ? parsed : previous;
+    return sortRuntimeMessages(shouldUseParsedMessages(previous, parsedWithUIState) ? parsedWithUIState : previous);
   }
   const merged = new Map<string, ChatMessage>();
-  previous.forEach((message) => merged.set(message.id, message));
-  parsed.forEach((message) => merged.set(message.id, message));
-  return Array.from(merged.values()).sort((left, right) => left.at - right.at);
+  compactOptimisticUserMessagesForParsedTurn(previous, parsedWithUIState).forEach((message) => merged.set(message.id, message));
+  parsedWithUIState.forEach((message) => merged.set(message.id, message));
+  return sortRuntimeMessages(Array.from(merged.values()));
 }
 
 function normalizeStoredMessage(item: unknown): ChatMessage | null {
@@ -869,6 +1170,16 @@ function normalizeStoredMessage(item: unknown): ChatMessage | null {
     return null;
   }
   const role = normalizeText(record.role) === "assistant" ? "assistant" : "user";
+  const assistantTextDerivedFromPrompt = optionalBooleanField(
+    record,
+    "assistantTextDerivedFromPrompt",
+    "assistant_text_derived_from_prompt",
+  );
+  const processEventsPartial = optionalBooleanField(
+    record,
+    "processEventsPartial",
+    "runtime_trace_events_partial",
+  );
   return {
     id,
     role,
@@ -880,23 +1191,29 @@ function normalizeStoredMessage(item: unknown): ChatMessage | null {
         ? record.prompt_text
         : undefined,
     promptAttachments: normalizeStoredAttachments(record.promptAttachments ?? record.prompt_attachments),
-    assistantTextDerivedFromPrompt:
-      typeof record.assistantTextDerivedFromPrompt === "boolean"
-        ? record.assistantTextDerivedFromPrompt
-        : typeof record.assistant_text_derived_from_prompt === "boolean"
-          ? record.assistant_text_derived_from_prompt
-          : undefined,
+    assistantTextDerivedFromPrompt,
     route: normalizeText(record.route),
     source: normalizeText(record.source),
     error: Boolean(record.error),
     status: normalizeText(record.status) || (role === "assistant" ? "done" : ""),
     at: Number.isFinite(Number(record.at)) ? Number(record.at) : Date.now(),
     processEvents: normalizeRuntimeTraceEvents(record.runtime_trace_events),
+    processEventsPartial,
     processCollapsed:
       typeof record.process_collapsed === "boolean"
         ? record.process_collapsed
         : undefined,
   };
+}
+
+function optionalBooleanField(record: Record<string, unknown>, ...keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function resolveProcessCollapsed(message: ChatMessage): boolean {
@@ -976,7 +1293,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     skillIDsExplicit: record.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(record.mcpIDs),
     messages: Array.isArray(record.messages)
-      ? record.messages.map(normalizeStoredMessage).filter((message): message is ChatMessage => message !== null)
+      ? sortRuntimeMessages(record.messages.map(normalizeStoredMessage).filter((message): message is ChatMessage => message !== null))
       : [],
     messagesLoaded: typeof record.messagesLoaded === "boolean" ? record.messagesLoaded : undefined,
     serverBacked: typeof record.serverBacked === "boolean" ? record.serverBacked : undefined,
@@ -1025,6 +1342,7 @@ function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
     status: message.status,
     at: message.at,
     runtime_trace_events: message.processEvents,
+    runtime_trace_events_partial: message.processEventsPartial,
     process_collapsed: message.processCollapsed,
   };
 }
@@ -1346,6 +1664,16 @@ function writeSessionInfoConversationRuntimeCache(
   });
 }
 
+function writeConversationRuntimeCaches(
+  activeSessionByRoute: ActiveSessionState,
+  sessionsByRoute: SessionsState,
+  route?: ConversationRoute,
+) {
+  writeConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
+  writeLongTermConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route);
+  writeSessionInfoConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route);
+}
+
 function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialState {
   const cache = readConversationRuntimeCache();
   if (cache) {
@@ -1360,9 +1688,7 @@ function resolveInitialConversationRuntimeState(): ConversationRuntimeInitialSta
   const activeSessionByRoute = loadActiveSessionState(fallbackCache?.activeSessionByRoute || null);
   const snapshotLoad = loadLegacySessionSnapshots(fallbackCache?.sessionsByRoute || null);
   if (snapshotLoad.migratedLegacySnapshots) {
-    writeConversationRuntimeCache(activeSessionByRoute, snapshotLoad.sessionsByRoute);
-    writeLongTermConversationRuntimeCache(activeSessionByRoute, snapshotLoad.sessionsByRoute);
-    writeSessionInfoConversationRuntimeCache(activeSessionByRoute, snapshotLoad.sessionsByRoute);
+    writeConversationRuntimeCaches(activeSessionByRoute, snapshotLoad.sessionsByRoute);
     clearLegacySessionSnapshots();
   }
   return {
@@ -1451,11 +1777,24 @@ function normalizeRuntimeTurnMessages(sessionID: string, turn: RuntimeSessionTur
   if (!id) {
     return [];
   }
-  return runtimeSessionTurnsToTimelineMessages({
+  const messages = runtimeSessionTurnsToTimelineMessages({
     sessionID,
     turns: [turn],
     route,
     source: "runtime",
+  });
+  return markRuntimeTurnMessagesProcessEventsPartial(messages, turn.runtime_trace_events_partial === true);
+}
+
+function markRuntimeTurnMessagesProcessEventsPartial(messages: ChatMessage[], partial: boolean): ChatMessage[] {
+  if (!partial) {
+    return messages;
+  }
+  return messages.map((message) => {
+    if (message.role !== "assistant") {
+      return message;
+    }
+    return { ...message, processEventsPartial: true };
   });
 }
 
@@ -1468,9 +1807,12 @@ function normalizeRuntimeSession(
   if (!id) {
     return null;
   }
-  const parsedMessages = Array.isArray(item.turns)
+  const rawParsedMessages = Array.isArray(item.turns)
     ? item.turns.flatMap((turn) => normalizeRuntimeTurnMessages(id, turn, sourceRoute))
     : null;
+  const parsedMessages = rawParsedMessages && previous?.messages.length
+    ? rawParsedMessages.map((message) => mergeIncomingRuntimeMessage(previous.messages, message))
+    : rawParsedMessages;
   const incomingPaging = normalizeRuntimeSessionTurnPagingPayload(item.turns_paging);
   const shouldMergeRuntimeMessages = parsedMessages
     && previous?.messages.length
@@ -1508,20 +1850,59 @@ function normalizeRuntimeSession(
   };
 }
 
-function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSession[]): ChatSession[] {
+function isTerminalRuntimeFailureStatus(status: string): boolean {
+  return ["error", "failed", "canceled", "cancelled", "interrupted"].includes(normalizeTaskStatus(status));
+}
+
+function resolveMergedRuntimeSessionStatus(previous: ChatSession | undefined, incoming: ChatSession, messages: ChatMessage[]): string {
+  const incomingStatus = incoming.status || previous?.status || "";
+  if (!previous || isConversationBusyStatus(incomingStatus) || isTerminalRuntimeFailureStatus(incomingStatus)) {
+    return incomingStatus;
+  }
+  if (!shouldPollRuntimeBackedSession(previous)) {
+    return incomingStatus;
+  }
+  const incomingHasCompleteRuntimeView = incoming.messagesLoaded === true;
+  const incomingStillRecoverable = hasRecoverableRuntimeState({ ...incoming, messages });
+  if (incomingStillRecoverable || (!incomingHasCompleteRuntimeView && incoming.messages.length === 0)) {
+    return isConversationBusyStatus(previous.status) ? previous.status : "busy";
+  }
+  return incomingStatus;
+}
+
+function runtimeSessionPayloadFromEventData(value: unknown): RuntimeSessionDetailPayload | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const direct = record.session;
+  if (direct && typeof direct === "object") {
+    return direct as RuntimeSessionDetailPayload;
+  }
+  const payload = record.payload;
+  if (payload && typeof payload === "object") {
+    const nested = (payload as Record<string, unknown>).session;
+    if (nested && typeof nested === "object") {
+      return nested as RuntimeSessionDetailPayload;
+    }
+  }
+  return null;
+}
+
+export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSession[]): ChatSession[] {
   const merged = new Map<string, ChatSession>();
   const existingByID = new Map(existing.map((session) => [session.id, session]));
   remote.forEach((session) => {
     const previous = existingByID.get(session.id);
-    const messages = previous && session.messagesLoaded === true && !shouldUseParsedMessages(previous.messages, session.messages)
-      ? previous.messages
-      : session.messages.length > 0 || session.messagesLoaded === true
+    const messages = previous && session.messagesLoaded === true
+      ? mergePagedMessages(previous.messages, session.messages)
+      : session.messages.length > 0
         ? session.messages
         : previous?.messages || [];
     merged.set(session.id, {
       ...previous,
       ...session,
-      status: session.status || previous?.status || "",
+      status: resolveMergedRuntimeSessionStatus(previous, session, messages),
       messages,
       messagesLoaded:
         typeof session.messagesLoaded === "boolean"
@@ -1697,12 +2078,15 @@ export function ConversationRuntimeProvider({
   const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   const pollTimerRef = useRef<number>(0);
+  const updateCursorByRouteRef = useRef<Record<ConversationRoute, string>>({ chat: "0", terminal: "0" });
   const recoveryPromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
+  const earlierHistoryLoadKeysRef = useRef(new Set<string>());
   const processEventDetailLoadsRef = useRef(new Set<string>());
   const composerDraftPersistTimerRef = useRef<number>(0);
   const sendPromptRef = useRef<(prompt?: string) => Promise<void>>(async () => undefined);
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
+  const [fallbackPollAttempt, setFallbackPollAttempt] = useState(0);
   const runtimeSessionControllerOptions = useMemo(() => ({
     route,
     initialSessions: initialSessionsByRoute[route],
@@ -1724,6 +2108,7 @@ export function ConversationRuntimeProvider({
       session.serverBacked === true
       && session.messagesLoaded === true
       && !hasRecoverableRuntimeState(session),
+    enableProgressiveHistory: false,
   }), [initialActiveSessionByRoute, initialSessionsByRoute, route]);
   const runtimeSessionController = useRuntimeSessionController<ChatSession>(runtimeSessionControllerOptions);
   const {
@@ -1759,14 +2144,16 @@ export function ConversationRuntimeProvider({
     };
     const next = typeof updater === "function" ? updater(current) : updater;
     sessionsByRouteRef.current = next;
+    writeConversationRuntimeCaches(activeSessionByRoute, next, route);
     setRuntimeSessions(next[route]);
-  }, [route, runtimeSessionController.sessionsRef, setRuntimeSessions]);
+  }, [activeSessionByRoute, route, runtimeSessionController.sessionsRef, setRuntimeSessions]);
   const setActiveSessionByRoute = useCallback((updater: ActiveSessionState | ((current: ActiveSessionState) => ActiveSessionState)) => {
     const current = {
       ...activeSessionByRoute,
       [route]: runtimeSessionController.activeSessionID || defaultActiveSessionID(route),
     };
     const next = typeof updater === "function" ? updater(current) : updater;
+    writeConversationRuntimeCaches(next, sessionsByRouteRef.current, route);
     setRuntimeActiveSessionID(next[route]);
   }, [activeSessionByRoute, route, runtimeSessionController.activeSessionID, setRuntimeActiveSessionID]);
 
@@ -1839,7 +2226,7 @@ export function ConversationRuntimeProvider({
       sessionsByRouteRef.current = nextState;
       return nextState;
     });
-  }, []);
+  }, [setSessionsByRoute]);
 
   const createMessage = (
     role: "user" | "assistant",
@@ -2015,7 +2402,7 @@ export function ConversationRuntimeProvider({
       sessionsByRouteRef.current = nextState;
       return nextState;
     });
-  }, []);
+  }, [setSessionsByRoute]);
 
   const createRuntimeBackedSession = useCallback(async (routeKey: ConversationRoute, title: string = ""): Promise<ChatSession | null> => {
     const nextSession = await createRuntimeSession(
@@ -2083,6 +2470,65 @@ export function ConversationRuntimeProvider({
     } catch {
     }
   }, [activeSession, route, upsertRuntimeSession]);
+
+  const loadEarlierHistory = useCallback(async () => {
+    const sessionID = normalizeText(activeSessionID);
+    const session = sessionID
+      ? sessionsByRouteRef.current[route].find((item) => item.id === sessionID) || activeSession
+      : activeSession;
+    if (
+      !session?.id
+      || session.serverBacked !== true
+      || session.messagesLoaded !== true
+      || hasRecoverableRuntimeState(session)
+      || session.turnsPaging?.has_more_before !== true
+    ) {
+      return false;
+    }
+    const beforeTurnID = normalizeText(
+      session.turnsPaging?.next_before_turn_id
+      || session.turnsPaging?.oldest_turn_id
+      || oldestTurnIDFromMessages(session.messages),
+    );
+    if (!beforeTurnID) {
+      return false;
+    }
+    const requestKey = `${route}:${session.id}:${beforeTurnID}`;
+    if (earlierHistoryLoadKeysRef.current.has(requestKey)) {
+      return false;
+    }
+    earlierHistoryLoadKeysRef.current.add(requestKey);
+    try {
+      const payload = await apiClient.get<{ session?: RuntimeSessionDetailPayload }>(
+        runtimeSessionDetailEndpoint(route, session.id, {
+          turnBefore: beforeTurnID,
+          turnLimit: RUNTIME_SESSION_HISTORY_PAGE_TURN_LIMIT,
+        }),
+      );
+      if (!payload.session) {
+        return false;
+      }
+      const latestSession = sessionsByRouteRef.current[route].find((item) => item.id === session.id) || session;
+      const normalized = normalizeRuntimeSession(payload.session, latestSession, route);
+      if (!normalized) {
+        return false;
+      }
+      const merged = mergeRuntimeSessions([normalized], [latestSession])[0] || normalized;
+      const madeProgress = (
+        merged.messages.length > latestSession.messages.length
+        || merged.turnsPaging?.next_before_turn_id !== latestSession.turnsPaging?.next_before_turn_id
+        || merged.turnsPaging?.has_more_before !== latestSession.turnsPaging?.has_more_before
+      );
+      if (madeProgress) {
+        earlierHistoryLoadKeysRef.current.delete(requestKey);
+        upsertRuntimeSession(route, merged);
+      }
+      return madeProgress;
+    } catch {
+      earlierHistoryLoadKeysRef.current.delete(requestKey);
+      return false;
+    }
+  }, [activeSession, activeSessionID, apiClient, route, upsertRuntimeSession]);
 
   const recoverRuntimeSession = async (
     routeKey: ConversationRoute,
@@ -2164,7 +2610,25 @@ export function ConversationRuntimeProvider({
     if (!session) {
       return;
     }
-    patchSession(route, session.id, (currentSession) => ({ ...currentSession, status: "busy" }));
+    const optimisticUserMessage = createMessage("user", content || (attachments.length > 0 ? "Attached files" : ""), {
+      attachments,
+      route,
+      source: "runtime",
+      status: "queued",
+    });
+    patchSession(route, session.id, (currentSession) => ({
+      ...currentSession,
+      status: "busy",
+      title: currentSession.titleAuto
+        ? (optimisticUserMessage.text.slice(0, 32) || currentSession.title)
+        : currentSession.title,
+      titleAuto: false,
+      messagesLoaded: currentSession.messagesLoaded === true,
+      messages: [
+        ...currentSession.messages,
+        optimisticUserMessage,
+      ],
+    }));
     try {
       attachments = await uploadDraftAttachments(session.id, attachments);
       const hydrated = await sendRuntimeInput(session.id, {
@@ -2296,10 +2760,8 @@ export function ConversationRuntimeProvider({
   }, [activeSession, hydrateRuntimeSession, loadRuntimeSessions, route, upsertRuntimeSession]);
 
   useEffect(() => {
-    writeConversationRuntimeCache(activeSessionByRoute, sessionsByRoute);
-    writeLongTermConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route);
-    writeSessionInfoConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route);
-  }, [activeSessionByRoute, sessionsByRoute]);
+    writeConversationRuntimeCaches(activeSessionByRoute, sessionsByRoute, route);
+  }, [activeSessionByRoute, route, sessionsByRoute]);
 
   useEffect(() => {
     sessionsByRouteRef.current = sessionsByRoute;
@@ -2402,6 +2864,7 @@ export function ConversationRuntimeProvider({
     if (
       !activeSession?.id
       || activeSession.serverBacked !== true
+      || isConversationBusyStatus(activeSession.status)
       || (activeSession.messagesLoaded && !hasRecoverableRuntimeState(activeSession))
     ) {
       return;
@@ -2433,37 +2896,78 @@ export function ConversationRuntimeProvider({
     };
   }, [activeSession, apiClient, route]);
 
+  const pollRuntimeSessionUpdates = useCallback(async (
+    routeKey: ConversationRoute,
+    recoverableSessionIDs: string[],
+  ): Promise<boolean> => {
+    const cursor = normalizeText(updateCursorByRouteRef.current[routeKey]) || "0";
+    const body: RuntimeSessionUpdatesRequest = {
+      since_event_id: cursor,
+      limit: CHAT_SESSION_UPDATE_POLL_LIMIT,
+      byte_limit: CHAT_SESSION_UPDATE_POLL_BYTE_LIMIT,
+      sessions: buildRuntimeSessionUpdateAckManifest(sessionsByRouteRef.current[routeKey], recoverableSessionIDs),
+    };
+    const response = await apiClient.post<RuntimeSessionUpdatesResponse>(`/api/${routeKey}/sessions/updates`, body);
+    const nextCursor = normalizeText(response.cursor);
+    if (nextCursor) {
+      updateCursorByRouteRef.current[routeKey] = nextCursor;
+    }
+    if (response.resync_required === true) {
+      await Promise.all(recoverableSessionIDs.map(async (sessionID) => {
+        try {
+          const hydrated = await hydrateRuntimeSession(routeKey, sessionID);
+          if (hydrated) {
+            upsertRuntimeSession(routeKey, hydrated);
+          }
+        } catch {
+        }
+      }));
+      return recoverableSessionIDs.length > 0;
+    }
+    let applied = false;
+    for (const event of Array.isArray(response.events) ? response.events : []) {
+      const payload = runtimeSessionPayloadFromEventData(event);
+      if (!payload) {
+        continue;
+      }
+      const previous = sessionsByRouteRef.current[routeKey].find((session) => session.id === normalizeText(payload.id)) || null;
+      const normalized = normalizeRuntimeSession(payload, previous, routeKey);
+      if (normalized) {
+        upsertRuntimeSession(routeKey, normalized);
+        applied = true;
+      }
+    }
+    return applied;
+  }, [apiClient, hydrateRuntimeSession, upsertRuntimeSession]);
+
   useEffect(() => {
     window.clearTimeout(pollTimerRef.current);
-    const recoverableSessions = sessionsByRoute[route]
-        .filter(shouldPollRuntimeBackedSession)
-        .map((session) => ({
-          route,
-          sessionID: session.id,
-        }));
+    const recoverableSessions = sessionsByRoute[route].filter(shouldPollRuntimeBackedSession);
+    const pollItems = recoverableSessions.map((session) => ({
+      route,
+      sessionID: session.id,
+    }));
     if (!recoverableSessions.length) {
       return;
     }
     const pollPlan = resolveChatSessionPollPlan({
       sessionCount: recoverableSessions.length,
       pageHidden,
+      fallbackAttempt: fallbackPollAttempt,
     });
     if (!pollPlan.enabled) {
       return;
     }
     pollTimerRef.current = window.setTimeout(async () => {
-      for (const item of recoverableSessions) {
-        try {
-          const hydrated = await hydrateRuntimeSession(item.route, item.sessionID);
-          if (hydrated) {
-            upsertRuntimeSession(item.route, hydrated);
-          }
-        } catch {
-        }
+      let applied = false;
+      try {
+        applied = await pollRuntimeSessionUpdates(route, pollItems.map((item) => item.sessionID));
+      } catch {
       }
+      setFallbackPollAttempt((current) => applied ? 0 : current + 1);
     }, pollPlan.interval);
     return () => window.clearTimeout(pollTimerRef.current);
-  }, [pageHidden, sessionsByRoute, upsertRuntimeSession]);
+  }, [fallbackPollAttempt, pageHidden, pollRuntimeSessionUpdates, route, sessionsByRoute]);
 
   const selection = resolveModelSelection(activeRuntimeConfig, availableProviders);
   const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
@@ -2687,6 +3191,7 @@ export function ConversationRuntimeProvider({
     removeSession,
     setSessionPinned,
     refreshActiveSession,
+    loadEarlierHistory,
     toggleInspector,
     closeInspector,
     selectModel,
@@ -2736,6 +3241,7 @@ export function ConversationRuntimeProvider({
     focusSession,
     patchSession,
     refreshActiveSession,
+    loadEarlierHistory,
     loadProcessEventDetail,
     removeSession,
     setSessionPinned,

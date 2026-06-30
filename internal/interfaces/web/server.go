@@ -97,6 +97,7 @@ type Server struct {
 	workspaceRuntime  workspaceServiceRuntime
 	codexAccounts     codexAccountService
 	maintenance       *maintenanceService
+	sessionEvents     *sessionUpdateBroker
 }
 
 type llmService interface {
@@ -135,6 +136,10 @@ type terminalService interface {
 	InputWithAttachments(req terminalapp.InputRequest) (terminaldomain.Session, error)
 	SetPinned(ownerID string, sessionID string, pinned bool) (terminaldomain.Session, error)
 	Delete(ownerID string, sessionID string) (terminaldomain.Session, error)
+}
+
+type terminalSessionUpdateHookSetter interface {
+	SetSessionUpdateHook(terminalapp.SessionUpdateHook)
 }
 
 type runtimeRestarter interface {
@@ -364,7 +369,9 @@ func NewServer(
 		frontendDevProxy:  newFrontendDevProxy(frontendDevOrigin, logger),
 		workspaceService:  workspaceServiceRegistry,
 		workspaceRuntime:  newWorkspaceServiceRuntime(logger),
+		sessionEvents:     newSessionUpdateBroker(256),
 	}
+	server.registerTerminalSessionUpdateHook()
 	server.ensureMaintenanceService()
 	server.registerMaintenanceSchedulerJobs()
 	return server
@@ -434,9 +441,11 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
 	mux.HandleFunc("/api/control/llm/providers/", s.llmProviderItemHandler)
 	mux.HandleFunc("/api/chat/sessions", s.chatSessionCollectionHandler)
+	mux.HandleFunc("/api/chat/sessions/updates", s.chatSessionUpdatesHandler)
 	mux.HandleFunc("/api/chat/sessions/recover", s.chatSessionRecoverHandler)
 	mux.HandleFunc("/api/chat/sessions/", s.chatSessionItemHandler)
 	mux.HandleFunc("/api/terminal/sessions", s.terminalSessionCollectionHandler)
+	mux.HandleFunc("/api/terminal/sessions/updates", s.terminalSessionUpdatesHandler)
 	mux.HandleFunc("/api/terminal/sessions/recover", s.terminalSessionRecoverHandler)
 	mux.HandleFunc("/api/terminal/sessions/", s.terminalSessionItemHandler)
 

@@ -38,14 +38,14 @@ function MobileOverlayPortal({
   active: boolean;
   children: ReactNode;
 }) {
-  if (typeof document === "undefined") {
+  if (!active || typeof document === "undefined") {
     return null;
   }
   return createPortal(
     <div
       className={[
         "workbench-mobile-overlay-portal",
-        active ? "nav-open overlay-open" : "",
+        "nav-open overlay-open",
       ].filter(Boolean).join(" ")}
       data-workbench-mobile-overlay-portal="true"
     >

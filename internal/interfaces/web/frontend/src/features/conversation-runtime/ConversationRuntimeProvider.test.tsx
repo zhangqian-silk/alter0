@@ -3,8 +3,11 @@ import { memo } from "react";
 import {
   CHAT_RUNTIME_CACHE_SESSION_TTL_MS,
   ConversationRuntimeProvider,
+  mergeRuntimeSessions,
   resetConversationRuntimeCache,
   resolveChatSessionPollPlan,
+  resolveRuntimeResyncSessionIDs,
+  type ChatSession,
   useConversationRuntime,
   useConversationRuntimeComposer,
   useConversationRuntimeWorkspace,
@@ -66,6 +69,9 @@ function RuntimeHarness() {
       <output data-testid="user-text">{userMessage?.text || ""}</output>
       <output data-testid="assistant-text">{assistantMessage?.text || ""}</output>
       <output data-testid="assistant-process-count">{assistantMessage?.processEvents.length || 0}</output>
+      <output data-testid="assistant-process-ids">
+        {assistantMessage?.processEvents.map((event) => event.id).join("|") || ""}
+      </output>
       <output data-testid="assistant-process-status">{assistantMessage?.processEvents[0]?.status || ""}</output>
       <output data-testid="assistant-process-blocks">
         {JSON.stringify(assistantMessage?.processEvents[0]?.blocks || [])}
@@ -92,6 +98,9 @@ function MessageTextHarness() {
     <div>
       <button type="button" onClick={() => void runtime.refreshActiveSession()}>
         refresh active
+      </button>
+      <button type="button" onClick={() => void runtime.loadEarlierHistory()}>
+        load earlier history
       </button>
       <output data-testid="message-texts">
         {runtime.activeSession?.messages.map((message) => message.text).join("|") || ""}
@@ -245,6 +254,9 @@ function ProcessToggleHarness() {
       <button type="button" onClick={() => assistantMessage ? runtime.toggleProcess(assistantMessage.id) : undefined}>
         toggle process
       </button>
+      <button type="button" onClick={() => void runtime.refreshActiveSession()}>
+        refresh active
+      </button>
       <output data-testid="assistant-process-collapsed">{String(assistantMessage?.processCollapsed)}</output>
     </div>
   );
@@ -295,6 +307,30 @@ function deferred<T>() {
     reject = promiseReject;
   });
   return { promise, resolve, reject };
+}
+
+function chatSessionFixture(overrides: Partial<ChatSession> = {}): ChatSession {
+  return {
+    id: "alter0-chat",
+    sourceRoute: "chat",
+    status: "ready",
+    title: "Image session",
+    titleAuto: true,
+    titleScore: 0,
+    createdAt: Date.parse("2026-04-23T03:30:00Z"),
+    pinned: false,
+    target: { type: "model", id: "raw-model", name: "Raw Model" },
+    modelProviderID: "",
+    modelID: "",
+    toolIDs: [],
+    skillIDs: [],
+    skillIDsExplicit: false,
+    mcpIDs: [],
+    messages: [],
+    messagesLoaded: false,
+    serverBacked: true,
+    ...overrides,
+  };
 }
 
 function chatTurnFixtures(count: number, outputPrefix = "cached answer") {
@@ -396,7 +432,15 @@ describe("ConversationRuntimeProvider", () => {
     });
     expect(resolveChatSessionPollPlan({ sessionCount: 1, pageHidden: false })).toEqual({
       enabled: true,
-      interval: 3000,
+      interval: 1000,
+    });
+    expect(resolveChatSessionPollPlan({
+      sessionCount: 1,
+      pageHidden: false,
+      fallbackAttempt: 8,
+    })).toEqual({
+      enabled: true,
+      interval: 5000,
     });
     expect(resolveChatSessionPollPlan({ sessionCount: 1, pageHidden: true })).toEqual({
       enabled: false,
@@ -406,6 +450,175 @@ describe("ConversationRuntimeProvider", () => {
 
   it("keeps the Chat runtime cache alive for long single-device route gaps", () => {
     expect(CHAT_RUNTIME_CACHE_SESSION_TTL_MS).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it("keeps a locally busy runtime session busy when a stale list summary returns ready", () => {
+    const merged = mergeRuntimeSessions([
+      chatSessionFixture({
+        status: "ready",
+        messages: [],
+        messagesLoaded: false,
+      }),
+    ], [
+      chatSessionFixture({
+        status: "busy",
+        messages: [{
+          id: "turn-1:user",
+          role: "user",
+          text: "new prompt",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "",
+          at: Date.parse("2026-04-23T03:31:00Z"),
+          processEvents: [],
+        }],
+        messagesLoaded: true,
+      }),
+    ]);
+
+    expect(merged[0]?.status).toBe("busy");
+    expect(merged[0]?.messages.map((message) => message.text)).toEqual(["new prompt"]);
+  });
+
+  it("keeps a turn user message before assistant process patches even when timestamps arrive out of order", () => {
+    const merged = mergeRuntimeSessions([
+      chatSessionFixture({
+        status: "busy",
+        messagesLoaded: true,
+        messages: [{
+          id: "turn-1:user",
+          role: "user",
+          text: "成都旅游攻略",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "running",
+          at: Date.parse("2026-04-23T03:31:05Z"),
+          processEvents: [],
+        }],
+      }),
+    ], [
+      chatSessionFixture({
+        status: "busy",
+        messagesLoaded: true,
+        messages: [{
+          id: "turn-1:assistant",
+          role: "assistant",
+          text: "",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "running",
+          at: Date.parse("2026-04-23T03:31:00Z"),
+          processEvents: [{
+            id: "event-1",
+            session_id: "alter0-chat",
+            turn_id: "turn-1",
+            seq: 1,
+            source: "adapter",
+            provider: { engine: "codex", adapter: "codex_cli_json" },
+            role: "assistant",
+            kind: "assistant_commentary",
+            lifecycle: "running",
+            status: "running",
+            title: "Thinking",
+            summary: "Working",
+            blocks: [],
+            visibility: "collapsed",
+          }],
+        }],
+      }),
+    ]);
+
+    expect(merged[0]?.messages.map((message) => message.id)).toEqual([
+      "turn-1:user",
+      "turn-1:assistant",
+    ]);
+  });
+
+  it("keeps an optimistic user message before the first busy assistant patch", () => {
+    const merged = mergeRuntimeSessions([
+      chatSessionFixture({
+        status: "busy",
+        messagesLoaded: true,
+        messages: [{
+          id: "turn-1:assistant",
+          role: "assistant",
+          text: "",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "running",
+          at: Date.parse("2026-04-23T03:31:00Z"),
+          processEvents: [{
+            id: "event-1",
+            session_id: "alter0-chat",
+            turn_id: "turn-1",
+            seq: 1,
+            source: "adapter",
+            provider: { engine: "codex", adapter: "codex_cli_json" },
+            role: "assistant",
+            kind: "assistant_commentary",
+            lifecycle: "running",
+            status: "running",
+            title: "Thinking",
+            summary: "Working",
+            blocks: [],
+            visibility: "collapsed",
+          }],
+        }],
+      }),
+    ], [
+      chatSessionFixture({
+        status: "busy",
+        messagesLoaded: true,
+        messages: [{
+          id: "local-user-1",
+          role: "user",
+          text: "成都旅游攻略",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "queued",
+          at: Date.parse("2026-04-23T03:31:05Z"),
+          processEvents: [],
+        }],
+      }),
+    ]);
+
+    expect(merged[0]?.messages.map((message) => message.id)).toEqual([
+      "local-user-1",
+      "turn-1:assistant",
+    ]);
+  });
+
+  it("selects only recoverable runtime sessions for owner-level polling resync", () => {
+    expect(resolveRuntimeResyncSessionIDs([
+      chatSessionFixture({
+        id: "busy-chat",
+        status: "busy",
+        messagesLoaded: true,
+        serverBacked: true,
+      }),
+      chatSessionFixture({
+        id: "ready-chat",
+        status: "ready",
+        messagesLoaded: true,
+        serverBacked: true,
+      }),
+      chatSessionFixture({
+        id: "local-busy",
+        status: "busy",
+        messagesLoaded: true,
+        serverBacked: false,
+      }),
+    ])).toEqual(["busy-chat"]);
   });
 
   it("uses terminal owner storage when the shared runtime is mounted for terminal", async () => {
@@ -557,6 +770,10 @@ describe("ConversationRuntimeProvider", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "toggle process" }));
+    expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat"));
     expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("false");
 
     fireEvent.click(screen.getByRole("button", { name: "toggle process" }));
@@ -1395,6 +1612,100 @@ describe("ConversationRuntimeProvider", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("caches and appends the optimistic Chat user message before the input response completes", async () => {
+    const inputResponse = deferred<unknown>();
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
+        return inputResponse.promise;
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(screen.getByTestId("user-text")).toHaveTextContent("Inspect this image"));
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").toContain("Inspect this image");
+
+    inputResponse.resolve({
+      session: {
+        id: "alter0-chat",
+        title: "Inspect this image",
+        status: "ready",
+        created_at: "2026-04-23T03:30:00Z",
+        turns: [{
+          id: "turn-cached-optimistic",
+          prompt: "Inspect this image",
+          status: "success",
+          started_at: "2026-04-23T04:00:00Z",
+          finished_at: "2026-04-23T04:00:02Z",
+          final_output: "Stored response",
+        }],
+      },
+    });
+
+    await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Stored response"));
+    expect(screen.getByTestId("user-text")).toHaveTextContent("Inspect this image");
+  });
+
+  it("compacts the queued optimistic Chat user message when the input response only confirms a busy turn", async () => {
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
+        return {
+          session: {
+            id: "alter0-chat",
+            title: "New prompt",
+            status: "busy",
+            created_at: "2026-04-23T03:30:00Z",
+            turns: [{
+              id: "turn-busy",
+              prompt: "new prompt",
+              status: "running",
+              started_at: "2026-04-23T04:00:00Z",
+              final_output: "",
+              runtime_trace_events: [{
+                id: "event-busy",
+                turn_id: "turn-busy",
+                seq: 1,
+                source: "adapter",
+                provider: { engine: "codex", adapter: "codex_cli_json" },
+                role: "assistant",
+                kind: "assistant_commentary",
+                lifecycle: "running",
+                status: "running",
+                title: "Thinking",
+                summary: "Working",
+                blocks: [],
+                visibility: "collapsed",
+              }],
+            }],
+          },
+        };
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SendMessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    fireEvent.click(screen.getByRole("button", { name: "send prompt" }));
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent(/^new prompt\|$/));
+    const texts = screen.getByTestId("message-texts").textContent || "";
+    expect((texts.match(/new prompt/g) || []).length).toBe(1);
+  });
+
   it("appends a returned new Chat turn without replacing loaded history", async () => {
     const existingTurns = chatTurnFixtures(3, "existing answer");
     apiClientMock.get.mockImplementation(async (path: string) => {
@@ -1530,7 +1841,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer");
   });
 
-  it("keeps the Chat composer stable while progressively loading earlier history", async () => {
+  it("keeps the Chat composer stable when explicitly loading earlier history", async () => {
     const earlierPage = deferred<{
       session: {
         id: string;
@@ -1596,11 +1907,13 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer"));
+    const renderCountBeforeHistoryMerge = Number(screen.getByTestId("composer-render-count").textContent?.split(":")[0] || "0");
+
+    fireEvent.click(screen.getByRole("button", { name: "load earlier history" }));
+
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
       "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20",
     ));
-    const renderCountBeforeHistoryMerge = Number(screen.getByTestId("composer-render-count").textContent?.split(":")[0] || "0");
-
     await act(async () => {
       earlierPage.resolve({
         session: {
@@ -1703,9 +2016,78 @@ describe("ConversationRuntimeProvider", () => {
 
   it("keeps polling a busy Terminal-backed Chat session until its final output is restored", async () => {
     vi.stubGlobal("fetch", vi.fn());
+    const EventSourceMock = vi.fn(() => {
+      throw new Error("EventSource should not be used for conversation updates");
+    });
+    vi.stubGlobal("EventSource", EventSourceMock);
     let inputAccepted = false;
-    let detailCallsAfterInput = 0;
+    let updateCallsAfterInput = 0;
+    const updateRequestBodies: Record<string, unknown>[] = [];
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+      if (path === "/api/chat/sessions/updates") {
+        updateRequestBodies.push(body || {});
+        if (inputAccepted) {
+          updateCallsAfterInput += 1;
+        }
+        const session = inputAccepted && updateCallsAfterInput > 0
+          ? {
+              id: "alter0-chat",
+              title: "Image session",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [
+                {
+                  id: "turn-running",
+                  prompt: "Inspect this image",
+                  status: "success",
+                  started_at: "2026-04-23T03:31:00Z",
+                  finished_at: "2026-04-23T03:31:03Z",
+                  final_output: "Restored final output",
+                  runtime_trace_events_partial: true,
+                  runtime_trace_events: [
+                    {
+                      id: "step-3",
+                      seq: 3,
+                      turn_id: "turn-running",
+                      kind: "reasoning",
+                      status: "completed",
+                      blocks: [],
+                    },
+                  ],
+                },
+              ],
+            }
+          : {
+              id: "alter0-chat",
+              title: "Image session",
+              status: inputAccepted ? "busy" : "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: inputAccepted
+                ? [
+                    {
+                      id: "turn-running",
+                      prompt: "Inspect this image",
+                      status: "running",
+                      started_at: "2026-04-23T03:31:00Z",
+                    },
+                  ]
+                : [],
+            };
+        return {
+          owner_id: "chat",
+          cursor: updateCallsAfterInput,
+          resync_required: false,
+          events: inputAccepted ? [{
+            event_id: updateCallsAfterInput,
+            owner_id: "chat",
+            session_id: "alter0-chat",
+            event_type: "session.updated",
+            revision: updateCallsAfterInput,
+            created_at: "2026-04-23T03:31:00Z",
+            payload: { session },
+          }] : [],
+        };
+      }
       if (path === "/api/chat/sessions/alter0-chat/input") {
         inputAccepted = true;
         return {
@@ -1720,6 +2102,24 @@ describe("ConversationRuntimeProvider", () => {
                 prompt: typeof body?.input === "string" ? body.input : "Inspect this image",
                 status: "running",
                 started_at: "2026-04-23T03:31:00Z",
+                runtime_trace_events: [
+                  {
+                    id: "step-1",
+                    seq: 1,
+                    turn_id: "turn-running",
+                    kind: "reasoning",
+                    status: "completed",
+                    blocks: [],
+                  },
+                  {
+                    id: "step-2",
+                    seq: 2,
+                    turn_id: "turn-running",
+                    kind: "reasoning",
+                    status: "completed",
+                    blocks: [],
+                  },
+                ],
               },
             ],
           },
@@ -1742,12 +2142,9 @@ describe("ConversationRuntimeProvider", () => {
             ],
           };
         case "/api/chat/sessions/alter0-chat":
-          if (inputAccepted) {
-            detailCallsAfterInput += 1;
-          }
           return {
             session: inputAccepted
-              ? detailCallsAfterInput > 3
+              ? updateCallsAfterInput > 0
                 ? {
                   id: "alter0-chat",
                   title: "Image session",
@@ -1811,11 +2208,36 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(3000);
+      await vi.advanceTimersByTimeAsync(5000);
+      await Promise.resolve();
     });
 
+    expect(EventSourceMock).not.toHaveBeenCalled();
+    expect(apiClientMock.post).toHaveBeenCalledWith(
+      "/api/chat/sessions/updates",
+      expect.objectContaining({
+        limit: 50,
+        byte_limit: 65536,
+      }),
+    );
+    expect(updateRequestBodies).toContainEqual(expect.objectContaining({
+      sessions: expect.arrayContaining([
+        expect.objectContaining({
+          id: "alter0-chat",
+          turns: expect.arrayContaining([
+            expect.objectContaining({
+              id: "turn-running",
+              event_seq_ranges: [[1, 2]],
+            }),
+          ]),
+        }),
+      ]),
+    }));
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("Restored final output");
+    expect(screen.getByTestId("assistant-process-count")).toHaveTextContent("3");
+    expect(screen.getByTestId("assistant-process-ids")).toHaveTextContent("step-1|step-2|step-3");
     expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
+    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions/alter0-chat");
     vi.useRealTimers();
   });
 
@@ -2700,7 +3122,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer");
   });
 
-  it("progressively loads earlier Chat turn pages without a pull gesture", async () => {
+  it("does not visibly refresh Chat with earlier turn pages until the user asks for history", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
         case "/api/chat/sessions":
@@ -2778,6 +3200,17 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer"));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    });
+
+    expect(apiClientMock.get).not.toHaveBeenCalledWith(
+      "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20",
+    );
+    expect(screen.getByTestId("message-texts")).not.toHaveTextContent("oldest answer");
+
+    fireEvent.click(screen.getByRole("button", { name: "load earlier history" }));
+
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
       "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20",
     ));
@@ -2786,7 +3219,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer");
   });
 
-  it("does not repeatedly reload the same Chat history page when a background page makes no progress", async () => {
+  it("does not repeatedly reload the same Chat history page when a requested page makes no progress", async () => {
     let backgroundPageLoads = 0;
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -2844,7 +3277,9 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("latest answer"));
+    fireEvent.click(screen.getByRole("button", { name: "load earlier history" }));
     await waitFor(() => expect(backgroundPageLoads).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "load earlier history" }));
     await act(async () => {
       await new Promise((resolve) => window.setTimeout(resolve, 50));
     });
