@@ -784,6 +784,17 @@ function hasRecoverableRuntimeState(session: ChatSession | null | undefined): bo
   return hasRecoverableAssistantState(session.messages) || hasUnansweredLatestUserMessage(session.messages);
 }
 
+function hasBusyRuntimeMessageState(messages: ChatMessage[]): boolean {
+  return messages.some((message) => isConversationBusyStatus(message.status));
+}
+
+function shouldBlockRuntimeInput(session: ChatSession): boolean {
+  if (session.serverBacked !== true) {
+    return false;
+  }
+  return isConversationBusyStatus(session.status) || hasBusyRuntimeMessageState(session.messages);
+}
+
 function shouldPollRuntimeBackedSession(session: ChatSession): boolean {
   if (session.serverBacked !== true) {
     return false;
@@ -2144,7 +2155,7 @@ export function ConversationRuntimeProvider({
     const currentActiveSession = activeSessionID
       ? sessionsByRouteRef.current[route].find((item) => item.id === activeSessionID) || null
       : null;
-    if (currentActiveSession && shouldPollRuntimeBackedSession(currentActiveSession)) {
+    if (currentActiveSession && shouldBlockRuntimeInput(currentActiveSession)) {
       return;
     }
     const session = currentActiveSession?.serverBacked
@@ -2458,7 +2469,7 @@ export function ConversationRuntimeProvider({
   const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
   const selectedModel = enabledModels(selectedProvider).find((model) => normalizeText(model.id) === selection.modelID) || null;
   const currentTarget = activeSession?.target || defaultChatTarget();
-  const activeSessionBusy = activeSession ? shouldPollRuntimeBackedSession(activeSession) : false;
+  const activeSessionBusy = activeSession ? shouldBlockRuntimeInput(activeSession) : false;
   const selectedModelSupportsVision = selectedModel ? selectedModel.supports_vision !== false : true;
   const activeMcpIDKey = activeRuntimeConfig.mcpIDs.join("\u0000");
   const activeSkillIDKey = activeSkillIDs.join("\u0000");

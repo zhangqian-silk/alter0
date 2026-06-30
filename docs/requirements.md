@@ -159,7 +159,7 @@
 - 直连 Codex 的 Chat 会话会在各自工作区下额外维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Chat 使用 `.alter0/codex-runtime/thread.json` 保存 Codex CLI thread id，Chat 使用 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json` 保存北京时间 05:00 归档日对应的 Codex CLI thread id；Terminal 会话会在 `.alter0/workspaces/terminal/sessions/<terminal_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Terminal 是独立会话式终端代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与 `RuntimeTraceEvent` 视图索引。
 - Terminal API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/runtime event 明细读取，前端可按事件展开或检索执行细节。
-- Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/runtime event 维度维护 `running / completed / failed / interrupted`；运行态退出后保留历史，继续发送即可恢复。
+- Terminal 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/runtime event 维度维护 `running / completed / failed / interrupted`；运行态退出、失败或中断后保留历史，Composer 不得因失败占位或未回答的历史 user turn 长期锁定，继续发送即可恢复。
 - Terminal 与 Chat owner 会话状态持久化统一使用 `runtime_events` 与 `next_event_id`；读取旧 `steps / next_step_id` 状态文件时会同步迁移并写回新结构。
 - Terminal 恢复默认优先复用已持久化 Codex CLI 线程；若续写命中远端 compact 失败，则保留原会话历史、工作区和线程标识，下一次输入继续 resume 同一 Codex CLI 线程。
 - Terminal 会话删除统一从左侧会话列表触发，`Delete` 会同步清理状态文件和独立工作区；工作区头部不再提供单独的 `Close` 入口。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表所在的左侧导航抽屉都保持删除前的展开状态，便于继续清理其他会话；用户随后通过 `Menu` 或抽屉外部遮罩主动关闭时，抽屉必须正常收起。前端在后续列表刷新、轮询和 page-activation 补偿刷新中也不得把该会话重新补回，直到服务端列表稳定反映删除结果。

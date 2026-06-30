@@ -84,7 +84,7 @@ Terminal & Workspace 负责会话式终端代理、执行工作区隔离和 Term
 
 ### 恢复
 
-- 对已退出或中断的 Terminal 会话继续发送输入时，系统优先复用已持久化 Codex CLI 线程继续执行。
+- 对已退出、中断或失败的 Terminal 会话继续发送输入时，系统优先复用已持久化 Codex CLI 线程继续执行；前端 Composer 只在当前会话仍处于 `busy / running / queued / in_progress` 时禁用发送，失败终态和无 assistant 输出的失败 turn 不得阻断下一次输入。
 - 若 Codex CLI 在线程续写阶段返回远端 compact 失败，系统保留原 Terminal 会话历史、独立工作区与已持久化线程标识，并在下一次输入时继续 resume 同一 Codex CLI 线程。
 - 无法直连恢复时，保留原会话历史，并允许在同一 Terminal 会话下重新建立运行态。
 - 新建但未发送首条输入的会话若底层运行态缺失，首次发送需自动恢复同一 `terminal_session_id` 并重试当前输入。

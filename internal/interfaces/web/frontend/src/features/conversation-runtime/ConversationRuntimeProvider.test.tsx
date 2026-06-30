@@ -1883,6 +1883,95 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
   });
 
+  it("allows sending another Chat input after a Terminal-backed session fails without assistant output", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+        case "/api/chat/sessions/alter0-chat":
+          return {
+            items: [
+              {
+                id: "alter0-chat",
+                title: "Failed session",
+                status: "failed",
+                created_at: "2026-04-23T03:30:00Z",
+                turns: [
+                  {
+                    id: "turn-failed",
+                    prompt: "previous prompt",
+                    status: "failed",
+                    started_at: "2026-04-23T03:31:00Z",
+                    finished_at: "2026-04-23T03:31:02Z",
+                  },
+                ],
+              },
+            ],
+            session: {
+              id: "alter0-chat",
+              title: "Failed session",
+              status: "failed",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [
+                {
+                  id: "turn-failed",
+                  prompt: "previous prompt",
+                  status: "failed",
+                  started_at: "2026-04-23T03:31:00Z",
+                  finished_at: "2026-04-23T03:31:02Z",
+                },
+              ],
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+      if (path === "/api/chat/sessions/alter0-chat/input") {
+        return {
+          session: {
+            id: "alter0-chat",
+            title: "Failed session",
+            status: "ready",
+            created_at: "2026-04-23T03:30:00Z",
+            turns: [
+              {
+                id: "turn-recovered",
+                prompt: typeof body?.input === "string" ? body.input : "Inspect this image",
+                status: "success",
+                started_at: "2026-04-23T03:32:00Z",
+                finished_at: "2026-04-23T03:32:02Z",
+                final_output: "Recovered reply",
+              },
+            ],
+          },
+        };
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      "/api/chat/sessions/alter0-chat/input",
+      expect.objectContaining({ input: "Inspect this image" }),
+    ));
+    await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Recovered reply"));
+  });
+
   it("allows clicking the active inspector tab again to collapse only that tab content", async () => {
     render(
       <ConversationRuntimeProvider route="chat" language="en">
