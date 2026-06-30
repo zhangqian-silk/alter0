@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-06-30
+> Last update: 2026-07-01
 
 ## 领域边界
 
@@ -152,6 +152,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 页面刷新后，若当前活动会话存在本地失败态流式消息，前端需优先拉取服务端会话消息，并用已持久化结果覆盖本地失败态；即使服务端集合接口已经返回了该会话的摘要项，只要未附带完整消息，也必须继续补拉单会话详情。
 - 页面刷新、前后台恢复或集合接口刷新后，若服务端集合返回的当前会话消息数量短于浏览器侧已追加历史，且本地仍存在本轮用户消息、`Thinking...`、`streaming` assistant 或其他可恢复状态，前端必须继续保留本地时间线并等待单会话详情或后续集合结果确认，不得把刚发送的消息从 UI 中移除。
 - 若当前活动会话已经从服务端恢复出最新 `user` 消息，但该 user 之后尚无 assistant、任务或失败消息，运行页继续按待恢复会话处理并重试详情接口；只有拿到稳定 assistant 或明确失败态后，才停止本轮恢复。
+- `Chat / Terminal` 的输入锁只由真实运行中状态触发：会话或消息处于 `busy / running / queued / in_progress` 时禁止重复提交；`failed / interrupted / exited` 以及无 assistant 输出的失败 turn 不得继续禁用 Composer。恢复轮询可以继续补拉详情，但用户可在终态会话内直接发送下一条输入并复用原会话恢复运行态。
 - 运行页恢复只依赖会话详情补拉，不再通过后台 Task API 轮询任务状态。
 
 ### 渲染策略
