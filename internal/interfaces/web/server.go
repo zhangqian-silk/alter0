@@ -145,6 +145,7 @@ type terminalSessionUpdateHookSetter interface {
 type runtimeRestarter interface {
 	RequestRestart(options RuntimeRestartOptions) (bool, error)
 	GetRestartStatus() RuntimeRestartStatus
+	ListRestartCandidates() (RuntimeRestartCandidateList, error)
 }
 
 type runtimeInfoProvider interface {
@@ -162,8 +163,9 @@ type codexAccountService interface {
 }
 
 type RuntimeRestartOptions struct {
-	SyncRemoteMaster             bool `json:"sync_remote_master"`
-	ConfirmDiscardTrackedChanges bool `json:"confirm_discard_tracked_changes"`
+	SyncRemoteMaster             bool   `json:"sync_remote_master"`
+	ConfirmDiscardTrackedChanges bool   `json:"confirm_discard_tracked_changes"`
+	TargetCommit                 string `json:"target_commit,omitempty"`
 }
 
 const RuntimeRestartDiscardConfirmationRequired = "runtime_restart_discard_confirmation_required"
@@ -192,6 +194,7 @@ type RuntimeRestartStatus struct {
 	Error                        string    `json:"error,omitempty"`
 	SyncRemoteMaster             bool      `json:"sync_remote_master"`
 	ConfirmDiscardTrackedChanges bool      `json:"confirm_discard_tracked_changes"`
+	TargetCommit                 string    `json:"target_commit,omitempty"`
 	StartedAt                    time.Time `json:"started_at,omitempty"`
 	UpdatedAt                    time.Time `json:"updated_at,omitempty"`
 }
@@ -199,6 +202,19 @@ type RuntimeRestartStatus struct {
 type RuntimeInfo struct {
 	StartedAt  time.Time `json:"started_at,omitempty"`
 	CommitHash string    `json:"commit_hash,omitempty"`
+}
+
+type RuntimeRestartCandidate struct {
+	Hash        string    `json:"hash"`
+	ShortHash   string    `json:"short_hash"`
+	Message     string    `json:"message"`
+	CommittedAt time.Time `json:"committed_at,omitempty"`
+	Current     bool      `json:"current"`
+}
+
+type RuntimeRestartCandidateList struct {
+	CurrentCommit string                    `json:"current_commit,omitempty"`
+	Items         []RuntimeRestartCandidate `json:"items"`
 }
 
 type codexAccountCreateRequest struct {
@@ -423,6 +439,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/workspace-services/", s.workspaceServiceItemHandler)
 	mux.HandleFunc("/api/control/runtime", s.runtimeInfoHandler)
 	mux.HandleFunc("/api/control/runtime/restart", s.runtimeRestartHandler)
+	mux.HandleFunc("/api/control/runtime/restart-candidates", s.runtimeRestartCandidatesHandler)
 	mux.HandleFunc("/api/control/channels", s.channelListHandler)
 	mux.HandleFunc("/api/control/channels/", s.channelItemHandler)
 	mux.HandleFunc("/api/control/capabilities", s.capabilityListHandler)
@@ -1194,7 +1211,25 @@ func (s *Server) runtimeRestartHandler(w http.ResponseWriter, r *http.Request) {
 		"status":                          "restarting",
 		"sync_remote_master":              req.SyncRemoteMaster,
 		"confirm_discard_tracked_changes": req.ConfirmDiscardTrackedChanges,
+		"target_commit":                   strings.TrimSpace(req.TargetCommit),
 	})
+}
+
+func (s *Server) runtimeRestartCandidatesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if s.runtime == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "runtime restart unavailable"})
+		return
+	}
+	candidates, err := s.runtime.ListRestartCandidates()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, candidates)
 }
 
 func (s *Server) channelListHandler(w http.ResponseWriter, r *http.Request) {

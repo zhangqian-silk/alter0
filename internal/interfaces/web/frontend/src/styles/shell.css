@@ -334,6 +334,17 @@ body {
     border-radius: 12px;
   }
 
+  .codex-runtime-commit-option {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 64px;
+    padding: 8px 9px;
+  }
+
+  .codex-runtime-commit-meta {
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
   .route-view[data-route-family="settings"] {
     --route-padding-x: 12px;
   }
@@ -2045,14 +2056,23 @@ body {
   opacity: 1 !important;
 }
 
+.runtime-restart-panel .modal-body {
+  gap: 10px;
+  padding: 14px 18px;
+}
+
+.runtime-restart-panel .modal-footer {
+  padding: 12px 18px;
+}
+
 .codex-runtime-restart-option {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: 10px;
-  margin-top: 14px;
-  padding: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.09);
+  margin-top: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 8px;
   background: rgba(248, 250, 252, 0.92);
 }
@@ -2060,7 +2080,7 @@ body {
 .codex-runtime-restart-option input {
   width: 16px;
   height: 16px;
-  margin: 2px 0 0;
+  margin: 0;
   accent-color: #0f9f8f;
 }
 
@@ -2075,10 +2095,193 @@ body {
   font-size: 13px;
 }
 
-.codex-runtime-restart-option small {
+.codex-runtime-commit-picker {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.codex-runtime-commit-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.codex-runtime-commit-picker-head strong {
+  color: #101828;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.codex-runtime-commit-picker-head small,
+.codex-runtime-commit-picker-note {
+  margin: 0;
   color: #667085;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.codex-runtime-commit-picker-note.is-error {
+  color: #b42318;
+  font-weight: 700;
+}
+
+.codex-runtime-commit-options {
+  display: grid;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.84);
+}
+
+.codex-runtime-commit-option {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #344054;
+}
+
+.codex-runtime-commit-option.is-selected {
+  border-color: rgba(37, 99, 235, 0.2);
+  background: #fff;
+  box-shadow: 0 8px 18px -16px rgba(15, 23, 42, 0.55);
+}
+
+.codex-runtime-commit-option.is-current {
+  background: rgba(15, 159, 143, 0.07);
+}
+
+.codex-runtime-commit-option.is-current.is-selected {
+  border-color: rgba(15, 159, 143, 0.26);
+  background: linear-gradient(180deg, rgba(236, 253, 250, 0.96) 0%, rgba(255, 255, 255, 0.95) 100%);
+}
+
+.codex-runtime-commit-option input {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(102, 112, 133, 0.58);
+  border-radius: 999px;
+  background: #fff;
+  accent-color: #0f9f8f;
+}
+
+.codex-runtime-commit-option input:checked {
+  border-color: #0f9f8f;
+  background: #fff;
+}
+
+.codex-runtime-commit-option input:checked::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #0f9f8f;
+}
+
+.codex-runtime-commit-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.codex-runtime-commit-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.codex-runtime-commit-main code {
+  flex: 0 0 auto;
+  width: fit-content;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(15, 23, 42, 0.06);
+  color: #101828;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.codex-runtime-commit-main strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-runtime-commit-meta {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.codex-runtime-commit-meta em {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(15, 159, 143, 0.12);
+  color: #087f73;
+  font-style: normal;
+  font-weight: 850;
+}
+
+@media (max-width: 760px) {
+  .runtime-restart-overlay {
+    align-items: center;
+    padding: 34px 16px calc(104px + env(safe-area-inset-bottom));
+  }
+
+  .runtime-restart-panel {
+    width: min(100%, 420px);
+    max-height: min(72vh, calc(var(--mobile-viewport-height, 100dvh) - 128px));
+    margin: 0 auto;
+    border-radius: 12px;
+  }
+
+  .runtime-restart-panel .modal-header {
+    padding: 14px 16px;
+  }
+
+  .runtime-restart-panel .modal-body {
+    gap: 9px;
+    padding: 12px 16px;
+  }
+
+  .runtime-restart-panel .modal-footer {
+    padding: 12px 16px;
+  }
+
+  .runtime-restart-panel .codex-runtime-commit-options {
+    max-height: min(240px, 38vh);
+  }
+
+  .runtime-restart-panel .codex-runtime-commit-option input {
+    align-self: start;
+    margin-top: 5px;
+  }
 }
 
 .codex-runtime-workspace {

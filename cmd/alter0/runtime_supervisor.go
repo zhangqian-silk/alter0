@@ -37,6 +37,7 @@ const (
 type runtimeRestartClient interface {
 	RequestRestart(options web.RuntimeRestartOptions) (bool, error)
 	GetRestartStatus() web.RuntimeRestartStatus
+	ListRestartCandidates() (web.RuntimeRestartCandidateList, error)
 }
 
 type supervisorClientRestarter struct {
@@ -157,6 +158,14 @@ func (r *supervisorClientRestarter) GetRestartStatus() web.RuntimeRestartStatus 
 		status.Status = "idle"
 	}
 	return status
+}
+
+func (r *supervisorClientRestarter) ListRestartCandidates() (web.RuntimeRestartCandidateList, error) {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return web.RuntimeRestartCandidateList{}, fmt.Errorf("resolve working directory: %w", err)
+	}
+	return listRuntimeRestartCandidates(workingDir, resolveRuntimeCommitHash(workingDir))
 }
 
 type managedChild struct {
@@ -366,12 +375,13 @@ func (s *runtimeSupervisor) handleRestart(w http.ResponseWriter, r *http.Request
 		"status":                          "restarting",
 		"sync_remote_master":              req.SyncRemoteMaster,
 		"confirm_discard_tracked_changes": req.ConfirmDiscardTrackedChanges,
+		"target_commit":                   strings.TrimSpace(req.TargetCommit),
 	})
 }
 
 func (s *runtimeSupervisor) prepareCandidate(options web.RuntimeRestartOptions) (string, error) {
 	if options.SyncRemoteMaster {
-		if err := syncRemoteMasterBranch(s.workingDir, options.ConfirmDiscardTrackedChanges); err != nil {
+		if err := syncRemoteMasterBranch(s.workingDir, options.ConfirmDiscardTrackedChanges, options.TargetCommit); err != nil {
 			return "", err
 		}
 	}
@@ -473,6 +483,7 @@ func (s *runtimeSupervisor) setRestartStatus(status string, options web.RuntimeR
 	s.restartStatus.Status = status
 	s.restartStatus.SyncRemoteMaster = options.SyncRemoteMaster
 	s.restartStatus.ConfirmDiscardTrackedChanges = options.ConfirmDiscardTrackedChanges
+	s.restartStatus.TargetCommit = strings.TrimSpace(options.TargetCommit)
 	s.restartStatus.UpdatedAt = time.Now().UTC()
 	if cause != nil {
 		s.restartStatus.Error = cause.Error()
@@ -746,6 +757,7 @@ func newRestartStatus(status string, options web.RuntimeRestartOptions, message 
 		Error:                        strings.TrimSpace(message),
 		SyncRemoteMaster:             options.SyncRemoteMaster,
 		ConfirmDiscardTrackedChanges: options.ConfirmDiscardTrackedChanges,
+		TargetCommit:                 strings.TrimSpace(options.TargetCommit),
 		StartedAt:                    now,
 		UpdatedAt:                    now,
 	}

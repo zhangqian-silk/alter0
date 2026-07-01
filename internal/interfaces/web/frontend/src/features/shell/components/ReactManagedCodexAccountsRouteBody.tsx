@@ -123,8 +123,22 @@ type RuntimeRestartStatus = {
   error?: string;
   sync_remote_master?: boolean;
   confirm_discard_tracked_changes?: boolean;
+  target_commit?: string;
   started_at?: string;
   updated_at?: string;
+};
+
+type RuntimeRestartCandidate = {
+  hash?: string;
+  short_hash?: string;
+  message?: string;
+  committed_at?: string;
+  current?: boolean;
+};
+
+type RuntimeRestartCandidateList = {
+  current_commit?: string;
+  items?: RuntimeRestartCandidate[];
 };
 
 const runtimeRestartDiscardConfirmationRequired = "runtime_restart_discard_confirmation_required";
@@ -209,6 +223,11 @@ type RuntimeCopy = {
   restartConfirmBody: string;
   updateBeforeRestart: string;
   updateBeforeRestartHint: string;
+  restartCommitTitle: string;
+  restartCommitLoading: string;
+  restartCommitEmpty: string;
+  restartCommitLoadFailed: (message: string) => string;
+  currentCommitLabel: string;
   cancel: string;
   confirmRestart: string;
   discardConfirmTitle: string;
@@ -296,6 +315,11 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     restartConfirmBody: "The service will restart and active browser streams may reconnect.",
     updateBeforeRestart: "Update from remote master before restarting",
     updateBeforeRestartHint: "Fetch and fast-forward when the working tree has no tracked changes, rebuild, then restart.",
+    restartCommitTitle: "Master commit",
+    restartCommitLoading: "Loading master commits...",
+    restartCommitEmpty: "No master commits available.",
+    restartCommitLoadFailed: (message) => `Master commits unavailable: ${message}`,
+    currentCommitLabel: "Current",
     cancel: "Cancel",
     confirmRestart: "Restart",
     discardConfirmTitle: "Discard local tracked changes?",
@@ -381,6 +405,11 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     restartConfirmBody: "服务将重新启动，进行中的浏览器流式连接可能需要重新连接。",
     updateBeforeRestart: "重启前从远端 master 更新",
     updateBeforeRestartHint: "仅在没有已跟踪本地改动时拉取并快进、重新构建，然后重启。",
+    restartCommitTitle: "Master commit",
+    restartCommitLoading: "正在加载 master commits...",
+    restartCommitEmpty: "暂无可用 master commit。",
+    restartCommitLoadFailed: (message) => `Master commits 暂不可用：${message}`,
+    currentCommitLabel: "当前",
     cancel: "取消",
     confirmRestart: "确认重启",
     discardConfirmTitle: "丢弃本地已跟踪改动？",
@@ -423,11 +452,15 @@ export function ReactManagedCodexAccountsRouteBody({
   const [editingProviderID, setEditingProviderID] = useState("");
   const [providerForm, setProviderForm] = useState<ProviderRegistrationForm>(() => createProviderRegistrationForm("Claude Code"));
   const [providerBusy, setProviderBusy] = useState(false);
-  const [restartDialog, setRestartDialog] = useState<{ open: boolean; syncRemoteMaster: boolean; confirmDiscard: boolean }>({
+  const [restartDialog, setRestartDialog] = useState<{ open: boolean; syncRemoteMaster: boolean; confirmDiscard: boolean; targetCommit: string }>({
     open: false,
     syncRemoteMaster: false,
     confirmDiscard: false,
+    targetCommit: "",
   });
+  const [restartCandidates, setRestartCandidates] = useState<RuntimeRestartCandidateList | null>(null);
+  const [restartCandidatesBusy, setRestartCandidatesBusy] = useState(false);
+  const [restartCandidatesError, setRestartCandidatesError] = useState("");
   const [restartBusy, setRestartBusy] = useState(false);
 
   useEffect(() => {
@@ -462,7 +495,7 @@ export function ReactManagedCodexAccountsRouteBody({
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && !restartBusy) {
-        setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false });
+        closeRestartDialog();
       }
     }
     document.addEventListener("keydown", onKeyDown);
@@ -515,6 +548,35 @@ export function ReactManagedCodexAccountsRouteBody({
       setRestartStatus(normalizeRestartStatus(nextStatus));
     } catch {
       setRestartStatus(null);
+    }
+  }
+
+  function closeRestartDialog() {
+    setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false, targetCommit: "" });
+    setRestartCandidates(null);
+    setRestartCandidatesBusy(false);
+    setRestartCandidatesError("");
+  }
+
+  async function openRestartDialog() {
+    setRestartDialog({ open: true, syncRemoteMaster: true, confirmDiscard: false, targetCommit: "" });
+    setRestartCandidates(null);
+    setRestartCandidatesError("");
+    setRestartCandidatesBusy(true);
+    try {
+      const candidates = await apiClient.get<RuntimeRestartCandidateList>("/api/control/runtime/restart-candidates");
+      const items = normalizeRestartCandidates(candidates);
+      const defaultCandidate = defaultRestartTargetCandidate(items);
+      setRestartCandidates({ ...candidates, items });
+      setRestartDialog((current) => ({
+        ...current,
+        targetCommit: normalizeText(defaultCandidate?.short_hash || defaultCandidate?.hash),
+      }));
+    } catch (error: unknown) {
+      setRestartCandidates(null);
+      setRestartCandidatesError(error instanceof Error ? error.message : "unknown_error");
+    } finally {
+      setRestartCandidatesBusy(false);
     }
   }
 
@@ -622,15 +684,23 @@ export function ReactManagedCodexAccountsRouteBody({
     setStatusKind("");
   }
 
-  async function requestRuntimeRestart(syncRemoteMaster: boolean, confirmDiscardTrackedChanges = false) {
+  async function requestRuntimeRestart(syncRemoteMaster: boolean, confirmDiscardTrackedChanges = false, targetCommit = "") {
     setRestartBusy(true);
     try {
-      const acceptedStatus = await apiClient.post<RuntimeRestartStatus>("/api/control/runtime/restart", {
+      const payload: {
+        sync_remote_master: boolean;
+        confirm_discard_tracked_changes: boolean;
+        target_commit?: string;
+      } = {
         sync_remote_master: syncRemoteMaster,
         confirm_discard_tracked_changes: confirmDiscardTrackedChanges,
-      });
+      };
+      if (syncRemoteMaster && normalizeText(targetCommit)) {
+        payload.target_commit = normalizeText(targetCommit);
+      }
+      const acceptedStatus = await apiClient.post<RuntimeRestartStatus>("/api/control/runtime/restart", payload);
       setRestartStatus(normalizeRestartStatus(acceptedStatus));
-      setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false });
+      closeRestartDialog();
       setStatusKind("success");
       setStatusMessage(copy.restartAccepted);
     } catch (error: unknown) {
@@ -640,7 +710,7 @@ export function ReactManagedCodexAccountsRouteBody({
         error instanceof APIClientError &&
         error.code === runtimeRestartDiscardConfirmationRequired
       ) {
-        setRestartDialog({ open: true, syncRemoteMaster: true, confirmDiscard: true });
+        setRestartDialog((current) => ({ ...current, open: true, syncRemoteMaster: true, confirmDiscard: true }));
         setStatusKind("");
         setStatusMessage("");
         return;
@@ -717,7 +787,7 @@ export function ReactManagedCodexAccountsRouteBody({
             className="runtime-restart-overlay"
             onMouseDown={(event) => {
               if (!restartBusy && event.currentTarget === event.target) {
-                setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false });
+                closeRestartDialog();
               }
             }}
           >
@@ -731,7 +801,7 @@ export function ReactManagedCodexAccountsRouteBody({
                 <h3 id="runtime-restart-title">{showingDiscardConfirm ? copy.discardConfirmTitle : copy.restartConfirmTitle}</h3>
               </header>
               <div className="modal-body">
-                <p>{showingDiscardConfirm ? copy.discardConfirmBody : copy.restartConfirmBody}</p>
+                {showingDiscardConfirm ? <p>{copy.discardConfirmBody}</p> : null}
                 {showingDiscardConfirm ? null : (
                   <label className="codex-runtime-restart-option">
                     <input
@@ -741,15 +811,30 @@ export function ReactManagedCodexAccountsRouteBody({
                         setRestartDialog((current) => ({
                           ...current,
                           syncRemoteMaster: event.target.checked,
+                          targetCommit: event.target.checked ? current.targetCommit : "",
                         }))
                       }
                     />
                     <span>
                       <strong>{copy.updateBeforeRestart}</strong>
-                      <small>{copy.updateBeforeRestartHint}</small>
                     </span>
                   </label>
                 )}
+                {!showingDiscardConfirm && restartDialog.syncRemoteMaster ? (
+                  <RuntimeRestartCommitPicker
+                    copy={copy}
+                    candidates={restartCandidates}
+                    loading={restartCandidatesBusy}
+                    error={restartCandidatesError}
+                    selectedCommit={restartDialog.targetCommit}
+                    onSelect={(targetCommit) =>
+                      setRestartDialog((current) => ({
+                        ...current,
+                        targetCommit,
+                      }))
+                    }
+                  />
+                ) : null}
               </div>
               <footer className="modal-footer">
                 <button
@@ -759,16 +844,20 @@ export function ReactManagedCodexAccountsRouteBody({
                   onClick={() =>
                     showingDiscardConfirm
                       ? setRestartDialog((current) => ({ ...current, confirmDiscard: false }))
-                      : setRestartDialog({ open: false, syncRemoteMaster: false, confirmDiscard: false })
+                      : closeRestartDialog()
                   }
                 >
                   {showingDiscardConfirm ? copy.back : copy.cancel}
                 </button>
                 <button
                   type="button"
-                  disabled={restartBusy}
+                  disabled={restartBusy || (restartDialog.syncRemoteMaster && restartCandidatesBusy)}
                   onClick={() => {
-                    void requestRuntimeRestart(restartDialog.syncRemoteMaster, restartDialog.syncRemoteMaster && restartDialog.confirmDiscard);
+                    void requestRuntimeRestart(
+                      restartDialog.syncRemoteMaster,
+                      restartDialog.syncRemoteMaster && restartDialog.confirmDiscard,
+                      restartDialog.syncRemoteMaster ? restartDialog.targetCommit : "",
+                    );
                   }}
                 >
                   {restartBusy ? copy.restarting : showingDiscardConfirm ? copy.discardAndRestart : copy.confirmRestart}
@@ -798,7 +887,9 @@ export function ReactManagedCodexAccountsRouteBody({
           <button
             className="route-card-action codex-runtime-service-primary-action"
             type="button"
-            onClick={() => setRestartDialog({ open: true, syncRemoteMaster: true, confirmDiscard: false })}
+            onClick={() => {
+              void openRestartDialog();
+            }}
           >
             {copy.restartService}
           </button>
@@ -937,6 +1028,76 @@ function RuntimeLoadingView({ copy }: { copy: RuntimeCopy }) {
   );
 }
 
+function RuntimeRestartCommitPicker({
+  copy,
+  candidates,
+  loading,
+  error,
+  selectedCommit,
+  onSelect,
+}: {
+  copy: RuntimeCopy;
+  candidates: RuntimeRestartCandidateList | null;
+  loading: boolean;
+  error: string;
+  selectedCommit: string;
+  onSelect: (targetCommit: string) => void;
+}) {
+  const items = normalizeRestartCandidates(candidates);
+  return (
+    <section className="codex-runtime-commit-picker" aria-label={copy.restartCommitTitle}>
+      <div className="codex-runtime-commit-picker-head">
+        <strong>{copy.restartCommitTitle}</strong>
+        {loading ? <small>{copy.restartCommitLoading}</small> : null}
+      </div>
+      {error ? <p className="codex-runtime-commit-picker-note is-error">{copy.restartCommitLoadFailed(error)}</p> : null}
+      {!loading && !error && items.length === 0 ? <p className="codex-runtime-commit-picker-note">{copy.restartCommitEmpty}</p> : null}
+      {items.length > 0 ? (
+        <div className="codex-runtime-commit-options">
+          {items.map((candidate) => {
+            const shortHash = normalizeText(candidate.short_hash || candidate.hash);
+            const fullHash = normalizeText(candidate.hash) || shortHash;
+            const selected = normalizeText(selectedCommit) === shortHash || normalizeText(selectedCommit) === fullHash;
+            const committedAt = normalizeText(candidate.committed_at);
+            const message = normalizeText(candidate.message) || "-";
+            const label = `${shortHash} ${message}${committedAt ? ` ${formatDateTimeMinute(committedAt)}` : ""}${
+              candidate.current ? ` ${copy.currentCommitLabel}` : ""
+            }`;
+            const optionClassName = [
+              "codex-runtime-commit-option",
+              selected ? "is-selected" : "",
+              candidate.current ? "is-current" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            return (
+              <label key={fullHash || shortHash} className={optionClassName}>
+                <input
+                  type="radio"
+                  name="runtime-restart-target-commit"
+                  aria-label={label}
+                  checked={selected}
+                  onChange={() => onSelect(shortHash)}
+                />
+                <span className="codex-runtime-commit-main">
+                  <span className="codex-runtime-commit-title-row">
+                    <code>{shortHash}</code>
+                    <span className="codex-runtime-commit-meta">
+                      {committedAt ? <time dateTime={committedAt}>{formatDateTimeMinute(committedAt)}</time> : null}
+                      {candidate.current ? <em>{copy.currentCommitLabel}</em> : null}
+                    </span>
+                  </span>
+                  <strong>{message}</strong>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function RuntimeRestartStatusNote({ status, copy }: { status: RuntimeRestartStatus; copy: RuntimeCopy }) {
   const normalizedStatus = normalizeText(status.status);
   const updatedAt = normalizeText(status.updated_at || status.started_at);
@@ -967,6 +1128,24 @@ function formatRestartStatusLabel(status: string, copy: RuntimeCopy) {
     default:
       return copy.restartStatusUnknown;
   }
+}
+
+function normalizeRestartCandidates(candidates: RuntimeRestartCandidateList | null | undefined): RuntimeRestartCandidate[] {
+  if (!candidates || !Array.isArray(candidates.items)) {
+    return [];
+  }
+  return candidates.items.filter((item) => normalizeText(item?.short_hash || item?.hash));
+}
+
+function defaultRestartTargetCandidate(items: RuntimeRestartCandidate[]): RuntimeRestartCandidate | undefined {
+  const currentIndex = items.findIndex((item) => Boolean(item.current));
+  if (currentIndex > 0) {
+    return items[currentIndex - 1];
+  }
+  if (currentIndex >= 0) {
+    return items[currentIndex];
+  }
+  return items[items.length - 1];
 }
 
 function normalizeRestartStatus(status: RuntimeRestartStatus | null | undefined): RuntimeRestartStatus | null {

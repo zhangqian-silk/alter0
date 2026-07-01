@@ -41,6 +41,27 @@ func (s *stubRuntimeRestarter) GetRestartStatus() RuntimeRestartStatus {
 	return s.status
 }
 
+func (s *stubRuntimeRestarter) ListRestartCandidates() (RuntimeRestartCandidateList, error) {
+	return RuntimeRestartCandidateList{
+		CurrentCommit: "1111111111111111111111111111111111111111",
+		Items: []RuntimeRestartCandidate{
+			{
+				Hash:        "1111111111111111111111111111111111111111",
+				ShortHash:   "1111111",
+				Message:     "current runtime",
+				CommittedAt: time.Date(2026, time.June, 23, 4, 10, 0, 0, time.UTC),
+				Current:     true,
+			},
+			{
+				Hash:        "2222222222222222222222222222222222222222",
+				ShortHash:   "2222222",
+				Message:     "next runtime",
+				CommittedAt: time.Date(2026, time.June, 23, 4, 20, 0, 0, time.UTC),
+			},
+		},
+	}, nil
+}
+
 func (s *stubRuntimeInfoProvider) GetRuntimeInfo() RuntimeInfo {
 	if s == nil {
 		return RuntimeInfo{}
@@ -216,6 +237,65 @@ func TestRuntimeRestartEndpointAcceptsSyncRemoteMasterOption(t *testing.T) {
 	}
 	if !restarter.options.ConfirmDiscardTrackedChanges {
 		t.Fatalf("expected confirm_discard_tracked_changes forwarded to runtime restarter")
+	}
+}
+
+func TestRuntimeRestartEndpointAcceptsTargetCommit(t *testing.T) {
+	restarter := &stubRuntimeRestarter{accepted: true}
+	server := &Server{
+		runtime: restarter,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/control/runtime/restart", strings.NewReader(`{"sync_remote_master":true,"target_commit":"2222222"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.runtimeRestartHandler(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected accepted status, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if restarter.options.TargetCommit != "2222222" {
+		t.Fatalf("expected target commit forwarded, got %q", restarter.options.TargetCommit)
+	}
+
+	var payload RuntimeRestartStatus
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode restart response failed: %v", err)
+	}
+	if payload.TargetCommit != "2222222" {
+		t.Fatalf("expected response target commit, got %q", payload.TargetCommit)
+	}
+}
+
+func TestRuntimeRestartCandidatesEndpointReturnsCurrentAndNextMasterCommits(t *testing.T) {
+	server := &Server{
+		runtime: &stubRuntimeRestarter{accepted: true},
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/control/runtime/restart-candidates", nil)
+	rec := httptest.NewRecorder()
+	server.runtimeRestartCandidatesHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok status, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var payload RuntimeRestartCandidateList
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode candidate list failed: %v", err)
+	}
+	if payload.CurrentCommit != "1111111111111111111111111111111111111111" {
+		t.Fatalf("unexpected current commit %q", payload.CurrentCommit)
+	}
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(payload.Items))
+	}
+	if !payload.Items[0].Current || payload.Items[0].ShortHash != "1111111" {
+		t.Fatalf("expected current candidate highlighted first, got %+v", payload.Items[0])
+	}
+	if payload.Items[1].ShortHash != "2222222" || payload.Items[1].Message != "next runtime" {
+		t.Fatalf("unexpected next candidate: %+v", payload.Items[1])
 	}
 }
 

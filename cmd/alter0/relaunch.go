@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -134,6 +135,13 @@ func (r *serviceRestarter) GetRestartStatus() web.RuntimeRestartStatus {
 	return r.status
 }
 
+func (r *serviceRestarter) ListRestartCandidates() (web.RuntimeRestartCandidateList, error) {
+	if r == nil {
+		return web.RuntimeRestartCandidateList{}, errors.New("runtime restarter is required")
+	}
+	return listRuntimeRestartCandidates(r.workingDir, resolveRuntimeCommitHash(r.workingDir))
+}
+
 func (r *serviceRestarter) setRestartStatus(status string, options web.RuntimeRestartOptions, cause error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -143,6 +151,7 @@ func (r *serviceRestarter) setRestartStatus(status string, options web.RuntimeRe
 	r.status.Status = status
 	r.status.SyncRemoteMaster = options.SyncRemoteMaster
 	r.status.ConfirmDiscardTrackedChanges = options.ConfirmDiscardTrackedChanges
+	r.status.TargetCommit = strings.TrimSpace(options.TargetCommit)
 	r.status.UpdatedAt = time.Now().UTC()
 	if cause != nil {
 		r.status.Error = cause.Error()
@@ -153,7 +162,7 @@ func (r *serviceRestarter) setRestartStatus(status string, options web.RuntimeRe
 
 func (r *serviceRestarter) resolveRelaunchExecutable(options web.RuntimeRestartOptions) (string, error) {
 	if options.SyncRemoteMaster {
-		if err := syncRemoteMasterBranch(r.workingDir, options.ConfirmDiscardTrackedChanges); err != nil {
+		if err := syncRemoteMasterBranch(r.workingDir, options.ConfirmDiscardTrackedChanges, options.TargetCommit); err != nil {
 			return "", err
 		}
 	}
@@ -221,7 +230,7 @@ func decodeRelaunchArgs(encoded string) ([]string, error) {
 	return args, nil
 }
 
-func syncRemoteMasterBranch(workingDir string, confirmDiscardTrackedChanges bool) error {
+func syncRemoteMasterBranch(workingDir string, confirmDiscardTrackedChanges bool, targetCommit string) error {
 	repoDir := strings.TrimSpace(workingDir)
 	if repoDir == "" {
 		return errors.New("sync remote master requires a working directory")
@@ -254,10 +263,121 @@ func syncRemoteMasterBranch(workingDir string, confirmDiscardTrackedChanges bool
 	if err := runGitNetworkCommandWithRetry(repoDir, gitFetchTimeout, 2, "fetch", "--prune", "origin", "master"); err != nil {
 		return fmt.Errorf("fetch origin/master: %w", err)
 	}
+	targetCommit = strings.TrimSpace(targetCommit)
+	if targetCommit != "" {
+		resolvedTarget, err := readCommandOutputWithTimeout(gitStatusTimeout, repoDir, "git", "rev-parse", "--verify", targetCommit+"^{commit}")
+		if err != nil {
+			return fmt.Errorf("resolve selected master commit: %w", err)
+		}
+		if err := runCommandWithTimeout(gitStatusTimeout, repoDir, "git", "merge-base", "--is-ancestor", resolvedTarget, "origin/master"); err != nil {
+			return fmt.Errorf("selected commit %q is not reachable from origin/master: %w", targetCommit, err)
+		}
+		if err := runCommandWithTimeout(gitStatusTimeout, repoDir, "git", "reset", "--hard", resolvedTarget); err != nil {
+			return fmt.Errorf("sync selected master commit: %w", err)
+		}
+		return nil
+	}
 	if err := runGitNetworkCommandWithRetry(repoDir, gitMergeTimeout, 1, "merge", "--ff-only", "FETCH_HEAD"); err != nil {
 		return fmt.Errorf("sync origin/master: %w", err)
 	}
 	return nil
+}
+
+func listRuntimeRestartCandidates(workingDir string, currentCommit string) (web.RuntimeRestartCandidateList, error) {
+	repoDir := strings.TrimSpace(workingDir)
+	if repoDir == "" {
+		return web.RuntimeRestartCandidateList{}, errors.New("list restart candidates requires a working directory")
+	}
+	if err := runGitNetworkCommandWithRetry(repoDir, gitFetchTimeout, 2, "fetch", "--prune", "origin", "master"); err != nil {
+		return web.RuntimeRestartCandidateList{}, fmt.Errorf("fetch origin/master: %w", err)
+	}
+
+	currentCommit = strings.TrimSpace(currentCommit)
+	if currentCommit == "" {
+		var err error
+		currentCommit, err = readCommandOutputWithTimeout(gitStatusTimeout, repoDir, "git", "rev-parse", "HEAD")
+		if err != nil {
+			return web.RuntimeRestartCandidateList{}, fmt.Errorf("resolve current runtime commit: %w", err)
+		}
+	}
+	currentCommit, err := readCommandOutputWithTimeout(gitStatusTimeout, repoDir, "git", "rev-parse", "--verify", currentCommit+"^{commit}")
+	if err != nil {
+		return web.RuntimeRestartCandidateList{}, fmt.Errorf("resolve current runtime commit: %w", err)
+	}
+
+	result := web.RuntimeRestartCandidateList{CurrentCommit: currentCommit}
+	seen := map[string]bool{}
+
+	newerOutput, err := readCommandOutputWithTimeout(
+		gitStatusTimeout,
+		repoDir,
+		"git",
+		"log",
+		"--reverse",
+		"--ancestry-path",
+		"--format=%H%x00%ct%x00%s",
+		currentCommit+"..origin/master",
+	)
+	if err != nil {
+		return result, nil
+	}
+	appendRuntimeRestartCandidates(&result, newerOutput, currentCommit, seen)
+
+	historyOutput, err := readCommandOutputWithTimeout(
+		gitStatusTimeout,
+		repoDir,
+		"git",
+		"log",
+		"-n",
+		"11",
+		"--format=%H%x00%ct%x00%s",
+		currentCommit,
+	)
+	if err != nil {
+		return result, nil
+	}
+	appendRuntimeRestartCandidates(&result, historyOutput, currentCommit, seen)
+	return result, nil
+}
+
+func appendRuntimeRestartCandidates(result *web.RuntimeRestartCandidateList, output string, currentCommit string, seen map[string]bool) {
+	if result == nil {
+		return
+	}
+	for _, line := range strings.Split(output, "\n") {
+		candidate, ok := parseRuntimeRestartCandidate(line, currentCommit)
+		if !ok || seen[candidate.Hash] {
+			continue
+		}
+		seen[candidate.Hash] = true
+		result.Items = append(result.Items, candidate)
+	}
+}
+
+func parseRuntimeRestartCandidate(line string, currentCommit string) (web.RuntimeRestartCandidate, bool) {
+	parts := strings.SplitN(strings.TrimSpace(line), "\x00", 3)
+	if len(parts) != 3 {
+		return web.RuntimeRestartCandidate{}, false
+	}
+	hash := strings.TrimSpace(parts[0])
+	if hash == "" {
+		return web.RuntimeRestartCandidate{}, false
+	}
+	seconds, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+	if err != nil {
+		return web.RuntimeRestartCandidate{}, false
+	}
+	shortHash := hash
+	if len(shortHash) > 7 {
+		shortHash = shortHash[:7]
+	}
+	return web.RuntimeRestartCandidate{
+		Hash:        hash,
+		ShortHash:   shortHash,
+		Message:     strings.TrimSpace(parts[2]),
+		CommittedAt: time.Unix(seconds, 0).UTC(),
+		Current:     hash == strings.TrimSpace(currentCommit),
+	}, true
 }
 
 func buildRelaunchBinary(workingDir string) (string, error) {

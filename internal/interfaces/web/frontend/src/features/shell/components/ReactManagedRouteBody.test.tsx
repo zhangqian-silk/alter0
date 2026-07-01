@@ -101,6 +101,9 @@ describe("ReactManagedRouteBody", () => {
       if (url === "/api/control/runtime/restart") {
         return Promise.resolve(jsonResponse({ status: "idle" }));
       }
+      if (url === "/api/control/runtime/restart-candidates") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
       if (url === "/api/codex/accounts") {
         return Promise.resolve(jsonResponse({
           current: {
@@ -129,6 +132,9 @@ describe("ReactManagedRouteBody", () => {
     expect(screen.getByRole("dialog", { name: "Restart service?" })).toBeInTheDocument();
     const updateCheckbox = screen.getByRole("checkbox");
     expect(updateCheckbox).toBeChecked();
+    await waitFor(() => {
+      expect(screen.getByText("No master commits available.")).toBeInTheDocument();
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Restart" }));
 

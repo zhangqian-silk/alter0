@@ -468,6 +468,24 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("border-radius: 8px;");
     expect(stylesheet).toContain("background: linear-gradient(180deg, rgba(37, 99, 235, 0.96) 0%, rgba(29, 78, 216, 0.96) 100%);");
     expect(stylesheet).toContain(".modal-footer button[data-variant=\"secondary\"] {");
+    const commitOptionsBlock = stylesheet.match(/\.codex-runtime-commit-options\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    expect(commitOptionsBlock).toContain("gap: 4px;");
+    expect(commitOptionsBlock).toContain("padding: 6px;");
+    const commitOptionBlock = stylesheet.match(/\.codex-runtime-commit-option\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+    expect(commitOptionBlock).toContain("grid-template-columns: auto minmax(0, 1fr);");
+    expect(commitOptionBlock).toContain("min-height: 64px;");
+    expect(commitOptionBlock).not.toContain("border-bottom:");
+    expect(stylesheet).toContain(".codex-runtime-commit-option.is-selected {");
+    expect(stylesheet).toContain(".codex-runtime-commit-title-row {");
+    expect(stylesheet).toContain(".runtime-restart-panel .modal-body {");
+    expect(stylesheet).toContain(".runtime-restart-panel .modal-footer {");
+    expect(stylesheet).toContain("padding: 34px 16px calc(104px + env(safe-area-inset-bottom));");
+    expect(stylesheet).toContain("max-height: min(72vh, calc(var(--mobile-viewport-height, 100dvh) - 128px));");
+    expect(stylesheet).toContain("max-height: min(240px, 38vh);");
+    expect(stylesheet).toContain(".codex-runtime-commit-option input:checked::after {");
+    expect(stylesheet).toContain("align-self: start;");
+    expect(stylesheet).toContain("margin-top: 5px;");
+    expect(stylesheet).not.toContain("transform: translateY(8px);");
     expect(stylesheet).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.modal-backdrop \{[\s\S]*?align-items:\s*center;[\s\S]*?padding:\s*16px;[\s\S]*?\.modal-dialog \{[\s\S]*?width:\s*min\(100%, 420px\);[\s\S]*?border-radius:\s*12px;/,
     );
