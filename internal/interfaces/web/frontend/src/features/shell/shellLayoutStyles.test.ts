@@ -1483,4 +1483,53 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-submit\s*\{[\s\S]*?box-shadow:\s*none;/,
     );
   });
+
+  it("defines a shared interaction polish baseline for motion, focus, numeric, and scroll behavior", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const rootStylesheet = readFileSync(resolve(currentDirectory, "../../styles/root.css"), "utf8");
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const interactionLayer = stylesheet.slice(stylesheet.lastIndexOf("/* Interaction polish baseline */"));
+
+    expect(rootStylesheet).toContain("--motion-scale: 1;");
+    expect(rootStylesheet).toContain("--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);");
+    expect(rootStylesheet).toContain("--ease-in-exit: cubic-bezier(0.7, 0, 0.84, 0);");
+    expect(rootStylesheet).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?:root\s*\{[\s\S]*?--motion-scale:\s*0;/,
+    );
+    expect(rootStylesheet).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\*,\s*\*::before,\s*\*::after\s*\{[\s\S]*?scroll-behavior:\s*auto !important;/,
+    );
+
+    expect(interactionLayer).toContain("/* Interaction polish baseline */");
+    expect(interactionLayer).toMatch(
+      /\.menu-item,\s*\.nav-collapse,\s*\.nav-locale-button,\s*\.nav-session-rail-action,\s*\.runtime-workspace-button,\s*\.runtime-workspace-mobile-action,\s*\.route-mobile-head \.conversation-mobile-action,\s*\.runtime-composer-utility,\s*\.runtime-composer-upload,\s*\.runtime-composer-submit,\s*\.route-card-action,\s*\.modal-footer button\s*\{[\s\S]*?transition:[\s\S]*?var\(--ease-out-expo\);/,
+    );
+    expect(interactionLayer).toMatch(
+      /\.menu-item:active,\s*\.nav-collapse:active,\s*\.nav-locale-button:active,\s*\.nav-session-rail-action:active,\s*\.runtime-workspace-button:active,\s*\.runtime-workspace-mobile-action:active,\s*\.route-mobile-head \.conversation-mobile-action:active,\s*\.runtime-composer-utility:active,\s*\.runtime-composer-upload:active,\s*\.runtime-composer-submit:active,\s*\.route-card-action:active,\s*\.modal-footer button:active\s*\{[\s\S]*?transform:\s*scale\(0\.96\);/,
+    );
+    expect(interactionLayer).toMatch(
+      /\.runtime-session-card,\s*\.session-card,\s*\.welcome-target-card,\s*\.prompt,\s*\.settings-route-content \.skill-route-card,\s*\.settings-route-content \.codex-account-card\s*\{[\s\S]*?box-shadow:\s*var\(--surface-shadow-rest\);[\s\S]*?transition:[\s\S]*?var\(--ease-out-expo\);/,
+    );
+    expect(interactionLayer).toMatch(
+      /\.runtime-session-card:hover,\s*\.session-card:hover,\s*\.welcome-target-card:hover,\s*\.prompt:hover,\s*\.settings-route-content \.skill-route-card:hover,\s*\.settings-route-content \.codex-account-card:hover\s*\{[\s\S]*?transform:\s*translateY\(-1px\);[\s\S]*?box-shadow:\s*var\(--surface-shadow-hover\);/,
+    );
+    expect(interactionLayer).toMatch(
+      /button:focus-visible,\s*a:focus-visible,\s*textarea:focus-visible,\s*input:focus-visible,\s*select:focus-visible,\s*\[role="button"\]:focus-visible\s*\{[\s\S]*?outline:\s*none;[\s\S]*?box-shadow:\s*var\(--focus-ring\);/,
+    );
+    expect(interactionLayer).toMatch(
+      /\.tnum,\s*\.session-card-id,\s*\.runtime-session-hash,\s*\.runtime-session-meta,\s*\.route-table-subtext,\s*\.route-data-table code,\s*\.codex-account-card-metrics,\s*\.codex-runtime-restart-status strong\s*\{[\s\S]*?font-variant-numeric:\s*tabular-nums;[\s\S]*?font-feature-settings:\s*"tnum" 1;/,
+    );
+    expect(interactionLayer).toMatch(
+      /\.runtime-workspace-screen,\s*\.route-view,\s*\.modal-body,\s*\.workspace-details-content,\s*\.runtime-composer-command-list,\s*\.runtime-composer-panel\s*\{[\s\S]*?overscroll-behavior:\s*contain;/,
+    );
+    expect(interactionLayer).toMatch(
+      /\.runtime-composer-command-list,\s*\.settings-route-content \.route-data-table-wrap\s*\{[\s\S]*?scrollbar-width:\s*none;/,
+    );
+    expect(interactionLayer).toMatch(
+      /\.modal-backdrop,\s*\.workspace-details-layer,\s*\.runtime-restart-overlay\s*\{[\s\S]*?animation:\s*overlay-fade-in calc\(180ms \* var\(--motion-scale\)\) var\(--ease-out-expo\) both;/,
+    );
+    expect(interactionLayer).toMatch(
+      /\.modal-dialog,\s*\.workspace-details-panel,\s*\.runtime-restart-panel\s*\{[\s\S]*?animation:\s*surface-enter calc\(260ms \* var\(--motion-scale\)\) var\(--ease-out-expo\) both;/,
+    );
+  });
 });
