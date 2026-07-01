@@ -227,7 +227,9 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
       .mockResolvedValueOnce(jsonResponse({ items: [] }))
       .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
+      .mockResolvedValueOnce(jsonResponse({ items: [{ hash: "1111111111111111111111111111111111111111", short_hash: "1111111", message: "current runtime", current: true }] }))
       .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: false }, { status: 202 }))
+      .mockResolvedValueOnce(jsonResponse({ items: [{ hash: "2222222222222222222222222222222222222222", short_hash: "2222222", message: "next runtime" }] }))
       .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: true }, { status: 202 }));
 
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
@@ -241,12 +243,14 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(document.querySelector(".runtime-restart-overlay")).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Restart service?" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Update from remote master/ })).toBeChecked();
+    expect(screen.queryByText("The service will restart and active browser streams may reconnect.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fetch and fast-forward when the working tree has no tracked changes, rebuild, then restart.")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: /Update from remote master/ }));
     fireEvent.click(screen.getByRole("button", { name: "Restart" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        4,
+        5,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
@@ -258,7 +262,90 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Restart service" }));
     expect(screen.getByRole("checkbox", { name: /Update from remote master/ })).toBeChecked();
-    expect(screen.getByText("Fetch and fast-forward when the working tree has no tracked changes, rebuild, then restart.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("2222222")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        7,
+        "/api/control/runtime/restart",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ sync_remote_master: true, confirm_discard_tracked_changes: false, target_commit: "2222222" }),
+        }),
+      );
+    });
+    expect(screen.queryByRole("dialog", { name: "Discard local tracked changes?" })).not.toBeInTheDocument();
+  });
+
+  it("loads master restart candidates and restarts with the selected commit", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          current_commit: "1111111111111111111111111111111111111111",
+          items: [
+            {
+              hash: "2222222222222222222222222222222222222222",
+              short_hash: "2222222",
+              message: "next runtime",
+              committed_at: "2026-06-23T04:20:00Z",
+              current: false,
+            },
+            {
+              hash: "1111111111111111111111111111111111111111",
+              short_hash: "1111111",
+              message: "current runtime",
+              committed_at: "2026-06-23T04:10:00Z",
+              current: true,
+            },
+            {
+              hash: "0000000000000000000000000000000000000000",
+              short_hash: "0000000",
+              message: "previous runtime",
+              committed_at: "2026-06-23T04:00:00Z",
+              current: false,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { accepted: true, status: "restarting", sync_remote_master: true, target_commit: "2222222" },
+          { status: 202 },
+        ),
+      );
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Service controls")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart service" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        4,
+        "/api/control/runtime/restart-candidates",
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+    expect(screen.getByText("1111111")).toBeInTheDocument();
+    expect(screen.getByText("current runtime")).toBeInTheDocument();
+    expect(screen.getByText("Current")).toBeInTheDocument();
+    expect(screen.getByText("2222222")).toBeInTheDocument();
+    expect(screen.getByText("2026-06-23 12:20")).toBeInTheDocument();
+    expect(screen.getByText("previous runtime")).toBeInTheDocument();
+    expect(screen.getByLabelText(/2222222/)).toBeChecked();
+    expect(screen.getByLabelText(/2222222/).closest(".codex-runtime-commit-option")).toHaveClass("is-selected");
+    expect(document.querySelector(".codex-runtime-commit-option.is-current")).not.toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: "Restart" }));
 
     await waitFor(() => {
@@ -267,11 +354,14 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ sync_remote_master: true, confirm_discard_tracked_changes: false }),
+          body: JSON.stringify({
+            sync_remote_master: true,
+            confirm_discard_tracked_changes: false,
+            target_commit: "2222222",
+          }),
         }),
       );
     });
-    expect(screen.queryByRole("dialog", { name: "Discard local tracked changes?" })).not.toBeInTheDocument();
   });
 
   it("asks to discard tracked changes only after the restart API requires confirmation", async () => {
@@ -280,6 +370,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
       .mockResolvedValueOnce(jsonResponse({ items: [] }))
       .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
+      .mockResolvedValueOnce(jsonResponse({ items: [{ hash: "2222222222222222222222222222222222222222", short_hash: "2222222", message: "next runtime" }] }))
       .mockResolvedValueOnce(
         jsonResponse(
           {
@@ -299,15 +390,18 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Restart service" }));
     expect(screen.getByRole("checkbox", { name: /Update from remote master/ })).toBeChecked();
+    await waitFor(() => {
+      expect(screen.getByText("2222222")).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Restart" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        4,
+        5,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ sync_remote_master: true, confirm_discard_tracked_changes: false }),
+          body: JSON.stringify({ sync_remote_master: true, confirm_discard_tracked_changes: false, target_commit: "2222222" }),
         }),
       );
     });
@@ -317,11 +411,11 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard and restart" }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        5,
+        6,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ sync_remote_master: true, confirm_discard_tracked_changes: true }),
+          body: JSON.stringify({ sync_remote_master: true, confirm_discard_tracked_changes: true, target_commit: "2222222" }),
         }),
       );
     });

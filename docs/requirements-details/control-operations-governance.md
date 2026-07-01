@@ -123,7 +123,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ## Runtime Service Controls
 
 - 旧运行参数配置页和对应接口不再提供；运行时路径、记忆文件、队列、终端 shell 等参数由源码内置默认值或启动配置控制，不在 Settings 中持久化为用户配置。
-- Runtime 面板提供服务重启入口。更新远端 master 默认勾选；用户保持同步选项并确认重启后，前端先提交 `sync_remote_master=true` 请求。仅当后端检测到 Git 已跟踪本地改动并返回确认要求时，前端才进入二次确认。只有二次确认后才传入 `confirm_discard_tracked_changes=true` 并允许后端丢弃已跟踪改动；未跟踪文件保留。
+- Runtime 面板提供服务重启入口。更新远端 master 默认勾选；打开重启弹窗时前端请求候选 commit 列表，后端先拉取 `origin/master`，再返回当前运行 commit 之后全部 master 提交，并追加当前运行 commit 及其向前 10 个历史提交。候选项展示短 hash、提交时间和提交信息，当前运行 commit 保持高亮；用户确认重启时可通过 `target_commit` 传入选中的短 hash。仅当后端检测到 Git 已跟踪本地改动并返回确认要求时，前端才进入二次确认。只有二次确认后才传入 `confirm_discard_tracked_changes=true` 并允许后端丢弃已跟踪改动；未跟踪文件保留。
 - Runtime 面板展示当前在线实例最近启动时间和 commit hash，用于确认重启切换后的版本。
 - 工具栏展示当前在线实例对应 commit hash。
 - 页面重连到新实例后以站内成功弹窗提示。
@@ -173,11 +173,13 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - Web 控制台发起重启时，由 supervisor 托管子进程切换。
 - 重启确认使用单一站内弹窗。
 - “同步远端 master 最新改动”作为弹窗内勾选项展示，默认勾选。
+- 弹窗打开时，前端通过 `GET /api/control/runtime/restart-candidates` 拉取候选提交；列表包含当前运行 commit 之后全部更新的 `origin/master` 提交，并追加当前运行 commit 及其向前 10 个历史提交。
+- 候选提交在前端以短 hash、提交时间、提交信息展示，当前运行 commit 保持高亮；提交重启请求时使用短 hash 作为 `target_commit`。
 
 ### 同步远端
 
 - `sync_remote_master=false` 时，基于当前仓库状态构建候选二进制并切换。
-- `sync_remote_master=true` 时，先校验当前分支为 `master`；无 Git 已跟踪本地改动时直接拉取、快进、通过统一构建入口重建前端产物和候选二进制并切换；若存在 Git 已跟踪本地改动，后端必须返回稳定确认错误，前端据此进入二次确认。未确认时拒绝重启同步且不清理本地内容。
+- `sync_remote_master=true` 时，先校验当前分支为 `master`；未传入 `target_commit` 时拉取并快进到 `origin/master` 最新提交；传入 `target_commit` 时先解析短 hash，确认该提交可从 `origin/master` 到达，再把本地 `master` 重置到目标提交后构建候选二进制并切换。若存在 Git 已跟踪本地改动，后端必须返回稳定确认错误，前端据此进入二次确认。未确认时拒绝重启同步且不清理本地内容。
 - Git、构建或快进失败直接返回到 Web 控制台，便于定位权限与凭据问题。
 
 ### 切换与回滚
@@ -262,6 +264,6 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - Channel、Capability、Skill、MCP、Skill、Cron、Models 与 Runtime 控制面接口可用。
 - Capability 与 MCP 生命周期审计可查询。
 - 禁用默认 Provider 后自动收敛到可用配置。
-- Runtime 重启成功后页面连接到新实例，失败时自动回滚。
+- Runtime 重启成功后页面连接到新实例，失败时自动回滚；选择目标 commit 重启时，新实例对应 commit 必须与用户选择的 master 候选一致。
 - systemd 部署下服务账户可以访问 Codex、gh、node、npm、npx 与签名凭据。
 - 文档类变更说明免测原因；代码类变更按 TDD 补测试并运行匹配测试集。
