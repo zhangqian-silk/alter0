@@ -382,7 +382,6 @@ body {
 
   .runtime-composer-shell {
     padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
-    bottom: 0;
   }
 
   .runtime-composer-form {
@@ -527,10 +526,6 @@ body {
 }
 
 @media (max-width: 760px) {
-  .runtime-composer-shell {
-    bottom: 0;
-  }
-
   [data-runtime-view="terminal"] .terminal-final-output {
     max-width: 100%;
   }
@@ -781,10 +776,6 @@ body {
 }
 
 @media (max-width: 760px) {
-  .runtime-composer-shell {
-    bottom: 0;
-  }
-
   .primary-nav {
     border: 0;
     border-right: 1px solid #eeeeee;

@@ -119,6 +119,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 的 URL query 只表达显式会话恢复：页面首次加载、刷新、手动粘贴 `/chat?session_id=<8位短hash>` 或浏览器恢复带 query 的标签页时，Chat 先读取 `session_id` 恢复目标会话。访问 `/chat` 或从主导航切回 `Chat` 时，工作台清理旧 `session_id`，并按服务端会话列表与本地最近快照的合并结果打开最新会话，避免上一次活动会话被 query 或 sessionStorage 固定。历史 `/chat?session_id=<8位短hash>` 入口继续按 Chat 会话恢复对应历史会话。
 - 浏览器侧会额外持久化最近会话列表的轻量快照，而不只保留当前活动会话；当用户刷新其他会话、切换设备前短暂刷新，或服务端集合接口暂时漏掉刚创建/最近活跃会话时，前端仍需在侧栏继续展示这些最近会话，并按 `session_id` 单独补拉详情，直到服务端明确确认不存在。
 - `Chat` 与 `Terminal` 在同一 SPA 工作台内切到 Settings 或其他页面再返回时，应优先使用浏览器内存级运行态缓存恢复各自 owner 的会话列表、当前活动会话和完整已加载消息；缓存 TTL 为 24 小时，不裁剪当前已加载消息。缓存按 `chat / terminal` 分桶，不允许 Terminal 会话被 Chat 缓存覆盖。该缓存只服务路由切换后的首屏恢复，不替代服务端历史或刷新恢复快照；会话列表和单会话详情接口返回后必须继续按现有合并规则更新视图并刷新缓存时间，超过 TTL 的缓存不得参与首屏渲染。
+- `Chat / Terminal` 的完整消息快照与轻量会话信息快照读取时按 session 合并：同一 session 优先保留完整消息、过程事件、附件引用与 `turnsPaging`，轻量信息快照只补齐缺失会话摘要和列表可见字段。完整快照中已有某条会话时，不得因此丢弃轻量快照里的其他最近会话；轻量快照也不得把完整快照中的 `messagesLoaded=true`、过程详情或已加载历史降级为空列表。
 - `Chat` 需复用 Terminal session store 作为服务端会话事实来源，记录 `session_id -> title / skills / status / turns / pinned / updated_at` 等最小恢复视图；浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
 - `Chat / Terminal` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前运行页会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。列表项主体只展示标题，真实会话尾侧固定提供单个三点更多按钮；展开菜单承载置顶、查看详情与删除操作，查看详情会聚焦该会话并打开 `Details` 面板且不主动收起已打开的移动会话抽屉，删除操作必须二次确认后才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、短 hash、Skill 标签或额外摘要。运行页空列表、Chat 本地空白草稿和 Terminal 本地空白草稿优先展示一条 active `New` 占位会话；`New` 草稿/占位只作为输入入口，不显示三点菜单，不支持置顶、详情或删除，同一路径内重复点击 `New` 只聚焦既有空白虚拟会话，不创建多个空会话。`/terminal` 兼容 path 首次发送时创建真实 Terminal session；完整会话 id 与 Terminal `terminal_session_id` 继续用于接口、持久化和工作区隔离，不直接作为列表或 URL 展示值。
@@ -234,7 +235,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 - Process action / observation 与 Terminal 执行细节在前端收敛为可折叠 Process，并统一在当前消息或 turn 内同页展开。
 - 最终答复出现后，Process 默认折叠，阅读焦点回到正文。
-- 单个步骤详情由用户点开对应步骤后展示；若步骤标记 `raw.has_detail`，前端需先按 `session_id / turn_id / event_id` 拉取完整 detail 并写回当前消息缓存，再在当前浏览器会话内保留展开状态。外层 `Thinking / 已思考` 每次展开或折叠时需收起该消息下已打开的单步详情，使移动端先稳定进入步骤列表态，不把历史详情重新撑开视口。
+- 单个步骤详情由用户点开对应步骤后展示；若步骤标记 `raw.has_detail`，前端需先按 `session_id / turn_id / event_id` 拉取完整 detail 并写回当前消息缓存，再在当前浏览器会话内保留展开状态。已写入当前消息缓存的 detail blocks 优先级高于后续轻量会话摘要、bounded detail 或 owner 增量 patch；后续刷新只能更新步骤状态、标题等摘要字段，不得清空已加载 detail 或把 `raw.has_detail=false` 回退为待加载。外层 `Thinking / 已思考` 每次展开或折叠时需收起该消息下已打开的单步详情，使移动端先稳定进入步骤列表态，不把历史详情重新撑开视口。
 - Chat 与 Terminal 过程披露中的所有步骤详情都直接渲染为同一套最终 detail surface：`terminal / code / diff / tool_input` 与 JSON 类 `tool_output` 使用等宽内容块，`text / markdown / thinking / tool_output(text) / error` 以及历史 `step.detail` 使用富文本正文块；结构化 block 的标题、文件名和起始行号需在详情头部保留。即使只有 `RuntimeTraceEvent.blocks` 中的结构化摘要，也不得先按普通 Markdown 文本显示再切换为最终形态。步骤行的类型标签、耗时与状态需与 Terminal 同源渲染，类型标签需与过程披露过滤映射同源，不通过标题或自然语言内容推断，详情块不重复渲染状态 badge。
 
 ### 布局
@@ -278,6 +279,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat / Terminal` 的移动端会话列表共用左侧主导航抽屉：运行页顶部只保留 `Menu` 抽屉入口，并在抽屉中直接展示主工作流入口与当前运行页会话列表；点击遮罩、切换路由、切换会话或新建会话后，不保留旧的抽屉展开态。
 - `Chat` 的移动端左侧抽屉在真机上优先保证稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不再叠加多层位移、条目级顺序动画或生硬的整板平推过渡。
 - 输入区在软键盘弹起、收起、浏览器工具栏伸缩时持续贴住动态视口底部；Composer 作为 workspace grid footer 随 `--mobile-viewport-height` 变化，不使用 fixed bottom、transform 或 spacer 驱动主布局，正文滚动区、空态、命令候选和配置面板不消费键盘高度。
+- 运行页后置样式不得重新对共享 `.runtime-composer-shell` 设置 `bottom: 0`、键盘 offset 或 fixed 定位；移动端 Composer 的唯一布局锚点是 `.runtime-workspace-body` 的真实 grid footer。该约束同时覆盖 Chat、Terminal 兼容 path 和后续复用 Conversation runtime 的运行页，避免输入区覆盖最新用户消息或助手正文。
 - 仅在输入框实际聚焦或 visual viewport 明确报告键盘收缩时发布键盘诊断偏移；主布局不消费该偏移追加底部位移。
 - 键盘收起或视口回弹后不保留额外底部空白。
 - `Chat / Terminal` 在页面恢复前台可见、浏览器重新激活当前标签页或系统恢复当前 WebView 时，必须立刻重算共享视口诊断变量；第一帧不得沿用后台前遗留的旧可视高度或旧底部空白。

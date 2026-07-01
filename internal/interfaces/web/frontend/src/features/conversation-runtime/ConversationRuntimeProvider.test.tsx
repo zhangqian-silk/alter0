@@ -87,6 +87,9 @@ function RuntimeHarness() {
       >
         load process detail
       </button>
+      <button type="button" onClick={() => void runtime.refreshActiveSession()}>
+        refresh active
+      </button>
       <output data-testid="active-session-status">{runtime.activeSession?.status || ""}</output>
     </div>
   );
@@ -3320,6 +3323,117 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Cached session info"));
   });
 
+  it("merges cached Chat session info with full long-term message caches", async () => {
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "full-chat" }));
+    window.localStorage.setItem(
+      LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        activeSessionByRoute: { chat: "full-chat" },
+        sessionsByRoute: {
+          chat: [{
+            id: "full-chat",
+            status: "ready",
+            title: "Full cached chat",
+            createdAt: Date.parse("2026-04-23T03:30:00Z"),
+            pinned: false,
+            targetID: "codex",
+            targetName: "Codex",
+            messages: [
+              {
+                id: "turn-full:user",
+                role: "user",
+                text: "full prompt",
+                attachments: [],
+                route: "chat",
+                source: "runtime",
+                error: false,
+                status: "",
+                at: Date.parse("2026-04-23T03:30:00Z"),
+                processEvents: [],
+              },
+              {
+                id: "turn-full:assistant",
+                role: "assistant",
+                text: "full cached answer",
+                attachments: [],
+                route: "chat",
+                source: "runtime",
+                error: false,
+                status: "done",
+                at: Date.parse("2026-04-23T03:30:02Z"),
+                processEvents: [],
+              },
+            ],
+            messagesLoaded: true,
+            serverBacked: true,
+            turnsPaging: { has_more_before: false },
+          }],
+        },
+      }),
+    );
+    window.localStorage.setItem(
+      SESSION_INFO_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        activeSessionByRoute: { chat: "full-chat" },
+        sessionsByRoute: {
+          chat: [
+            {
+              id: "full-chat",
+              status: "ready",
+              title: "Full cached chat",
+              createdAt: Date.parse("2026-04-23T03:30:00Z"),
+              pinned: false,
+              targetID: "codex",
+              targetName: "Codex",
+              messages: [],
+              messagesLoaded: false,
+              serverBacked: true,
+            },
+            {
+              id: "info-chat",
+              status: "ready",
+              title: "Info cached chat",
+              createdAt: Date.parse("2026-04-23T04:30:00Z"),
+              pinned: false,
+              targetID: "codex",
+              targetName: "Codex",
+              messages: [],
+              messagesLoaded: false,
+              serverBacked: true,
+            },
+          ],
+        },
+      }),
+    );
+
+    const listRequest = deferred<{ items?: unknown[] }>();
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return listRequest.promise;
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <MessageTextHarness />
+        <SessionListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("full cached answer"));
+    expect(screen.getByTestId("sessions")).toHaveTextContent("Full cached chat");
+    expect(screen.getByTestId("sessions")).toHaveTextContent("Info cached chat");
+  });
+
   it("does not let a Chat long-term cache shadow Terminal session info storage", async () => {
     window.history.replaceState({}, "", "/terminal");
     window.sessionStorage.setItem(TERMINAL_ACTIVE_SESSION_STORAGE_KEY, JSON.stringify("terminal-cached"));
@@ -3407,6 +3521,39 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
+        case "/api/chat/sessions/alter0-chat":
+          return {
+            session: {
+              id: "alter0-chat",
+              title: "Detail chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [{
+                id: "turn-1",
+                prompt: "show thinking",
+                status: "success",
+                started_at: "2026-04-23T03:31:00Z",
+                finished_at: "2026-04-23T03:31:01Z",
+                final_output: "done",
+                runtime_trace_events: [{
+                  id: "step-1",
+                  turn_id: "turn-1",
+                  seq: 1,
+                  source: "adapter",
+                  provider: { engine: "codex", adapter: "codex_cli_json" },
+                  role: "assistant",
+                  kind: "reasoning",
+                  lifecycle: "completed",
+                  status: "completed",
+                  title: "Thinking",
+                  blocks: [],
+                  visibility: "collapsed",
+                  raw: { ref: "event-ref-1", has_detail: true },
+                }],
+              }],
+              turns_paging: { has_more_before: false },
+            },
+          };
         case "/api/chat/sessions/alter0-chat/turns/turn-1/events/event-ref-1":
           return {
             event: {
@@ -3452,6 +3599,10 @@ describe("ConversationRuntimeProvider", () => {
       "/api/chat/sessions/alter0-chat/turns/turn-1/events/event-ref-1",
     ));
     await waitFor(() => expect(screen.getByTestId("assistant-process-blocks")).toHaveTextContent("full thinking detail"));
+
+    fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat"));
+    expect(screen.getByTestId("assistant-process-blocks")).toHaveTextContent("full thinking detail");
     expect(window.localStorage.getItem("alter0.web.session.long_term_snapshot.v1")).toContain("full thinking detail");
   });
 });
