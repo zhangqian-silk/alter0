@@ -1038,6 +1038,31 @@ function compareRuntimeTraceEvents(left: RuntimeTraceEvent, right: RuntimeTraceE
   return runtimeTraceEventMergeKey(left).localeCompare(runtimeTraceEventMergeKey(right), undefined, { numeric: true });
 }
 
+function hasLoadedRuntimeTraceEventDetail(event: RuntimeTraceEvent): boolean {
+  return event.raw?.has_detail === false && event.blocks.length > 0;
+}
+
+function mergeRuntimeProcessEvent(previous: RuntimeTraceEvent, incoming: RuntimeTraceEvent): RuntimeTraceEvent {
+  const previousEvent = cloneRuntimeTraceEvent(previous);
+  const incomingEvent = cloneRuntimeTraceEvent(incoming);
+  if (
+    !hasLoadedRuntimeTraceEventDetail(previousEvent)
+    || (incomingEvent.raw?.has_detail === false && incomingEvent.blocks.length > 0)
+  ) {
+    return incomingEvent;
+  }
+  return {
+    ...previousEvent,
+    ...incomingEvent,
+    blocks: previousEvent.blocks.map((block) => ({ ...block })),
+    raw: {
+      ...(incomingEvent.raw || {}),
+      ...(previousEvent.raw || {}),
+      has_detail: false,
+    },
+  };
+}
+
 function mergeRuntimeProcessEvents(previous: RuntimeTraceEvent[], incoming: RuntimeTraceEvent[]): RuntimeTraceEvent[] {
   if (previous.length === 0) {
     return incoming.map(cloneRuntimeTraceEvent).sort(compareRuntimeTraceEvents);
@@ -1050,7 +1075,9 @@ function mergeRuntimeProcessEvents(previous: RuntimeTraceEvent[], incoming: Runt
     merged.set(runtimeTraceEventMergeKey(event), cloneRuntimeTraceEvent(event));
   });
   incoming.forEach((event) => {
-    merged.set(runtimeTraceEventMergeKey(event), cloneRuntimeTraceEvent(event));
+    const key = runtimeTraceEventMergeKey(event);
+    const previousEvent = merged.get(key);
+    merged.set(key, previousEvent ? mergeRuntimeProcessEvent(previousEvent, event) : cloneRuntimeTraceEvent(event));
   });
   return Array.from(merged.values()).sort(compareRuntimeTraceEvents);
 }
@@ -1062,7 +1089,7 @@ function incomingRuntimeMessageCarriesProcessPatch(previous: ChatMessage | undef
   if (incoming.processEventsPartial === true) {
     return true;
   }
-  return previous.processEvents.length > 0 && incoming.processEvents.length === 0;
+  return previous.processEvents.length > 0;
 }
 
 function mergeIncomingRuntimeMessage(previous: ChatMessage[], incoming: ChatMessage): ChatMessage {
@@ -1602,7 +1629,13 @@ function mergeConversationRuntimeCacheSnapshots(
   CONVERSATION_ROUTES.forEach((routeKey) => {
     const source = hasRouteCacheData(primary, routeKey) ? primary : fallback;
     activeSessionByRoute[routeKey] = source.activeSessionByRoute[routeKey];
-    sessionsByRoute[routeKey] = source.sessionsByRoute[routeKey];
+    sessionsByRoute[routeKey] = normalizeRouteSessions(
+      routeKey,
+      mergeRuntimeSessions(
+        primary.sessionsByRoute?.[routeKey] || [],
+        fallback.sessionsByRoute?.[routeKey] || [],
+      ),
+    );
   });
   return {
     cachedAt: Math.max(Number(primary.cachedAt || 0), Number(fallback.cachedAt || 0)),
@@ -2138,9 +2171,16 @@ export function ConversationRuntimeProvider({
     [initialActiveSessionByRoute, route, runtimeSessionController.activeSessionID],
   );
   const setSessionsByRoute = useCallback((updater: SessionsState | ((current: SessionsState) => SessionsState)) => {
+    const currentRouteSessions = normalizeRouteSessions(
+      route,
+      mergeRuntimeSessions(
+        sessionsByRouteRef.current[route] || [],
+        runtimeSessionController.sessionsRef.current || [],
+      ),
+    );
     const current = {
       ...sessionsByRouteRef.current,
-      [route]: runtimeSessionController.sessionsRef.current,
+      [route]: currentRouteSessions,
     };
     const next = typeof updater === "function" ? updater(current) : updater;
     sessionsByRouteRef.current = next;

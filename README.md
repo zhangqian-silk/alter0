@@ -228,6 +228,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时；`Te
 - `Chat` 在同一会话内继续按 `user -> assistant` 追加历史；每轮结果只允许更新当前这条尚未收口的 assistant 占位，已收口历史不得被迟到的会话详情刷新改写。
 - 执行过程通过 Terminal session `turns[].runtime_trace_events` 收口；Chat 与 Terminal 前端直接消费同一组 `RuntimeTraceEvent`，并按用户选择的披露类型渲染。
 - `Chat / Terminal` 会话详情首个请求只取最近 turn 页；若响应带有 `turns_paging.has_more_before`，前端会继续按 `turn_before` 在后台补齐更早历史并按 turn/message id 与时间合并。后台补齐只更新完整消息缓存和隐藏历史，不改变当前可见窗口；用户主动加载更早消息时再展开本地批次。
+- 用户已展开并加载过的 `Process / Thinking` 步骤详情会保留在当前消息缓存中；后续会话列表刷新、单会话详情或 owner 增量只返回轻量步骤摘要时，不会把已显示的 detail blocks 降级为空。
 - `Chat / Terminal` 会话列表、详情和置顶接口都返回明确的 `pinned` 布尔值；取消置顶后响应必须包含 `pinned:false`，刷新恢复不得沿用浏览器旧缓存中的置顶状态。
 - 请求断开或刷新后，前端优先回源当前会话详情，用服务端已持久化的最终消息覆盖本地占位态，只在恢复失败时才收敛为失败态，避免同一条 Chat 请求被浏览器重复提交。
 - 若当前消息已进入 运行时执行链，前端页面切换、标签页隐藏、请求断开或浏览器主动取消请求都不会中断后端执行；最终结果仍会落到会话历史。
@@ -248,7 +249,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时；`Te
 - 预览短哈希 host 与主域工作台共用同一套登录保护；访问 `https://<session_short_hash>.alter0.cn` 时可直接打开该 host 自身的 `/login` 登录页，登录 cookie 会共享到 `*.alter0.cn`。主运行时的 `supervisor -> web child` 继续继承同一套 `web_login_password`，默认 `web` 全栈预览内部托管的 workspace service 子进程才会去掉第二层登录，避免主域与预览 host 各自重复登录。
 - 运行时执行过程会在运行时产出结构化 `RuntimeTraceEvent`，并通过 Terminal session `turns[].runtime_trace_events`、Task 结果与历史恢复一并返回；前端按可控事件类型渲染可折叠 `Process` 区块，不再维护 Chat 与 Terminal 两套过程数据结构。
 - Chat 回复中的 `Process` 与最终正文在收口后继续同时保留；刷新页面或从服务端会话历史恢复时，结构化步骤不会因最终正文已落库而丢失。
-- `Chat / Terminal` 在浏览器刷新前会把当前 route 的活动会话写入独立 `sessionStorage` key，并把完整已加载消息或 turns 写入当前 route 的 24 小时 `localStorage` 缓存；同时额外写入不含消息正文的会话信息缓存，避免完整消息缓存超限时会话列表也丢失。刷新后若服务端会话列表暂时还没返回该会话，前端先用本地快照保住当前会话与消息时间线，再按 `session_id` 补拉当前 owner 的单会话详情，避免活跃会话短暂消失或被新的空白 `New` 会话顶替；已知完整且稳定的缓存会话在前台恢复时不重复拉取详情。
+- `Chat / Terminal` 在浏览器刷新前会把当前 route 的活动会话写入独立 `sessionStorage` key，并把完整已加载消息或 turns 写入当前 route 的 24 小时 `localStorage` 缓存；同时额外写入不含消息正文的会话信息缓存，避免完整消息缓存超限时会话列表也丢失。两类缓存恢复时按 session 合并：完整缓存保住消息、过程事件与分页状态，轻量信息缓存补齐缺失的会话摘要。刷新后若服务端会话列表暂时还没返回该会话，前端先用本地快照保住当前会话与消息时间线，再按 `session_id` 补拉当前 owner 的单会话详情，避免活跃会话短暂消失或被新的空白 `New` 会话顶替；已知完整且稳定的缓存会话在前台恢复时不重复拉取详情。
 - Chat 请求一旦进入后端执行链，浏览器侧任何交互事件都不影响 Skill 本身的执行与会话持久化；断开后重新进入历史即可查看最终结果。
 - Runtime Profile 保留为历史配置模型；Chat 当前稳定入口不再依赖内置 Runtime Profile 或内置业务编排 预选能力。
 - Web `Chat` 独立入口与独立消息接口已移除；历史 Chat 会话仅在读取阶段迁移到 Chat 会话模型，并继续保留原目标 Skill 名称作为历史元数据。
@@ -281,7 +282,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时；`Te
 - Chat 工作区头部固定为共享单行 header：只保留会话标题、状态按钮和 `Details` 入口，不再在头部直接放置 `Model / Tools / MCP / Skill` 控件，也不重复展示运行页标签与目标摘要；运行时配置统一通过底部输入框工具栏的 `Session` 按钮进入，`Details` 面板只展示会话元信息。独立 Chat 的 `Deliverables`、`Session Profile` 与独立 Skill 面板已移除，Skill 配置统一进入 `Session` 面板。
 - Chat 桌面宽屏会按可用主工作区宽度自适应扩展消息列与底部输入区，并统一收敛到居中的 `960px` 阅读宽度上限，避免正文无限拉长。
 - Chat 移动端输入区默认隐藏装饰性附注与字数计数，底部保留输入框、`Session`、附件与发送按钮；运行态配置统一通过输入框工具栏的 `Session` 按钮进入，`Details` 面板只展示会话元信息。
-- Chat 与 Terminal 在移动端都会由 workspace grid 自动把消息 panel 收敛到 Composer 上沿；输入区贴底期间，消息列表、空态说明和长输出阅读都不得被底部输入框盖住。软键盘作为 overlay 覆盖 layout viewport 时，消息滚动区不扩大底部 padding、scroll-padding、workspace footer 或 spacer。
+- Chat 与 Terminal 在移动端都会由 workspace grid 自动把消息 panel 收敛到 Composer 上沿；输入区贴底期间，消息列表、空态说明和长输出阅读都不得被底部输入框盖住。共享 runtime Composer 在运行页内保持 workspace grid footer 文档流位置，后置样式不得重新设置 fixed/bottom 偏移或键盘 offset。软键盘作为 overlay 覆盖 layout viewport 时，消息滚动区不扩大底部 padding、scroll-padding、workspace footer 或 spacer。
 - Chat 与 Terminal 在软键盘收起、输入框失焦和 composer 回弹到底边的过程中，消息视口与跳转控件也要同步释放旧的底部占位；页面上不能残留上一轮键盘高度对应的空白带或悬空控件。
 - Chat 与 Terminal 在移动端软键盘弹起期间，底部 Composer 必须始终位于运行页跳转控件之上；右侧四键定位条和消息阅读定位按钮在主输入框聚焦后需主动隐藏，待输入框失焦、键盘收起后再恢复，不能压到输入框、附件条或键盘上方。
 - Chat 与 Terminal 在移动端打开主导航抽屉时会先释放当前输入焦点并收起软键盘；抽屉与遮罩通过顶层 overlay 层覆盖运行页，层级高于 Composer。底部 Composer 保持可见但进入不可交互态，不再通过 `visibility: hidden` 或卸载 DOM 修正层级。

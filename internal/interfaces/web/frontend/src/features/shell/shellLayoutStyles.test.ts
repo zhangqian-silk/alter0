@@ -195,6 +195,17 @@ describe("shell layout stylesheet", () => {
     expect(composerRules).not.toContain("var(--keyboard-offset)");
   });
 
+  it("does not reintroduce mobile runtime composer bottom offsets in later shell rules", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const mobileRuntimeComposerBottomRules = Array.from(stylesheet.matchAll(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.runtime-composer-shell\s*\{([^}]*)\}/g,
+    )).map((match) => match[1]).join("\n");
+
+    expect(mobileRuntimeComposerBottomRules).not.toContain("bottom: 0;");
+    expect(mobileRuntimeComposerBottomRules).not.toContain("var(--keyboard-offset)");
+  });
+
   it("keeps the mobile runtime header fixed while preserving the first workspace grid row footprint", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
