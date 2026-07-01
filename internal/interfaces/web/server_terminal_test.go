@@ -46,6 +46,7 @@ type stubWebTerminalService struct {
 	lastInput      string
 	lastPinned     bool
 	inputReq       terminalapp.InputRequest
+	updateHook     terminalapp.SessionUpdateHook
 }
 
 func (s *stubWebTerminalService) Create(req terminalapp.CreateRequest) (terminaldomain.Session, error) {
@@ -120,6 +121,10 @@ func (s *stubWebTerminalService) Delete(ownerID string, sessionID string) (termi
 	return s.deleteResp, s.deleteErr
 }
 
+func (s *stubWebTerminalService) SetSessionUpdateHook(hook terminalapp.SessionUpdateHook) {
+	s.updateHook = hook
+}
+
 func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	service := &stubWebTerminalService{
 		createResp: terminaldomain.Session{
@@ -159,6 +164,217 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	}
 	if _, ok := session["last_output_at"].(string); !ok {
 		t.Fatalf("expected last_output_at in session payload, got %v", session["last_output_at"])
+	}
+}
+
+func TestChatSessionUpdatesHandlerReturnsIncrementalOwnerEvents(t *testing.T) {
+	server := &Server{sessionEvents: newSessionUpdateBroker(8)}
+	server.publishTerminalSessionEvent(chatSessionOwnerID, "chat-1", "session.updated", terminaldomain.Session{
+		ID:      "chat-1",
+		OwnerID: chatSessionOwnerID,
+		Title:   "Running chat",
+		Status:  terminaldomain.SessionStatusBusy,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/updates?since_event_id=0", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatSessionUpdatesHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var payload struct {
+		Cursor         int64                `json:"cursor"`
+		ResyncRequired bool                 `json:"resync_required"`
+		Events         []sessionUpdateEvent `json:"events"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload.ResyncRequired {
+		t.Fatalf("did not expect resync_required")
+	}
+	if payload.Cursor == 0 || len(payload.Events) != 1 {
+		t.Fatalf("expected one incremental event and non-zero cursor, got %+v", payload)
+	}
+	event := payload.Events[0]
+	if event.OwnerID != chatSessionOwnerID || event.SessionID != "chat-1" || event.EventType != "session.updated" {
+		t.Fatalf("expected chat session.updated event, got %+v", event)
+	}
+	session, ok := event.Payload["session"].(map[string]any)
+	if !ok || session["status"] != "busy" {
+		t.Fatalf("expected busy session payload, got %+v", event.Payload)
+	}
+}
+
+func TestChatSessionUpdatesHandlerPrunesKnownRuntimeTraceEvents(t *testing.T) {
+	server := &Server{sessionEvents: newSessionUpdateBroker(8)}
+	server.sessionUpdateBroker().publish(chatSessionOwnerID, "chat-1", "session.updated", map[string]any{
+		"session": map[string]any{
+			"id":     "chat-1",
+			"status": "busy",
+			"turns": []any{
+				map[string]any{
+					"id":     "turn-1",
+					"prompt": "hello",
+					"status": "running",
+					"runtime_trace_events": []any{
+						map[string]any{"id": "step-1", "seq": 1, "kind": "reasoning", "title": "known 1"},
+						map[string]any{"id": "step-2", "seq": 2, "kind": "reasoning", "title": "known 2"},
+						map[string]any{"id": "step-3", "seq": 3, "kind": "reasoning", "title": "missing 3"},
+					},
+				},
+			},
+		},
+	})
+	body := strings.NewReader(`{
+		"since_event_id": 0,
+		"limit": 50,
+		"byte_limit": 65536,
+		"sessions": [{
+			"id": "chat-1",
+			"turns": [{
+				"id": "turn-1",
+				"event_seq_ranges": [[1, 2]]
+			}]
+		}]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/updates", body)
+	rec := httptest.NewRecorder()
+
+	server.chatSessionUpdatesHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var payload struct {
+		Events []sessionUpdateEvent `json:"events"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(payload.Events) != 1 {
+		t.Fatalf("expected one event, got %+v", payload.Events)
+	}
+	session, ok := payload.Events[0].Payload["session"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected session payload, got %+v", payload.Events[0].Payload)
+	}
+	turns, ok := session["turns"].([]any)
+	if !ok || len(turns) != 1 {
+		t.Fatalf("expected one turn payload, got %+v", session["turns"])
+	}
+	turn, ok := turns[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected turn payload, got %+v", turns[0])
+	}
+	events, ok := turn["runtime_trace_events"].([]any)
+	if !ok || len(events) != 1 {
+		t.Fatalf("expected one missing runtime trace event, got %+v", turn["runtime_trace_events"])
+	}
+	event, ok := events[0].(map[string]any)
+	if !ok || event["id"] != "step-3" {
+		t.Fatalf("expected missing runtime trace event step-3, got %+v", events[0])
+	}
+	if turn["runtime_trace_events_partial"] != true {
+		t.Fatalf("expected partial runtime trace event marker, got %+v", turn["runtime_trace_events_partial"])
+	}
+}
+
+func TestTerminalSessionUpdateHookReturnsBoundedSessionDetailTurns(t *testing.T) {
+	service := &stubWebTerminalService{
+		turnsResp: []terminalapp.TurnSummary{{
+			ID:          "turn-old",
+			Prompt:      "old",
+			Status:      "completed",
+			FinalOutput: "old done",
+		}, {
+			ID:          "turn-2",
+			Prompt:      "hello",
+			Status:      "completed",
+			FinalOutput: "done",
+		}},
+	}
+	server := &Server{terminals: service, sessionEvents: newSessionUpdateBroker(8)}
+	server.registerTerminalSessionUpdateHook()
+	if service.updateHook == nil {
+		t.Fatalf("expected session update hook to be registered")
+	}
+	service.updateHook(chatSessionOwnerID, "chat-1", terminaldomain.Session{
+		ID:      "chat-1",
+		OwnerID: chatSessionOwnerID,
+		Title:   "Running chat",
+		Status:  terminaldomain.SessionStatusBusy,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/updates?since_event_id=0", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatSessionUpdatesHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var payload struct {
+		Events []sessionUpdateEvent `json:"events"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(payload.Events) != 1 {
+		t.Fatalf("expected one event, got %+v", payload.Events)
+	}
+	raw, _ := json.Marshal(payload.Events[0].Payload)
+	body := string(raw)
+	if !strings.Contains(body, `"turns"`) || !strings.Contains(body, `"final_output":"done"`) {
+		t.Fatalf("expected session detail turns in update payload, got %q", body)
+	}
+	if strings.Contains(body, `"final_output":"old done"`) {
+		t.Fatalf("expected update session detail to include only the latest turn page, got %q", body)
+	}
+}
+
+func TestChatSessionUpdatesHandlerRequestsResyncWhenCursorCannotResume(t *testing.T) {
+	server := &Server{sessionEvents: newSessionUpdateBroker(8)}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/updates?since_event_id=42", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatSessionUpdatesHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var payload struct {
+		OwnerID        string               `json:"owner_id"`
+		ResyncRequired bool                 `json:"resync_required"`
+		Events         []sessionUpdateEvent `json:"events"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload.OwnerID != chatSessionOwnerID || !payload.ResyncRequired {
+		t.Fatalf("expected chat owner resync payload, got %+v", payload)
+	}
+	if len(payload.Events) != 0 {
+		t.Fatalf("expected no incremental events when resync is required, got %+v", payload.Events)
+	}
+}
+
+func TestSessionUpdatePollRequestsResyncWhenCursorFallsBehindGlobalWindow(t *testing.T) {
+	broker := newSessionUpdateBroker(2)
+	broker.publish(chatSessionOwnerID, "chat-1", "session.updated", nil)
+	broker.publish(terminalSessionOwnerID, "terminal-1", "session.updated", nil)
+	broker.publish(terminalSessionOwnerID, "terminal-2", "session.updated", nil)
+
+	events, cursor, resyncRequired, hasMore := broker.poll(chatSessionOwnerID, 1, 50, 64*1024)
+
+	if len(events) != 0 || !resyncRequired || hasMore {
+		t.Fatalf("expected resync without events when cursor falls behind global window, got events=%+v cursor=%d resync=%v has_more=%v", events, cursor, resyncRequired, hasMore)
+	}
+	if cursor != 3 {
+		t.Fatalf("expected cursor to advance to latest event id, got %d", cursor)
 	}
 }
 

@@ -131,6 +131,58 @@ func (s *Service) loadPersistedSessions() {
 	}
 }
 
+func (s *Service) syncMissingPersistedSessions() {
+	dir, err := resolveTerminalSessionStateDir(s.options.WorkingDir)
+	if err != nil {
+		s.logger.Warn("sync terminal session store failed", "error", err.Error())
+		return
+	}
+	items, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		s.logger.Warn("read terminal session store failed", "error", err.Error())
+		return
+	}
+
+	now := time.Now().UTC()
+	needsMigration := make([]*runtimeSession, 0)
+	for _, entry := range items {
+		if entry.IsDir() || strings.ToLower(filepath.Ext(entry.Name())) != ".json" {
+			continue
+		}
+		recordPath := filepath.Join(dir, entry.Name())
+		data, readErr := os.ReadFile(recordPath)
+		if readErr != nil {
+			s.logger.Warn("read terminal session record failed", "path", recordPath, "error", readErr.Error())
+			continue
+		}
+		record, err := decodePersistedSessionRecord(data)
+		if err != nil {
+			s.logger.Warn("decode terminal session record failed", "path", recordPath, "error", err.Error())
+			continue
+		}
+		session := restorePersistedSession(record, now, s.options.WorkingDir)
+		if session == nil {
+			continue
+		}
+		s.mu.Lock()
+		_, exists := s.sessions[session.summary.ID]
+		if !exists {
+			s.sessions[session.summary.ID] = session
+		}
+		s.mu.Unlock()
+		if !exists && persistedSessionRecordNeedsMigration(data, session) {
+			needsMigration = append(needsMigration, session)
+		}
+	}
+
+	for _, session := range needsMigration {
+		s.persistSession(session)
+	}
+}
+
 func (s *Service) persistSession(item *runtimeSession) {
 	if item == nil {
 		return
@@ -165,6 +217,13 @@ func (s *Service) persistSession(item *runtimeSession) {
 	if err := os.Rename(tempPath, path); err != nil {
 		_ = os.Remove(tempPath)
 		s.logger.Warn("commit terminal session record failed", "path", path, "error", err.Error())
+		return
+	}
+	s.hookMu.RLock()
+	hook := s.updateHook
+	s.hookMu.RUnlock()
+	if hook != nil {
+		hook(record.Summary.OwnerID, record.Summary.ID, record.Summary)
 	}
 }
 
@@ -366,6 +425,18 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 			})
 		}
 		session.turns = append(session.turns, turn)
+	}
+	if title, titleAuto, titleScore, changed := repairSupplementalConstraintAutoSessionTitle(
+		session.summary.Title,
+		session.titleManual,
+		session.turns,
+		sessionID,
+		64,
+	); changed {
+		session.summary.Title = title
+		session.titleAuto = titleAuto
+		session.titleScore = titleScore
+		session.titleManual = false
 	}
 	normalizeRestoredSessionState(session, now)
 	return session

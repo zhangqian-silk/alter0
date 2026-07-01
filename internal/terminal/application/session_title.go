@@ -129,6 +129,19 @@ var sessionTitleFollowUps = []string{
 	"continue",
 }
 
+var sessionTitleSupplementalConstraintMarkers = []string{
+	"而不是",
+	"而非",
+	"不要",
+	"别用",
+	"不用",
+	"不需要",
+	"instead of",
+	"rather than",
+	"don't",
+	"do not",
+}
+
 func buildAutoSessionTitle(input string, fallback string, maxLen int) (string, int, bool) {
 	normalized := normalizeSessionTitleText(input)
 	if normalized == "" {
@@ -177,6 +190,9 @@ func nextAutoSessionTitle(currentTitle string, currentManual bool, currentScore 
 		strings.EqualFold(normalizedCurrent, defaultTerminalSessionTitle)) && title != currentTitle {
 		return title, nextAuto, score, true
 	}
+	if currentScore > 0 && isSupplementalConstraintTitle(title) {
+		return currentTitle, false, currentScore, false
+	}
 	if score < currentScore {
 		return currentTitle, false, currentScore, false
 	}
@@ -184,6 +200,26 @@ func nextAutoSessionTitle(currentTitle string, currentManual bool, currentScore 
 		return currentTitle, false, currentScore, false
 	}
 	return title, nextAuto, score, true
+}
+
+func repairSupplementalConstraintAutoSessionTitle(currentTitle string, currentManual bool, turns []*runtimeTurn, fallback string, maxLen int) (string, bool, int, bool) {
+	if currentManual || !isSupplementalConstraintTitle(currentTitle) {
+		return currentTitle, false, 0, false
+	}
+	for _, turn := range turns {
+		if turn == nil {
+			continue
+		}
+		title, score, titleAuto := buildAutoSessionTitle(turn.Prompt, fallback, maxLen)
+		if strings.TrimSpace(title) == "" || isSupplementalConstraintTitle(title) || score <= 0 {
+			continue
+		}
+		if strings.EqualFold(normalizeSessionTitleText(title), normalizeSessionTitleText(currentTitle)) {
+			continue
+		}
+		return title, titleAuto, score, true
+	}
+	return currentTitle, false, 0, false
 }
 
 func inferManualSessionTitleState(title string, fallback string, titleAuto bool, titleScore int) bool {
@@ -301,6 +337,11 @@ func isFollowUpTitle(value string) bool {
 		}
 	}
 	return false
+}
+
+func isSupplementalConstraintTitle(value string) bool {
+	normalized := strings.ToLower(normalizeSessionTitleText(value))
+	return containsAnySessionTitleWord(normalized, sessionTitleSupplementalConstraintMarkers)
 }
 
 func scoreSessionTitle(value string) int {

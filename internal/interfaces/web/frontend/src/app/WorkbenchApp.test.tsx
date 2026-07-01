@@ -157,11 +157,13 @@ describe("WorkbenchApp", () => {
     const { container } = render(<WorkbenchApp />);
     const shell = container.querySelector(".app-shell");
     expect(shell).not.toHaveClass("nav-open");
+    expect(screen.queryByRole("button", { name: "Close panels" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "toggle nav" }));
+    fireEvent.click(screen.getByRole("button", { name: "open sessions" }));
     expect(shell).toHaveClass("nav-open");
     expect(shell).toHaveClass("overlay-open");
     expect(shell).not.toHaveClass("nav-collapsed");
+    expect(screen.getByRole("button", { name: "Close panels" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "go settings" }));
 
@@ -170,6 +172,7 @@ describe("WorkbenchApp", () => {
     });
     expect(shell).not.toHaveClass("nav-open");
     expect(shell).not.toHaveClass("overlay-open");
+    expect(screen.queryByRole("button", { name: "Close panels" })).not.toBeInTheDocument();
   });
 
   it("blurs the active input before opening a mobile drawer", async () => {
@@ -181,10 +184,11 @@ describe("WorkbenchApp", () => {
     expect(document.activeElement).toBe(input);
 
     try {
-      fireEvent.click(screen.getByRole("button", { name: "toggle nav" }));
+      fireEvent.click(screen.getByRole("button", { name: "open sessions" }));
       expect(document.activeElement).not.toBe(input);
 
       fireEvent.click(screen.getByRole("button", { name: "Close panels" }));
+      expect(screen.queryByRole("button", { name: "Close panels" })).not.toBeInTheDocument();
       input.focus();
       expect(document.activeElement).toBe(input);
       fireEvent.click(screen.getByRole("button", { name: "open sessions" }));
@@ -200,8 +204,9 @@ describe("WorkbenchApp", () => {
     const shell = container.querySelector(".app-shell");
 
     await waitFor(() => {
-      expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
+      expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "chat");
     });
+    expect(screen.queryByTestId("primary-nav")).not.toBeInTheDocument();
     expect(shell).not.toHaveClass("nav-open");
 
     fireEvent.click(screen.getByRole("button", { name: "open sessions" }));

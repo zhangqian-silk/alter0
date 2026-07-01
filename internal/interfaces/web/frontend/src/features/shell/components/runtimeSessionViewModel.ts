@@ -23,6 +23,7 @@ export type RuntimeSessionTurn = {
   duration_ms?: number;
   final_output?: string;
   runtime_trace_events?: RuntimeTraceEvent[];
+  runtime_trace_events_partial?: boolean;
 };
 
 export type RuntimeSessionTurnPaging = {
@@ -51,6 +52,7 @@ export type RuntimeSessionTimelineMessage = {
   status: string;
   at: number;
   processEvents: RuntimeTraceEvent[];
+  processEventsPartial?: boolean;
   processCollapsed?: boolean;
 };
 

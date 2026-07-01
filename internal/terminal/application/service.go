@@ -92,6 +92,7 @@ type EntryPage struct {
 }
 
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
+type SessionUpdateHook func(ownerID string, sessionID string, session terminaldomain.Session)
 
 type Service struct {
 	rootCtx     context.Context
@@ -99,6 +100,8 @@ type Service struct {
 	logger      *slog.Logger
 	options     Options
 	runner      commandRunner
+	hookMu      sync.RWMutex
+	updateHook  SessionUpdateHook
 
 	mu       sync.RWMutex
 	sessions map[string]*runtimeSession
@@ -203,16 +206,25 @@ func NewService(ctx context.Context, idGenerator sharedapp.IDGenerator, logger *
 	return service
 }
 
+func (s *Service) SetSessionUpdateHook(hook SessionUpdateHook) {
+	if s == nil {
+		return
+	}
+	s.hookMu.Lock()
+	defer s.hookMu.Unlock()
+	s.updateHook = hook
+}
+
 func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 	ownerID := normalizeTerminalOwnerID(req.OwnerID)
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	command := resolveCodexCommand(s.options)
 	sessionID := "terminal-" + s.newID()
 	workspaceDir, err := resolveSessionWorkspaceDir(s.options.WorkingDir, sessionID)
 	if err != nil {
+		s.mu.Unlock()
 		return terminaldomain.Session{}, err
 	}
 	title := strings.TrimSpace(req.Title)
@@ -242,6 +254,8 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 		entries:     []terminaldomain.Entry{},
 	}
 	s.sessions[sessionID] = session
+	s.mu.Unlock()
+
 	s.persistSession(session)
 	return session.snapshot(), nil
 }
@@ -255,19 +269,21 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if existing, ok := s.sessions[sessionID]; ok {
 		snapshot := existing.snapshot()
 		if normalizeTerminalOwnerID(snapshot.OwnerID) != ownerID {
+			s.mu.Unlock()
 			return terminaldomain.Session{}, ErrSessionNotFound
 		}
+		s.mu.Unlock()
 		return snapshot, nil
 	}
 
 	command := resolveCodexCommand(s.options)
 	workspaceDir, err := resolveSessionWorkspaceDir(s.options.WorkingDir, sessionID)
 	if err != nil {
+		s.mu.Unlock()
 		return terminaldomain.Session{}, err
 	}
 	title := strings.TrimSpace(req.Title)
@@ -311,18 +327,26 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 		threadID:    resolveRecoveredThreadID(sessionID, terminalSessionID),
 	}
 	s.sessions[sessionID] = session
+	s.mu.Unlock()
+
 	s.persistSession(session)
 	return session.snapshot(), nil
 }
 
 func (s *Service) List(ownerID string) []terminaldomain.Session {
 	ownerID = normalizeTerminalOwnerID(ownerID)
+	s.syncMissingPersistedSessions()
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	items := make([]terminaldomain.Session, 0, len(s.sessions))
+	sessions := make([]*runtimeSession, 0, len(s.sessions))
 	for _, item := range s.sessions {
+		sessions = append(sessions, item)
+	}
+	s.mu.RUnlock()
+
+	items := make([]terminaldomain.Session, 0, len(sessions))
+	for _, item := range sessions {
+		s.reconcileOrphanedRuntimeSession(item)
 		snapshot := item.snapshot()
 		if normalizeTerminalOwnerID(snapshot.OwnerID) != ownerID {
 			continue
@@ -361,6 +385,7 @@ func (s *Service) Get(ownerID string, sessionID string) (terminaldomain.Session,
 	if err != nil {
 		return terminaldomain.Session{}, false
 	}
+	s.reconcileOrphanedRuntimeSession(item)
 	return item.snapshot(), true
 }
 
@@ -391,6 +416,7 @@ func (s *Service) ListTurns(ownerID string, sessionID string) ([]TurnSummary, er
 	if err != nil {
 		return nil, err
 	}
+	s.reconcileOrphanedRuntimeSession(item)
 
 	item.mu.RLock()
 	defer item.mu.RUnlock()
@@ -410,6 +436,7 @@ func (s *Service) GetRuntimeTraceEventDetail(ownerID string, sessionID string, t
 	if err != nil {
 		return RuntimeTraceEventDetail{}, err
 	}
+	s.reconcileOrphanedRuntimeSession(item)
 
 	item.mu.RLock()
 	defer item.mu.RUnlock()
@@ -430,6 +457,7 @@ func (s *Service) ListEntries(ownerID string, sessionID string, cursor int, limi
 	if err != nil {
 		return EntryPage{}, err
 	}
+	s.reconcileOrphanedRuntimeSession(item)
 
 	if cursor < 0 {
 		cursor = 0
@@ -487,6 +515,7 @@ func (s *Service) InputWithAttachments(req InputRequest) (terminaldomain.Session
 			return terminaldomain.Session{}, err
 		}
 	}
+	s.reconcileOrphanedRuntimeSession(item)
 
 	attachments := normalizeTurnAttachments(req.Attachments)
 	prompt := strings.TrimSpace(req.Input)
@@ -620,6 +649,31 @@ func (s *Service) shutdown() {
 		item.mu.Unlock()
 		s.persistSession(item)
 	}
+}
+
+func (s *Service) reconcileOrphanedRuntimeSession(item *runtimeSession) {
+	if item == nil {
+		return
+	}
+
+	now := time.Now().UTC()
+	item.mu.Lock()
+	if item.turnRunning || item.turnCancel != nil || item.closedByUser {
+		item.mu.Unlock()
+		return
+	}
+	turn := item.orphanedRuntimeTurnLocked()
+	if turn == nil && terminaldomain.NormalizeSessionStatus(item.summary.Status) != terminaldomain.SessionStatusBusy {
+		item.mu.Unlock()
+		return
+	}
+	item.turnRunning = false
+	item.turnCancel = nil
+	item.activeTurnID = ""
+	item.markInterruptedLocked(turn, now, terminalHostUnavailableMessage)
+	item.mu.Unlock()
+
+	s.persistSession(item)
 }
 
 func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID string, prompt string, attachments []TurnAttachment, skillContext *execdomain.SkillContext) {
@@ -1019,6 +1073,19 @@ func (s *runtimeSession) beginTurnLocked(prompt string, attachments []TurnAttach
 func (s *runtimeSession) turnByIDLocked(turnID string) *runtimeTurn {
 	for _, turn := range s.turns {
 		if turn != nil && turn.ID == strings.TrimSpace(turnID) {
+			return turn
+		}
+	}
+	return nil
+}
+
+func (s *runtimeSession) orphanedRuntimeTurnLocked() *runtimeTurn {
+	if turn := s.turnByIDLocked(s.activeTurnID); isRuntimeTurnLive(turn) {
+		return turn
+	}
+	for index := len(s.turns) - 1; index >= 0; index-- {
+		turn := s.turns[index]
+		if isRuntimeTurnLive(turn) {
 			return turn
 		}
 	}
@@ -2042,6 +2109,14 @@ func hasRuntimeTurnSystemEvent(turn *runtimeTurn, title string, message string) 
 func isRuntimeEventLive(status string) bool {
 	normalized := strings.TrimSpace(strings.ToLower(status))
 	return normalized == "" || normalized == "running" || normalized == "starting"
+}
+
+func isRuntimeTurnLive(turn *runtimeTurn) bool {
+	if turn == nil {
+		return false
+	}
+	normalized := strings.TrimSpace(strings.ToLower(turn.Status))
+	return normalized == "" || normalized == "running" || normalized == "starting" || normalized == "queued" || normalized == "in_progress"
 }
 
 func (s *runtimeSession) snapshot() terminaldomain.Session {
