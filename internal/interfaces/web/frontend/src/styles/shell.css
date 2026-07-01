@@ -661,6 +661,8 @@ body {
   transform: none;
 }
 
+
+
 [data-runtime-view="terminal"] .runtime-workspace-screen {
   border: 0;
   border-radius: 0;
@@ -11383,4 +11385,220 @@ body {
   animation: none;
   transition: none;
   transform: none;
+}
+
+/* Interaction polish baseline */
+:root {
+  --surface-shadow-rest:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 1px 2px rgba(15, 23, 42, 0.08),
+    0 10px 26px -20px rgba(15, 23, 42, 0.28);
+  --surface-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 2px 5px rgba(15, 23, 42, 0.1),
+    0 18px 42px -26px rgba(15, 23, 42, 0.34);
+  --surface-shadow-active:
+    inset 0 1px 0 rgba(255, 255, 255, 0.66),
+    0 1px 2px rgba(15, 23, 42, 0.1),
+    0 8px 18px -18px rgba(15, 23, 42, 0.3);
+  --focus-ring:
+    0 0 0 2px #ffffff,
+    0 0 0 5px rgba(15, 159, 143, 0.38);
+}
+
+.menu-item,
+.nav-collapse,
+.nav-locale-button,
+.nav-session-rail-action,
+.runtime-workspace-button,
+.runtime-workspace-mobile-action,
+.route-mobile-head .conversation-mobile-action,
+.runtime-composer-utility,
+.runtime-composer-upload,
+.runtime-composer-submit,
+.route-card-action,
+.modal-footer button {
+  transition:
+    transform calc(160ms * var(--motion-scale)) var(--ease-out-expo),
+    border-color calc(180ms * var(--motion-scale)) var(--ease-out-expo),
+    background-color calc(180ms * var(--motion-scale)) var(--ease-out-expo),
+    box-shadow calc(180ms * var(--motion-scale)) var(--ease-out-expo),
+    color calc(180ms * var(--motion-scale)) var(--ease-out-expo);
+  will-change: transform;
+}
+
+.menu-item:hover,
+.nav-collapse:hover,
+.nav-locale-button:hover,
+.nav-session-rail-action:hover,
+.runtime-workspace-button:hover,
+.runtime-workspace-mobile-action:hover,
+.route-mobile-head .conversation-mobile-action:hover,
+.runtime-composer-utility:hover,
+.runtime-composer-upload:hover,
+.route-card-action:hover,
+.modal-footer button:hover {
+  transform: translateY(-1px);
+}
+
+.runtime-composer-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px -22px rgba(15, 23, 42, 0.34);
+}
+
+.menu-item:active,
+.nav-collapse:active,
+.nav-locale-button:active,
+.nav-session-rail-action:active,
+.runtime-workspace-button:active,
+.runtime-workspace-mobile-action:active,
+.route-mobile-head .conversation-mobile-action:active,
+.runtime-composer-utility:active,
+.runtime-composer-upload:active,
+.runtime-composer-submit:active,
+.route-card-action:active,
+.modal-footer button:active {
+  transform: scale(0.96);
+  transition-duration: calc(120ms * var(--motion-scale));
+}
+
+.runtime-session-card,
+.session-card,
+.welcome-target-card,
+.prompt,
+.settings-route-content .skill-route-card,
+.settings-route-content .codex-account-card {
+  box-shadow: var(--surface-shadow-rest);
+  transition:
+    transform calc(260ms * var(--motion-scale)) var(--ease-out-expo),
+    border-color calc(220ms * var(--motion-scale)) var(--ease-out-expo),
+    background-color calc(220ms * var(--motion-scale)) var(--ease-out-expo),
+    box-shadow calc(260ms * var(--motion-scale)) var(--ease-out-expo);
+}
+
+.runtime-session-card:hover,
+.session-card:hover,
+.welcome-target-card:hover,
+.prompt:hover,
+.settings-route-content .skill-route-card:hover,
+.settings-route-content .codex-account-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--surface-shadow-hover);
+}
+
+.runtime-session-card:active,
+.session-card:active,
+.welcome-target-card:active,
+.prompt:active,
+.settings-route-content .skill-route-card:active,
+.settings-route-content .codex-account-card:active {
+  transform: translateY(0);
+  box-shadow: var(--surface-shadow-active);
+}
+
+button:focus-visible,
+a:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tnum,
+.session-card-id,
+.runtime-session-hash,
+.runtime-session-meta,
+.route-table-subtext,
+.route-data-table code,
+.codex-account-card-metrics,
+.codex-runtime-restart-status strong {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.runtime-workspace-screen,
+.route-view,
+.modal-body,
+.workspace-details-content,
+.runtime-composer-command-list,
+.runtime-composer-panel {
+  overscroll-behavior: contain;
+}
+
+.runtime-composer-command-list,
+.settings-route-content .route-data-table-wrap {
+  scrollbar-width: none;
+}
+
+.runtime-composer-command-list::-webkit-scrollbar,
+.settings-route-content .route-data-table-wrap::-webkit-scrollbar {
+  display: none;
+}
+
+.modal-backdrop,
+.workspace-details-layer,
+.runtime-restart-overlay {
+  animation: overlay-fade-in calc(180ms * var(--motion-scale)) var(--ease-out-expo) both;
+}
+
+.modal-dialog,
+.workspace-details-panel,
+.runtime-restart-panel {
+  animation: surface-enter calc(260ms * var(--motion-scale)) var(--ease-out-expo) both;
+  transform-origin: center;
+}
+
+@keyframes overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-item,
+  .nav-collapse,
+  .nav-locale-button,
+  .nav-session-rail-action,
+  .runtime-workspace-button,
+  .runtime-workspace-mobile-action,
+  .route-mobile-head .conversation-mobile-action,
+  .runtime-composer-utility,
+  .runtime-composer-upload,
+  .runtime-composer-submit,
+  .route-card-action,
+  .modal-footer button,
+  .runtime-session-card,
+  .session-card,
+  .welcome-target-card,
+  .prompt,
+  .settings-route-content .skill-route-card,
+  .settings-route-content .codex-account-card {
+    transition-duration: 1ms;
+    will-change: auto;
+  }
+
+  .modal-backdrop,
+  .workspace-details-layer,
+  .runtime-restart-overlay,
+  .modal-dialog,
+  .workspace-details-panel,
+  .runtime-restart-panel {
+    animation-duration: 1ms;
+  }
 }
