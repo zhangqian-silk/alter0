@@ -9,7 +9,7 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 1. 聊天输入框的未发送内容保护
 2. 输入法合成态下的稳定输入
 3. 草稿持久化、会话隔离与恢复
-4. Terminal 会话创建、轮询刷新、关闭与中断恢复
+4. Terminal 兼容入口的共享 Conversation runtime 挂载、创建提交与视口布局
 5. 受保护路由与 API 的登录态接入
 
 ## 代码位置
@@ -90,7 +90,7 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 - `helpers/pages/app-shell.ts`：全局导航菜单等壳层控件
 - `helpers/guards/app-ready.ts`：统一等待前端进入可交互态
 - `helpers/guards/login.ts`：受保护页面登录守卫
-- `helpers/flows/routes.ts`：统一聊天、Cron、Terminal 路由打开
+- `helpers/flows/routes.ts`：统一聊天、Settings/Schedules 与 Terminal 兼容入口打开
 - `helpers/flows/auth.ts`：统一解析登录密码，并为 API 请求补登录态
 
 ### 输入与交互
@@ -100,13 +100,13 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 - `helpers/interactions/ime.ts`：统一输入法合成开始与提交流程
 - `helpers/guards/unsaved.ts`：统一未发送草稿确认守卫
 - 复用输入组件统一暴露 `data-composer-*` 稳定标识，包括输入、提交、计数、草稿态、合成态与 pending 态
-- Terminal 运行区统一暴露 `data-terminal-workspace-status`、`data-terminal-workspace-live` 等稳定状态标识；当前会话态固定为 `ready / busy / exited / interrupted`
+- Terminal 兼容入口复用 Conversation runtime，但按 Terminal owner 暴露 `data-runtime-view="terminal"`、`data-runtime-workspace="terminal"`、`data-runtime-screen="terminal"`、`data-composer-input="terminal"` 与 `data-runtime-create-session="terminal"` 等稳定标识
 
 ### 场景能力
 
 - `helpers/scenarios/chat.ts`：统一 Chat 路由打开、草稿装载、双会话草稿准备与刷新后的可交互态恢复
-- `helpers/scenarios/cron.ts`：统一 Cron 路由打开与 composer 可交互态准备
-- `helpers/scenarios/terminal.ts`：统一 Terminal 客户端绑定、会话预置、路由打开与可交互态准备
+- `helpers/scenarios/cron.ts`：统一 Settings/Schedules 打开与调度列表可见态准备
+- `helpers/scenarios/terminal.ts`：保留旧 Terminal 客户端绑定与会话预置 helper；当前 `/terminal` 主入口专项优先验证共享 Conversation runtime 兼容契约
 - `helpers/flows/chat-session.ts`：聊天会话切换、删除与激活态流程
 - `helpers/flows/chat-draft.ts`：聊天草稿准备与双会话草稿场景
 - `helpers/flows/terminal-session.ts`：Terminal 会话创建、选择与预置数据
@@ -124,23 +124,20 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 - 取消切换或删除非当前会话时保持当前草稿
 - 输入法合成期间按回车不提交
 
-### Cron
+### Cron / Schedules
 
-- 输入法合成期间保持提示词输入稳定
+- 通过 `Settings > Schedules` 渲染 `/api/control/cron/jobs` 返回的调度任务
 
 ### Terminal
 
-- 从页面创建会话
-- 轮询刷新期间保持焦点与草稿
-- 输入法合成期间不打断输入
-- 关闭后禁用输入
-- 多终端会话草稿隔离
-- 运行时不可用时将存量会话标记为 `interrupted`
+- `/terminal` 作为兼容入口挂载共享 Conversation runtime，同时使用 Terminal owner 的接口、会话、本地缓存与 DOM 别名
+- 从页面创建 Terminal-owned 会话并提交消息
+- 桌面与移动端正文滚动区保持在 Composer 上方，软键盘变化后不遮挡输入区
 
 ### Shared Runtime Workspace
 
 - `chat` 首次点击发送即提交当前草稿
-- `chat / chat / terminal` 的正文滚动区与底部 Composer 保持独立边界，不出现正文被输入区遮挡
+- `chat / terminal` 的正文滚动区与底部 Composer 保持独立边界，不出现正文被输入区遮挡
 
 ## 维护约束
 

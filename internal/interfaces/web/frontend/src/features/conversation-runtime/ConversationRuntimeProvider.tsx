@@ -18,6 +18,7 @@ import { usePageActivation } from "../../shared/visibility/usePageActivation";
 import {
   resolveRuntimeSessionPollPlan,
   useRuntimeSessionController,
+  type RuntimeSessionNormalizeContext,
   type RuntimeSessionPayload,
 } from "../shell/components/runtimeSessionController";
 import {
@@ -67,6 +68,8 @@ const MAX_COMPOSER_CHARS = 10000;
 const CHAT_SESSION_FAST_COMPENSATION_POLL_INTERVAL_MS = 1000;
 const CHAT_SESSION_SLOW_COMPENSATION_POLL_INTERVAL_MS = 5000;
 const CHAT_SESSION_FAST_COMPENSATION_ATTEMPTS = 8;
+const CHAT_SESSION_EMPTY_UPDATE_DETAIL_REFRESH_BACKOFF_ATTEMPTS = [10, 20, 50] as const;
+const CHAT_SESSION_EMPTY_UPDATE_DETAIL_REFRESH_STEADY_ATTEMPTS = 50;
 const CHAT_SESSION_UPDATE_POLL_LIMIT = 50;
 const CHAT_SESSION_UPDATE_POLL_BYTE_LIMIT = 64 * 1024;
 const CHAT_SESSION_UPDATE_ACK_TURN_LIMIT = 16;
@@ -124,6 +127,11 @@ export type ChatSession = {
   titleAuto: boolean;
   titleScore: number;
   createdAt: number;
+  updatedAt: number;
+  lastOutputAt: number;
+  activityAt: number;
+  revision: number;
+  detailRevision: number;
   pinned: boolean;
   target: ChatTarget;
   modelProviderID: string;
@@ -235,6 +243,8 @@ type RuntimeSessionDetailPayload = {
   created_at?: string | number;
   updated_at?: string | number;
   last_output_at?: string | number;
+  activity_at?: string | number;
+  revision?: string | number;
   model_provider_id?: string;
   model_id?: string;
   tool_ids?: string[];
@@ -262,6 +272,12 @@ type RuntimeSessionUpdatesResponse = {
   resync_required?: boolean;
   has_more?: boolean;
   events?: RuntimeSessionUpdateEventPayload[];
+};
+
+type RuntimeSessionUpdatePollResult = {
+  appliedAny: boolean;
+  appliedRecoverableProgress: boolean;
+  appliedRecoverable: boolean;
 };
 
 type RuntimeSessionUpdateAckTurn = {
@@ -430,6 +446,9 @@ function normalizeRuntimeEventFilter(value: unknown): RuntimeEventFilterID[] {
   const normalized = items.filter((item): item is RuntimeEventFilterID =>
     typeof item === "string" && allowed.has(item as RuntimeEventFilterID),
   );
+  if (normalized.length === 1 && normalized[0] === "important_text") {
+    return [...DEFAULT_RUNTIME_EVENT_FILTER];
+  }
   return normalized.length > 0 ? normalized : [...DEFAULT_RUNTIME_EVENT_FILTER];
 }
 
@@ -628,7 +647,30 @@ function compareSessions(left: ChatSession, right: ChatSession): number {
   if (left.pinned !== right.pinned) {
     return left.pinned ? -1 : 1;
   }
-  return right.createdAt - left.createdAt;
+  const activityDelta = resolveSessionActivityAt(right) - resolveSessionActivityAt(left);
+  if (activityDelta !== 0) {
+    return activityDelta;
+  }
+  const createdDelta = right.createdAt - left.createdAt;
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+  return right.id.localeCompare(left.id, undefined, { numeric: true });
+}
+
+export function shouldRefreshChatSessionDetailAfterEmptyUpdates(emptyUpdateAttempts: number): boolean {
+  const attempts = Math.max(0, Math.trunc(emptyUpdateAttempts));
+  if (attempts <= 0) {
+    return false;
+  }
+  if (CHAT_SESSION_EMPTY_UPDATE_DETAIL_REFRESH_BACKOFF_ATTEMPTS.includes(attempts as 10 | 20 | 50)) {
+    return true;
+  }
+  const lastBackoffAttempt = CHAT_SESSION_EMPTY_UPDATE_DETAIL_REFRESH_BACKOFF_ATTEMPTS[
+    CHAT_SESSION_EMPTY_UPDATE_DETAIL_REFRESH_BACKOFF_ATTEMPTS.length - 1
+  ];
+  return attempts > lastBackoffAttempt
+    && attempts % CHAT_SESSION_EMPTY_UPDATE_DETAIL_REFRESH_STEADY_ATTEMPTS === 0;
 }
 
 function isBlankDraftSession(session: ChatSession): boolean {
@@ -639,9 +681,24 @@ function normalizeRouteSessions(routeKey: ConversationRoute, sessions: ChatSessi
   void routeKey;
   const merged = new Map<string, ChatSession>();
   sessions.forEach((session) => {
-    merged.set(session.id, session);
+    merged.set(session.id, {
+      ...session,
+      status: normalizeRuntimeSessionDerivedStatus(session),
+    });
   });
   return Array.from(merged.values()).sort(compareSessions);
+}
+
+function normalizeRuntimeSessionDerivedStatus(session: ChatSession): string {
+  const status = normalizeText(session.status) || "ready";
+  if (
+    !isConversationBusyStatus(status)
+    && !isTerminalRuntimeFailureStatus(status)
+    && hasRecoverableRuntimeState(session)
+  ) {
+    return "busy";
+  }
+  return status;
 }
 
 function cloneRuntimeTraceEvent(event: RuntimeTraceEvent): RuntimeTraceEvent {
@@ -929,7 +986,10 @@ function shouldBlockRuntimeInput(session: ChatSession): boolean {
   if (session.serverBacked !== true) {
     return false;
   }
-  return isConversationBusyStatus(session.status) || hasBusyRuntimeMessageState(session.messages);
+  if (isTerminalRuntimeFailureStatus(session.status)) {
+    return false;
+  }
+  return isConversationBusyStatus(session.status) || hasRecoverableRuntimeState(session);
 }
 
 function shouldPollRuntimeBackedSession(session: ChatSession): boolean {
@@ -945,13 +1005,23 @@ export function resolveRuntimeResyncSessionIDs(sessions: ChatSession[]): string[
     .map((session) => session.id);
 }
 
-function hasFullStableRuntimeSessionCache(session: ChatSession | null | undefined): session is ChatSession {
+function hasStableLatestRuntimeSessionCache(
+  session: ChatSession | null | undefined,
+  options: { allowRecoverable?: boolean } = {},
+): session is ChatSession {
   return Boolean(
     session
     && session.serverBacked === true
     && session.messagesLoaded === true
-    && session.turnsPaging?.has_more_before === false
-    && !hasRecoverableRuntimeState(session),
+    && (session.revision || 0) <= (session.detailRevision || 0)
+    && (options.allowRecoverable === true || !hasRecoverableRuntimeState(session)),
+  );
+}
+
+function hasFullStableRuntimeSessionCache(session: ChatSession | null | undefined): session is ChatSession {
+  return Boolean(
+    hasStableLatestRuntimeSessionCache(session)
+    && session.turnsPaging?.has_more_before === false,
   );
 }
 
@@ -1045,10 +1115,11 @@ function hasLoadedRuntimeTraceEventDetail(event: RuntimeTraceEvent): boolean {
 function mergeRuntimeProcessEvent(previous: RuntimeTraceEvent, incoming: RuntimeTraceEvent): RuntimeTraceEvent {
   const previousEvent = cloneRuntimeTraceEvent(previous);
   const incomingEvent = cloneRuntimeTraceEvent(incoming);
-  if (
-    !hasLoadedRuntimeTraceEventDetail(previousEvent)
-    || (incomingEvent.raw?.has_detail === false && incomingEvent.blocks.length > 0)
-  ) {
+  const incomingHasLoadedDetail = incomingEvent.raw?.has_detail === false && incomingEvent.blocks.length > 0;
+  if (incomingHasLoadedDetail) {
+    return incomingEvent;
+  }
+  if (!hasLoadedRuntimeTraceEventDetail(previousEvent) && (previousEvent.blocks.length === 0 || incomingEvent.blocks.length > 0)) {
     return incomingEvent;
   }
   return {
@@ -1299,6 +1370,20 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
   const targetRecord = record.target && typeof record.target === "object"
     ? record.target as Record<string, unknown>
     : {};
+  const messages = Array.isArray(record.messages)
+    ? sortRuntimeMessages(record.messages.map(normalizeStoredMessage).filter((message): message is ChatMessage => message !== null))
+    : [];
+  const createdAt = normalizeOptionalDateValue(record.createdAt ?? record.created_at) || Date.now();
+  const updatedAt = normalizeOptionalDateValue(record.updatedAt ?? record.updated_at);
+  const lastOutputAt = normalizeOptionalDateValue(record.lastOutputAt ?? record.last_output_at);
+  const latestMessageAt = latestTimestamp(...messages.map((message) => Number(message.at) || 0));
+  const activityAt = normalizeOptionalDateValue(record.activityAt ?? record.activity_at)
+    || latestTimestamp(lastOutputAt, updatedAt, latestMessageAt, createdAt);
+  const revision = normalizeRevisionValue(record.revision, latestTimestamp(activityAt, updatedAt, lastOutputAt, latestMessageAt, createdAt));
+  const detailRevision = normalizeRevisionValue(
+    record.detailRevision ?? record.detail_revision,
+    (record.messagesLoaded === true || messages.length > 0) ? revision : 0,
+  );
   return {
     id,
     sourceRoute: normalizeConversationRoute(normalizeText(record.sourceRoute)),
@@ -1306,7 +1391,12 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     title: normalizeText(record.title) || "New",
     titleAuto: record.titleAuto !== false,
     titleScore: Number.isFinite(Number(record.titleScore)) ? Number(record.titleScore) : 0,
-    createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : Date.now(),
+    createdAt,
+    updatedAt,
+    lastOutputAt,
+    activityAt,
+    revision,
+    detailRevision,
     pinned: record.pinned === true,
     target: normalizeChatTarget({
       type: "model",
@@ -1319,9 +1409,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     skillIDs: normalizeSelectionIDs(record.skillIDs),
     skillIDsExplicit: record.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(record.mcpIDs),
-    messages: Array.isArray(record.messages)
-      ? sortRuntimeMessages(record.messages.map(normalizeStoredMessage).filter((message): message is ChatMessage => message !== null))
-      : [],
+    messages,
     messagesLoaded: typeof record.messagesLoaded === "boolean" ? record.messagesLoaded : undefined,
     serverBacked: typeof record.serverBacked === "boolean" ? record.serverBacked : undefined,
     turnsPaging: normalizeRuntimeSessionTurnPagingPayload(record.turnsPaging ?? record.turns_paging),
@@ -1375,6 +1463,7 @@ function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
 }
 
 function serializeStoredSession(session: ChatSession): Record<string, unknown> {
+  const activityAt = resolveSessionActivityAt(session);
   return {
     id: session.id,
     sourceRoute: session.sourceRoute,
@@ -1383,6 +1472,11 @@ function serializeStoredSession(session: ChatSession): Record<string, unknown> {
     titleAuto: session.titleAuto,
     titleScore: session.titleScore,
     createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    lastOutputAt: session.lastOutputAt,
+    activityAt,
+    revision: session.revision || activityAt,
+    detailRevision: session.detailRevision || (session.messagesLoaded ? session.revision || activityAt : 0),
     pinned: session.pinned,
     targetType: session.target.type,
     targetID: session.target.id,
@@ -1778,6 +1872,29 @@ function normalizeDateValue(value: unknown): number {
   return Date.now();
 }
 
+function normalizeOptionalDateValue(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function normalizeRevisionValue(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return fallback;
+}
+
+function latestTimestamp(...values: number[]): number {
+  return Math.max(0, ...values.filter((value) => Number.isFinite(value) && value > 0));
+}
+
 function normalizeRuntimeTraceEventDetail(
   detail: RuntimeTraceEventDetail | undefined,
   fallback: RuntimeTraceEvent,
@@ -1835,12 +1952,15 @@ function normalizeRuntimeSession(
   item: RuntimeSessionDetailPayload,
   previous?: ChatSession | null,
   sourceRoute: ConversationRoute = "chat",
+  context: RuntimeSessionNormalizeContext = { source: "detail" },
 ): ChatSession | null {
   const id = normalizeText(item.id);
   if (!id) {
     return null;
   }
-  const rawParsedMessages = Array.isArray(item.turns)
+  const hasDetailTurns = Array.isArray(item.turns)
+    && (context.source !== "summary" || item.turns.length > 0);
+  const rawParsedMessages = hasDetailTurns
     ? item.turns.flatMap((turn) => normalizeRuntimeTurnMessages(id, turn, sourceRoute))
     : null;
   const parsedMessages = rawParsedMessages && previous?.messages.length
@@ -1858,6 +1978,19 @@ function normalizeRuntimeSession(
         : parsedMessages)
     : previous?.messages || [];
   const hasExplicitSkillIDs = Array.isArray(item.skill_ids);
+  const createdAt = normalizeOptionalDateValue(item.created_at) || previous?.createdAt || Date.now();
+  const updatedAt = normalizeOptionalDateValue(item.updated_at);
+  const lastOutputAt = normalizeOptionalDateValue(item.last_output_at);
+  const latestMessageAt = latestTimestamp(...messages.map((message) => Number(message.at) || 0));
+  const activityAt = normalizeOptionalDateValue(item.activity_at)
+    || latestTimestamp(lastOutputAt, updatedAt, latestMessageAt, createdAt);
+  const explicitRevision = normalizeRevisionValue(item.revision, 0);
+  const inferredRevision = latestTimestamp(activityAt, updatedAt, lastOutputAt, createdAt, previous?.revision || 0);
+  const revision = explicitRevision
+    || inferredRevision;
+  const detailRevision = hasDetailTurns
+    ? revision
+    : previous?.detailRevision || 0;
   return {
     id,
     sourceRoute: previous?.sourceRoute || sourceRoute,
@@ -1865,7 +1998,12 @@ function normalizeRuntimeSession(
     title: normalizeText(item.title) || previous?.title || "New",
     titleAuto: previous?.titleAuto ?? true,
     titleScore: previous?.titleScore || 0,
-    createdAt: normalizeDateValue(item.created_at),
+    createdAt,
+    updatedAt,
+    lastOutputAt,
+    activityAt,
+    revision,
+    detailRevision,
     pinned: typeof item.pinned === "boolean" ? item.pinned : previous?.pinned || false,
     target: previous?.target || defaultChatTarget(),
     modelProviderID: normalizeText(item.model_provider_id) || previous?.modelProviderID || "",
@@ -1877,7 +2015,7 @@ function normalizeRuntimeSession(
     skillIDsExplicit: hasExplicitSkillIDs ? true : previous?.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(item.mcp_ids || previous?.mcpIDs || []),
     messages,
-    messagesLoaded: Array.isArray(item.turns),
+    messagesLoaded: hasDetailTurns ? true : previous?.messagesLoaded,
     serverBacked: true,
     turnsPaging: mergeRuntimeSessionTurnPagingPayload(previous, incomingPaging),
   };
@@ -1901,6 +2039,34 @@ function resolveMergedRuntimeSessionStatus(previous: ChatSession | undefined, in
     return isConversationBusyStatus(previous.status) ? previous.status : "busy";
   }
   return incomingStatus;
+}
+
+function runtimeSessionProcessEventCount(session: ChatSession | null | undefined): number {
+  if (!session) {
+    return 0;
+  }
+  return session.messages.reduce((count, message) => count + message.processEvents.length, 0);
+}
+
+function runtimeSessionUpdateMadeProgress(previous: ChatSession | null | undefined, incoming: ChatSession): boolean {
+  if (!previous) {
+    return true;
+  }
+  const previousRevision = previous.revision || resolveSessionActivityAt(previous);
+  const incomingRevision = incoming.revision || resolveSessionActivityAt(incoming);
+  if (incomingRevision > previousRevision) {
+    return true;
+  }
+  if (resolveSessionActivityAt(incoming) > resolveSessionActivityAt(previous)) {
+    return true;
+  }
+  if (incoming.messages.length > previous.messages.length) {
+    return true;
+  }
+  if (runtimeSessionProcessEventCount(incoming) > runtimeSessionProcessEventCount(previous)) {
+    return true;
+  }
+  return incoming.status !== previous.status && isConversationBusyStatus(incoming.status);
 }
 
 function runtimeSessionPayloadFromEventData(value: unknown): RuntimeSessionDetailPayload | null {
@@ -1927,25 +2093,74 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
   const existingByID = new Map(existing.map((session) => [session.id, session]));
   remote.forEach((session) => {
     const previous = existingByID.get(session.id);
+    const incomingRevision = session.revision || resolveSessionActivityAt(session);
+    const previousRevision = previous ? previous.revision || resolveSessionActivityAt(previous) : 0;
+    const incomingOlderThanPrevious = Boolean(previous && incomingRevision > 0 && previousRevision > incomingRevision);
+    const incomingStaleSummaryAgainstStableDetail = Boolean(
+      previous
+      && session.messagesLoaded !== true
+      && session.messages.length === 0
+      && previous.messagesLoaded === true
+      && previous.detailRevision > 0
+      && previous.detailRevision >= incomingRevision
+      && !isConversationBusyStatus(previous.status)
+      && !hasRecoverableRuntimeState(previous)
+      && isConversationBusyStatus(session.status),
+    );
     const messages = previous && session.messagesLoaded === true
       ? mergePagedMessages(previous.messages, session.messages)
       : session.messages.length > 0
         ? session.messages
         : previous?.messages || [];
-    merged.set(session.id, {
+    const compactedMessages = session.messages.length > 0
+      ? compactOptimisticUserMessagesForParsedTurn(messages, session.messages)
+      : messages;
+    const mergedSession = {
       ...previous,
       ...session,
-      status: resolveMergedRuntimeSessionStatus(previous, session, messages),
-      messages,
+      ...(incomingOlderThanPrevious ? {
+        status: previous?.status,
+        title: previous?.title,
+        titleAuto: previous?.titleAuto,
+        titleScore: previous?.titleScore,
+        updatedAt: previous?.updatedAt,
+        lastOutputAt: previous?.lastOutputAt,
+        activityAt: previous?.activityAt,
+        revision: previous?.revision,
+        detailRevision: previous?.detailRevision,
+        pinned: previous?.pinned,
+        turnsPaging: previous?.turnsPaging,
+      } : {}),
+      ...(incomingStaleSummaryAgainstStableDetail ? {
+        status: previous?.status,
+        messagesLoaded: previous?.messagesLoaded,
+        detailRevision: previous?.detailRevision,
+        turnsPaging: previous?.turnsPaging,
+      } : {}),
+      status: incomingOlderThanPrevious
+        ? previous?.status || session.status
+        : incomingStaleSummaryAgainstStableDetail
+          ? previous?.status || session.status
+          : resolveMergedRuntimeSessionStatus(previous, session, compactedMessages),
+      messages: compactedMessages,
       messagesLoaded:
-        typeof session.messagesLoaded === "boolean"
+        incomingStaleSummaryAgainstStableDetail
+          ? previous?.messagesLoaded
+          : typeof session.messagesLoaded === "boolean"
           ? session.messagesLoaded
           : previous?.messagesLoaded,
       serverBacked:
         typeof session.serverBacked === "boolean"
           ? session.serverBacked
           : previous?.serverBacked,
-      turnsPaging: session.turnsPaging || previous?.turnsPaging,
+      turnsPaging: incomingOlderThanPrevious || incomingStaleSummaryAgainstStableDetail
+        ? previous?.turnsPaging
+        : session.turnsPaging || previous?.turnsPaging,
+    };
+    merged.set(session.id, {
+      ...mergedSession,
+      activityAt: resolveSessionActivityAt(mergedSession),
+      revision: mergedSession.revision || resolveSessionActivityAt(mergedSession),
     });
   });
   existing
@@ -1973,7 +2188,13 @@ function resolveSessionActivityAt(session: ChatSession): number {
   const latestMessageAt = session.messages.reduce((latest, message) => {
     return Math.max(latest, Number(message.at) || 0);
   }, 0);
-  return Math.max(session.createdAt, latestMessageAt);
+  return latestTimestamp(
+    session.activityAt,
+    session.lastOutputAt,
+    session.updatedAt,
+    latestMessageAt,
+    session.createdAt,
+  );
 }
 
 function buildSessionMeta(session: ChatSession, _language: LegacyShellLanguage): string {
@@ -2091,6 +2312,7 @@ export function ConversationRuntimeProvider({
   const initialSessionsByRoute = initialRuntimeStateRef.current?.sessionsByRoute || emptySessionsState();
   const initialActiveSessionByRoute = initialRuntimeStateRef.current?.activeSessionByRoute || emptyActiveSessionState();
   const sessionsByRouteRef = useRef<SessionsState>(initialSessionsByRoute);
+  const activeSessionIDRef = useRef<string>(initialActiveSessionByRoute[route] || defaultActiveSessionID(route));
   const [sessionsLoadedByRoute, setSessionsLoadedByRoute] = useState<Record<ConversationRoute, boolean>>({
     chat: false,
     terminal: false,
@@ -2124,12 +2346,12 @@ export function ConversationRuntimeProvider({
     route,
     initialSessions: initialSessionsByRoute[route],
     initialActiveSessionID: initialActiveSessionByRoute[route],
-    normalizeSession: (payload: RuntimeSessionPayload, previous) => {
+    normalizeSession: (payload: RuntimeSessionPayload, previous, context) => {
       const sessionID = normalizeText(payload.id);
       const localPrevious = sessionID
         ? sessionsByRouteRef.current[route].find((session) => session.id === sessionID) || null
         : null;
-      return normalizeRuntimeSession(payload as RuntimeSessionDetailPayload, localPrevious || previous || null, route);
+      return normalizeRuntimeSession(payload as RuntimeSessionDetailPayload, localPrevious || previous || null, route, context);
     },
     mergeSession: (previous, incoming) => mergeRuntimeSessions([incoming], previous ? [previous] : [])[0] || incoming,
     sortSessions: (items) => normalizeRouteSessions(route, items),
@@ -2193,14 +2415,26 @@ export function ConversationRuntimeProvider({
       [route]: runtimeSessionController.activeSessionID || defaultActiveSessionID(route),
     };
     const next = typeof updater === "function" ? updater(current) : updater;
+    activeSessionIDRef.current = next[route] || defaultActiveSessionID(route);
     writeConversationRuntimeCaches(next, sessionsByRouteRef.current, route);
     setRuntimeActiveSessionID(next[route]);
   }, [activeSessionByRoute, route, runtimeSessionController.activeSessionID, setRuntimeActiveSessionID]);
 
-  const activeSessions = sessionsByRoute[route];
+  const activeSessions = useMemo(
+    () => normalizeRouteSessions(route, sessionsByRoute[route]),
+    [route, sessionsByRoute],
+  );
   const activeSessionReference = activeSessionByRoute[route];
   const activeSessionID = resolveSessionIDReference(activeSessions, activeSessionReference) || activeSessionReference;
-  const activeSession = activeSessions.find((session) => session.id === activeSessionID) || null;
+  useEffect(() => {
+    activeSessionIDRef.current = activeSessionID;
+  }, [activeSessionID]);
+  const activeSession = useMemo(() => {
+    const session = activeSessions.find((item) => item.id === activeSessionID) || null;
+    return session
+      ? { ...session, status: normalizeRuntimeSessionDerivedStatus(session) }
+      : null;
+  }, [activeSessionID, activeSessions]);
   const activeDraftKey = activeSessionID || newDraftKeyForRoute(route);
   const activeDraftAttachments = composerAttachmentDrafts[activeDraftKey] || EMPTY_COMPOSER_ATTACHMENTS;
   const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
@@ -2242,6 +2476,21 @@ export function ConversationRuntimeProvider({
   useEffect(() => {
     latestComposerAttachmentDraftsRef.current = composerAttachmentDrafts;
   }, [composerAttachmentDrafts]);
+
+  useEffect(() => {
+    const flushComposerDrafts = () => {
+      window.clearTimeout(composerDraftPersistTimerRef.current);
+      composerDraftPersistTimerRef.current = 0;
+      persistComposerDrafts(route, latestComposerDraftsRef.current);
+      persistComposerAttachmentDrafts(route, latestComposerAttachmentDraftsRef.current);
+    };
+    window.addEventListener("pagehide", flushComposerDrafts);
+    window.addEventListener("beforeunload", flushComposerDrafts);
+    return () => {
+      window.removeEventListener("pagehide", flushComposerDrafts);
+      window.removeEventListener("beforeunload", flushComposerDrafts);
+    };
+  }, [route]);
 
   useEffect(() => () => {
     window.clearTimeout(composerDraftPersistTimerRef.current);
@@ -2372,6 +2621,7 @@ export function ConversationRuntimeProvider({
   const focusSession = useCallback((sessionID: string) => {
     const resolvedSessionID = sessionID;
     const nextActiveState = { ...activeSessionByRoute, [route]: resolvedSessionID };
+    activeSessionIDRef.current = resolvedSessionID;
     setActiveSessionByRoute(nextActiveState);
     writeActiveSessionState(nextActiveState, route);
     writeWorkbenchRouteSessionID(route, resolvedSessionID);
@@ -2433,7 +2683,11 @@ export function ConversationRuntimeProvider({
     setSessionsByRoute((current) => {
       const hasSession = current[routeKey].some((session) => session.id === normalizedSession.id);
       const nextSessions = hasSession
-        ? current[routeKey].map((session) => (session.id === normalizedSession.id ? normalizedSession : session))
+        ? current[routeKey].map((session) =>
+            session.id === normalizedSession.id
+              ? mergeRuntimeSessions([normalizedSession], [session])[0] || normalizedSession
+              : session,
+          )
         : [normalizedSession, ...current[routeKey]];
       const nextState = {
         ...current,
@@ -2483,7 +2737,7 @@ export function ConversationRuntimeProvider({
   const hydrateRuntimeSession = async (
     routeKey: ConversationRoute,
     sessionID: string,
-    options: { turnBefore?: string; turnLimit?: number } = {},
+    options: { turnBefore?: string; turnLimit?: number; force?: boolean; allowRecoverableCache?: boolean } = {},
   ): Promise<ChatSession | null> => {
     void routeKey;
     const normalizedSessionID = normalizeText(sessionID);
@@ -2491,7 +2745,11 @@ export function ConversationRuntimeProvider({
     const cachedSession = normalizedSessionID
       ? sessionsByRouteRef.current[routeKey].find((session) => session.id === normalizedSessionID) || null
       : null;
-    if (!isProgressiveHistoryRequest && hasFullStableRuntimeSessionCache(cachedSession)) {
+    if (
+      !options.force
+      && !isProgressiveHistoryRequest
+      && hasStableLatestRuntimeSessionCache(cachedSession, { allowRecoverable: options.allowRecoverableCache === true })
+    ) {
       return cachedSession;
     }
     return refreshRuntimeSession(sessionID, options);
@@ -2503,7 +2761,7 @@ export function ConversationRuntimeProvider({
       return;
     }
     try {
-      const hydrated = await hydrateRuntimeSession(route, sessionID);
+      const hydrated = await hydrateRuntimeSession(route, sessionID, { force: true });
       if (hydrated) {
         upsertRuntimeSession(route, hydrated);
       }
@@ -2549,7 +2807,7 @@ export function ConversationRuntimeProvider({
         return false;
       }
       const latestSession = sessionsByRouteRef.current[route].find((item) => item.id === session.id) || session;
-      const normalized = normalizeRuntimeSession(payload.session, latestSession, route);
+      const normalized = normalizeRuntimeSession(payload.session, latestSession, route, { source: "detail" });
       if (!normalized) {
         return false;
       }
@@ -2590,7 +2848,7 @@ export function ConversationRuntimeProvider({
     const recoveryPromise = (async () => {
       for (let attempt = 0; attempt < attempts; attempt += 1) {
         try {
-          const hydrated = await hydrateRuntimeSession(routeKey, sessionID);
+          const hydrated = await hydrateRuntimeSession(routeKey, sessionID, { force: true });
           if (
             hydrated
             && (!requirements.requireMessages || hydrated.messages.length > 0)
@@ -2620,10 +2878,7 @@ export function ConversationRuntimeProvider({
     if (!remoteSession) {
       return true;
     }
-    if (remoteSession.messagesLoaded !== true) {
-      return true;
-    }
-    if (hasRecoverableRuntimeState(localSession)) {
+    if ((remoteSession.revision || 0) > (remoteSession.detailRevision || 0)) {
       return true;
     }
     if (hasRecoverableRuntimeState(remoteSession)) {
@@ -2763,16 +3018,13 @@ export function ConversationRuntimeProvider({
   const loadRuntimeSessions = async (routeKey: ConversationRoute) => {
     const remoteSessions = await refreshRuntimeSessions();
     const normalizedRemoteSessions = normalizeRouteSessions(routeKey, remoteSessions);
-    const nextSessions = normalizeRouteSessions(
-      routeKey,
-      mergeRuntimeSessions(normalizedRemoteSessions, sessionsByRouteRef.current[routeKey]),
-    );
-    const nextState = {
-      ...sessionsByRouteRef.current,
-      [routeKey]: nextSessions,
-    };
-    sessionsByRouteRef.current = nextState;
-    setSessionsByRoute(nextState);
+    setSessionsByRoute((current) => ({
+      ...current,
+      [routeKey]: normalizeRouteSessions(
+        routeKey,
+        mergeRuntimeSessions(normalizedRemoteSessions, current[routeKey]),
+      ),
+    }));
     setSessionsLoadedByRoute((current) => ({ ...current, [routeKey]: true }));
     return normalizedRemoteSessions;
   };
@@ -2787,9 +3039,13 @@ export function ConversationRuntimeProvider({
     } catch {
     }
 
-    if (activeSession?.id) {
+    const shouldHydrateActiveSession = Boolean(
+      activeSession?.id
+      && activeSession.serverBacked === true,
+    );
+    if (activeSession?.id && shouldHydrateActiveSession) {
       try {
-        const hydrated = await hydrateRuntimeSession(route, activeSession.id);
+        const hydrated = await hydrateRuntimeSession(route, activeSession.id, { force: true, allowRecoverableCache: true });
         if (hydrated) {
           upsertRuntimeSession(route, hydrated);
         }
@@ -2804,7 +3060,16 @@ export function ConversationRuntimeProvider({
   }, [activeSessionByRoute, route, sessionsByRoute]);
 
   useEffect(() => {
-    sessionsByRouteRef.current = sessionsByRoute;
+    sessionsByRouteRef.current = {
+      chat: normalizeRouteSessions(
+        "chat",
+        mergeRuntimeSessions(sessionsByRoute.chat, sessionsByRouteRef.current.chat || []),
+      ),
+      terminal: normalizeRouteSessions(
+        "terminal",
+        mergeRuntimeSessions(sessionsByRoute.terminal, sessionsByRouteRef.current.terminal || []),
+      ),
+    };
   }, [sessionsByRoute]);
 
   useEffect(() => {
@@ -2829,6 +3094,7 @@ export function ConversationRuntimeProvider({
         }
         const explicitRouteSessionReference = readWorkbenchRouteSessionID(route);
         const preferredActiveReference = explicitRouteSessionReference
+          || remoteSessions[0]?.id
           || sessionsByRouteRef.current[route][0]?.id
           || normalizeText(activeSessionByRoute[route]);
         const preferredActiveID = resolveSessionIDReference(
@@ -2841,7 +3107,26 @@ export function ConversationRuntimeProvider({
         const remotePreferredSession = preferredActiveID
           ? remoteSessions.find((session) => session.id === preferredActiveID) || null
           : null;
-        const recoveredSession = preferredActiveID && shouldAttemptServerRecovery(remotePreferredSession, localPreferredSession)
+        const shouldActivatePreferredSession = Boolean(
+          preferredActiveID
+          && preferredActiveID !== activeSessionByRoute[route]
+          && (
+            explicitRouteSessionReference
+            || remotePreferredSession
+            || localPreferredSession
+          ),
+        );
+        if (shouldActivatePreferredSession) {
+          const nextActiveState = { ...activeSessionByRoute, [route]: preferredActiveID };
+          setActiveSessionByRoute(nextActiveState);
+          writeActiveSessionState(nextActiveState, route);
+        }
+        const shouldRecoverPreferredSession = preferredActiveID && (
+          !remotePreferredSession
+          || (remotePreferredSession.revision || 0) > (remotePreferredSession.detailRevision || 0)
+          || hasRecoverableRuntimeState(remotePreferredSession)
+        );
+        const recoveredSession = shouldRecoverPreferredSession
           ? await recoverRuntimeSession(
               route,
               preferredActiveID,
@@ -2857,10 +3142,27 @@ export function ConversationRuntimeProvider({
         if (recoveredSession) {
           upsertRuntimeSession(route, recoveredSession);
         }
+        const shouldCalibratePreferredSession = Boolean(
+          preferredActiveID
+          && !recoveredSession
+          && (
+            localPreferredSession?.serverBacked === true
+            || remotePreferredSession?.serverBacked === true
+          ),
+        );
+        if (shouldCalibratePreferredSession) {
+          try {
+            const hydrated = await hydrateRuntimeSession(route, preferredActiveID, { force: true });
+            if (!cancelled && hydrated) {
+              upsertRuntimeSession(route, hydrated);
+            }
+          } catch {
+          }
+        }
         const nextActiveID = remoteSessions.some((session) => session.id === preferredActiveID) || recoveredSession
           ? preferredActiveID
           : sessionsByRouteRef.current[route][0]?.id || activeSessionByRoute[route];
-        if (nextActiveID && nextActiveID !== activeSessionByRoute[route]) {
+        if (nextActiveID && nextActiveID !== activeSessionByRoute[route] && !shouldActivatePreferredSession) {
           const nextActiveState = { ...activeSessionByRoute, [route]: nextActiveID };
           setActiveSessionByRoute(nextActiveState);
           writeActiveSessionState(nextActiveState, route);
@@ -2905,7 +3207,7 @@ export function ConversationRuntimeProvider({
       !activeSession?.id
       || activeSession.serverBacked !== true
       || isConversationBusyStatus(activeSession.status)
-      || (activeSession.messagesLoaded && !hasRecoverableRuntimeState(activeSession))
+      || (activeSession.revision || 0) <= (activeSession.detailRevision || 0)
     ) {
       return;
     }
@@ -2917,7 +3219,7 @@ export function ConversationRuntimeProvider({
           activeSession.id,
           {
             requireMessages: !activeSession.messagesLoaded,
-            requireStableAssistant: hasRecoverableRuntimeState(activeSession),
+            requireStableAssistant: false,
           },
           3,
         );
@@ -2939,7 +3241,13 @@ export function ConversationRuntimeProvider({
   const pollRuntimeSessionUpdates = useCallback(async (
     routeKey: ConversationRoute,
     recoverableSessionIDs: string[],
-  ): Promise<boolean> => {
+  ): Promise<RuntimeSessionUpdatePollResult> => {
+    const emptyResult: RuntimeSessionUpdatePollResult = {
+      appliedAny: false,
+      appliedRecoverableProgress: false,
+      appliedRecoverable: false,
+    };
+    const recoverableIDSet = new Set(recoverableSessionIDs.map(normalizeText).filter(Boolean));
     const cursor = normalizeText(updateCursorByRouteRef.current[routeKey]) || "0";
     const body: RuntimeSessionUpdatesRequest = {
       since_event_id: cursor,
@@ -2955,38 +3263,46 @@ export function ConversationRuntimeProvider({
     if (response.resync_required === true) {
       await Promise.all(recoverableSessionIDs.map(async (sessionID) => {
         try {
-          const hydrated = await hydrateRuntimeSession(routeKey, sessionID);
+          const hydrated = await hydrateRuntimeSession(routeKey, sessionID, { force: true });
           if (hydrated) {
             upsertRuntimeSession(routeKey, hydrated);
           }
         } catch {
         }
       }));
-      return recoverableSessionIDs.length > 0;
+      return {
+        appliedAny: recoverableIDSet.size > 0,
+        appliedRecoverableProgress: recoverableIDSet.size > 0,
+        appliedRecoverable: recoverableIDSet.size > 0,
+      };
     }
-    let applied = false;
+    let result = emptyResult;
     for (const event of Array.isArray(response.events) ? response.events : []) {
       const payload = runtimeSessionPayloadFromEventData(event);
       if (!payload) {
         continue;
       }
       const previous = sessionsByRouteRef.current[routeKey].find((session) => session.id === normalizeText(payload.id)) || null;
-      const normalized = normalizeRuntimeSession(payload, previous, routeKey);
+      const normalized = normalizeRuntimeSession(payload, previous, routeKey, { source: "event" });
       if (normalized) {
         upsertRuntimeSession(routeKey, normalized);
-        applied = true;
+        const appliedRecoverableProgress = recoverableIDSet.has(normalized.id)
+          && runtimeSessionUpdateMadeProgress(previous, normalized);
+        result = {
+          appliedAny: true,
+          appliedRecoverableProgress: result.appliedRecoverableProgress || appliedRecoverableProgress,
+          appliedRecoverable:
+            result.appliedRecoverable
+            || (recoverableIDSet.has(normalized.id) && !shouldPollRuntimeBackedSession(normalized)),
+        };
       }
     }
-    return applied;
+    return result;
   }, [apiClient, hydrateRuntimeSession, upsertRuntimeSession]);
 
   useEffect(() => {
     window.clearTimeout(pollTimerRef.current);
     const recoverableSessions = sessionsByRoute[route].filter(shouldPollRuntimeBackedSession);
-    const pollItems = recoverableSessions.map((session) => ({
-      route,
-      sessionID: session.id,
-    }));
     if (!recoverableSessions.length) {
       return;
     }
@@ -2999,15 +3315,57 @@ export function ConversationRuntimeProvider({
       return;
     }
     pollTimerRef.current = window.setTimeout(async () => {
-      let applied = false;
+      let appliedRecoverableProgress = false;
+      let appliedRecoverable = false;
+      const latestSessions = sessionsByRouteRef.current[route];
+      const pollSessionIDSet = new Set(
+        latestSessions
+          .filter(shouldPollRuntimeBackedSession)
+          .map((session) => session.id),
+      );
+      const latestActiveSessionID = normalizeText(activeSessionIDRef.current)
+        || normalizeText(activeSessionByRoute[route])
+        || normalizeText(activeSessionID);
+      const latestActiveSession = latestActiveSessionID
+        ? latestSessions.find((session) => session.id === latestActiveSessionID) || null
+        : null;
+      if (latestActiveSession && shouldBlockRuntimeInput(latestActiveSession)) {
+        pollSessionIDSet.add(latestActiveSession.id);
+      }
+      const pollSessionIDs = Array.from(pollSessionIDSet);
+      if (!pollSessionIDs.length) {
+        setFallbackPollAttempt(0);
+        return;
+      }
       try {
-        applied = await pollRuntimeSessionUpdates(route, pollItems.map((item) => item.sessionID));
+        const result = await pollRuntimeSessionUpdates(route, pollSessionIDs);
+        appliedRecoverableProgress = result.appliedRecoverableProgress;
+        appliedRecoverable = result.appliedRecoverable;
       } catch {
       }
-      setFallbackPollAttempt((current) => applied ? 0 : current + 1);
+      const nextFallbackPollAttempt = fallbackPollAttempt + 1;
+      if (!appliedRecoverableProgress && shouldRefreshChatSessionDetailAfterEmptyUpdates(nextFallbackPollAttempt)) {
+        try {
+          const refreshed = await Promise.all(pollSessionIDs.map(async (sessionID) => {
+            try {
+              const hydrated = await hydrateRuntimeSession(route, sessionID, { force: true });
+              if (!hydrated) {
+                return false;
+              }
+              upsertRuntimeSession(route, hydrated);
+              return !shouldPollRuntimeBackedSession(hydrated);
+            } catch {
+              return false;
+            }
+          }));
+          appliedRecoverable = refreshed.some(Boolean);
+        } catch {
+        }
+      }
+      setFallbackPollAttempt((current) => appliedRecoverableProgress || appliedRecoverable ? 0 : current + 1);
     }, pollPlan.interval);
     return () => window.clearTimeout(pollTimerRef.current);
-  }, [fallbackPollAttempt, pageHidden, pollRuntimeSessionUpdates, route, sessionsByRoute]);
+  }, [activeSessionByRoute, activeSessionID, fallbackPollAttempt, hydrateRuntimeSession, pageHidden, pollRuntimeSessionUpdates, route, sessionsByRoute, upsertRuntimeSession]);
 
   const selection = resolveModelSelection(activeRuntimeConfig, availableProviders);
   const selectedProvider = enabledProviders(availableProviders).find((provider) => normalizeText(provider.id) === selection.providerID) || null;
@@ -3310,6 +3668,7 @@ export function ConversationRuntimeProvider({
     runtimeEventFilter,
     setDraft: (value: string) => {
       const nextDrafts = { ...composerDrafts, [activeDraftKey]: value.slice(0, MAX_COMPOSER_CHARS) };
+      latestComposerDraftsRef.current = nextDrafts;
       setComposerDrafts(nextDrafts);
     },
     addDraftAttachments: async (attachments: ComposerAttachment[]) => {

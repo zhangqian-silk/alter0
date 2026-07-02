@@ -113,6 +113,7 @@ describe("RuntimeWorkspacePage", () => {
     expect(railView.container.querySelector(".runtime-session-summary-row")).not.toBeInTheDocument();
     expect(railView.container.querySelector(".runtime-session-context")).not.toBeInTheDocument();
     expect(railView.container.querySelector(".runtime-session-signal")).not.toBeInTheDocument();
+    expect(railView.container.querySelector(".runtime-session-hash")).not.toBeInTheDocument();
     expect(railView.container.querySelectorAll(".runtime-session-loading")).toHaveLength(1);
     expect(within(railView.container).queryByText("1 hr ago")).not.toBeInTheDocument();
     expect(within(railView.container).queryByText("#b2c3d4e5")).not.toBeInTheDocument();

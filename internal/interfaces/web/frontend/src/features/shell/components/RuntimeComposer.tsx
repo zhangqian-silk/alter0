@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
   type ChangeEvent,
   type ComponentPropsWithoutRef,
   type FocusEventHandler,
@@ -199,6 +200,8 @@ export function RuntimeComposer({
   } = attachmentStripProps || {};
   const {
     className: inputPropsClassName,
+    onCompositionStart: inputOnCompositionStart,
+    onCompositionEnd: inputOnCompositionEnd,
     ...inputRestProps
   } = inputProps || {};
   const {
@@ -224,6 +227,10 @@ export function RuntimeComposer({
     ...submitButtonRestProps
   } = submitButtonProps || {};
   const composerAlias = runtimeKind === "terminal" ? "terminal" : "conversation";
+  const draftState = inputValue.trim() ? "dirty" : "empty";
+  const inputDisabled = Boolean(inputRestProps.disabled);
+  const submitDisabled = Boolean(submitButtonRestProps.disabled);
+  const [inputComposing, setInputComposing] = useState(false);
   const shellNodeRef = useRef<HTMLElement | null>(null);
   const panelNodeRef = useRef<HTMLElement | null>(null);
   const handleShellRef = useCallback((node: HTMLElement | null) => {
@@ -257,6 +264,22 @@ export function RuntimeComposer({
       document.removeEventListener("pointerdown", handlePointerDown, true);
     };
   }, [onPanelDismiss, panelContent]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+    if (draftState === "dirty") {
+      document.body.setAttribute("data-composer-unsaved-state", "dirty");
+    } else if (document.body.getAttribute("data-composer-unsaved-state") === "dirty") {
+      document.body.removeAttribute("data-composer-unsaved-state");
+    }
+    return () => {
+      if (document.body.getAttribute("data-composer-unsaved-state") === "dirty") {
+        document.body.removeAttribute("data-composer-unsaved-state");
+      }
+    };
+  }, [draftState]);
 
   return (
     <>
@@ -379,8 +402,20 @@ export function RuntimeComposer({
               onChange={(event) => onInputChange(event.target.value)}
               onFocus={onInputFocus}
               onBlur={onInputBlur}
+              onCompositionStart={(event) => {
+                setInputComposing(true);
+                inputOnCompositionStart?.(event);
+              }}
+              onCompositionEnd={(event) => {
+                setInputComposing(false);
+                inputOnCompositionEnd?.(event);
+              }}
               data-runtime-composer-input={runtimeKind}
               data-composer-input={composerAlias}
+              data-composer-draft-state={draftState}
+              data-composer-composing={inputComposing ? "true" : "false"}
+              data-composer-disabled={inputDisabled ? "true" : "false"}
+              data-composer-pending={submitDisabled ? "true" : "false"}
               data-terminal-input={runtimeKind === "terminal" ? "true" : undefined}
             ></textarea>
             {inputAssistContent ? (

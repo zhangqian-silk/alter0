@@ -196,7 +196,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
           <div
             key={item.id}
             role="listitem"
-            className={item.shellClassName}
+            className={openActionMenuID === item.id ? `${item.shellClassName} is-menu-open` : item.shellClassName}
             {...item.shellProps}
           >
             <button
@@ -229,7 +229,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
               </span>
             </button>
             {item.onPinnedChange || item.onViewDetails || item.onDelete ? (
-              <span className="runtime-session-actions">
+              <span className={openActionMenuID === item.id ? "runtime-session-actions is-menu-open" : "runtime-session-actions"}>
                 <button
                   className="runtime-session-action runtime-session-more"
                   type="button"

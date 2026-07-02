@@ -374,6 +374,9 @@ function normalizeTerminalRuntimeEventFilter(value: unknown): RuntimeEventFilter
   const normalized = items.filter((item): item is RuntimeEventFilterID =>
     typeof item === "string" && allowed.has(item as RuntimeEventFilterID),
   );
+  if (normalized.length === 1 && normalized[0] === "important_text") {
+    return [...DEFAULT_RUNTIME_EVENT_FILTER];
+  }
   return normalized.length > 0 ? normalized : [...DEFAULT_RUNTIME_EVENT_FILTER];
 }
 

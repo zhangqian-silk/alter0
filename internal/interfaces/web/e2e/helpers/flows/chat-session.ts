@@ -1,31 +1,24 @@
 import { expect, type Page } from "@playwright/test";
 import { createChatPage } from "../pages/chat";
-import { clickWithUnsavedDialog, type ConfirmAction } from "../guards/unsaved";
 
-export async function createNewChatSession(page: Page, confirmUnsaved = true): Promise<void> {
+export async function createNewChatSession(page: Page): Promise<void> {
   const chatPage = createChatPage(page);
-  if (confirmUnsaved) {
-    await clickWithUnsavedDialog(page, chatPage.newChatButton(), "accept");
-    return;
-  }
   await chatPage.newChatButton().click();
 }
 
-export async function switchChatSession(page: Page, index: number, action: ConfirmAction = "accept"): Promise<void> {
+export async function switchChatSession(page: Page, index: number): Promise<void> {
   const chatPage = createChatPage(page);
-  await clickWithUnsavedDialog(page, chatPage.sessionList().itemAt(index), action);
+  await chatPage.sessionList().itemAt(index).click();
 }
 
-export async function removeChatSession(page: Page, index: number, confirmUnsaved = true): Promise<void> {
+export async function removeChatSession(page: Page, index: number): Promise<void> {
   const chatPage = createChatPage(page);
-  const deleteButton = chatPage.sessionList().deleteButtonAt?.(index);
-  if (!deleteButton) {
-    throw new Error("chat session list is missing delete controls");
-  }
-  if (confirmUnsaved) {
-    await clickWithUnsavedDialog(page, deleteButton, "accept");
-    return;
-  }
+  const sessionCard = chatPage.sessionList().itemAt(index);
+  await sessionCard.getByRole("button", { name: "Session actions" }).click();
+  const deleteButton = page.getByRole("menuitem", { name: "Delete" });
+  page.once("dialog", async (dialog) => {
+    await dialog.accept();
+  });
   await deleteButton.click();
 }
 

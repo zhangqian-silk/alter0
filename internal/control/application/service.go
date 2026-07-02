@@ -60,6 +60,9 @@ func NewServiceWithStore(ctx context.Context, store Store) (*Service, error) {
 	}
 	for _, capability := range capabilities {
 		normalized := capability.Normalized()
+		if !normalized.Type.IsSupported() {
+			continue
+		}
 		if err := normalized.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid capability in store: %w", err)
 		}

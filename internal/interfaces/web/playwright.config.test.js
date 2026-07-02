@@ -52,6 +52,7 @@ test("buildPlaywrightEnv injects only the resolved login password", () => {
     () => seed,
   );
   assert.equal(env.PATH, "/usr/bin");
+  assert.equal(env.ALTER0_STORAGE_DIR, resolveScopedTempPath("alter0-playwright-storage"));
   assert.equal(env.ALTER0_WEB_LOGIN_PASSWORD, `alter0-e2e-${seed.toString("hex")}`);
   assert.equal(env.ALTER0_PLAYWRIGHT_BROWSERS_PATH, resolveScopedTempPath("alter0-playwright-browsers"));
   assert.equal(env.ALTER0_PLAYWRIGHT_PASSWORD_FILE, filePath);
@@ -59,7 +60,35 @@ test("buildPlaywrightEnv injects only the resolved login password", () => {
   assert.equal(env.PLAYWRIGHT_BROWSERS_PATH, resolveScopedTempPath("alter0-playwright-browsers"));
   assert.equal(env.XDG_CACHE_HOME, resolveScopedTempPath("alter0-playwright-cache"));
   assert.equal(fs.statSync(env.GOCACHE).isDirectory(), true);
+  assert.equal(fs.statSync(env.ALTER0_STORAGE_DIR).isDirectory(), true);
   assert.equal(fs.statSync(env.PLAYWRIGHT_BROWSERS_PATH).isDirectory(), true);
   assert.equal(fs.statSync(env.XDG_CACHE_HOME).isDirectory(), true);
   fs.rmSync(filePath, { force: true });
+});
+
+test("buildPlaywrightEnv clears the default storage directory between e2e runs", () => {
+  const storageDir = resolveScopedTempPath("alter0-playwright-storage");
+  const sentinel = path.join(storageDir, "stale-session.json");
+  fs.mkdirSync(storageDir, { recursive: true });
+  fs.writeFileSync(sentinel, "stale");
+
+  const env = buildPlaywrightEnv({});
+
+  assert.equal(env.ALTER0_STORAGE_DIR, storageDir);
+  assert.equal(fs.existsSync(sentinel), false);
+  assert.equal(fs.statSync(storageDir).isDirectory(), true);
+});
+
+test("buildPlaywrightEnv preserves an explicitly configured storage directory", () => {
+  const storageDir = path.join(os.tmpdir(), "alter0-playwright-explicit-storage-test");
+  const sentinel = path.join(storageDir, "keep-session.json");
+  fs.rmSync(storageDir, { recursive: true, force: true });
+  fs.mkdirSync(storageDir, { recursive: true });
+  fs.writeFileSync(sentinel, "keep");
+
+  const env = buildPlaywrightEnv({ ALTER0_STORAGE_DIR: storageDir });
+
+  assert.equal(env.ALTER0_STORAGE_DIR, storageDir);
+  assert.equal(fs.readFileSync(sentinel, "utf8"), "keep");
+  fs.rmSync(storageDir, { recursive: true, force: true });
 });

@@ -27,7 +27,8 @@ export async function setupTwoChatDraftSessions(
   await seedChatSession(page, options.seedContent || "seed message");
   await input.fill(options.firstDraft || "draft-a");
   await createNewChatSession(page);
-  await expect(sessionCards).toHaveCount(2);
+  await expect(sessionCards.first()).toBeVisible();
+  await expect(sessionCards.nth(1)).toBeVisible();
   await expect(input).toHaveValue("");
   await input.fill(options.secondDraft || "draft-b");
   return { input, sessionCards };

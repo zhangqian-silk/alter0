@@ -48,6 +48,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - MCP 专用接口支持 MCP Server 创建或更新、列表查询、启用、禁用与删除。
 - Capability 与 MCP 生命周期变更必须写入审计记录，审计列表支持按 capability type 查询。
 - 旧 Skill/MCP 专用接口与统一 Capability 接口返回同一能力字段结构，避免前端维护两套协议。
+- 历史 control store 中遗留的非 Skill/MCP capability 在启动加载时直接忽略，不阻断服务启动；新的 Capability 写入仍只允许 `skill` 与 `mcp`。
 - Capability 控制面只负责配置生命周期；实际是否注入执行链由 Runtime Profile、会话选择和运行时上下文解析决定。
 
 ### Runtime Profile

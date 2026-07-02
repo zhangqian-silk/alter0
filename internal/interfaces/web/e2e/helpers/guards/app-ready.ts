@@ -16,9 +16,17 @@ export async function waitForAppReady(page: Page, timeout = 20000): Promise<void
       document.getElementById("routeBody") ||
       document.querySelector(".route-body, .terminal-route-body, [data-runtime-workspace], main");
     const routeVisible = routeBody instanceof HTMLElement;
+    const hasMenuButton = Array.from(document.querySelectorAll("button")).some((button) =>
+      (button.textContent || "").trim() === "Menu",
+    );
+    const mobileNavigationReady =
+      document.querySelector("[data-route-mobile-head] button") instanceof HTMLElement ||
+      document.querySelector("button.nav-toggle") instanceof HTMLElement ||
+      hasMenuButton;
     const navigationReady =
       document.querySelectorAll(".menu-item[data-route], nav button[data-route]").length > 0 ||
-      document.querySelector("nav[aria-label='Primary workspace navigation']") instanceof HTMLElement;
+      document.querySelector("nav[aria-label='Primary workspace navigation']") instanceof HTMLElement ||
+      mobileNavigationReady;
     return Boolean(appShell && routeBody && routeVisible && navigationReady);
   }, { timeout });
   await expect(page.locator(".app-shell, main").first()).toBeVisible({ timeout });

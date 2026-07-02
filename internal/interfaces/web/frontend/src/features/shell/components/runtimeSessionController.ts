@@ -41,6 +41,8 @@ export type RuntimeSessionPayload = {
   created_at?: string | number;
   updated_at?: string | number;
   last_output_at?: string | number;
+  activity_at?: string | number;
+  revision?: string | number;
   model_provider_id?: string;
   model_id?: string;
   tool_ids?: string[];
@@ -57,6 +59,12 @@ type RuntimeSessionResponse = {
 
 type RuntimeSessionsResponse = {
   items?: RuntimeSessionPayload[];
+};
+
+export type RuntimeSessionPayloadSource = "summary" | "detail" | "event";
+
+export type RuntimeSessionNormalizeContext = {
+  source: RuntimeSessionPayloadSource;
 };
 
 export type RuntimeSessionEventDetail = {
@@ -103,7 +111,7 @@ export type RuntimeSessionControllerOptions<TSession extends { id: string }> = {
   route: RuntimeSessionRoute;
   initialSessions: TSession[];
   initialActiveSessionID: string;
-  normalizeSession: (payload: RuntimeSessionPayload, previous: TSession | null) => TSession | null;
+  normalizeSession: (payload: RuntimeSessionPayload, previous: TSession | null, context: RuntimeSessionNormalizeContext) => TSession | null;
   mergeSession: (previous: TSession | undefined, incoming: TSession) => TSession;
   sortSessions: (sessions: TSession[]) => TSession[];
   getProgressiveHistoryTurnBefore?: (session: TSession) => string;
@@ -231,10 +239,13 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
   );
 
   const mergeIncomingSessions = useCallback((incoming: TSession[]) => {
-    setSessions((current) => {
+    setSessions(() => {
+      const current = sessionsRef.current;
       const currentMap = new Map(current.map((session) => [session.id, session]));
       const merged = incoming.map((session) => options.mergeSession(currentMap.get(session.id), session));
-      return options.sortSessions(merged);
+      const next = options.sortSessions(merged);
+      sessionsRef.current = next;
+      return next;
     });
   }, [options, setSessions]);
 
@@ -243,7 +254,7 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
     const currentMap = new Map(sessionsRef.current.map((session) => [session.id, session]));
     const nextSessions = (Array.isArray(payload.items) ? payload.items : [])
       .filter((item) => !deletedSessionIDsRef.current.has(normalizeRuntimeSessionText(item.id)))
-      .map((item) => options.normalizeSession(item, currentMap.get(normalizeRuntimeSessionText(item.id)) || null))
+      .map((item) => options.normalizeSession(item, currentMap.get(normalizeRuntimeSessionText(item.id)) || null, { source: "summary" }))
       .filter((session): session is TSession => session !== null);
     if (manageState) {
       mergeIncomingSessions(nextSessions);
@@ -273,7 +284,7 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
       return null;
     }
     const current = sessionsRef.current.find((session) => session.id === normalizedSessionID) || null;
-    const normalized = options.normalizeSession(payload.session, current);
+    const normalized = options.normalizeSession(payload.session, current, { source: "detail" });
     if (!normalized || deletedSessionIDsRef.current.has(normalized.id)) {
       return null;
     }
@@ -294,7 +305,7 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
     if (!payload.session) {
       return null;
     }
-    const normalized = options.normalizeSession(payload.session, null);
+    const normalized = options.normalizeSession(payload.session, null, { source: "detail" });
     if (!normalized) {
       return null;
     }
@@ -331,8 +342,8 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
     );
     const current = sessionsRef.current.find((session) => session.id === normalizedSessionID) || null;
     const normalized = payload.session
-      ? options.normalizeSession(payload.session, current)
-      : options.normalizeSession({ id: normalizedSessionID, pinned }, current);
+      ? options.normalizeSession(payload.session, current, { source: "detail" })
+      : options.normalizeSession({ id: normalizedSessionID, pinned }, current, { source: "summary" });
     if (!normalized) {
       return null;
     }
@@ -355,7 +366,7 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
       return null;
     }
     const current = sessionsRef.current.find((session) => session.id === sessionID) || null;
-    const normalized = options.normalizeSession(payload.session, current);
+    const normalized = options.normalizeSession(payload.session, current, { source: "detail" });
     if (!normalized) {
       return null;
     }

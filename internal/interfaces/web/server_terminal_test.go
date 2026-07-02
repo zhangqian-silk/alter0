@@ -165,6 +165,90 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	if _, ok := session["last_output_at"].(string); !ok {
 		t.Fatalf("expected last_output_at in session payload, got %v", session["last_output_at"])
 	}
+	if _, ok := session["activity_at"].(string); !ok {
+		t.Fatalf("expected activity_at in session payload, got %v", session["activity_at"])
+	}
+	if revision, ok := session["revision"].(float64); !ok || revision <= 0 {
+		t.Fatalf("expected positive revision in session payload, got %v", session["revision"])
+	}
+}
+
+func TestTerminalSessionCollectionHandlerReturnsComparableSessionSummaries(t *testing.T) {
+	service := &stubWebTerminalService{
+		listResp: []terminaldomain.Session{
+			{
+				ID:           "terminal-older-active",
+				OwnerID:      terminalSessionOwnerID,
+				Title:        "Older active",
+				Status:       terminaldomain.SessionStatusReady,
+				CreatedAt:    time.Date(2026, 4, 21, 3, 30, 0, 0, time.UTC),
+				LastOutputAt: time.Date(2026, 4, 23, 4, 30, 0, 0, time.UTC),
+				UpdatedAt:    time.Date(2026, 4, 23, 4, 31, 0, 0, time.UTC),
+			},
+			{
+				ID:        "terminal-new-idle",
+				OwnerID:   terminalSessionOwnerID,
+				Title:     "New idle",
+				Status:    terminaldomain.SessionStatusReady,
+				CreatedAt: time.Date(2026, 4, 23, 3, 30, 0, 0, time.UTC),
+				UpdatedAt: time.Date(2026, 4, 23, 3, 30, 0, 0, time.UTC),
+			},
+		},
+	}
+	server := &Server{terminals: service}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions", nil)
+	rec := httptest.NewRecorder()
+
+	server.terminalSessionCollectionHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var payload map[string][]map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	items := payload["items"]
+	if len(items) != 2 {
+		t.Fatalf("expected two session summaries, got %v", payload)
+	}
+	for _, session := range items {
+		if _, ok := session["activity_at"].(string); !ok {
+			t.Fatalf("expected activity_at in session summary, got %v", session)
+		}
+		if revision, ok := session["revision"].(float64); !ok || revision <= 0 {
+			t.Fatalf("expected positive revision in session summary, got %v", session)
+		}
+		if _, hasTurns := session["turns"]; hasTurns {
+			t.Fatalf("expected collection summary without turns, got %v", session)
+		}
+	}
+}
+
+func TestTerminalSessionSummaryRevisionDistinguishesSubMillisecondUpdates(t *testing.T) {
+	first := buildTerminalSessionSummary(terminaldomain.Session{
+		ID:        "terminal-fast-1",
+		OwnerID:   terminalSessionOwnerID,
+		Title:     "Fast 1",
+		Status:    terminaldomain.SessionStatusReady,
+		CreatedAt: time.Date(2026, 4, 23, 4, 30, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 4, 23, 4, 30, 1, 123400, time.UTC),
+	})
+	second := buildTerminalSessionSummary(terminaldomain.Session{
+		ID:        "terminal-fast-2",
+		OwnerID:   terminalSessionOwnerID,
+		Title:     "Fast 2",
+		Status:    terminaldomain.SessionStatusReady,
+		CreatedAt: time.Date(2026, 4, 23, 4, 30, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 4, 23, 4, 30, 1, 124400, time.UTC),
+	})
+
+	firstRevision := first.(map[string]any)["revision"]
+	secondRevision := second.(map[string]any)["revision"]
+	if firstRevision == secondRevision {
+		t.Fatalf("expected sub-millisecond revisions to differ, got %v", firstRevision)
+	}
 }
 
 func TestChatSessionUpdatesHandlerReturnsIncrementalOwnerEvents(t *testing.T) {

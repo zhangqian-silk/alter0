@@ -1141,6 +1141,41 @@ func TestServiceDeleteRemovesPersistedStateAndWorkspace(t *testing.T) {
 	}
 }
 
+func TestServiceDeleteRunningSessionDoesNotRecreatePersistedState(t *testing.T) {
+	baseDir := t.TempDir()
+	service := newTestServiceWithBaseDir("sleep", baseDir)
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-delete-running",
+		Title:   "delete-running",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := service.Input("owner-delete-running", session.ID, "long prompt"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	statePath, err := resolveTerminalSessionStateFilePath(baseDir, session.ID)
+	if err != nil {
+		t.Fatalf("resolve state path: %v", err)
+	}
+
+	if _, err := service.Delete("owner-delete-running", session.ID); err != nil {
+		t.Fatalf("delete running session: %v", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	if _, ok := service.Get("owner-delete-running", session.ID); ok {
+		t.Fatalf("expected deleted running session to stay absent")
+	}
+	if items := service.List("owner-delete-running"); len(items) != 0 {
+		t.Fatalf("expected deleted running session to stay out of list, got %+v", items)
+	}
+	if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected deleted running session state to stay removed, got %v", err)
+	}
+}
+
 func TestServiceInputRecoversPersistedSessionWhenRuntimeMissing(t *testing.T) {
 	baseDir := t.TempDir()
 	service := newTestServiceWithBaseDir("success", baseDir)

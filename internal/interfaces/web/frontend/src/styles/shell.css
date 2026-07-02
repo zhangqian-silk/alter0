@@ -7196,6 +7196,10 @@ body::after {
     color 180ms ease;
 }
 
+.runtime-session-card.is-menu-open {
+  z-index: 120;
+}
+
 .runtime-session-card::before {
   content: "";
   position: absolute;
@@ -7428,6 +7432,10 @@ body::after {
   min-width: 42px;
 }
 
+.runtime-session-actions.is-menu-open {
+  z-index: 120;
+}
+
 .runtime-session-action {
   display: inline-flex;
   align-items: center;
@@ -7458,7 +7466,7 @@ body::after {
 
 .runtime-session-action-menu {
   position: absolute;
-  z-index: 40;
+  z-index: 121;
   top: calc(100% + 8px);
   right: 0;
   display: grid;
