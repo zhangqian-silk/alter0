@@ -47,6 +47,48 @@ function renderComposer(overrides: Partial<React.ComponentProps<typeof RuntimeCo
 }
 
 describe("RuntimeComposer", () => {
+  it("exposes stable composer state attributes for browser flows", () => {
+    renderComposer({
+      inputValue: "draft",
+      inputProps: {
+        disabled: true,
+      },
+      submitButtonProps: {
+        disabled: true,
+      },
+    });
+
+    const input = screen.getByLabelText("Message");
+
+    expect(input).toHaveAttribute("data-composer-draft-state", "dirty");
+    expect(input).toHaveAttribute("data-composer-composing", "false");
+    expect(input).toHaveAttribute("data-composer-disabled", "true");
+    expect(input).toHaveAttribute("data-composer-pending", "true");
+  });
+
+  it("mirrors the dirty composer state to the document body while mounted", () => {
+    const { unmount } = renderComposer({
+      inputValue: "draft",
+    });
+
+    expect(document.body).toHaveAttribute("data-composer-unsaved-state", "dirty");
+
+    unmount();
+
+    expect(document.body).not.toHaveAttribute("data-composer-unsaved-state");
+  });
+
+  it("tracks composition state on the input", () => {
+    renderComposer();
+    const input = screen.getByLabelText("Message");
+
+    fireEvent.compositionStart(input);
+    expect(input).toHaveAttribute("data-composer-composing", "true");
+
+    fireEvent.compositionEnd(input);
+    expect(input).toHaveAttribute("data-composer-composing", "false");
+  });
+
   it("blurs the active input before running utility toolbar actions", () => {
     const { input, onUtilityClick } = renderComposer();
     input.focus();

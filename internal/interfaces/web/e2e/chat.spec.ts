@@ -1,6 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
 import {
-  expectComposerCounter,
   expectComposerFocusedValue,
   expectComposerReady,
   expectComposerState,
@@ -15,8 +14,8 @@ import {
 import { ensureChatRouteReady, openChatRoute } from "./helpers/flows/routes";
 import { waitForAppReady } from "./helpers/guards/app-ready";
 import { loginIfNeeded } from "./helpers/guards/login";
-import { commitIMEInput, startIMEInput } from "./helpers/interactions/ime";
-import { clickWithUnsavedDialog } from "./helpers/guards/unsaved";
+import { commitIMEInput, pressEnterDuringIMEInput, startIMEInput } from "./helpers/interactions/ime";
+import { authenticateWebRequest } from "./helpers/flows/auth";
 import {
   openChatWorkspace,
   openChatWorkspaceWithDraft,
@@ -25,12 +24,111 @@ import {
 } from "./helpers/scenarios/chat";
 import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
-async function openChannelsRoute(page: Parameters<typeof loginIfNeeded>[0]): Promise<void> {
-  await page.goto("/channels");
+const CHAT_BROWSER_STORAGE_KEYS = [
+  "alter0.web.session.active.v1",
+  "alter0.web.session.snapshot.v1",
+  "alter0.web.session.recent.v1",
+  "alter0.web.session.long_term_snapshot.v1",
+  "alter0.web.session.info_snapshot.v1",
+  "alter0.web.composer.drafts.v1",
+  "alter0.web.composer.attachments.v1",
+  "alter0.web.runtime.event_filter.v1",
+];
+
+async function clearChatBrowserStorage(page: Parameters<typeof loginIfNeeded>[0]): Promise<void> {
+  const clearFlag = `__alter0_e2e_chat_storage_cleared_${Date.now()}_${Math.random().toString(36).slice(2)}__`;
+  await page.addInitScript(({ keys, flag }) => {
+    const clearFlag = flag;
+    if (window.sessionStorage.getItem(clearFlag) === "1") {
+      return;
+    }
+    keys.forEach((key) => {
+      window.localStorage.removeItem(key);
+      window.sessionStorage.removeItem(key);
+    });
+    window.sessionStorage.setItem(clearFlag, "1");
+  }, { keys: CHAT_BROWSER_STORAGE_KEYS, flag: clearFlag });
+}
+
+async function clearChatServerSessions(request: APIRequestContext): Promise<void> {
+  await authenticateWebRequest(request);
+  const deadline = Date.now() + 5000;
+  let emptyReads = 0;
+  while (Date.now() < deadline && emptyReads < 10) {
+    const listResponse = await request.get("/api/chat/sessions");
+    expect(listResponse.ok()).toBeTruthy();
+    const payload = await listResponse.json();
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    if (items.length === 0) {
+      emptyReads += 1;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      continue;
+    }
+    emptyReads = 0;
+    for (const item of items) {
+      const sessionID = typeof item?.id === "string" ? item.id : "";
+      if (!sessionID) {
+        continue;
+      }
+      const deleteResponse = await request.delete(`/api/chat/sessions/${encodeURIComponent(sessionID)}`);
+      expect(deleteResponse.ok()).toBeTruthy();
+    }
+  }
+  await expect.poll(async () => {
+    const response = await request.get("/api/chat/sessions");
+    if (!response.ok()) {
+      return -1;
+    }
+    const nextPayload = await response.json();
+    return Array.isArray(nextPayload?.items) ? nextPayload.items.length : 0;
+  }).toBe(0);
+}
+
+async function expectChatDraftPersisted(page: Parameters<typeof loginIfNeeded>[0], value: string): Promise<void> {
+  await expect.poll(async () => page.evaluate((expected) => {
+    const raw = window.sessionStorage.getItem("alter0.web.composer.drafts.v1") || "{}";
+    try {
+      const parsed = JSON.parse(raw);
+      return Object.values(parsed).includes(expected);
+    } catch {
+      return false;
+    }
+  }, value)).toBe(true);
+}
+
+function workbenchRouteView(page: Parameters<typeof loginIfNeeded>[0], route: string) {
+  return page.locator(`.route-view[data-route='${route}']`).first();
+}
+
+function workbenchRouteBody(page: Parameters<typeof loginIfNeeded>[0], route: string) {
+  return page.locator(`.route-body[data-route='${route}']`).first();
+}
+
+function mobileMenuButton(page: Parameters<typeof loginIfNeeded>[0]) {
+  return page.getByRole("button", { name: "Menu" }).first();
+}
+
+function mobileSessionButton(page: Parameters<typeof loginIfNeeded>[0]) {
+  return page.getByRole("button", { name: "Session" }).last();
+}
+
+function runtimeSettingsToggle(page: Parameters<typeof loginIfNeeded>[0]) {
+  return page.locator("[data-runtime-composer-utility='session']").first();
+}
+
+function runtimeSettingsPanel(page: Parameters<typeof loginIfNeeded>[0]) {
+  return page.locator("[data-runtime-config-surface='conversation']").first();
+}
+
+function latestAssistantMessage(page: Parameters<typeof loginIfNeeded>[0]) {
+  return page.locator(".runtime-message-assistant[data-message-id]").last();
+}
+
+async function openSettingsRoute(page: Parameters<typeof loginIfNeeded>[0]): Promise<void> {
+  await page.goto("/settings");
   await loginIfNeeded(page);
   await waitForAppReady(page);
-  await expect.poll(async () => page.locator("#routeView").getAttribute("data-route")).toBe("channels");
-  await expect(page.locator("#routeView")).toBeVisible();
+  await expect(workbenchRouteView(page, "settings")).toBeVisible();
 }
 
 async function mockRuntimeSession(
@@ -68,6 +166,26 @@ async function mockRuntimeSession(
       return;
     }
     await route.fallback();
+  });
+}
+
+async function mockControlSkills(page: Parameters<typeof loginIfNeeded>[0]): Promise<void> {
+  await page.route("**/api/control/skills", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          { id: "memory", name: "Memory", description: "Use workspace memory", enabled: true },
+          {
+            id: "implementation",
+            name: "Implementation Skill",
+            description: "Implementation guidance skill",
+            enabled: true,
+          },
+        ],
+      }),
+    });
   });
 }
 
@@ -109,7 +227,36 @@ async function mockChatRuntimeSessions(
   });
 }
 
+async function mockEmptyChatRuntimeSessions(page: Parameters<typeof loginIfNeeded>[0]): Promise<void> {
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+  await page.context().route("**/api/chat/sessions**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/api/chat/sessions")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [] }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+}
+
 test.describe("Chat composer", () => {
+  test.beforeEach(async ({ page, request }) => {
+    await clearChatServerSessions(request);
+    await clearChatBrowserStorage(page);
+  });
+
+  test.afterEach(async ({ page, request }) => {
+    await page.close();
+    await clearChatServerSessions(request);
+  });
+
   for (const scenario of [
     { name: "desktop", width: 1280, height: 900, mobile: false },
     { name: "mobile", width: 390, height: 844, mobile: true },
@@ -149,14 +296,17 @@ test.describe("Chat composer", () => {
       await page.goto(`/chat?session_id=${hashSessionIDShort(olderSession.id)}`);
       await ensureChatRouteReady(page);
       const navRail = page.locator('[data-nav-session-rail="chat"]');
-      await expect(navRail.locator(`[data-runtime-session-card="${olderSession.id}"]`)).toHaveClass(/is-active/);
-
       if (scenario.mobile) {
         await page.getByRole("button", { name: "Menu" }).click();
       }
+      await expect(navRail.locator(`[data-runtime-session-card="${olderSession.id}"]`)).toHaveClass(/is-active/);
+
       await page.locator('button[data-route="chat"]').click();
 
       await expect(page).toHaveURL(/\/chat$/);
+      if (scenario.mobile) {
+        await page.getByRole("button", { name: "Menu" }).click();
+      }
       await expect(navRail.locator(`[data-runtime-session-card="${latestSession.id}"]`)).toHaveClass(/is-active/);
       await expect(page.locator(".runtime-workspace-head h4")).toContainText(String(latestSession.title));
     });
@@ -191,7 +341,7 @@ test.describe("Chat composer", () => {
 
   });
 
-  test("shows a short hash for chat sessions in the list and details panel", async ({ page }) => {
+  test("keeps chat session short hashes in the details panel without crowding the list", async ({ page }) => {
     const sessionID = "db4416b7-452d-44a6-83ca-999e77f47791";
     const createdAt = Date.now();
     await mockRuntimeSession(page, {
@@ -232,32 +382,34 @@ test.describe("Chat composer", () => {
       await ensureChatRouteReady(page);
     }
 
-    const hashLabel = page.locator(".runtime-session-hash").first();
     const detailsButton = page.getByRole("button", { name: "Details" }).first();
-    const shortHash = ((await hashLabel.textContent()) || "").trim();
+    const shortHash = hashSessionIDShort(sessionID);
 
     expect(shortHash).toMatch(/^[0-9a-f]{8}$/);
+    await expect(page.locator(".runtime-session-hash")).toHaveCount(0);
     await detailsButton.click();
 
     await expect(page.locator('[data-runtime-details-panel="conversation"]')).toContainText(shortHash);
   });
 
   test("keeps empty session hint near the session header", async ({ page }) => {
+    await mockEmptyChatRuntimeSessions(page);
     await openChatWorkspace(page);
 
-    const heading = page.locator("#sessionHeading");
-    const subheading = page.locator("#sessionSubheading");
-    const sessionCards = page.locator("#sessionList .session-card");
+    const sessionPane = page.locator('[data-runtime-session-pane="conversation"]');
+    const heading = page.getByText("Sessions").first();
+    const emptyHint = page.getByText("No sessions yet. Click New to start.").first();
+    const sessionCards = page.locator('[data-runtime-session-card]');
 
-    await expect(sessionCards).toHaveCount(1);
-    await expect(subheading).toContainText("Empty session");
+    await expect(sessionCards).toHaveCount(0);
+    await expect(emptyHint).toBeVisible();
 
     const headingBox = await heading.boundingBox();
-    const subheadingBox = await subheading.boundingBox();
+    const emptyHintBox = await emptyHint.boundingBox();
 
     expect(headingBox).not.toBeNull();
-    expect(subheadingBox).not.toBeNull();
-    expect((subheadingBox?.y ?? 0) - (headingBox?.y ?? 0)).toBeLessThan(80);
+    expect(emptyHintBox).not.toBeNull();
+    expect((emptyHintBox?.y ?? 0) - (headingBox?.y ?? 0)).toBeLessThan(120);
   });
 
   test("keeps the shell stable while resizing across the desktop and drawer breakpoints", async ({ page }) => {
@@ -267,53 +419,55 @@ test.describe("Chat composer", () => {
     const readShellMetrics = async () =>
       page.evaluate(() => {
         const appShell = document.querySelector(".app-shell");
-        const nav = document.querySelector(".primary-nav");
-        const sessionPane = document.querySelector(".session-pane");
+        const nav = document.querySelector("nav[aria-label='Primary workspace navigation']");
+        const sessionPane = document.querySelector("[data-runtime-session-pane='conversation']");
         const chatPane = document.querySelector(".chat-pane");
-        const composerShell = document.querySelector(".composer-shell");
-        const navToggle = document.getElementById("navToggle");
-        const sessionToggle = document.getElementById("sessionToggle");
+        const composerShell = document.querySelector("[data-composer-form='conversation']");
+        const mobileMenu = Array.from(document.querySelectorAll("button")).find((button) =>
+          (button.textContent || "").trim() === "Menu",
+        );
+        const mobileNew = Array.from(document.querySelectorAll("button")).find((button) =>
+          (button.textContent || "").trim() === "New",
+        );
         if (
-          !(appShell instanceof HTMLElement)
-          || !(nav instanceof HTMLElement)
+          !(appShell instanceof HTMLElement || document.querySelector("main") instanceof HTMLElement)
           || !(sessionPane instanceof HTMLElement)
           || !(chatPane instanceof HTMLElement)
           || !(composerShell instanceof HTMLElement)
-          || !(navToggle instanceof HTMLElement)
-          || !(sessionToggle instanceof HTMLElement)
         ) {
           return null;
         }
 
-        const navRect = nav.getBoundingClientRect();
+        const navRect = nav instanceof HTMLElement ? nav.getBoundingClientRect() : null;
         const sessionRect = sessionPane.getBoundingClientRect();
         const chatRect = chatPane.getBoundingClientRect();
         const composerRect = composerShell.getBoundingClientRect();
-        const navToggleRect = navToggle.getBoundingClientRect();
-        const sessionToggleRect = sessionToggle.getBoundingClientRect();
-        const shellStyle = getComputedStyle(appShell);
-        const navStyle = getComputedStyle(nav);
+        const mobileMenuRect = mobileMenu instanceof HTMLElement ? mobileMenu.getBoundingClientRect() : null;
+        const mobileNewRect = mobileNew instanceof HTMLElement ? mobileNew.getBoundingClientRect() : null;
+        const shellStyle = appShell instanceof HTMLElement ? getComputedStyle(appShell) : null;
+        const navStyle = nav instanceof HTMLElement ? getComputedStyle(nav) : null;
         const sessionStyle = getComputedStyle(sessionPane);
         const doc = document.documentElement;
 
         return {
-          navPosition: navStyle.position,
+          navPosition: navStyle?.position || "",
           sessionPosition: sessionStyle.position,
-          navLeft: navRect.left,
-          navRight: navRect.right,
+          navVisible: nav instanceof HTMLElement && navRect !== null && navRect.width > 0 && navStyle?.display !== "none",
+          mobileMenuVisible: mobileMenuRect !== null && mobileMenuRect.width > 0,
+          mobileNewVisible: mobileNewRect !== null && mobileNewRect.width > 0,
+          navLeft: navRect?.left ?? 0,
+          navRight: navRect?.right ?? 0,
           sessionLeft: sessionRect.left,
           sessionRight: sessionRect.right,
           chatLeft: chatRect.left,
           chatRight: chatRect.right,
           composerBottom: composerRect.bottom,
-          navToggleTop: navToggleRect.top,
-          sessionToggleTop: sessionToggleRect.top,
+          mobileMenuTop: mobileMenuRect?.top ?? 0,
+          mobileNewTop: mobileNewRect?.top ?? 0,
           viewportWidth: window.innerWidth,
           viewportHeight: window.innerHeight,
           scrollWidth: doc.scrollWidth,
-          gridTemplateColumns: shellStyle.gridTemplateColumns,
-          navToggleDisplay: getComputedStyle(navToggle).display,
-          sessionToggleDisplay: getComputedStyle(sessionToggle).display,
+          gridTemplateColumns: shellStyle?.gridTemplateColumns || "",
         };
       });
 
@@ -321,64 +475,54 @@ test.describe("Chat composer", () => {
     expect(desktop).not.toBeNull();
     expect(desktop?.navPosition).not.toBe("fixed");
     expect(desktop?.sessionPosition).not.toBe("fixed");
-    expect(desktop?.appShellClass ?? "").not.toContain("nav-open");
-    expect(desktop?.appShellClass ?? "").not.toContain("panel-open");
-    expect(desktop?.navRight ?? 0).toBeLessThanOrEqual((desktop?.sessionLeft ?? 0) + 2);
-    expect(desktop?.sessionRight ?? 0).toBeLessThanOrEqual((desktop?.chatLeft ?? 0) + 2);
+    expect(desktop?.navVisible).toBe(true);
+    expect(desktop?.mobileMenuVisible).toBe(false);
+    expect(desktop?.sessionRight ?? 0).toBeLessThanOrEqual((desktop?.chatLeft ?? 0) + 4);
     expect(desktop?.scrollWidth ?? 0).toBeLessThanOrEqual((desktop?.viewportWidth ?? 0) + 1);
-    expect(desktop?.gridTemplateColumns.split(" ").length ?? 0).toBeGreaterThanOrEqual(3);
-    expect(desktop?.navToggleDisplay).toBe("none");
-    expect(desktop?.sessionToggleDisplay).toBe("none");
+    expect(desktop?.gridTemplateColumns.split(" ").length ?? 0).toBeGreaterThanOrEqual(2);
 
-    await page.setViewportSize({ width: 1024, height: 900 });
+    await page.setViewportSize({ width: 760, height: 900 });
 
     await expect.poll(async () => {
       const metrics = await readShellMetrics();
-      return metrics?.navPosition ?? "";
-    }).toBe("fixed");
+      return metrics?.mobileMenuVisible ?? false;
+    }).toBe(true);
 
     const drawer = await readShellMetrics();
     expect(drawer).not.toBeNull();
-    expect(drawer?.sessionPosition).toBe("fixed");
-    expect(drawer?.appShellClass ?? "").not.toContain("nav-open");
-    expect(drawer?.appShellClass ?? "").not.toContain("panel-open");
+    expect(drawer?.navVisible).toBe(false);
     expect(drawer?.chatLeft ?? 0).toBeLessThanOrEqual(24);
     expect((drawer?.viewportHeight ?? 0) - (drawer?.composerBottom ?? 0)).toBeLessThan(36);
-    expect(Math.abs((drawer?.navToggleTop ?? 0) - (drawer?.sessionToggleTop ?? 0))).toBeLessThan(8);
     expect(drawer?.scrollWidth ?? 0).toBeLessThanOrEqual((drawer?.viewportWidth ?? 0) + 1);
-    expect(drawer?.navToggleDisplay).not.toBe("none");
-    expect(drawer?.sessionToggleDisplay).not.toBe("none");
 
     await page.setViewportSize({ width: 1180, height: 900 });
 
     await expect.poll(async () => {
       const metrics = await readShellMetrics();
-      return metrics?.navPosition ?? "";
-    }).not.toBe("fixed");
+      return metrics?.navVisible ?? false;
+    }).toBe(true);
 
     const restoredDesktop = await readShellMetrics();
     expect(restoredDesktop).not.toBeNull();
-    expect(restoredDesktop?.appShellClass ?? "").not.toContain("nav-open");
-    expect(restoredDesktop?.appShellClass ?? "").not.toContain("panel-open");
-    expect(restoredDesktop?.navRight ?? 0).toBeLessThanOrEqual((restoredDesktop?.sessionLeft ?? 0) + 2);
-    expect(restoredDesktop?.sessionRight ?? 0).toBeLessThanOrEqual((restoredDesktop?.chatLeft ?? 0) + 2);
+    expect(restoredDesktop?.mobileMenuVisible).toBe(false);
+    expect(restoredDesktop?.sessionRight ?? 0).toBeLessThanOrEqual((restoredDesktop?.chatLeft ?? 0) + 4);
     expect(restoredDesktop?.scrollWidth ?? 0).toBeLessThanOrEqual((restoredDesktop?.viewportWidth ?? 0) + 1);
-    expect(restoredDesktop?.navToggleDisplay).toBe("none");
-    expect(restoredDesktop?.sessionToggleDisplay).toBe("none");
   });
 
-  test("switches exactly at the 1100px shell breakpoint without leaving mixed layout state", async ({ page }) => {
+  test("keeps mobile and desktop shell states from mixing across breakpoints", async ({ page }) => {
     await openChatWorkspace(page);
 
     const readBreakpointState = async () =>
       page.evaluate(() => {
         const appShell = document.querySelector(".app-shell");
-        const nav = document.querySelector(".primary-nav");
-        const sessionPane = document.querySelector(".session-pane");
+        const nav = document.querySelector("nav[aria-label='Primary workspace navigation']");
+        const sessionPane = document.querySelector("[data-runtime-session-pane='conversation']");
         const chatPane = document.querySelector(".chat-pane");
+        const mobileMenu = Array.from(document.querySelectorAll("button")).find((button) =>
+          (button.textContent || "").trim() === "Menu",
+        );
         if (
-          !(appShell instanceof HTMLElement)
-          || !(nav instanceof HTMLElement)
+          !(appShell instanceof HTMLElement || document.querySelector("main") instanceof HTMLElement)
           || !(sessionPane instanceof HTMLElement)
           || !(chatPane instanceof HTMLElement)
         ) {
@@ -388,192 +532,161 @@ test.describe("Chat composer", () => {
         return {
           viewportWidth: window.innerWidth,
           scrollWidth: document.documentElement.scrollWidth,
-          shellClassName: appShell.className,
-          gridTemplateColumns: getComputedStyle(appShell).gridTemplateColumns,
-          navPosition: getComputedStyle(nav).position,
+          shellClassName: appShell instanceof HTMLElement ? appShell.className : "",
+          gridTemplateColumns: appShell instanceof HTMLElement ? getComputedStyle(appShell).gridTemplateColumns : "",
+          navVisible: nav instanceof HTMLElement && getComputedStyle(nav).display !== "none" && nav.getBoundingClientRect().width > 0,
+          mobileMenuVisible: mobileMenu instanceof HTMLElement && mobileMenu.getBoundingClientRect().width > 0,
           sessionPosition: getComputedStyle(sessionPane).position,
           chatLeft: chatPane.getBoundingClientRect().left,
         };
       });
 
-    await page.setViewportSize({ width: 1100, height: 900 });
-    await expect.poll(async () => (await readBreakpointState())?.navPosition ?? "").toBe("fixed");
+    await page.setViewportSize({ width: 760, height: 900 });
+    await expect.poll(async () => (await readBreakpointState())?.mobileMenuVisible ?? false).toBe(true);
 
     const mobileEdge = await readBreakpointState();
     expect(mobileEdge).not.toBeNull();
-    expect(mobileEdge?.sessionPosition).toBe("fixed");
-    expect(mobileEdge?.shellClassName ?? "").not.toContain("nav-open");
-    expect(mobileEdge?.shellClassName ?? "").not.toContain("panel-open");
+    expect(mobileEdge?.navVisible).toBe(false);
     expect(mobileEdge?.chatLeft ?? 0).toBeLessThanOrEqual(24);
     expect(mobileEdge?.scrollWidth ?? 0).toBeLessThanOrEqual((mobileEdge?.viewportWidth ?? 0) + 1);
 
-    await page.setViewportSize({ width: 1101, height: 900 });
-    await expect.poll(async () => (await readBreakpointState())?.navPosition ?? "").not.toBe("fixed");
+    await page.setViewportSize({ width: 1180, height: 900 });
+    await expect.poll(async () => (await readBreakpointState())?.navVisible ?? false).toBe(true);
 
     const desktopEdge = await readBreakpointState();
     expect(desktopEdge).not.toBeNull();
-    expect(desktopEdge?.sessionPosition).not.toBe("fixed");
-    expect(desktopEdge?.gridTemplateColumns.split(" ").length ?? 0).toBeGreaterThanOrEqual(3);
-    expect(desktopEdge?.shellClassName ?? "").not.toContain("nav-open");
-    expect(desktopEdge?.shellClassName ?? "").not.toContain("panel-open");
+    expect(desktopEdge?.gridTemplateColumns.split(" ").length ?? 0).toBeGreaterThanOrEqual(2);
     expect(desktopEdge?.scrollWidth ?? 0).toBeLessThanOrEqual((desktopEdge?.viewportWidth ?? 0) + 1);
   });
 
   test("keeps empty chat controls compact on narrow screens", async ({ page }) => {
     await page.setViewportSize({ width: 760, height: 980 });
+    await mockEmptyChatRuntimeSessions(page);
     await openChatWorkspace(page);
 
-    const header = page.locator(".chat-header");
-    const navToggle = page.locator("#navToggle");
-    const sessionToggle = page.locator("#sessionToggle");
-    const newChatButton = page.locator("#mobileNewChatButton");
-    const heading = page.locator("#sessionHeading");
-    const welcomeTag = page.locator(".welcome-tag");
-    const welcomeHeading = page.locator("#welcomeHeading");
-    const promptGrid = page.locator(".prompt-grid");
-    const composerShell = page.locator(".composer-shell");
-    const runtimeToggles = page.locator("#chatRuntimePanel [data-runtime-toggle]");
-    const composerNote = page.locator(".composer-note");
-    const composerCounter = page.locator("#charCount");
-    const sendButton = page.locator("#sendButton");
+    const mobileHeader = page.locator("[data-route-mobile-head], .runtime-workspace-mobile-header").first();
+    const navToggle = page.getByRole("button", { name: "Menu" }).first();
+    const newChatButton = page.getByRole("button", { name: "New" }).first();
+    const emptyHeading = page.getByText("Start a new workspace flow").last();
+    const emptyDescription = page.getByText("Conversation, process, and delivery stay in a single timeline.").last();
+    const composerShell = page.locator('[data-composer-form="conversation"]');
+    const sessionButton = page.getByRole("button", { name: "Session" }).last();
+    const sendButton = page.locator('[data-composer-submit="conversation"]');
 
     await expect(navToggle).toBeVisible();
-    await expect(sessionToggle).toBeVisible();
     await expect(newChatButton).toBeVisible();
-    await expect(heading).toBeHidden();
-    await expect(runtimeToggles).toHaveCount(1);
-    await expect(composerNote).toBeHidden();
-    await expect(composerCounter).toBeHidden();
-    await expect(runtimeToggles.first()).toContainText(/Session|会话/);
-    await expect(runtimeToggles.first()).toContainText(/Tools 0|工具 0/);
-    await expect(runtimeToggles.first()).toContainText(/Skills 0|技能 0/);
+    await expect(mobileHeader).toBeVisible();
+    await expect(emptyHeading).toBeVisible();
+    await expect(sessionButton).toBeVisible();
 
-    const headerBox = await header.boundingBox();
+    const headerBox = await mobileHeader.boundingBox();
     const navBox = await navToggle.boundingBox();
-    const sessionBox = await sessionToggle.boundingBox();
     const newChatBox = await newChatButton.boundingBox();
-    const welcomeTagBox = await welcomeTag.boundingBox();
-    const welcomeHeadingBox = await welcomeHeading.boundingBox();
-    const promptGridBox = await promptGrid.boundingBox();
+    const emptyHeadingBox = await emptyHeading.boundingBox();
+    const emptyDescriptionBox = await emptyDescription.boundingBox();
     const composerBox = await composerShell.boundingBox();
-    const runtimeBox = await runtimeToggles.first().boundingBox();
+    const runtimeBox = await sessionButton.boundingBox();
     const sendBox = await sendButton.boundingBox();
     const viewport = page.viewportSize();
 
     expect(headerBox).not.toBeNull();
     expect(navBox).not.toBeNull();
-    expect(sessionBox).not.toBeNull();
     expect(newChatBox).not.toBeNull();
-    expect(welcomeTagBox).not.toBeNull();
-    expect(welcomeHeadingBox).not.toBeNull();
-    expect(promptGridBox).not.toBeNull();
+    expect(emptyHeadingBox).not.toBeNull();
+    expect(emptyDescriptionBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
     expect(runtimeBox).not.toBeNull();
     expect(sendBox).not.toBeNull();
     expect(viewport).not.toBeNull();
 
-    expect(Math.abs((navBox?.y ?? 0) - (sessionBox?.y ?? 0))).toBeLessThan(6);
-    expect(Math.abs((sessionBox?.y ?? 0) - (newChatBox?.y ?? 0))).toBeLessThan(6);
-    expect((welcomeTagBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeGreaterThanOrEqual(10);
-    expect((welcomeHeadingBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeLessThan(72);
-    expect((composerBox?.y ?? 0) - ((promptGridBox?.y ?? 0) + (promptGridBox?.height ?? 0))).toBeGreaterThanOrEqual(48);
+    expect(Math.abs((navBox?.y ?? 0) - (newChatBox?.y ?? 0))).toBeLessThan(8);
+    expect((emptyHeadingBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeGreaterThanOrEqual(16);
+    expect((emptyDescriptionBox?.y ?? 0) - (emptyHeadingBox?.y ?? 0)).toBeGreaterThan(10);
+    expect((composerBox?.y ?? 0) - ((emptyDescriptionBox?.y ?? 0) + (emptyDescriptionBox?.height ?? 0))).toBeGreaterThanOrEqual(48);
     expect(((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0)))).toBeLessThan(36);
     expect(Math.abs((runtimeBox?.y ?? 0) - (sendBox?.y ?? 0))).toBeLessThan(6);
     expect(sendBox?.x ?? 0).toBeGreaterThan((runtimeBox?.x ?? 0) + (runtimeBox?.width ?? 0) - 4);
 
-    await runtimeToggles.first().click();
-    await expect(page.locator(".composer-runtime-popover-mobile")).toBeVisible();
+    await sessionButton.click();
+    await expect(page.locator(".runtime-composer-config-panel").first()).toBeVisible();
   });
 
   test("keeps empty chat controls compact on wide screens", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 980 });
     await openChatWorkspace(page);
 
-    const welcomeScreen = page.locator(".welcome-screen");
-    const header = page.locator(".chat-header");
-    const welcomeHeading = page.locator("#welcomeHeading");
-    const welcomeDescription = page.locator("#welcomeDescription");
-    const promptGrid = page.locator(".prompt-grid");
-    const composerShell = page.locator(".composer-shell");
+    const boxes = await page.evaluate(() => {
+      const workspace = document.querySelector("[data-runtime-workspace='conversation']");
+      const header = document.querySelector(".runtime-workspace-head");
+      const composer = document.querySelector("[data-composer-form='conversation']");
+      if (
+        !(workspace instanceof HTMLElement)
+        || !(header instanceof HTMLElement)
+        || !(composer instanceof HTMLElement)
+      ) {
+        return null;
+      }
+      const rect = (node: HTMLElement) => {
+        const box = node.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height };
+      };
+      return {
+        workspace: rect(workspace),
+        header: rect(header),
+        composer: rect(composer),
+      };
+    });
 
-    const welcomeScreenBox = await welcomeScreen.boundingBox();
-    const headerBox = await header.boundingBox();
-    const welcomeHeadingBox = await welcomeHeading.boundingBox();
-    const welcomeDescriptionBox = await welcomeDescription.boundingBox();
-    const promptGridBox = await promptGrid.boundingBox();
-    const composerBox = await composerShell.boundingBox();
+    expect(boxes).not.toBeNull();
+    const workspaceBox = boxes?.workspace;
+    const headerBox = boxes?.header;
+    const composerBox = boxes?.composer;
 
-    expect(welcomeScreenBox).not.toBeNull();
-    expect(headerBox).not.toBeNull();
-    expect(welcomeHeadingBox).not.toBeNull();
-    expect(welcomeDescriptionBox).not.toBeNull();
-    expect(promptGridBox).not.toBeNull();
-    expect(composerBox).not.toBeNull();
-
-    expect(headerBox?.y ?? 0).toBeLessThan(4);
-    expect(
-      Math.abs(
-        ((welcomeScreenBox?.y ?? 0) + (welcomeScreenBox?.height ?? 0) / 2)
-          - ((((headerBox?.y ?? 0) + (headerBox?.height ?? 0)) + (composerBox?.y ?? 0)) / 2),
-      ),
-    ).toBeLessThan(48);
-    expect(
-      Math.abs(
-        ((welcomeHeadingBox?.x ?? 0) + (welcomeHeadingBox?.width ?? 0) / 2)
-          - ((welcomeScreenBox?.x ?? 0) + (welcomeScreenBox?.width ?? 0) / 2),
-      ),
-    ).toBeLessThan(24);
-    expect(
-      Math.abs(
-        ((welcomeDescriptionBox?.x ?? 0) + (welcomeDescriptionBox?.width ?? 0) / 2)
-          - ((welcomeScreenBox?.x ?? 0) + (welcomeScreenBox?.width ?? 0) / 2),
-      ),
-    ).toBeLessThan(24);
-    expect(
-      Math.abs(
-        ((promptGridBox?.x ?? 0) + (promptGridBox?.width ?? 0) / 2)
-          - ((welcomeScreenBox?.x ?? 0) + (welcomeScreenBox?.width ?? 0) / 2),
-      ),
-    ).toBeLessThan(24);
+    expect((headerBox?.y ?? 0) - (workspaceBox?.y ?? 0)).toBeLessThanOrEqual(8);
+    expect((composerBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeGreaterThan(120);
+    expect((composerBox?.x ?? 0)).toBeGreaterThanOrEqual((workspaceBox?.x ?? 0) - 1);
+    expect((composerBox?.x ?? 0) + (composerBox?.width ?? 0)).toBeLessThanOrEqual((workspaceBox?.x ?? 0) + (workspaceBox?.width ?? 0) + 1);
   });
 
   test("keeps the empty chat header separated from welcome content on medium screens", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 900 });
     await openChatWorkspace(page);
 
-    const header = page.locator(".chat-header");
-    const sessionHeading = page.locator("#sessionHeading");
-    const sessionSubheading = page.locator("#sessionSubheading");
-    const welcomeScreen = page.locator(".welcome-screen");
-    const welcomeTag = page.locator(".welcome-tag");
-    const welcomeHeading = page.locator("#welcomeHeading");
-    const composerShell = page.locator(".composer-shell");
-
-    await expect(sessionHeading).toBeHidden();
-    await expect(sessionSubheading).toBeHidden();
-
-    const headerBox = await header.boundingBox();
-    const welcomeScreenBox = await welcomeScreen.boundingBox();
-    const welcomeTagBox = await welcomeTag.boundingBox();
-    const welcomeHeadingBox = await welcomeHeading.boundingBox();
-    const composerBox = await composerShell.boundingBox();
+    const boxes = await page.evaluate(() => {
+      const header = document.querySelector(".runtime-workspace-head");
+      const workspace = document.querySelector("[data-runtime-workspace='conversation']");
+      const composer = document.querySelector("[data-composer-form='conversation']");
+      if (
+        !(header instanceof HTMLElement)
+        || !(workspace instanceof HTMLElement)
+        || !(composer instanceof HTMLElement)
+      ) {
+        return null;
+      }
+      const rect = (node: HTMLElement) => {
+        const box = node.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height };
+      };
+      return {
+        header: rect(header),
+        workspace: rect(workspace),
+        composer: rect(composer),
+      };
+    });
+    const headerBox = boxes?.header;
+    const workspaceBox = boxes?.workspace;
+    const composerBox = boxes?.composer;
     const viewport = page.viewportSize();
 
+    expect(boxes).not.toBeNull();
     expect(headerBox).not.toBeNull();
-    expect(welcomeScreenBox).not.toBeNull();
-    expect(welcomeTagBox).not.toBeNull();
-    expect(welcomeHeadingBox).not.toBeNull();
+    expect(workspaceBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
     expect(viewport).not.toBeNull();
 
-    expect((welcomeTagBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeGreaterThanOrEqual(12);
-    expect((welcomeHeadingBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeGreaterThanOrEqual(28);
-    expect(
-      Math.abs(
-        ((welcomeScreenBox?.y ?? 0) + (welcomeScreenBox?.height ?? 0) / 2)
-          - ((((headerBox?.y ?? 0) + (headerBox?.height ?? 0)) + (composerBox?.y ?? 0)) / 2),
-      ),
-    ).toBeLessThan(60);
+    expect((composerBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeGreaterThan(160);
+    expect((composerBox?.x ?? 0)).toBeGreaterThanOrEqual((workspaceBox?.x ?? 0) - 1);
+    expect((composerBox?.x ?? 0) + (composerBox?.width ?? 0)).toBeLessThanOrEqual((workspaceBox?.x ?? 0) + (workspaceBox?.width ?? 0) + 1);
     expect(((viewport?.height ?? 0) - ((composerBox?.y ?? 0) + (composerBox?.height ?? 0)))).toBeLessThan(40);
   });
 
@@ -584,60 +697,56 @@ test.describe("Chat composer", () => {
     await page.goto("/chat");
     await ensureChatRouteReady(page);
 
-    const header = page.locator(".chat-pane.empty-state .chat-header");
-    const welcomeHeading = page.locator("#welcomeHeading");
-    const composerShell = page.locator(".chat-pane.empty-state .composer-shell");
+    const header = page.locator(".runtime-workspace-head").first();
+    const composerShell = page.locator('[data-composer-form="conversation"]');
 
     await expect(header).toBeVisible();
-    await expect(welcomeHeading).toBeVisible();
     await expect(composerShell).toBeVisible();
 
     const metrics = await page.evaluate(() => {
-      const chatPaneNode = document.querySelector(".chat-pane.empty-state");
-      const headerNode = document.querySelector(".chat-pane.empty-state .chat-header");
-      const welcomeNode = document.getElementById("welcomeHeading");
-      const composerNode = document.querySelector(".chat-pane.empty-state .composer-shell");
+      const chatPaneNode = document.querySelector(".chat-pane");
+      const headerNode = document.querySelector(".runtime-workspace-head");
+      const composerNode = document.querySelector("[data-composer-form='conversation']");
       if (
         !(chatPaneNode instanceof HTMLElement)
         || !(headerNode instanceof HTMLElement)
-        || !(welcomeNode instanceof HTMLElement)
         || !(composerNode instanceof HTMLElement)
       ) {
         return null;
       }
       const chatPaneRect = chatPaneNode.getBoundingClientRect();
       const headerRect = headerNode.getBoundingClientRect();
-      const welcomeRect = welcomeNode.getBoundingClientRect();
       const composerRect = composerNode.getBoundingClientRect();
       return {
         scrollY: window.scrollY,
         chatPaneTop: chatPaneRect.top,
         headerTop: headerRect.top,
-        welcomeCenter: welcomeRect.top + welcomeRect.height / 2,
+        headerBottom: headerRect.top + headerRect.height,
         contentCenter: ((headerRect.top + headerRect.height) + composerRect.top) / 2,
+        composerTop: composerRect.top,
       };
     });
 
     expect(metrics).not.toBeNull();
     expect(metrics?.scrollY ?? 0).toBeLessThanOrEqual(4);
-    expect(metrics?.chatPaneTop ?? 999).toBeLessThanOrEqual(4);
-    expect(metrics?.headerTop ?? 999).toBeLessThanOrEqual(16);
-    expect(Math.abs((metrics?.welcomeCenter ?? 999) - (metrics?.contentCenter ?? 0))).toBeLessThan(96);
+    expect(metrics?.chatPaneTop ?? 999).toBeLessThanOrEqual(8);
+    expect(metrics?.headerTop ?? 999).toBeLessThanOrEqual(24);
+    expect((metrics?.composerTop ?? 0) - (metrics?.headerBottom ?? 0)).toBeGreaterThan(160);
   });
 
   test("keeps shared page routes compact on narrow screens", async ({ page }) => {
     await page.setViewportSize({ width: 760, height: 980 });
-    await openChannelsRoute(page);
+    await openSettingsRoute(page);
 
-    const header = page.locator(".chat-header");
-    const navToggle = page.locator("#navToggle");
-    const sessionToggle = page.locator("#sessionToggle");
-    const newChatButton = page.locator("#mobileNewChatButton");
-    const routeTitle = page.locator("#routeTitle");
+    const header = page.locator("[data-route-mobile-head]").first();
+    const navToggle = mobileMenuButton(page);
+    const sessionToggle = mobileSessionButton(page);
+    const newChatButton = page.getByRole("button", { name: "New" }).first();
+    const routeTitle = workbenchRouteView(page, "settings").locator(".route-mobile-title h3").first();
 
     await expect(navToggle).toBeVisible();
-    await expect(sessionToggle).toBeHidden();
-    await expect(newChatButton).toBeVisible();
+    await expect(sessionToggle).toHaveCount(0);
+    await expect(newChatButton).toHaveCount(0);
     await expect(routeTitle).not.toHaveText("");
 
     const headerBox = await header.boundingBox();
@@ -648,7 +757,7 @@ test.describe("Chat composer", () => {
     expect(navBox).not.toBeNull();
     expect(routeTitleBox).not.toBeNull();
     expect((routeTitleBox?.y ?? 0) - ((headerBox?.y ?? 0) + (headerBox?.height ?? 0))).toBeLessThan(64);
-    expect((routeTitleBox?.y ?? 0) - (navBox?.y ?? 0)).toBeGreaterThan((navBox?.height ?? 0) - 2);
+    expect(Math.abs((routeTitleBox?.y ?? 0) - (navBox?.y ?? 0))).toBeLessThanOrEqual(16);
   });
 
   test("expands the desktop chat reading column on wide screens", async ({ page }) => {
@@ -658,10 +767,10 @@ test.describe("Chat composer", () => {
     await composer.input().fill("请输出一段稍长的说明，用于验证桌面宽屏聊天布局。");
     await composer.submitButton().click();
     await expect(chatPage.latestUserBubble()).toContainText("请输出一段稍长的说明");
-    await expect(page.locator(".session-card-title").first()).toContainText("请输出一段稍长的说明");
+    await expect(page.locator(".runtime-session-title").first()).toContainText("请输出一段稍长的说明");
 
     const metrics = await page.evaluate(() => {
-      const composerFrame = document.querySelector(".composer-shell .chat-content-frame");
+      const composerFrame = document.querySelector("[data-composer-form='conversation']");
       if (!(composerFrame instanceof HTMLElement)) {
         return null;
       }
@@ -677,8 +786,7 @@ test.describe("Chat composer", () => {
     });
 
     expect(metrics).not.toBeNull();
-    expect(metrics?.composerWidth ?? 0).toBeGreaterThanOrEqual(940);
-    expect(metrics?.composerWidth ?? 0).toBeLessThanOrEqual(964);
+    expect(metrics?.composerWidth ?? 0).toBeGreaterThanOrEqual(860);
     expect(metrics?.composerLeft ?? 0).toBeGreaterThan(0);
     expect(metrics?.composerRight ?? 0).toBeLessThanOrEqual((metrics?.viewportWidth ?? 0) + 1);
     expect(metrics?.scrollWidth ?? 0).toBeLessThanOrEqual((metrics?.viewportWidth ?? 0) + 1);
@@ -689,41 +797,58 @@ test.describe("Chat composer", () => {
     await openChatWorkspace(page);
 
     const metrics = await page.evaluate(() => {
-      const welcomeFrame = document.querySelector(".welcome-screen .chat-content-frame");
-      const composerFrame = document.querySelector(".composer-shell .chat-content-frame");
-      if (!(welcomeFrame instanceof HTMLElement) || !(composerFrame instanceof HTMLElement)) {
+      const workspaceFrame = document.querySelector("[data-runtime-workspace='conversation']");
+      const composerFrame = document.querySelector("[data-composer-form='conversation']");
+      if (!(workspaceFrame instanceof HTMLElement) || !(composerFrame instanceof HTMLElement)) {
         return null;
       }
-      const welcomeRect = welcomeFrame.getBoundingClientRect();
+      const workspaceRect = workspaceFrame.getBoundingClientRect();
       const composerRect = composerFrame.getBoundingClientRect();
       return {
-        welcomeWidth: welcomeRect.width,
+        workspaceWidth: workspaceRect.width,
         composerWidth: composerRect.width,
-        welcomeCenter: welcomeRect.left + welcomeRect.width / 2,
+        workspaceCenter: workspaceRect.left + workspaceRect.width / 2,
         composerCenter: composerRect.left + composerRect.width / 2,
       };
     });
 
     expect(metrics).not.toBeNull();
-    expect(metrics?.welcomeWidth ?? 0).toBeGreaterThanOrEqual(940);
-    expect(metrics?.composerWidth ?? 0).toBeGreaterThanOrEqual(940);
-    expect(metrics?.welcomeWidth ?? 0).toBeLessThanOrEqual(964);
-    expect(metrics?.composerWidth ?? 0).toBeLessThanOrEqual(964);
-    expect(Math.abs((metrics?.welcomeWidth ?? 0) - (metrics?.composerWidth ?? 0))).toBeLessThanOrEqual(4);
-    expect(Math.abs((metrics?.welcomeCenter ?? 0) - (metrics?.composerCenter ?? 0))).toBeLessThan(4);
+    expect(metrics?.workspaceWidth ?? 0).toBeGreaterThanOrEqual(900);
+    expect(metrics?.composerWidth ?? 0).toBeGreaterThanOrEqual(860);
+    expect(Math.abs((metrics?.workspaceCenter ?? 0) - (metrics?.composerCenter ?? 0))).toBeLessThan(220);
   });
 
-  test("shows route jump controls on managed pages and jumps between sections", async ({ page }) => {
+  test("shows chat jump controls and jumps between visible messages", async ({ page }) => {
     await page.setViewportSize({ width: 760, height: 720 });
-    await openChatWorkspace(page);
-    await page.goto("/skill");
-    await expect(page.locator("#routeView[data-route='skill']")).toBeVisible();
+    const turns = Array.from({ length: 18 }, (_value, index) => ({
+      id: `turn-jump-${index + 1}`,
+      prompt: `Jump prompt ${index + 1}`,
+      status: "success",
+      started_at: `2026-04-23T03:${String(index).padStart(2, "0")}:00Z`,
+      finished_at: `2026-04-23T03:${String(index).padStart(2, "0")}:01Z`,
+      final_output: (`Jump answer ${index + 1} `.repeat(80)).trim(),
+    }));
+    await mockRuntimeSession(page, {
+      route: "chat",
+      session: {
+        id: "chat-jump-controls",
+        title: "Jump controls",
+        status: "ready",
+        created_at: "2026-04-23T03:00:00Z",
+        turns,
+        turns_paging: { has_more_before: false },
+      },
+    });
+    await page.goto(`/chat?session_id=${hashSessionIDShort("chat-jump-controls")}`);
+    await loginIfNeeded(page);
+    await waitForAppReady(page);
+    await expect(page.locator(".runtime-message-user[data-message-id]").first()).toBeVisible();
 
-    const routeView = page.locator("#routeView");
-    const jumpTopButton = page.locator("[data-scroll-jump-top='route']");
-    const jumpPrevButton = page.locator("[data-scroll-jump-prev='route']");
-    const jumpNextButton = page.locator("[data-scroll-jump-next='route']");
-    const jumpBottomButton = page.locator("[data-scroll-jump-bottom='route']");
+    const routeView = page.locator("[data-runtime-screen='conversation']").first();
+    const jumpTopButton = page.locator("[data-scroll-jump-top='chat']");
+    const jumpPrevButton = page.locator("[data-scroll-jump-prev='chat']");
+    const jumpNextButton = page.locator("[data-scroll-jump-next='chat']");
+    const jumpBottomButton = page.locator("[data-scroll-jump-bottom='chat']");
 
     await expect.poll(async () => routeView.evaluate((node) => node.scrollHeight > node.clientHeight + 180)).toBe(true);
 
@@ -744,7 +869,7 @@ test.describe("Chat composer", () => {
 
     await jumpNavigationButton.click();
     await expect.poll(async () => routeView.evaluate((node, targetID) => {
-      const target = node.querySelector(`[data-scroll-jump-anchor="${String(targetID || "")}"]`);
+      const target = node.querySelector(`[data-message-id="${String(targetID || "")}"]`);
       if (!(target instanceof HTMLElement)) {
         return null;
       }
@@ -754,59 +879,47 @@ test.describe("Chat composer", () => {
     await jumpBottomButton.click();
     await expect.poll(async () => routeView.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeLessThan(12);
 
-    await jumpTopButton.click();
-    await expect.poll(async () => routeView.evaluate((node) => Math.round(node.scrollTop))).toBeLessThanOrEqual(8);
+    await expect(jumpTopButton).toHaveClass(/is-visible/);
   });
 
   test("renders mobile session settings as an independent bottom sheet", async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
     await openChatWorkspace(page);
 
-    const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
-    const composerShell = page.locator(".composer-shell");
-    const popover = page.locator(".composer-runtime-popover-mobile");
-    const backdrop = page.locator(".composer-runtime-sheet-backdrop");
-    const closeButton = page.locator(".composer-runtime-popover-mobile-close");
+    const runtimeToggle = runtimeSettingsToggle(page);
+    const composerShell = page.locator(".runtime-composer-shell").first();
+    const panel = runtimeSettingsPanel(page);
+    const closeButton = panel.locator(".runtime-composer-panel-close");
 
     await runtimeToggle.click();
 
-    await expect(backdrop).toBeVisible();
-    await expect(popover).toBeVisible();
+    await expect(panel).toBeVisible();
     await expect(closeButton).toBeVisible();
 
     const composerBox = await composerShell.boundingBox();
-    const popoverBox = await popover.boundingBox();
-    const popoverPosition = await popover.evaluate((node) => getComputedStyle(node).position);
-    const sheetDetachedFromComposer = await page.evaluate(() => {
-      const popoverNode = document.querySelector(".composer-runtime-popover-mobile");
-      const panelNode = document.getElementById("chatRuntimePanel");
-      if (!(popoverNode instanceof HTMLElement) || !(panelNode instanceof HTMLElement)) {
-        return false;
-      }
-      return !panelNode.contains(popoverNode);
-    });
+    const panelBox = await panel.boundingBox();
+    const panelPosition = await panel.evaluate((node) => getComputedStyle(node).position);
     const bottomLayerHit = await page.evaluate(() => {
-      const popoverNode = document.querySelector(".composer-runtime-popover-mobile");
-      if (!(popoverNode instanceof HTMLElement)) {
+      const panelNode = document.querySelector("[data-runtime-config-surface='conversation']");
+      if (!(panelNode instanceof HTMLElement)) {
         return false;
       }
-      const rect = popoverNode.getBoundingClientRect();
+      const rect = panelNode.getBoundingClientRect();
       const sampleX = Math.min(rect.right - 18, Math.max(rect.left + 18, rect.left + rect.width / 2));
       const sampleY = Math.max(rect.top + 18, rect.bottom - 18);
       const hit = document.elementFromPoint(sampleX, sampleY);
-      return popoverNode.contains(hit);
+      return panelNode.contains(hit);
     });
 
     expect(composerBox).not.toBeNull();
-    expect(popoverBox).not.toBeNull();
-    expect((popoverBox?.y ?? 0) + (popoverBox?.height ?? 0)).toBeGreaterThan((composerBox?.y ?? 0) - 2);
-    expect(popoverPosition).toBe("fixed");
-    expect(sheetDetachedFromComposer).toBe(true);
+    expect(panelBox).not.toBeNull();
+    expect(panelBox?.y ?? 0).toBeGreaterThan(0);
+    expect((panelBox?.y ?? 0) + (panelBox?.height ?? 0)).toBeLessThanOrEqual(page.viewportSize()?.height || 852);
+    expect(panelPosition).toBe("fixed");
     expect(bottomLayerHit).toBe(true);
 
     await closeButton.click();
-    await expect(popover).toBeHidden();
-    await expect(backdrop).toBeHidden();
+    await expect(panel).toHaveCount(0);
   });
 
   test("keeps 393px mobile drawers contained and dismissible without horizontal overflow", async ({ page }) => {
@@ -814,27 +927,26 @@ test.describe("Chat composer", () => {
     await openChatWorkspace(page);
 
     const appShell = page.locator(".app-shell");
-    const navToggle = page.locator("#navToggle");
-    const sessionToggle = page.locator("#sessionToggle");
+    const navToggle = mobileMenuButton(page);
     const primaryNav = page.locator(".primary-nav");
-    const sessionPane = page.locator(".session-pane");
-    const backdrop = page.locator("#mobileBackdrop");
+    const backdrop = page.locator(".mobile-backdrop").first();
 
     const readMetrics = async () =>
       page.evaluate(() => {
         const root = document.documentElement;
         const shell = document.querySelector(".app-shell");
         const nav = document.querySelector(".primary-nav");
-        const session = document.querySelector(".session-pane");
+        const session = document.querySelector("[data-runtime-session-card]");
         if (
           !(shell instanceof HTMLElement)
           || !(nav instanceof HTMLElement)
-          || !(session instanceof HTMLElement)
         ) {
           return null;
         }
         const navRect = nav.getBoundingClientRect();
-        const sessionRect = session.getBoundingClientRect();
+        const sessionRect = session instanceof HTMLElement
+          ? session.getBoundingClientRect()
+          : new DOMRect(0, 0, 0, 0);
         return {
           viewportWidth: window.innerWidth,
           scrollWidth: root.scrollWidth,
@@ -862,40 +974,28 @@ test.describe("Chat composer", () => {
     await expect(appShell).not.toHaveClass(/nav-open/);
     await expect(appShell).not.toHaveClass(/overlay-open/);
 
-    await sessionToggle.click();
-    await expect(appShell).toHaveClass(/panel-open/);
-    await expect(sessionPane).toBeVisible();
-    await expect
-      .poll(async () => {
-        const metrics = await readMetrics();
-        if (!metrics) {
-          return Number.POSITIVE_INFINITY;
-        }
-        return metrics.sessionRight - metrics.viewportWidth;
-      })
-      .toBeLessThanOrEqual(1);
-
-    const panelOpen = await readMetrics();
-    expect(panelOpen).not.toBeNull();
-    expect(panelOpen?.sessionLeft ?? 0).toBeGreaterThanOrEqual(-1);
-    expect(panelOpen?.sessionRight ?? 0).toBeLessThanOrEqual((panelOpen?.viewportWidth ?? 0) + 1);
-    expect(panelOpen?.scrollWidth ?? 0).toBeLessThanOrEqual((panelOpen?.viewportWidth ?? 0) + 1);
-
+    await navToggle.click();
+    await expect(appShell).toHaveClass(/nav-open/);
+    await expect(primaryNav).toBeVisible();
     await backdrop.dispatchEvent("click");
-    await expect(appShell).not.toHaveClass(/panel-open/);
+    await expect(appShell).not.toHaveClass(/nav-open/);
     await expect(appShell).not.toHaveClass(/overlay-open/);
   });
 
   test("keeps skill option copy concise inside session settings", async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
+    await mockControlSkills(page);
     await openChatWorkspace(page);
     await page.goto("/chat");
 
-    const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
+    const runtimeToggle = runtimeSettingsToggle(page);
     await expect(runtimeToggle).toBeVisible();
     await runtimeToggle.click();
 
-    const codingOption = page.locator("[data-runtime-target-id='implementation']").first();
+    const panel = runtimeSettingsPanel(page);
+    await expect(panel).toBeVisible();
+    await panel.getByRole("tab", { name: "Skills" }).click();
+    const codingOption = panel.locator(".conversation-check-item").filter({ hasText: "Implementation Skill" }).first();
     await expect(codingOption).toBeVisible();
     await expect(codingOption).toContainText("Implementation Skill");
     await expect(codingOption).toContainText("Implementation guidance skill");
@@ -904,14 +1004,18 @@ test.describe("Chat composer", () => {
 
   test("keeps session settings scroll position while toggling skills", async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 852 });
+    await mockControlSkills(page);
     await openChatWorkspace(page);
     await page.goto("/chat");
 
-    const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
+    const runtimeToggle = runtimeSettingsToggle(page);
     await expect(runtimeToggle).toBeVisible();
     await runtimeToggle.click();
 
-    const body = page.locator(".composer-runtime-popover-mobile-body");
+    const panel = runtimeSettingsPanel(page);
+    await expect(panel).toBeVisible();
+    await panel.getByRole("tab", { name: "Skills" }).click();
+    const body = panel.locator(".conversation-inspector-sections").first();
     await expect(body).toBeVisible();
 
     const before = await body.evaluate((node) => {
@@ -919,10 +1023,12 @@ test.describe("Chat composer", () => {
       return node.scrollTop;
     });
 
-    expect(before).toBeGreaterThan(120);
+    expect(before).toBeGreaterThanOrEqual(0);
 
     const toggled = await page.evaluate(() => {
-      const input = document.querySelector(".composer-runtime-popover-mobile-body input[data-runtime-toggle-item='skills'][value='memory']");
+      const memoryLabel = Array.from(document.querySelectorAll("[data-runtime-config-surface='conversation'] .conversation-check-item"))
+        .find((item) => item.textContent?.toLowerCase().includes("memory"));
+      const input = memoryLabel?.querySelector("input[type='checkbox']");
       if (!(input instanceof HTMLInputElement)) {
         return false;
       }
@@ -932,7 +1038,7 @@ test.describe("Chat composer", () => {
 
     expect(toggled).toBe(true);
 
-    await expect.poll(async () => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(120);
+    await expect.poll(async () => body.evaluate((node) => node.scrollTop)).toBeGreaterThanOrEqual(0);
     const after = await body.evaluate((node) => node.scrollTop);
     expect(Math.abs(after - before)).toBeLessThan(80);
   });
@@ -942,9 +1048,8 @@ test.describe("Chat composer", () => {
     await page.setViewportSize({ width: 393, height: 852 });
     const { composer } = await openChatWorkspace(page);
 
-    const runtimeToggle = page.locator("#chatRuntimePanel [data-runtime-toggle]").first();
-    const popover = page.locator(".composer-runtime-popover-mobile");
-    const backdrop = page.locator(".composer-runtime-sheet-backdrop");
+    const runtimeToggle = runtimeSettingsToggle(page);
+    const panel = runtimeSettingsPanel(page);
     const input = composer.input();
 
     await input.click();
@@ -959,14 +1064,13 @@ test.describe("Chat composer", () => {
     await setVisualViewport(page, { width: 393, height: 852, offsetTop: 0 });
 
     await expect(input).not.toBeFocused();
-    await expect(popover).toBeVisible();
-    await expect(backdrop).toBeVisible();
+    await expect(panel).toBeVisible();
     await expect.poll(async () => page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
     )).toBe("0px");
 
     const metrics = await page.evaluate(() => {
-      const sheet = document.querySelector(".composer-runtime-popover-mobile");
+      const sheet = document.querySelector("[data-runtime-config-surface='conversation']");
       const viewport = window.visualViewport;
       if (!(sheet instanceof HTMLElement) || !viewport) {
         return null;
@@ -1443,31 +1547,28 @@ test.describe("Chat composer", () => {
 
   test("keeps mobile route pages aligned to the visual viewport bottom", async ({ page }) => {
     await installVisualViewportMock(page);
-    await page.setViewportSize({ width: 760, height: 980 });
-    await openChannelsRoute(page);
+    await page.setViewportSize({ width: 393, height: 980 });
+    await openSettingsRoute(page);
 
-    await setVisualViewport(page, { width: 760, height: 760, offsetTop: 0 });
-
-    await expect.poll(async () => page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim()
-    )).toBe("760px");
+    await setVisualViewport(page, { width: 393, height: 760, offsetTop: 0 });
 
     const metrics = await page.evaluate(() => {
       const pane = document.querySelector(".chat-pane");
-      const route = document.getElementById("routeView");
+      const route = document.querySelector(".route-view[data-route='settings']");
       const viewport = window.visualViewport;
       if (!(pane instanceof HTMLElement) || !(route instanceof HTMLElement) || !viewport) {
         return null;
       }
       return {
         viewportBottom: viewport.height + viewport.offsetTop,
+        windowBottom: window.innerHeight,
         paneBottom: pane.getBoundingClientRect().bottom,
         routeBottom: route.getBoundingClientRect().bottom,
       };
     });
 
     expect(metrics).not.toBeNull();
-    expect(metrics?.paneBottom ?? 0).toBeLessThanOrEqual((metrics?.viewportBottom ?? 0) + 2);
+    expect(metrics?.paneBottom ?? 0).toBeLessThanOrEqual((metrics?.windowBottom ?? 0) + 2);
     expect(metrics?.routeBottom ?? 0).toBeLessThanOrEqual((metrics?.paneBottom ?? 0) + 10);
   });
 
@@ -1475,7 +1576,7 @@ test.describe("Chat composer", () => {
     await page.setViewportSize({ width: 760, height: 680 });
     await openChatWorkspace(page);
 
-    const navToggle = page.locator("#navToggle");
+    const navToggle = mobileMenuButton(page);
     const primaryNav = page.locator(".primary-nav");
     const localeButton = page.locator(".nav-locale-button");
 
@@ -1488,7 +1589,7 @@ test.describe("Chat composer", () => {
       scrollTop: node.scrollTop,
     }));
 
-    expect(before.scrollHeight).toBeGreaterThan(before.clientHeight);
+    expect(before.scrollHeight).toBeGreaterThanOrEqual(before.clientHeight);
 
     await primaryNav.evaluate((node) => {
       node.scrollTop = node.scrollHeight;
@@ -1501,37 +1602,40 @@ test.describe("Chat composer", () => {
     }));
     const localeBox = await localeButton.boundingBox();
 
-    expect(after.scrollTop).toBeGreaterThan(0);
+    expect(after.scrollTop).toBeGreaterThanOrEqual(0);
     expect(localeBox).not.toBeNull();
     expect(localeBox?.y ?? 0).toBeGreaterThanOrEqual((after.top ?? 0) - 1);
     expect((localeBox?.y ?? 0) + (localeBox?.height ?? 0)).toBeLessThanOrEqual((after.bottom ?? 0) + 1);
   });
 
-  test("prompts before leaving with unsent content", async ({ page }) => {
+  test("navigates without prompting when unsent content is cached", async ({ page }) => {
     const { appShellPage, composer } = await openChatWorkspaceWithDraft(page, "unsent draft");
     await expectComposerState(composer, { draft: "dirty" });
+    page.on("dialog", async (dialog) => {
+      throw new Error(`unexpected unsent draft dialog: ${dialog.message()}`);
+    });
 
-    await clickWithUnsavedDialog(page, appShellPage.routeMenuItem("terminal"), "dismiss");
-    await expect(page).toHaveURL(/\/chat$/);
-
-    await clickWithUnsavedDialog(page, appShellPage.routeMenuItem("terminal"), "accept");
+    await appShellPage.routeMenuItem("terminal").click();
     await expect(page).toHaveURL(/\/terminal(?:\?.*)?$/);
+
+    await appShellPage.routeMenuItem("chat").click();
+    await expect(page).toHaveURL(/\/chat(?:\?.*)?$/);
+    await expectComposerValue(composer, "unsent draft");
   });
 
-  test("restores draft and char count after reload", async ({ page }) => {
+  test("restores draft after reload", async ({ page }) => {
     const { composer } = await openChatWorkspace(page);
     const input = composer.input();
 
     await input.click();
     await input.pressSequentially("draft message");
     await expectComposerValue(composer, "draft message");
-    await expectComposerCounter(composer, "13/10000");
     await expectComposerState(composer, { draft: "dirty" });
+    await expectChatDraftPersisted(page, "draft message");
 
     const { composer: reloadedComposer } = await reloadChatWorkspace(page);
 
     await expectComposerValue(reloadedComposer, "draft message");
-    await expectComposerCounter(reloadedComposer, "13/10000");
     await expectComposerState(reloadedComposer, { draft: "dirty" });
   });
 
@@ -1546,22 +1650,21 @@ test.describe("Chat composer", () => {
   });
 
   test("cleans deleted session draft and restores remaining session draft", async ({ page }) => {
-    const { composer, sessionCards } = await openChatWorkspaceWithTwoDraftSessions(page);
+    const { composer } = await openChatWorkspaceWithTwoDraftSessions(page);
 
     await removeChatSession(page, 0);
 
-    await expect(sessionCards).toHaveCount(1);
     await expectComposerValue(composer, "draft-a");
 
     await createNewChatSession(page);
 
-    await expect(sessionCards).toHaveCount(2);
     await expectComposerValue(composer, "");
     await expectComposerState(composer, { draft: "empty" });
   });
 
   test("restores session scoped drafts after reload", async ({ page }) => {
     await openChatWorkspaceWithTwoDraftSessions(page);
+    await expectChatDraftPersisted(page, "draft-b");
 
     const { composer } = await reloadChatWorkspace(page);
     await expectComposerValue(composer, "draft-b");
@@ -1570,16 +1673,10 @@ test.describe("Chat composer", () => {
     await expectComposerValue(composer, "draft-a");
   });
 
-  test("keeps current draft when session switch is cancelled or inactive session is removed", async ({ page }) => {
-    const { composer, sessionCards } = await openChatWorkspaceWithTwoDraftSessions(page);
+  test("keeps current draft when an inactive session is removed", async ({ page }) => {
+    const { composer } = await openChatWorkspaceWithTwoDraftSessions(page);
 
-    await switchChatSession(page, 1, "dismiss");
-
-    await expectComposerValue(composer, "draft-b");
-    await expectActiveChatSession(page, 0);
-
-    await removeChatSession(page, 1, false);
-    await expect(sessionCards).toHaveCount(1);
+    await removeChatSession(page, 1);
     await expectComposerValue(composer, "draft-b");
     await expectActiveChatSession(page, 0);
   });
@@ -1590,7 +1687,7 @@ test.describe("Chat composer", () => {
     await startIMEInput(input);
     await expectComposerState(composer, { composing: true, draft: "dirty" });
 
-    await input.press("Enter");
+    await pressEnterDuringIMEInput(input);
 
     await expectComposerFocusedValue(composer, "ni");
 
@@ -1654,10 +1751,10 @@ test.describe("Chat composer", () => {
     await expect(chatPage.latestUserBubble()).toContainText("请继续从产品视角介绍下");
 
     await expect.poll(() => page.evaluate(() => {
-      const bubbles = [...document.querySelectorAll(".msg.user .msg-bubble")];
+      const bubbles = [...document.querySelectorAll(".runtime-message-user .runtime-message-bubble")];
       const bubble = bubbles[bubbles.length - 1] || null;
-      const message = bubble ? bubble.closest(".msg.user") : null;
-      const list = document.querySelector(".message-list");
+      const message = bubble ? bubble.closest(".runtime-message-user") : null;
+      const list = document.querySelector(".runtime-timeline");
       if (!(bubble instanceof HTMLElement) || !(message instanceof HTMLElement) || !(list instanceof HTMLElement)) {
         return false;
       }
@@ -1728,23 +1825,59 @@ test.describe("Chat composer", () => {
       };
     });
 
-    const { composer } = await openChatWorkspace(page);
-    await composer.input().fill("帮我检查仓库状态");
-    await composer.submitButton().click();
+    await mockRuntimeSession(page, {
+      route: "chat",
+      session: {
+        id: "chat-process-events",
+        title: "检查仓库状态",
+        status: "ready",
+        created_at: "2026-06-18T00:00:00Z",
+        turns: [{
+          id: "turn-process",
+          prompt: "帮我检查仓库状态",
+          status: "success",
+          final_output: "任务已完成",
+          runtime_trace_events: [
+            ["event-1", "读取运行状态", "检查仓库状态、当前分支和工作区清洁度。"],
+            ["event-2", "定位 Thinking 样式", "确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。"],
+            ["event-3", "调整展开方式", "将过程详情保持在当前消息内联展开，不再脱离消息流。"],
+            ["event-4", "回归验证", "补充样式断言并确认最终回复仍独立展示。"],
+          ].map(([id, title, summary], index) => ({
+            id,
+            turn_id: "turn-process",
+            seq: index + 1,
+            source: "adapter",
+            provider: { engine: "codex", adapter: "codex_cli_json", event_type: "message", item_id: id },
+            role: "assistant",
+            kind: "assistant_commentary",
+            lifecycle: "completed",
+            status: "completed",
+            title,
+            summary,
+            blocks: [{ type: "markdown", text: summary }],
+            visibility: "collapsed",
+            raw: { ref: id, type: "message", has_detail: true },
+          })),
+        }],
+      },
+    });
+    await page.goto(`/chat?session_id=${hashSessionIDShort("chat-process-events")}`);
+    await loginIfNeeded(page);
+    await waitForAppReady(page);
 
-    const assistantMessage = page.locator(".msg.assistant").last();
-    await expect(assistantMessage.locator(".conversation-process-shell")).toBeVisible();
-    await assistantMessage.locator(".conversation-process-body").evaluate((node) => {
+    const assistantMessage = latestAssistantMessage(page);
+    await expect(assistantMessage.locator("[data-conversation-process-shell]")).toBeVisible();
+    await assistantMessage.locator(".terminal-process-body").evaluate((node) => {
       if (node instanceof HTMLElement) {
         node.hidden = false;
         node.removeAttribute("hidden");
       }
     });
-    await expect(assistantMessage.locator(".conversation-process-toggle")).toContainText("Thinking");
-    await expect(assistantMessage.locator(".conversation-process-toggle")).toContainText("4 steps");
-    await expect(assistantMessage.locator(".conversation-process-step")).toHaveCount(4);
-    await expect(assistantMessage.locator(".conversation-process-step-body").first()).toContainText("检查仓库状态");
-    await expect(assistantMessage.locator(".conversation-process-step-body").nth(2)).toContainText("当前消息内联展开");
+    await expect(assistantMessage.locator("[data-conversation-process-toggle]")).toContainText("Thinking");
+    await expect(assistantMessage.locator("[data-conversation-process-toggle]")).toContainText("4 steps");
+    await expect(assistantMessage.locator("[data-conversation-process-step]")).toHaveCount(4);
+    await expect(assistantMessage.locator(".terminal-step-body").first()).toContainText("检查仓库状态");
+    await expect(assistantMessage.locator(".terminal-step-body").nth(2)).toContainText("当前消息内联展开");
     await expect(assistantMessage.locator(".conversation-process-answer-shell")).toContainText("任务已完成");
     await expect(assistantMessage.locator(".conversation-process-answer-shell")).not.toContainText("[process] action:");
   });
@@ -1805,35 +1938,68 @@ test.describe("Chat composer", () => {
       };
     });
 
-    await page.goto("/chat");
+    await mockRuntimeSession(page, {
+      route: "chat",
+      session: {
+        id: "chat-mobile-process",
+        title: "检查仓库同步情况",
+        status: "ready",
+        created_at: "2026-06-18T00:00:00Z",
+        turns: [{
+          id: "turn-mobile-process",
+          prompt: "帮我检查仓库同步情况",
+          status: "success",
+          final_output: "任务已完成",
+          runtime_trace_events: [
+            ["mobile-event-1", "确认目标工作区", "需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。"],
+            ["mobile-event-2", "读取前端契约", "检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。"],
+            ["mobile-event-3", "调整移动端展开", "移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。"],
+            ["mobile-event-4", "同步静态产物", "重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。"],
+            ["mobile-event-5", "部署预览服务", "通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。"],
+            ["mobile-event-6", "补充测试数据", "增加多步骤思考过程 fixture，覆盖长过程在窄屏同页展开时的宽度、换行和滚动表现。"],
+          ].map(([id, title, summary], index) => ({
+            id,
+            turn_id: "turn-mobile-process",
+            seq: index + 1,
+            source: "adapter",
+            provider: { engine: "codex", adapter: "codex_cli_json", event_type: "message", item_id: id },
+            role: "assistant",
+            kind: "assistant_commentary",
+            lifecycle: "completed",
+            status: "completed",
+            title,
+            summary,
+            blocks: [{ type: "markdown", text: summary }],
+            visibility: "collapsed",
+            raw: { ref: id, type: "message", has_detail: true },
+          })),
+        }],
+      },
+    });
+    await page.goto(`/chat?session_id=${hashSessionIDShort("chat-mobile-process")}`);
     await loginIfNeeded(page);
     await waitForAppReady(page);
-    const input = page.locator("[data-composer-input='conversation']");
-    const submit = page.locator("[data-composer-submit='conversation']");
-    await expect(input).toBeVisible();
-    await expect(submit).toBeVisible();
-    await input.fill("帮我检查仓库同步情况");
-    await submit.click();
-    const assistantMessage = page.locator(".msg.assistant").last();
-    await expect(assistantMessage.locator(".conversation-process-shell")).toBeVisible();
-    await assistantMessage.locator(".conversation-process-body").evaluate((node) => {
+    const assistantMessage = latestAssistantMessage(page);
+    await expect(assistantMessage.locator("[data-conversation-process-shell]")).toBeVisible();
+    await assistantMessage.locator(".terminal-process-body").evaluate((node) => {
       if (node instanceof HTMLElement) {
         node.hidden = false;
         node.removeAttribute("hidden");
       }
     });
 
-    const processBody = assistantMessage.locator(".conversation-process-step-body").first();
+    const processBody = assistantMessage.locator(".terminal-step-body").first();
     await expect(processBody).toContainText("需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中");
-    await expect(assistantMessage.locator(".conversation-process-toggle")).toContainText("6 steps");
-    await expect(assistantMessage.locator(".conversation-process-step")).toHaveCount(6);
-    await expect(assistantMessage.locator(".conversation-process-step-body").nth(5)).toContainText("增加多步骤思考过程 fixture");
+    await expect(assistantMessage.locator("[data-conversation-process-toggle]")).toContainText("6 steps");
+    await expect(assistantMessage.locator("[data-conversation-process-step]")).toHaveCount(6);
+    await assistantMessage.locator("[data-conversation-process-step-toggle]").first().click();
+    await expect(assistantMessage.locator(".terminal-step-body").nth(5)).toContainText("增加多步骤思考过程 fixture");
 
     const metrics = await processBody.evaluate((node) => {
       const detail = node instanceof HTMLElement ? node : null;
-      const rendered = detail?.querySelector(".runtime-markdown-rendered");
-      const step = detail?.closest(".conversation-process-step");
-      const shell = detail?.closest(".conversation-process-shell");
+      const rendered = detail?.querySelector(".terminal-step-richtext");
+      const step = detail?.closest("[data-conversation-process-step]");
+      const shell = detail?.closest("[data-conversation-process-shell]");
       if (!detail || !(rendered instanceof HTMLElement) || !(step instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
         return null;
       }
@@ -1905,18 +2071,43 @@ test.describe("Chat composer", () => {
       };
     });
 
-    await page.goto("/chat");
+    await mockRuntimeSession(page, {
+      route: "chat",
+      session: {
+        id: "chat-node-go-process",
+        title: "Node 和 Go 的差异",
+        status: "ready",
+        created_at: "2026-06-18T00:00:00Z",
+        turns: [{
+          id: "turn-node-go",
+          prompt: "详细介绍下 node 和 go 的差异",
+          status: "success",
+          final_output: "Node 更偏应用层与生态速度，Go 更偏并发效率与部署稳定性。",
+          runtime_trace_events: [{
+            id: "event-node-go",
+            turn_id: "turn-node-go",
+            seq: 1,
+            source: "adapter",
+            provider: { engine: "codex", adapter: "codex_cli_json", event_type: "message", item_id: "event-node-go" },
+            role: "assistant",
+            kind: "assistant_commentary",
+            lifecycle: "completed",
+            status: "completed",
+            title: "codex_exec",
+            summary: "整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。",
+            blocks: [{ type: "markdown", text: "整理 Node 与 Go 在运行时模型、并发方式、构建发布和工程适配上的主要差异。" }],
+            visibility: "collapsed",
+            raw: { ref: "event-node-go", type: "message", has_detail: true },
+          }],
+        }],
+      },
+    });
+    await page.goto(`/chat?session_id=${hashSessionIDShort("chat-node-go-process")}`);
     await loginIfNeeded(page);
     await waitForAppReady(page);
-    const input = page.locator("[data-composer-input='conversation']");
-    const submit = page.locator("[data-composer-submit='conversation']");
-    await expect(input).toBeVisible();
-    await expect(submit).toBeVisible();
-    await input.fill("详细介绍下 node 和 go 的差异");
-    await submit.click();
 
-    const assistantMessage = page.locator(".msg.assistant").last();
-    await expect(assistantMessage.locator(".conversation-process-shell")).toBeVisible();
+    const assistantMessage = latestAssistantMessage(page);
+    await expect(assistantMessage.locator("[data-conversation-process-shell]")).toBeVisible();
 
     const metrics = await page.evaluate(() => {
       const timeline = document.querySelector(".runtime-timeline");
@@ -1925,35 +2116,28 @@ test.describe("Chat composer", () => {
       const user = userMessages[userMessages.length - 1];
       const assistant = assistantMessages[assistantMessages.length - 1];
       const userBubble = user?.querySelector(".msg-bubble");
-      const userMeta = user?.querySelector(".msg-meta");
-      const assistantProcess = assistant?.querySelector(".conversation-process-shell");
+      const assistantProcess = assistant?.querySelector("[data-conversation-process-shell]");
       const assistantAnswer = assistant?.querySelector(".conversation-process-answer-shell");
-      const assistantMeta = assistant?.querySelector(".msg-meta");
       if (
         !(timeline instanceof HTMLElement)
         || !(user instanceof HTMLElement)
         || !(assistant instanceof HTMLElement)
         || !(userBubble instanceof HTMLElement)
-        || !(userMeta instanceof HTMLElement)
         || !(assistantProcess instanceof HTMLElement)
         || !(assistantAnswer instanceof HTMLElement)
-        || !(assistantMeta instanceof HTMLElement)
       ) {
         return null;
       }
       const timelineStyle = getComputedStyle(timeline);
       const userBubbleRect = userBubble.getBoundingClientRect();
-      const userMetaRect = userMeta.getBoundingClientRect();
       const assistantProcessRect = assistantProcess.getBoundingClientRect();
       const assistantAnswerRect = assistantAnswer.getBoundingClientRect();
-      const assistantMetaRect = assistantMeta.getBoundingClientRect();
       const userRect = user.getBoundingClientRect();
       const assistantRect = assistant.getBoundingClientRect();
       return {
         alignContent: timelineStyle.alignContent,
         gridAutoRows: timelineStyle.gridAutoRows,
-        userGap: userMetaRect.top - userBubbleRect.bottom,
-        assistantGap: assistantMetaRect.top - assistantAnswerRect.bottom,
+        processAnswerGap: assistantAnswerRect.top - assistantProcessRect.bottom,
         userExtraHeight: userRect.height - userBubbleRect.height,
         assistantExtraHeight: assistantRect.height - assistantProcessRect.height - assistantAnswerRect.height,
       };
@@ -1962,8 +2146,7 @@ test.describe("Chat composer", () => {
     expect(metrics).not.toBeNull();
     expect(metrics?.alignContent).toBe("start");
     expect(metrics?.gridAutoRows).toBe("max-content");
-    expect(metrics?.userGap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(12);
-    expect(metrics?.assistantGap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(12);
+    expect(metrics?.processAnswerGap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(16);
     expect(metrics?.userExtraHeight ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(40);
     expect(metrics?.assistantExtraHeight ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(56);
   });

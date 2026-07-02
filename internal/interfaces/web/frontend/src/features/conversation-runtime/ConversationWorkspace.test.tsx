@@ -368,6 +368,88 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
   });
 
+  it("creates a new Chat session without confirming when the current draft is cached", () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    document.body.setAttribute("data-composer-unsaved-state", "dirty");
+
+    try {
+      renderWorkspace({ isMobileViewport: false });
+      const sessionPane = screen.getByTestId("conversation-session-pane");
+
+      fireEvent.click(within(sessionPane).getByRole("button", { name: "New", hidden: true }));
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(runtimeMock.createSession).toHaveBeenCalledTimes(1);
+      expect(document.body).not.toHaveAttribute("data-composer-unsaved-confirm");
+    } finally {
+      document.body.removeAttribute("data-composer-unsaved-state");
+      document.body.removeAttribute("data-composer-unsaved-confirm");
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("switches Chat sessions without confirming when the current draft is cached", () => {
+    runtimeMock.activeSession = {
+      ...runtimeMock.activeSession,
+      id: "session-1",
+    };
+    runtimeMock.sessions = [
+      runtimeMock.activeSession,
+      {
+        ...runtimeMock.activeSession,
+        id: "session-2",
+        title: "Saved draft target",
+      },
+    ];
+    runtimeMock.sessionItems = [
+      { ...runtimeMock.sessionItems[0], id: "session-1", active: true, draft: false },
+      {
+        id: "session-2",
+        title: "Saved draft target",
+        meta: "now",
+        shortHash: "dcba4321",
+        createdAt: Date.parse("2026-04-23T10:00:00Z"),
+        active: false,
+        draft: false,
+        pinned: false,
+        pinning: false,
+      },
+    ];
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    document.body.setAttribute("data-composer-unsaved-state", "dirty");
+
+    try {
+      renderWorkspace({ isMobileViewport: false });
+      const sessionPane = screen.getByTestId("conversation-session-pane");
+      const targetCard = sessionPane.querySelector("[data-runtime-session-card='session-2']") as HTMLElement;
+
+      fireEvent.click(within(targetCard).getByRole("button", { name: /Saved draft target/, hidden: true }));
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(runtimeMock.focusSession).toHaveBeenCalledWith("session-2");
+      expect(document.body).not.toHaveAttribute("data-composer-unsaved-confirm");
+    } finally {
+      document.body.removeAttribute("data-composer-unsaved-state");
+      document.body.removeAttribute("data-composer-unsaved-confirm");
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("exposes Terminal runtime aliases when the shared workspace is mounted on the terminal route", () => {
+    runtimeMock.route = "terminal";
+    renderWorkspace({ route: "terminal", isMobileViewport: false });
+
+    expect(document.querySelector("[data-runtime-view='terminal']")).toHaveAttribute("data-runtime-route", "terminal");
+    expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute("data-runtime-route", "terminal");
+    expect(document.querySelector("[data-runtime-screen='terminal']")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-list='terminal']")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-select='session-1']")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-create-session='terminal']")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Type a message/i })).toHaveAttribute("data-composer-input", "terminal");
+    expect(screen.getByRole("button", { name: "Add attachment" })).toHaveAttribute("data-runtime-composer-upload", "terminal");
+    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("data-runtime-submit", "terminal");
+  });
+
   it("keeps the mobile composer visible but non-interactive while the primary navigation drawer is open", () => {
     const { unmount } = renderWorkspace({
       isMobileViewport: true,

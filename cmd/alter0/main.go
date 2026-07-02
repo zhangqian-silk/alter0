@@ -62,6 +62,7 @@ const defaultWebAddr = "127.0.0.1:18088"
 const defaultPublicCodexCommand = "/usr/local/bin/codex"
 const defaultCodexWorkspaceModeEnvKey = "ALTER0_CODEX_WORKSPACE_MODE"
 const defaultCodexWorkspaceMode = "session"
+const storageDirEnvKey = "ALTER0_STORAGE_DIR"
 
 func main() {
 	ensureDefaultRuntimePath()
@@ -78,6 +79,11 @@ func main() {
 	webLoginPasswordDefault := strings.TrimSpace(os.Getenv("ALTER0_WEB_LOGIN_PASSWORD"))
 	webLoginPassword := flag.String("web-login-password", webLoginPasswordDefault, "required web login password for the shared gateway")
 	codexCommand := flag.String("codex-command", strings.TrimSpace(os.Getenv("ALTER0_CODEX_COMMAND")), "Codex CLI executable path or command name")
+	storageDirDefault := strings.TrimSpace(os.Getenv(storageDirEnvKey))
+	if storageDirDefault == "" {
+		storageDirDefault = defaultStorageProfile.Dir
+	}
+	storageDir := flag.String("storage-dir", storageDirDefault, "local storage directory for control, sessions, tasks, scheduler, model config, and runtime memory")
 	flag.Parse()
 	if *relaunchHelper {
 		if err := runRelaunchHelper(*relaunchParentPID, *relaunchExecPath, *relaunchWorkingDir, *relaunchArgs); err != nil {
@@ -117,7 +123,13 @@ func main() {
 	telemetry := observability.NewTelemetry()
 	idGen := sharedinfra.NewRandomIDGenerator()
 
-	controlStore, schedulerStore, sessionStore, taskStore, err := buildStorage(defaultStorageProfile)
+	storageProfile := defaultStorageProfile
+	storageProfile.Dir = strings.TrimSpace(*storageDir)
+	if storageProfile.Dir == "" {
+		storageProfile.Dir = defaultStorageProfile.Dir
+	}
+
+	controlStore, schedulerStore, sessionStore, taskStore, err := buildStorage(storageProfile)
 	if err != nil {
 		logger.Error("failed to initialize storage", slog.String("error", err.Error()))
 		os.Exit(2)
@@ -149,8 +161,8 @@ func main() {
 	resolvedCodexCommand := resolveConfiguredCodexCommand(strings.TrimSpace(*codexCommand))
 	ensureDefaultCodexWorkspaceMode()
 	resolvedTaskTerminalShell := resolvedCodexCommand
-	resolvedDailyMemoryDir := filepath.Join(defaultStorageProfile.Dir, "memory")
-	resolvedLongTermMemoryPath := filepath.Join(defaultStorageProfile.Dir, "memory", "long-term", "MEMORY.md")
+	resolvedDailyMemoryDir := filepath.Join(storageProfile.Dir, "memory")
+	resolvedLongTermMemoryPath := filepath.Join(storageProfile.Dir, "memory", "long-term", "MEMORY.md")
 	resolvedMandatoryContextFile := "SOUL.md"
 
 	sessionHistory, err := newSessionHistory(rootCtx, sessionStore)
@@ -184,7 +196,7 @@ func main() {
 	mustRegister(registry, orchinfra.NewEchoCommandHandler())
 	mustRegister(registry, orchinfra.NewTimeCommandHandler())
 
-	llmStorage := llminfra.NewModelConfigStorage(".alter0/model_config.json")
+	llmStorage := llminfra.NewModelConfigStorage(filepath.Join(storageProfile.Dir, "model_config.json"))
 	llmService := llmapp.NewModelConfigService(llmStorage)
 
 	classifier := orchinfra.NewSimpleIntentClassifier(registry)

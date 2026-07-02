@@ -76,7 +76,11 @@ func (s *Server) terminalSessionCollectionHandler(w http.ResponseWriter, r *http
 	switch r.Method {
 	case http.MethodGet:
 		items := s.terminals.List(ownerID)
-		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		summaries := make([]any, 0, len(items))
+		for _, item := range items {
+			summaries = append(summaries, buildTerminalSessionSummary(item))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": summaries})
 	case http.MethodPost:
 		defer r.Body.Close()
 		if ownerID == "" {
@@ -340,14 +344,11 @@ func (s *Server) buildTerminalSessionDetail(ownerID string, session any, r *http
 	if s.terminals == nil {
 		return session
 	}
-	sessionMap := map[string]any{}
-	encoded, err := json.Marshal(session)
-	if err != nil {
+	sessionMap, ok := terminalSessionMap(session)
+	if !ok {
 		return session
 	}
-	if err := json.Unmarshal(encoded, &sessionMap); err != nil {
-		return session
-	}
+	applyTerminalSessionComparableFields(sessionMap)
 	sessionID := strings.TrimSpace(fmt.Sprintf("%v", sessionMap["id"]))
 	if sessionID == "" {
 		return session
@@ -359,6 +360,85 @@ func (s *Server) buildTerminalSessionDetail(ownerID string, session any, r *http
 		sessionMap["turns_paging"] = paging
 	}
 	return sessionMap
+}
+
+func buildTerminalSessionSummary(session any) any {
+	sessionMap, ok := terminalSessionMap(session)
+	if !ok {
+		return session
+	}
+	applyTerminalSessionComparableFields(sessionMap)
+	delete(sessionMap, "turns")
+	delete(sessionMap, "turns_paging")
+	return sessionMap
+}
+
+func terminalSessionMap(session any) (map[string]any, bool) {
+	sessionMap := map[string]any{}
+	encoded, err := json.Marshal(session)
+	if err != nil {
+		return nil, false
+	}
+	if err := json.Unmarshal(encoded, &sessionMap); err != nil {
+		return nil, false
+	}
+	return sessionMap, true
+}
+
+func applyTerminalSessionComparableFields(sessionMap map[string]any) {
+	if sessionMap == nil {
+		return
+	}
+	activityAt := latestNonZeroTime(
+		parseTerminalSessionPayloadTime(sessionMap["last_output_at"]),
+		parseTerminalSessionPayloadTime(sessionMap["updated_at"]),
+		parseTerminalSessionPayloadTime(sessionMap["created_at"]),
+	)
+	revisionAt := latestNonZeroTime(
+		activityAt,
+		parseTerminalSessionPayloadTime(sessionMap["finished_at"]),
+	)
+	if !activityAt.IsZero() {
+		sessionMap["activity_at"] = activityAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !revisionAt.IsZero() {
+		sessionMap["revision"] = revisionAt.UnixMicro()
+	}
+}
+
+func parseTerminalSessionPayloadTime(value any) time.Time {
+	switch typed := value.(type) {
+	case time.Time:
+		if typed.IsZero() || typed.Year() <= 1 {
+			return time.Time{}
+		}
+		return typed.UTC()
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return time.Time{}
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, trimmed)
+		if err != nil || parsed.IsZero() || parsed.Year() <= 1 {
+			return time.Time{}
+		}
+		return parsed.UTC()
+	default:
+		return time.Time{}
+	}
+}
+
+func latestNonZeroTime(values ...time.Time) time.Time {
+	var latest time.Time
+	for _, value := range values {
+		if value.IsZero() {
+			continue
+		}
+		if latest.IsZero() || value.After(latest) {
+			latest = value
+		}
+	}
+	return latest
 }
 
 func pageTerminalTurns(turns []terminalapp.TurnSummary, r *http.Request) ([]terminalapp.TurnSummary, terminalTurnPagingEnvelope) {

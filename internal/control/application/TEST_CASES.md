@@ -4,6 +4,7 @@
 
 - Channel CRUD。
 - Capability 生命周期、审计、Skill/MCP 统一存储。
+- Control store 启动加载跳过历史遗留的非 Skill/MCP capability，不阻断合法 Skill/MCP 恢复。
 
 ## 边界
 

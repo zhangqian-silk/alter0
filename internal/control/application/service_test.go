@@ -1,11 +1,29 @@
 package application
 
 import (
+	"context"
 	"testing"
 
 	controldomain "alter0/internal/control/domain"
 	shareddomain "alter0/internal/shared/domain"
 )
+
+type memoryStore struct {
+	channels     []controldomain.Channel
+	capabilities []controldomain.Capability
+	audits       []controldomain.CapabilityAudit
+}
+
+func (s *memoryStore) Load(context.Context) ([]controldomain.Channel, []controldomain.Capability, []controldomain.CapabilityAudit, error) {
+	return s.channels, s.capabilities, s.audits, nil
+}
+
+func (s *memoryStore) Save(_ context.Context, channels []controldomain.Channel, capabilities []controldomain.Capability, audits []controldomain.CapabilityAudit) error {
+	s.channels = channels
+	s.capabilities = capabilities
+	s.audits = audits
+	return nil
+}
 
 func TestChannelCRUD(t *testing.T) {
 	service := NewService()
@@ -125,5 +143,40 @@ func TestUnifiedSkillAndMCPStorage(t *testing.T) {
 	mcps := service.ListMCPs()
 	if len(mcps) != 1 || mcps[0].Type != controldomain.CapabilityTypeMCP {
 		t.Fatalf("unexpected mcp list: %+v", mcps)
+	}
+}
+
+func TestNewServiceWithStoreSkipsLegacyUnsupportedCapabilities(t *testing.T) {
+	store := &memoryStore{
+		capabilities: []controldomain.Capability{
+			{
+				ID:      "legacy-agent",
+				Name:    "Legacy Agent",
+				Type:    controldomain.CapabilityType("agent"),
+				Enabled: true,
+				Scope:   controldomain.CapabilityScopeGlobal,
+				Version: "v1.0.0",
+			},
+			{
+				ID:      "summary",
+				Name:    "Summary",
+				Type:    controldomain.CapabilityTypeSkill,
+				Enabled: true,
+				Scope:   controldomain.CapabilityScopeGlobal,
+				Version: "v1.0.0",
+			},
+		},
+	}
+
+	service, err := NewServiceWithStore(context.Background(), store)
+	if err != nil {
+		t.Fatalf("expected legacy unsupported capability to be skipped, got %v", err)
+	}
+
+	if _, ok := service.ResolveCapability(controldomain.CapabilityType("agent"), "legacy-agent"); ok {
+		t.Fatalf("expected unsupported legacy capability to be ignored")
+	}
+	if _, ok := service.ResolveSkill("summary"); !ok {
+		t.Fatalf("expected valid skill capability to be loaded")
 	}
 }

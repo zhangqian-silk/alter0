@@ -175,6 +175,26 @@ describe("WorkbenchApp", () => {
     expect(screen.queryByRole("button", { name: "Close panels" })).not.toBeInTheDocument();
   });
 
+  it("navigates routes without confirming when the composer has cached unsent content", async () => {
+    render(<WorkbenchApp />);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    document.body.setAttribute("data-composer-unsaved-state", "dirty");
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "terminal");
+      });
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(document.body).not.toHaveAttribute("data-composer-unsaved-confirm");
+    } finally {
+      document.body.removeAttribute("data-composer-unsaved-state");
+      document.body.removeAttribute("data-composer-unsaved-confirm");
+      confirmSpy.mockRestore();
+    }
+  });
+
   it("blurs the active input before opening a mobile drawer", async () => {
     mockIsLegacyShellMobileViewport.mockReturnValue(true);
     render(<WorkbenchApp />);

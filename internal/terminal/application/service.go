@@ -604,6 +604,7 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 	}
 	item = current
 	item.mu.Lock()
+	wasRunning := item.turnRunning || item.turnCancel != nil
 	item.deleted = true
 	item.closedByUser = true
 	if item.turnCancel != nil {
@@ -620,12 +621,35 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 		cleanupErr = errors.Join(cleanupErr, err)
 	}
 	if err := os.RemoveAll(workspaceDir); err != nil {
-		cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove terminal workspace: %w", err))
+		if wasRunning {
+			s.cleanupTerminalWorkspaceAfterDelete(snapshot.ID, workspaceDir)
+		} else {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove terminal workspace: %w", err))
+		}
 	}
 	if cleanupErr != nil {
 		return snapshot, cleanupErr
 	}
 	return snapshot, nil
+}
+
+func (s *Service) cleanupTerminalWorkspaceAfterDelete(sessionID string, workspaceDir string) {
+	workspaceDir = strings.TrimSpace(workspaceDir)
+	if workspaceDir == "" {
+		return
+	}
+	go func() {
+		for attempt := 0; attempt < 5; attempt++ {
+			time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+			if err := os.RemoveAll(workspaceDir); err != nil {
+				if attempt == 4 {
+					s.logger.Warn("remove deleted running terminal workspace failed", "session_id", sessionID, "path", workspaceDir, "error", err.Error())
+				}
+				continue
+			}
+			return
+		}
+	}()
 }
 
 func (s *Service) shutdown() {

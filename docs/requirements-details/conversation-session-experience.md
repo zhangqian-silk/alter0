@@ -48,7 +48,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 面向通用对话入口，默认直接通过 Claude Code CLI 或 Codex CLI 执行。
 - `Chat` 不再绑定内置 `main` Skill，也不再默认调度内置专项 Skill。
 - `Provider / Model`、`Tools / MCP`、`Skills` 可在 Chat 会话过程中调整，并作用于后续发送的消息；`Chat` 的 `Provider / Model` 选择器额外暴露内置 `Codex` 项，允许用户不经过常规 LLM Provider 直接切到 `Codex CLI` 执行链。Web `Chat` 不再提供独立空态、Skill 选择器、私有 Skill 面板或会话级目标切换；旧 Chat 会话加载时仅迁移为 Chat 会话并保留目标 Skill 名称作为历史元数据。
-- `Provider / Model` 与 `Skills` 配置面板同时提供过程披露过滤项：`important_text / plan / reasoning / tools / commands / system`。默认只勾选 `important_text`，其余类型需要用户显式开启；勾选只影响前端过程区展示，不改变底层会话消息、执行结果或历史持久化。`Thinking / 已思考` 展开后的步骤行需展示同一分类标签，便于用户判断当前可见步骤来自重要文本、计划、推理、工具、命令或系统事件；带 `raw.has_detail` 的步骤只在用户展开具体步骤时拉取完整 detail，首屏会话详情不得提前返回大段 thinking 明细。
+- `Provider / Model` 与 `Skills` 配置面板同时提供过程披露过滤项：`important_text / plan / reasoning / tools / commands / system`。默认勾选 `important_text` 与 `reasoning`，确保 commentary 与 thinking/reasoning 步骤默认可见；`plan / tools / commands / system` 需要用户显式开启。浏览器中仍保留旧默认 `["important_text"]` 的本地配置读取时迁移到当前默认值，用户手动保存的其他过滤组合保持原选择；勾选只影响前端过程区展示，不改变底层会话消息、执行结果或历史持久化。`Thinking / 已思考` 展开后的步骤行需展示同一分类标签，便于用户判断当前可见步骤来自重要文本、计划、推理、工具、命令或系统事件；带 `raw.has_detail` 的步骤只在用户展开具体步骤时拉取完整 detail，首屏会话详情不得提前返回大段 thinking 明细。
 
 ### Settings 页面
 
@@ -67,7 +67,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 会话清理不提供复杂配置项。`Settings > Schedules` 的内置会话清理任务只提供当前状态、上次/下次运行、手动触发、失败重试，以及删除数量、置顶跳过数量、任务保护数量和扫描数量。清理后续资源删除失败时，本次维护状态必须记录为 `failed` 并暴露失败原因。
 - 具备独立前端入口的 Skill 不进入通用 Settings 页面历史。
 - `Sessions` 系统页面可展示跨来源会话数据，但不作为 Chat 分栏依据。
-- 未发送文本草稿、附件草稿与当前浏览器中的临时空白会话允许继续本地保存；这些局部态不要求跨设备同步，但不能覆盖服务端已存在的会话摘要、配置与消息历史。
+- 未发送文本草稿、附件草稿与当前浏览器中的临时空白会话允许继续本地保存；切换 Chat / Terminal / Settings、切换会话或点击 New 时不得弹出丢弃草稿确认，原会话草稿按 route 与 session 继续缓存，返回后恢复。这些局部态不要求跨设备同步，但不能覆盖服务端已存在的会话摘要、配置与消息历史。
 
 ## 接口边界
 
@@ -81,9 +81,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `POST /api/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`；其中 `preview_url` 只用于缩略图位，历史消息回显与预览弹层必须优先读取 `asset_url` 原图。
 - 独立 Terminal 兼容组件的 Composer 复用同一附件接口：图片先落到当前 Session 工作区，再以 `asset_url / preview_url` 引用参与提交；Terminal 额外允许常见文本/文档文件直接走同一接口上传原文件，并在返回中仅保留稳定 `asset_url`。前端草稿、缩略预览与历史回显应优先消费这些稳定引用，而不是在这些链路里长期保留原始 `data_url`；其中缩略位继续使用 `preview_url`，再次查看时统一切回 `asset_url`。
 - assistant 最终回复中的 markdown 外链图片也属于会话图片资产：服务端在返回最终结果与落库前，需要把可下载的 `http(s)` 图片拉取到当前 Session 工作区并改写成 `/api/sessions/{session_id}/attachments/{asset_id}/original` 这类本地附件 URL；下载失败时保留原链接，不影响主回复返回。
-- `GET /api/chat/sessions` 返回 Chat owner 会话摘要，`GET /api/terminal/sessions` 返回 Terminal owner 会话摘要，至少包含标题、Skills 选择、创建时间、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。两类 owner 列表互不包含对方会话。列表接口返回前需补扫当前持久化状态目录，只加载内存 map 缺失的 session，不覆盖正在运行的内存会话；服务重启、预览子服务切换或状态文件晚于进程启动出现时，列表仍需展示已持久化的历史会话和 `interrupted / failed` 等终态。
+- `GET /api/chat/sessions` 返回 Chat owner 会话摘要，`GET /api/terminal/sessions` 返回 Terminal owner 会话摘要，至少包含标题、Skills 选择、创建时间、更新时间、最后输出时间、`activity_at`、`revision`、状态、置顶状态与稳定 session id；历史 `chat` 存储记录在加载时迁移为当前 Chat 消息结构。两类 owner 列表互不包含对方会话。列表接口返回前需补扫当前持久化状态目录，只加载内存 map 缺失的 session，不覆盖正在运行的内存会话；服务重启、预览子服务切换或状态文件晚于进程启动出现时，列表仍需展示已持久化的历史会话和 `interrupted / failed` 等终态。集合接口是轻量 summary 契约，不返回完整 turns、附件原图或事件详情；`activity_at` 取 `last_output_at / updated_at / created_at` 中最新值，`revision` 使用当前 session 可比较版本并至少达到微秒精度，供前端排序和详情新鲜度判断。
 - `POST /api/chat/sessions` 与 `POST /api/terminal/sessions` 创建当前 owner 的真实 runtime session；服务端在返回前必须完成 session store 写入，并在全局会话锁外执行持久化、`session.created / session.updated` 事件发布和 bounded detail 构建。事件发布链路允许回读会话详情，但不得反向阻塞创建或恢复请求，避免移动端 `New` 首触后长时间无响应。
-- `GET /api/chat/sessions/{session_id}` 返回单个 Chat 运行页会话详情，默认只返回最新 turns 页，并通过 `turns_paging` 提供总量、页边界、`next_before_turn_id` 与是否仍有更早内容；前端只在用户点击 `Load earlier messages / 加载更早消息` 或滚动到顶部触发历史加载时，按 `turn_before` 显式请求更早 turns。详情至少包含 runtime `turns`、用户附件引用、`runtime_trace_events` 结构化过程与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。
+- `GET /api/chat/sessions/{session_id}` 返回单个 Chat 运行页会话详情，默认只返回最新 turns 页，并通过 `turns_paging` 提供总量、页边界、`next_before_turn_id` 与是否仍有更早内容；前端首次进入、刷新、切回前台和页面激活时，会在本地缓存首屏恢复后对当前 active server session 拉取一次不带 `turn_before` 的最新详情，用于校准最终正文、状态与 `runtime_trace_events`；只有用户点击 `Load earlier messages / 加载更早消息` 或滚动到顶部触发历史加载时，才按 `turn_before` 显式请求更早 turns。详情至少包含 runtime `turns`、用户附件引用、`runtime_trace_events` 结构化过程、`activity_at / revision` 与当前恢复到的运行态状态；历史 Skill 目标只作为兼容元数据保留，不再驱动当前 Web 运行入口。前端仅在详情或增量事件携带完整 turns 时推进 `detailRevision`，列表摘要里的空 turns 不能被视作已加载详情。
 - `POST /api/chat/sessions/{session_id}/pin` 与 `POST /api/terminal/sessions/{session_id}/pin` 更新当前 owner 会话置顶状态，并在返回的 session payload 中显式携带 `pinned` 布尔值；取消置顶返回 `pinned:false`，前端刷新恢复必须以该服务端状态覆盖本地旧快照。
 - `POST /api/chat/sessions/updates` 与 `POST /api/terminal/sessions/updates` 提供当前 owner 的增量轮询通道。客户端携带 `since_event_id`、`limit`、`byte_limit` 与本地 ack manifest；manifest 按 session/turn 汇报已持有 step 的 `event_seq_ranges`，少量无法用 seq 表达的 step 使用 `event_ids` 兜底。服务端返回 `owner_id`、新的 `cursor`、`resync_required`、可选 `has_more` 与 `events[]`。`session.updated` 事件需携带当前会话的 bounded detail payload，默认只包含最新 1 个 turn、`turns_paging`、状态、标题和置顶信息，并裁剪前端已持有的 `runtime_trace_events`；裁剪后的 turn 必须带 `runtime_trace_events_partial=true`，表示该数组是缺失 step patch 而不是完整 step 列表。前端收到 partial step patch 时按 step id/seq 与本地缓存合并，不能用增量数组替换同 turn 已有过程；单会话详情若只补最终正文且没有携带 step，也不得清空本地已缓存过程。完整历史页、附件原图和 event detail 仍由单会话详情、分页与事件详情接口提供。`GET` updates 仅作为无 manifest 兼容读取入口。
 - 增量事件 envelope 必须包含全局递增或可比较的 `event_id`、`owner_id`、`session_id`、可选 `turn_id`、`event_type`、`revision`、`created_at` 与 payload。事件类型至少覆盖 `session.created`、`session.updated`、`turn.started`、`turn.event.appended`、`turn.event.updated`、`turn.completed`、`turn.failed`、`turn.interrupted` 与 `session.deleted`。`session.updated` payload 使用同单会话详情一致的 bounded turns 页；大段 event detail、历史 turns、附件原图和超大 Markdown 正文继续按需通过详情接口读取。
@@ -145,7 +145,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 ### 实时更新与断线恢复
 
-- 会话更新采用“HTTP 快照 + owner 增量轮询 + bounded detail 兜底”模型。页面首次进入、刷新、切会话和前台恢复时先读取会话列表与当前会话详情快照；随后用当前 route owner 的 update cursor 轮询 `/api/{chat|terminal}/sessions/updates`，并用 `event_id / revision` 把增量 patch 到本地缓存。
+- 会话更新采用“HTTP 快照 + owner 增量轮询 + bounded detail 兜底”模型。页面首次进入、刷新、切会话和前台恢复时先读取会话列表，并用浏览器缓存立即恢复当前会话首屏；随后对当前 active server session 读取一次最新单会话详情快照，再用当前 route owner 的 update cursor 轮询 `/api/{chat|terminal}/sessions/updates`，并用 `event_id / revision` 把增量 patch 到本地缓存。
 - 服务端在接受输入后必须立即持久化 `user` turn、`busy` 状态和首个增量事件，再启动 CLI Runtime。增量轮询晚于输入提交、页面刷新或短暂断开时，客户端通过详情快照和 `since_event_id` 补齐缺口，不重新提交同一条用户消息。
 - 前端发送输入时先把本轮 user 消息、附件引用、busy 状态、活动会话和最近会话列表同步写入当前 route 的内存缓存、长期会话快照和轻量信息快照，再提交可见状态渲染。浏览器刷新、路由切换或移动端 WebView 恢复时，首屏可直接使用这些快照恢复已发送消息，不等待 input 请求完成。
 - 用户提交输入后，当前活动会话的消息区立即追加 user 消息并回到底部，workspace header、移动端标题按钮和左侧会话列表项同步进入 `busy`。若随后集合接口或详情接口返回较旧的 `ready` 摘要，但没有带来完整 assistant 终态、失败态或更新后的 revision，前端不得用该旧摘要覆盖本地 `busy / recoverable` 状态。
@@ -154,7 +154,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 网络失败只影响下一次增量读取，不改变 session、turn 或 assistant 消息的业务状态。前端不得因为轮询请求失败、网络切换、浏览器刷新、bfcache 恢复或标签页隐藏而把当前会话标记为 `failed`。只有服务端详情或增量事件明确返回 `turn.failed / session.failed / interrupted`，或单会话详情确认该会话不存在，才允许进入失败或中断态。
 - 前端维护每个 owner 的 update cursor 与每个 session 的 `revision`。收到旧 revision、重复 `event_id` 或已应用 turn/message id 时必须幂等丢弃；发现 `resync_required=true`、本地 revision 低于服务端摘要或本地缓存不完整时，立即补拉对应单会话详情，并按既有 turns 分页合并规则恢复。若服务重启后无法续接旧 cursor，服务端必须返回 owner 级 `resync_required`；该响应即使不携带 `session_id`，前端也必须补拉当前 owner 下仍处于 `busy / recoverable` 的 runtime-backed 会话详情。
 - 服务端会话列表、详情、turns、entries 与输入入口必须在返回业务状态或执行 busy 检查前校准孤儿运行态：当会话仍标记为 `busy` 或存在 live turn，但当前进程没有 `turnRunning / turnCancel` 对应的 live worker 时，服务端将该 turn 与 session 收敛为 `interrupted`、追加 `Interrupted` 过程事件和系统 entry，并立即写回 session store。该校准只作用于无 live worker 的会话，不影响当前进程内仍在运行的请求。
-- 更早历史分页不属于实时刷新链路。稳定会话存在 `turns_paging.has_more_before=true` 时，前端不得自动后台请求 `turn_before` 并把结果实时合入当前可见时间线；只有用户点击 `Load earlier messages / 加载更早消息` 或滚动到顶部触发历史加载，才允许请求对应分页并在保持阅读锚点后展开。
+- 更早历史分页不属于实时刷新链路。稳定会话存在 `turns_paging.has_more_before=true` 时，前端不得自动后台请求 `turn_before` 并把结果实时合入当前可见时间线；首次进入、刷新和 page-activation 的单会话详情校准也只读取最新页。只有用户点击 `Load earlier messages / 加载更早消息` 或滚动到顶部触发历史加载，才允许请求对应分页并在保持阅读锚点后展开。
 - 增量轮询按当前 owner 合并所有进行中或可恢复会话，避免为每个会话分别拉取详情。前端只对收到增量的会话做局部 patch；不会按固定间隔重新拉取每个 busy 会话的完整最新 turns 页。每轮请求上报的 ack manifest 只覆盖本地最近已加载的可恢复 turns，turn 内 step 优先用连续 seq 区间压缩，避免在长 Thinking 过程中每次穷举全部 step id。
 - 页面可见且存在 `busy / recoverable` 会话时，轮询采用短时快速窗口：发送后或最新用户消息尚未被 assistant / 任务消息 / 失败态回填时按约 1 秒读取 owner updates；超过短时窗口后退避到约 5 秒。稳定完成且本地已具备完整缓存的会话不重复回源。
 - 传输预算按 bounded detail 控制：`session.updated` 只传当前会话最新 1 个 turn 页与摘要字段，不传完整历史；turn 事件只传新增或更新的 `RuntimeTraceEvent` 摘要与 final output 片段索引；完整 event detail、完整历史页、附件原图和超大 Markdown 正文继续通过懒加载详情接口读取。
@@ -253,7 +253,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat owner 的 session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果。页面恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息，也不得在恢复阶段自动请求 `turn_before`、扩展当前可见窗口、强制滚动到底部或重建 Composer 输入状态与配置面板。
 - `Chat` 时间线到顶交互先展开本地已加载的隐藏消息批次；本地窗口已完全展开且服务端仍有更早历史时，才由 `ConversationRuntimeProvider.loadEarlierHistory()` 按 `turn_before` 显式请求下一页。分页结果按消息 id 与时间顺序合并进时间线，并在保持阅读锚点后展开下一批。
 - `Chat` 发送新消息后，服务端输入响应、后续详情刷新或分页片段只允许按 turn/message id 与时间顺序合并进现有时间线；即使响应只包含新 turn 或最新轻量页，也不得替换掉用户当前已加载的旧历史。若追加前当前渲染窗口已经覆盖全部已加载消息，追加后可见窗口需同步扩容，避免旧消息被最新一轮挤出视图。
-- `Chat / Terminal` 的浏览器缓存分为短期运行态、完整消息快照与轻量会话信息快照：24 小时运行态缓存按 route 保留当前已加载会话的完整消息或 turns；24 小时 `localStorage` 完整快照使用 `chat / terminal` 独立 key 保存当前 route 会话与完整消息，用于刷新、重开或 `sessionStorage` 丢失时首屏恢复；轻量会话信息快照只保存标题、状态、置顶、模型与能力选择等元数据，用于完整消息缓存写入失败或被清理时恢复会话列表。active session、文本草稿、附件草稿与过程披露过滤同样按 route 使用独立 key。缓存不得阻断服务端会话列表与单会话详情回源；当服务端返回更新历史时继续按现有分页合并规则覆盖或补齐本地快照，并刷新缓存时间。
+- `Chat / Terminal` 的浏览器缓存分为短期运行态、完整消息快照与轻量会话信息快照：24 小时运行态缓存按 route 保留当前已加载会话的完整消息或 turns；24 小时 `localStorage` 完整快照使用 `chat / terminal` 独立 key 保存当前 route 会话、完整消息、分页边界、`revision` 与 `detailRevision`，用于刷新、重开或 `sessionStorage` 丢失时首屏恢复；轻量会话信息快照只保存标题、状态、置顶、模型与能力选择、`activity_at` 与 `revision` 等元数据，用于完整消息缓存写入失败或被清理时恢复会话列表。active session、文本草稿、附件草稿与过程披露过滤同样按 route 使用独立 key。缓存不得阻断服务端会话列表与当前 active 会话最新 bounded detail 回源；当服务端返回更新历史时继续按现有分页合并规则覆盖或补齐本地快照，并刷新缓存时间。page-activation 先刷新 summary，再对 active server session 强制读取一次不带 `turn_before` 的最新详情；非强制详情恢复可在 `revision <= detailRevision` 时复用本地缓存，但不得影响首次进入、刷新、前台恢复或 page-activation 的 active 校准。
 - `Chat` Composer 支持最多 5 张图片附件；附件可通过附件按钮选择，也可在 PC 输入框内直接粘贴剪贴板图片。粘贴图片时仅拦截图片文件并进入附件草稿，普通文本粘贴继续保持 textarea 原生行为。附件在输入区以缩略图展示，可单张预览和移除，并按会话草稿持久化。缩略条继续使用预览图，但单张预览弹层必须优先显示原图。当前选中的模型若未声明视觉能力，带图发送必须直接阻止并提示切换模型。
 - 移动端 `Chat` 的左侧主导航抽屉与主工作区在 `1100px` 及以下需回落为静态表面，不保留模糊玻璃层或持续背景动效；性能优先级高于装饰层，确保真机滚动、抽屉开关和输入框聚焦不出现明显卡顿。
 - 根工作台仅在窄屏时使用主导航抽屉；运行页会话列表由主导航统一承载，避免出现导航抽屉和会话浮层叠加。
@@ -323,9 +323,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 ### 低功耗刷新
 
 - 页面隐藏时停止高频扫描，恢复前台后补一次刷新。
-- `Chat / Terminal` 优先通过 owner 级增量轮询接收进行中会话变更；轮询响应受 `limit / byte_limit` 控制，默认只合并最新 bounded turn 页，不维持固定周期完整详情轮询。忙碌会话的周期恢复只请求 `/api/{chat|terminal}/sessions/updates`，不得在每轮 updates 之后继续请求 `/api/{chat|terminal}/sessions/{session_id}`；无增量事件时只推进退避节奏，不把空响应升级为全量详情兜底。
+- `Chat / Terminal` 优先通过 owner 级增量轮询接收进行中会话变更；轮询响应受 `limit / byte_limit` 控制，默认只合并最新 bounded turn 页，不维持固定周期完整详情轮询。忙碌会话的周期恢复先请求 `/api/{chat|terminal}/sessions/updates`；当 updates 连续返回空事件、返回的事件连续未命中本地仍判定为 `busy / recoverable` 的会话，或当前待恢复会话的 revision/activity/messages/process steps 均未推进时，前端把这些结果视为 LLM 长耗时期间的正常无进展窗口，只在连续无进展达到第 10、20、50 次以及之后每 50 次时按对应 `session_id` 补拉一次 bounded detail，用服务端详情校准最终状态、assistant 正文和失败/中断事实。当前会话收到新的 busy revision、activity、消息或过程步骤时重置退避计数；详情仍未收敛时不重置退避计数。该兜底只读取最新详情页，不自动请求更早 `turn_before` 历史。
 - 页面隐藏、移动端软键盘输入、滚动活跃或系统低功耗场景下，非必要轮询与重绘必须暂停或降频。
-- 增量窗口过期、服务重启后返回 `resync_required`、页面激活补偿、显式手动刷新、详情打开、历史分页或本地缓存不完整时，才补拉当前活动会话与仍处于 `busy / recoverable` 的会话详情；补偿频率采用短时快速、随后退避的节奏，而不是固定 3 秒全量刷新。
+- 增量窗口过期、服务重启后返回 `resync_required`、页面激活补偿、显式手动刷新、详情打开、历史分页或本地缓存不完整时，可直接补拉当前活动会话与仍处于 `busy / recoverable` 的会话详情；常规 updates 未对本地 `busy / recoverable` 会话产生相关进展时，仅按第 10、20、50 次以及之后每 50 次的连续无进展退避阈值补拉；新的 busy revision、activity、消息或过程步骤属于有效进展，会重置连续无进展计数。详情补偿仅限最新 bounded 页，不替代用户显式加载更早历史。
 
 ## 依赖与边界
 
@@ -347,5 +347,5 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - Chat 滚动触顶自动加载与点击“加载更早消息”使用同一批次扩展逻辑和滚动坐标恢复；连续触顶 scroll 事件在当前批次恢复完成前只合并为一次加载，不得把阅读区强制带回顶部。
 - Chat 发送新消息后仍保留已加载历史；轻量输入响应不得把旧消息从时间线中替换掉。
 - Chat 刷新或重开后可从 24 小时本地快照恢复完整已加载消息，并在服务端详情返回后继续合并。
-- Chat 已有 `has_more_before=false` 的完整稳定本地缓存时，切回会话或前台恢复不重复拉取同一会话详情。
+- Chat 已有完整稳定本地缓存时可先用缓存恢复首屏；切回会话、刷新或前台恢复仍需按 active session 拉取最新 bounded detail 校准正文、状态与过程事件，但不得自动请求更早 `turn_before` 历史页。
 - `Chat / Terminal` 的箭头四键阅读定位条可在滚动后稳定出现，并能把阅读位置跳到当前视口相邻的上一条或下一条内容。真机窄屏下，四键需保持固定右侧停靠、位于输入区上沿之上，且每个按钮保持圆形。

@@ -380,6 +380,7 @@ function useConversationWorkspaceController(
   const sessionCountLabel = language === "zh"
     ? `${runtime.sessionItems.length} 个会话`
     : `${runtime.sessionItems.length} sessions`;
+  const runtimeViewAlias = runtime.route === "terminal" ? "terminal" : "conversation";
   const activeSessionBadgeLabel = language === "zh" ? "当前" : "Current";
   const idleSessionBadgeLabel = language === "zh" ? "会话" : "Session";
   const viewSessionDetailsLabel = language === "zh" ? "详情" : "Details";
@@ -480,6 +481,7 @@ function useConversationWorkspaceController(
             "data-runtime-session-tone": sessionStatusByID[item.id]?.tone || "ready",
           },
           buttonClassName: item.active ? "runtime-session-select active" : "runtime-session-select",
+          buttonProps: { "data-runtime-session-select": item.id },
         };
       }),
     })),
@@ -770,14 +772,14 @@ function useConversationWorkspaceController(
       rootClassName: "runtime-workspace-view",
       mobileLayoutState,
       rootProps: {
-        "data-runtime-view": "conversation",
+        "data-runtime-view": runtimeViewAlias,
         "data-runtime-route": runtime.route,
       },
       sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen
         ? "is-open"
         : undefined,
       sessionPaneProps: {
-        "data-runtime-session-pane": "conversation",
+        "data-runtime-session-pane": runtimeViewAlias,
         "data-mobile-open": workbench.mobileSessionPaneOpen ? "true" : "false",
         "data-testid": "conversation-session-pane",
       },
@@ -786,6 +788,7 @@ function useConversationWorkspaceController(
         onClick: workbench.closeMobileSessionPane,
       },
       sessionPanePrimaryActionClassName: "is-primary",
+      sessionPanePrimaryActionProps: { "data-runtime-create-session": runtime.route },
       sessionPaneTitle,
       sessionPaneCountLabel: sessionCountLabel,
       sessionPanePrimaryActionLabel: newSessionLabel,
@@ -793,12 +796,12 @@ function useConversationWorkspaceController(
       sessionPaneSecondaryActionLabel: workbench.isMobileViewport ? copy.sessionHide : undefined,
       onSessionPaneSecondaryAction: workbench.isMobileViewport ? workbench.closeMobileSessionPane : undefined,
       workspaceProps: {
-        "data-runtime-workspace": "conversation",
+        "data-runtime-workspace": runtimeViewAlias,
         "data-runtime-route": runtime.route,
       },
       workspaceBodyRef,
       mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
-      mobileHeaderProps: { "data-runtime-mobile-variant": "conversation" },
+      mobileHeaderProps: { "data-runtime-mobile-variant": runtimeViewAlias },
       mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",
       mobileNavButtonLabel: copy.chatMenu,
       mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },
@@ -809,13 +812,13 @@ function useConversationWorkspaceController(
       mobileTitleTone: activeSessionStatus.tone,
       mobileTitleButtonProps: {
         "aria-haspopup": "dialog",
-        "data-runtime-mobile-title": "conversation",
+        "data-runtime-mobile-title": runtimeViewAlias,
         disabled: activeSessionIsDraft,
       },
       onMobileTitle: activeSessionIsDraft ? undefined : () => setSessionDetailsOpen((current) => !current),
       mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",
       mobilePrimaryButtonLabel: newSessionLabel,
-      mobilePrimaryButtonProps: { "data-runtime-mobile-primary": "conversation" },
+      mobilePrimaryButtonProps: { "data-runtime-mobile-primary": runtimeViewAlias },
       onMobilePrimary: handleCreateSession,
     },
   }), [
@@ -828,6 +831,7 @@ function useConversationWorkspaceController(
     handleCreateSession,
     newSessionLabel,
     runtime.route,
+    runtimeViewAlias,
     runtime.inspectorOpen,
     runtime.inspectorTabOpen,
     runtime.activeSession?.title,
@@ -843,12 +847,12 @@ function useConversationWorkspaceController(
   const sessionList = useMemo(() => ({
     sessionList: {
       groups: sessionListGroups,
-      listProps: { "data-runtime-session-list": "conversation" },
+      listProps: { "data-runtime-session-list": runtimeViewAlias },
       emptyState: groupedSessionItems.length === 0 ? (
         <p className="route-empty-panel">{sessionEmptyLabel}</p>
       ) : null,
     },
-  }), [groupedSessionItems.length, sessionEmptyLabel, sessionListGroups]);
+  }), [groupedSessionItems.length, runtimeViewAlias, sessionEmptyLabel, sessionListGroups]);
   const header = useMemo(() => ({
     header: {
       title: runtime.activeSession?.title || emptyStateTitle,
@@ -865,7 +869,7 @@ function useConversationWorkspaceController(
       detailsBody: runtime.activeSession ? sessionDetailsBody : null,
       headerProps: { "data-runtime-header-kind": "conversation" },
       detailsPanelProps: {
-        "data-runtime-details-panel": "conversation",
+        "data-runtime-details-panel": runtimeViewAlias,
         "data-conversation-session-details": "",
       },
     },
@@ -877,6 +881,7 @@ function useConversationWorkspaceController(
     emptyStateTitle,
     isMobileEmptyHeader,
     runtime.activeSession,
+    runtimeViewAlias,
     sessionDetailsBody,
     sessionDetailsOpen,
     workbench.isMobileViewport,
@@ -887,10 +892,10 @@ function useConversationWorkspaceController(
       screenClassName: isEmptyState
         ? "is-empty"
         : undefined,
-      screenProps: { "data-runtime-screen": "conversation" },
+      screenProps: { "data-runtime-screen": runtimeViewAlias },
       screenRef: timelineScreenRef,
     },
-  }), [isEmptyState]);
+  }), [isEmptyState, runtimeViewAlias]);
   const timeline = useMemo(() => ({
     timeline: {
       items: timelineItems,
@@ -934,6 +939,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   const composerSend = language === "zh" ? "发送" : "Send";
   const composerMetaLabel = composerAttachmentError || undefined;
   const composerBusy = composerRuntime.busy;
+  const runtimeComposerKind = composerRuntime.route === "terminal" ? "terminal" : "chat";
   const composerAddAttachmentLabel = language === "zh" ? "添加附件" : "Add attachment";
   const composerClosePreviewLabel = language === "zh" ? "关闭预览" : "Close preview";
   const composerPreviewPrefix = language === "zh" ? "预览" : "Preview";
@@ -1255,7 +1261,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
 
   return (
     <RuntimeComposer
-      runtimeKind="chat"
+      runtimeKind={runtimeComposerKind}
       shellRef={composerShellRef}
       onSubmit={(event) => {
         event.preventDefault();
@@ -1267,7 +1273,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
         void handleComposerAttachmentSelection(event.target.files);
       }}
       attachments={composerRuntime.draftAttachments}
-      attachmentStripProps={{ "data-runtime-attachments": "conversation" }}
+      attachmentStripProps={{ "data-runtime-attachments": runtimeComposerKind === "terminal" ? "terminal" : "conversation" }}
       attachmentPreviewLabel={(attachment) => `${composerPreviewPrefix} ${attachment.name}`}
       attachmentRemoveLabel={(attachment) => `${composerRemovePrefix} ${attachment.name}`}
       previewAttachment={previewAttachment}
@@ -1299,7 +1305,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
       panelContent={conversationComposerPanel}
       onPanelDismiss={() => composerRuntime.closeInspector()}
       panelProps={{
-        "data-runtime-config-surface": "conversation",
+        "data-runtime-config-surface": runtimeComposerKind === "terminal" ? "terminal" : "conversation",
       }}
       metaContent={composerMetaLabel}
       addAttachmentLabel={composerAddAttachmentLabel}

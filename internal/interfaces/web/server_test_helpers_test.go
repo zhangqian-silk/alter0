@@ -52,7 +52,7 @@ func readWorkspaceFile(t *testing.T, relativePath string) string {
 	if err != nil {
 		t.Fatalf("read workspace file %s: %v", relativePath, err)
 	}
-	return string(content)
+	return strings.ReplaceAll(string(content), "\r\n", "\n")
 }
 
 type sequenceIDGenerator struct {

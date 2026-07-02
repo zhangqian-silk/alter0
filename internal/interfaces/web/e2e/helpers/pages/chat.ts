@@ -12,13 +12,13 @@ export function createChatPage(page: Page): {
     hasCounter: true,
   });
   const sessionList = createSessionListComponent(page, {
-    items: ".session-card",
-    deleteButtons: ".session-card-delete",
+    items: "[data-runtime-session-card]:visible",
+    deleteButtons: ".runtime-session-delete",
   });
   return {
     composer: () => composer,
-    newChatButton: () => page.locator("#newChatButton"),
-    latestUserBubble: () => page.locator(".msg.user .msg-bubble").last(),
+    newChatButton: () => page.getByRole("button", { name: "New" }).first(),
+    latestUserBubble: () => page.locator(".runtime-message-user .runtime-message-bubble").last(),
     sessionList: () => sessionList,
   };
 }

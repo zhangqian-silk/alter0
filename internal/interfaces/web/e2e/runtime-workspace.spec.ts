@@ -4,21 +4,22 @@ import { loginIfNeeded } from "./helpers/guards/login";
 import { openTerminalRoute } from "./helpers/flows/routes";
 import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
-async function openRuntimeRoute(page: Page, route: "chat" | "chat"): Promise<void> {
+async function openRuntimeRoute(page: Page, route: "chat" | "terminal"): Promise<void> {
   await page.goto(`/${route}`);
   await loginIfNeeded(page);
   if (!new URL(page.url()).pathname.endsWith(`/${route}`)) {
     await page.goto(`/${route}`);
   }
   await waitForAppReady(page);
-  await expect(page.locator("[data-runtime-view='conversation']")).toHaveAttribute("data-runtime-route", route);
-  await page.waitForSelector("[data-composer-form='conversation']", { timeout: 20000 });
+  const runtimeView = route === "terminal" ? "terminal" : "conversation";
+  await expect(page.locator(`[data-runtime-view='${runtimeView}']`)).toHaveAttribute("data-runtime-route", route);
+  await page.waitForSelector(`[data-composer-form='${runtimeView}']`, { timeout: 20000 });
 }
 
 async function mockConversationRuntimeSessions(
   page: Page,
   options: {
-    route: "chat" | "chat";
+    route: "chat" | "terminal";
     sessions: Array<Record<string, unknown>>;
     activeSessionID?: string;
   },
@@ -36,10 +37,10 @@ async function mockConversationRuntimeSessions(
     throw new Error("mockConversationRuntimeSessions requires at least one session");
   }
 
-  await page.context().route("**/api/terminal/sessions**", async (route) => {
+  await page.context().route(`**/api/${options.route}/sessions**`, async (route) => {
     const url = new URL(route.request().url());
 
-    if (url.pathname.endsWith("/api/terminal/sessions")) {
+    if (url.pathname.endsWith(`/api/${options.route}/sessions`)) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",

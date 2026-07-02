@@ -23,13 +23,14 @@ export async function ensureChatRouteReady(page: Page): Promise<void> {
 }
 
 export async function openCronRoute(page: Page): Promise<void> {
-  await page.goto("/cron-jobs");
+  await page.goto("/settings");
   await ensureAppReady(page);
-  if (!new URL(page.url()).pathname.endsWith("/cron-jobs")) {
-    await page.goto("/cron-jobs");
+  if (!new URL(page.url()).pathname.endsWith("/settings")) {
+    await page.goto("/settings");
     await ensureAppReady(page);
   }
-  await expect(page).toHaveURL(/\/cron-jobs$/);
+  await expect(page).toHaveURL(/\/settings(?:\?.*)?$/);
+  await page.getByRole("button", { name: /Schedules|定时任务/ }).click();
   await expect(createCronPage(page).routeGrid()).toBeVisible();
 }
 
