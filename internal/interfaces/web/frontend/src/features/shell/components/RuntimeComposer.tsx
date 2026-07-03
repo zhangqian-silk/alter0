@@ -36,7 +36,7 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T) {
 }
 
 type RuntimeComposerProps = {
-  runtimeKind: "chat" | "terminal";
+  runtimeKind: "chat";
   shellRef?: Ref<HTMLElement>;
   shellClassName?: string;
   shellProps?: Omit<ComponentPropsWithoutRef<"footer">, "children" | "className"> & {
@@ -226,7 +226,7 @@ export function RuntimeComposer({
     onTouchStartCapture: submitButtonOnTouchStartCapture,
     ...submitButtonRestProps
   } = submitButtonProps || {};
-  const composerAlias = runtimeKind === "terminal" ? "terminal" : "conversation";
+  const composerAlias = "conversation";
   const draftState = inputValue.trim() ? "dirty" : "empty";
   const inputDisabled = Boolean(inputRestProps.disabled);
   const submitDisabled = Boolean(submitButtonRestProps.disabled);
@@ -416,7 +416,6 @@ export function RuntimeComposer({
               data-composer-composing={inputComposing ? "true" : "false"}
               data-composer-disabled={inputDisabled ? "true" : "false"}
               data-composer-pending={submitDisabled ? "true" : "false"}
-              data-terminal-input={runtimeKind === "terminal" ? "true" : undefined}
             ></textarea>
             {inputAssistContent ? (
               <div className="runtime-composer-input-assist">
@@ -529,7 +528,6 @@ export function RuntimeComposer({
                 data-runtime-composer-submit={runtimeKind}
                 data-runtime-submit={runtimeKind}
                 data-composer-submit={composerAlias}
-                data-terminal-submit={runtimeKind === "terminal" ? "true" : undefined}
               >
                 <span className="runtime-composer-submit-icon" aria-hidden="true">
                   {submitIcon ?? <DefaultRuntimeComposerSubmitIcon />}

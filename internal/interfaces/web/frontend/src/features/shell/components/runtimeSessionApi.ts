@@ -1,4 +1,4 @@
-export type RuntimeSessionRoute = "chat" | "terminal";
+export type RuntimeSessionRoute = "chat";
 
 export const RUNTIME_SESSION_HISTORY_PAGE_TURN_LIMIT = 20;
 

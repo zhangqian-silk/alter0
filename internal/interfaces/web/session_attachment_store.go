@@ -325,8 +325,6 @@ func attachmentRoutePrefixFromPath(path string) string {
 	switch {
 	case strings.HasPrefix(path, "/api/chat/sessions/"):
 		return "/api/chat/sessions"
-	case strings.HasPrefix(path, "/api/terminal/sessions/"):
-		return "/api/terminal/sessions"
 	default:
 		return defaultAttachmentRoutePrefix
 	}
@@ -336,8 +334,6 @@ func normalizeAttachmentRoutePrefix(routePrefix string) string {
 	switch strings.TrimSpace(routePrefix) {
 	case "/api/chat/sessions":
 		return "/api/chat/sessions"
-	case "/api/terminal/sessions":
-		return "/api/terminal/sessions"
 	default:
 		return defaultAttachmentRoutePrefix
 	}

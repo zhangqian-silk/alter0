@@ -16,14 +16,11 @@ import {
 import { hashSessionIDShort } from "../../shared/session/sessionHash";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
-const TERMINAL_ACTIVE_SESSION_STORAGE_KEY = "alter0.web.terminal.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
 const LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.long_term_snapshot.v1";
-const TERMINAL_LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.terminal.session.long_term_snapshot.v1";
 const SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.session.info_snapshot.v1";
-const TERMINAL_SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.terminal.session.info_snapshot.v1";
 const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
 
 async function advanceRuntimePollTimers(count: number) {
@@ -416,7 +413,7 @@ describe("ConversationRuntimeProvider", () => {
       if (path === "/api/chat/sessions") {
         return {
           session: {
-            id: "new-terminal-chat",
+            id: "new-chatRuntime-chat",
             title: "New",
             status: "ready",
             created_at: "2026-04-23T04:00:00Z",
@@ -893,88 +890,6 @@ describe("ConversationRuntimeProvider", () => {
         serverBacked: false,
       }),
     ])).toEqual(["busy-chat"]);
-  });
-
-  it("uses terminal owner storage when the shared runtime is mounted for terminal", async () => {
-    window.history.replaceState({}, "", "/terminal");
-    window.sessionStorage.setItem(
-      TERMINAL_ACTIVE_SESSION_STORAGE_KEY,
-      JSON.stringify("terminal-1"),
-    );
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      switch (path) {
-        case "/api/terminal/sessions":
-          return {
-            items: [{
-              id: "terminal-1",
-              title: "Terminal stored session",
-              status: "ready",
-              created_at: "2026-04-23T04:00:00Z",
-              turns: [],
-            }],
-          };
-        case "/api/control/llm/providers":
-        case "/api/control/skills":
-        case "/api/control/mcps":
-          return { items: [] };
-        default:
-          return { items: [] };
-      }
-    });
-    apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/terminal/sessions/terminal-1/input") {
-        return {
-          session: {
-            id: "terminal-1",
-            title: "Terminal stored session",
-            status: "ready",
-            created_at: "2026-04-23T04:00:00Z",
-            turns: [
-              {
-                id: "turn-1",
-                prompt: "Inspect this image",
-                status: "completed",
-                final_output: "Terminal owner response",
-                runtime_trace_events: [],
-              },
-            ],
-          },
-        };
-      }
-      return {};
-    });
-
-    render(
-      <ConversationRuntimeProvider route="terminal" language="en">
-        <RuntimeHarness />
-      </ConversationRuntimeProvider>,
-    );
-
-    await waitFor(() => {
-      expect(apiClientMock.get).toHaveBeenCalledWith("/api/terminal/sessions");
-    });
-    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions");
-
-    fireEvent.click(screen.getByRole("button", { name: "send" }));
-
-    await waitFor(() => {
-      expect(apiClientMock.post).toHaveBeenCalledWith(
-        "/api/terminal/sessions/terminal-1/input",
-        expect.objectContaining({ input: "Inspect this image" }),
-      );
-    });
-    expect(apiClientMock.post).not.toHaveBeenCalledWith(
-      "/api/chat/sessions/terminal-1/input",
-      expect.anything(),
-    );
-    await waitFor(() => {
-      expect(window.sessionStorage.getItem(TERMINAL_ACTIVE_SESSION_STORAGE_KEY)).toContain("terminal-1");
-    });
-    expect(window.sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY) || "").not.toContain("terminal-1");
-    await waitFor(() => {
-      expect(window.localStorage.getItem(TERMINAL_LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY)).toContain("Terminal owner response");
-    });
-    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").not.toContain("Terminal owner response");
   });
 
   it("opens a default-collapsed completed process on the first toggle", async () => {
@@ -1906,7 +1821,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("message-texts")).toHaveTextContent("server answer after expiry 1");
   });
 
-  it("does not create local blank Chat sessions before the user starts a Terminal-backed session", async () => {
+  it("does not create local blank Chat sessions before the user starts a ChatRuntime-backed session", async () => {
     window.sessionStorage.clear();
     apiClientMock.get.mockImplementation(async () => ({ items: [] }));
 
@@ -1925,7 +1840,7 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:/));
   });
 
-  it("loads Chat sessions through the isolated chat Terminal scope", async () => {
+  it("loads Chat sessions through the isolated chat ChatRuntime scope", async () => {
     window.sessionStorage.clear();
     apiClientMock.get.mockImplementation(async () => ({ items: [] }));
 
@@ -1938,7 +1853,7 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
   });
 
-  it("creates Terminal-backed Chat sessions when New is pressed repeatedly", async () => {
+  it("creates ChatRuntime-backed Chat sessions when New is pressed repeatedly", async () => {
     window.sessionStorage.clear();
     apiClientMock.get.mockImplementation(async () => ({ items: [] }));
 
@@ -2056,7 +1971,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("sessions")).toHaveTextContent(/^Older session:[^|]*:pinned\|Newer session:[^|]*:unpinned$/);
   });
 
-  it("pins a newly created Terminal-backed Chat session", async () => {
+  it("pins a newly created ChatRuntime-backed Chat session", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
         case "/api/chat/sessions":
@@ -2082,7 +1997,7 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "pin active" }));
 
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
-      "/api/chat/sessions/new-terminal-chat/pin",
+      "/api/chat/sessions/new-chatRuntime-chat/pin",
       { pinned: true },
     ));
     expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:[^|]*:pinned$/);
@@ -2141,7 +2056,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("skill-count")).toHaveTextContent(/^2$/);
   });
 
-  it("selects all public skills by default when a Terminal-backed Chat session has no skill_ids field", async () => {
+  it("selects all public skills by default when a ChatRuntime-backed Chat session has no skill_ids field", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
       if (path === "/api/chat/sessions/alter0-chat/input") {
@@ -2277,7 +2192,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions");
   });
 
-  it("opens the latest Terminal-backed Chat session when the route has no explicit session query", async () => {
+  it("opens the latest ChatRuntime-backed Chat session when the route has no explicit session query", async () => {
     window.history.replaceState({}, "", "/chat");
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
@@ -2919,7 +2834,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("message-texts")).toHaveTextContent("existing answer 3");
   });
 
-  it("keeps polling a busy Terminal-backed Chat session until its final output is restored", async () => {
+  it("keeps polling a busy ChatRuntime-backed Chat session until its final output is restored", async () => {
     vi.stubGlobal("fetch", vi.fn());
     const EventSourceMock = vi.fn(() => {
       throw new Error("EventSource should not be used for conversation updates");
@@ -3698,7 +3613,7 @@ describe("ConversationRuntimeProvider", () => {
     vi.useRealTimers();
   });
 
-  it("does not submit another Chat input while the Terminal-backed session is busy", async () => {
+  it("does not submit another Chat input while the ChatRuntime-backed session is busy", async () => {
     vi.stubGlobal("fetch", vi.fn());
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -3762,7 +3677,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
   });
 
-  it("allows sending another Chat input after a Terminal-backed session fails without assistant output", async () => {
+  it("allows sending another Chat input after a ChatRuntime-backed session fails without assistant output", async () => {
     vi.stubGlobal("fetch", vi.fn());
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -3870,7 +3785,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("inspector-state")).toHaveTextContent("capabilities:details-open:tab-open");
   });
 
-  it("adds a Codex option for Chat model selection and submits through Terminal input", async () => {
+  it("adds a Codex option for Chat model selection and submits through ChatRuntime input", async () => {
     vi.stubGlobal("fetch", vi.fn());
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
@@ -4911,58 +4826,6 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("full cached answer"));
     expect(screen.getByTestId("sessions")).toHaveTextContent("Full cached chat");
     expect(screen.getByTestId("sessions")).toHaveTextContent("Info cached chat");
-  });
-
-  it("does not let a Chat long-term cache shadow Terminal session info storage", async () => {
-    window.history.replaceState({}, "", "/terminal");
-    window.sessionStorage.setItem(TERMINAL_ACTIVE_SESSION_STORAGE_KEY, JSON.stringify("terminal-cached"));
-    window.localStorage.setItem(
-      LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
-      JSON.stringify({
-        cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "cached-chat" },
-        sessionsByRoute: {
-          chat: [{
-            id: "cached-chat",
-            status: "ready",
-            title: "Cached chat only",
-            createdAt: Date.parse("2026-04-23T03:30:00Z"),
-            pinned: false,
-            messages: [],
-            messagesLoaded: true,
-            serverBacked: true,
-          }],
-        },
-      }),
-    );
-    window.localStorage.setItem(
-      TERMINAL_SESSION_INFO_SNAPSHOT_STORAGE_KEY,
-      JSON.stringify({
-        cachedAt: Date.now(),
-        activeSessionByRoute: { terminal: "terminal-cached" },
-        sessionsByRoute: {
-          terminal: [{
-            id: "terminal-cached",
-            sourceRoute: "terminal",
-            status: "ready",
-            title: "Terminal cached info",
-            createdAt: Date.parse("2026-04-23T04:30:00Z"),
-            pinned: false,
-            messages: [],
-            messagesLoaded: false,
-            serverBacked: true,
-          }],
-        },
-      }),
-    );
-
-    render(
-      <ConversationRuntimeProvider route="terminal" language="en">
-        <ActiveSessionTitleHarness />
-      </ConversationRuntimeProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Terminal cached info"));
   });
 
   it("loads Chat runtime process event details on demand and keeps them in the message cache", async () => {

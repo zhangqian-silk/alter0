@@ -2,8 +2,8 @@ import { memo, useEffect, useId, useRef, useState, type ComponentPropsWithoutRef
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 
 type ScrollJumpStripProps = {
-  scope: "chat" | "terminal";
-  namespace?: "scroll" | "terminal";
+  scope: "chat" | "chatRuntime";
+  namespace?: "scroll" | "chatRuntime";
   language: LegacyShellLanguage;
   containerRef: RefObject<HTMLElement | null>;
   itemSelector: string;
@@ -103,18 +103,18 @@ function isVisibleJumpTarget(node: HTMLElement): boolean {
   return true;
 }
 
-type TerminalJumpMeasurement = {
+type ChatRuntimeJumpMeasurement = {
   id: string;
   top: number;
   bottom: number;
 };
 
-function measureTerminalJumpEntries(
+function measureChatRuntimeJumpEntries(
   container: HTMLElement,
   itemSelector: string,
   itemAttribute: string,
   idPrefix: string,
-): TerminalJumpMeasurement[] {
+): ChatRuntimeJumpMeasurement[] {
   return [...container.querySelectorAll<HTMLElement>(itemSelector)]
     .filter((node) => isVisibleJumpTarget(node))
     .map((node, index) => {
@@ -134,12 +134,12 @@ function measureTerminalJumpEntries(
     .filter((entry) => entry.id);
 }
 
-function resolveTerminalJumpState(
+function resolveChatRuntimeJumpState(
   container: HTMLElement | null,
   itemSelector: string,
   itemAttribute: string,
   idPrefix: string,
-  measurementCacheRef: RefObject<TerminalJumpMeasurement[] | null>,
+  measurementCacheRef: RefObject<ChatRuntimeJumpMeasurement[] | null>,
   measurementDirtyRef: RefObject<boolean>,
   targetOffset: number,
   suppressNextTarget: boolean,
@@ -153,7 +153,7 @@ function resolveTerminalJumpState(
   const scrollTop = Math.max(container.scrollTop, 0);
   const viewportBottom = scrollTop + container.clientHeight;
   const remaining = Math.max(container.scrollHeight - scrollTop - container.clientHeight, 0);
-  const measureEntries = () => measureTerminalJumpEntries(container, itemSelector, itemAttribute, idPrefix);
+  const measureEntries = () => measureChatRuntimeJumpEntries(container, itemSelector, itemAttribute, idPrefix);
   let entries = !measurementDirtyRef.current && measurementCacheRef.current
     ? measurementCacheRef.current
     : measureEntries();
@@ -283,16 +283,16 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
   const idPrefix = useId().replace(/:/g, "");
   const [state, setState] = useState<ScrollJumpState>(EMPTY_SCROLL_JUMP_STATE);
   const [selectionActive, setSelectionActive] = useState(false);
-  const measurementCacheRef = useRef<TerminalJumpMeasurement[] | null>(null);
+  const measurementCacheRef = useRef<ChatRuntimeJumpMeasurement[] | null>(null);
   const measurementDirtyRef = useRef(true);
-  const clusterClassName = namespace === "terminal" ? "terminal-jump-cluster" : "scroll-jump-strip";
-  const controlClassName = namespace === "terminal" ? "terminal-jump-control" : "scroll-jump-control";
-  const iconClassName = namespace === "terminal" ? "terminal-jump-control-icon" : "scroll-jump-control-icon";
-  const topDataAttr = namespace === "terminal" ? "data-terminal-jump-top" : "data-scroll-jump-top";
-  const prevDataAttr = namespace === "terminal" ? "data-terminal-jump-prev" : "data-scroll-jump-prev";
-  const nextDataAttr = namespace === "terminal" ? "data-terminal-jump-next" : "data-scroll-jump-next";
-  const bottomDataAttr = namespace === "terminal" ? "data-terminal-jump-bottom" : "data-scroll-jump-bottom";
-  const targetDataAttr = namespace === "terminal" ? "data-terminal-jump-target" : "data-scroll-jump-target";
+  const clusterClassName = namespace === "chatRuntime" ? "chatRuntime-jump-cluster" : "scroll-jump-strip";
+  const controlClassName = namespace === "chatRuntime" ? "chatRuntime-jump-control" : "scroll-jump-control";
+  const iconClassName = namespace === "chatRuntime" ? "chatRuntime-jump-control-icon" : "scroll-jump-control-icon";
+  const topDataAttr = namespace === "chatRuntime" ? "data-chat-runtime-jump-top" : "data-scroll-jump-top";
+  const prevDataAttr = namespace === "chatRuntime" ? "data-chat-runtime-jump-prev" : "data-scroll-jump-prev";
+  const nextDataAttr = namespace === "chatRuntime" ? "data-chat-runtime-jump-next" : "data-scroll-jump-next";
+  const bottomDataAttr = namespace === "chatRuntime" ? "data-chat-runtime-jump-bottom" : "data-scroll-jump-bottom";
+  const targetDataAttr = namespace === "chatRuntime" ? "data-chat-runtime-jump-target" : "data-scroll-jump-target";
 
   useEffect(() => {
     const container = containerRef.current;
@@ -307,7 +307,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
     const sync = () => {
       frame = 0;
       setState(
-        resolveTerminalJumpState(
+        resolveChatRuntimeJumpState(
           container,
           itemSelector,
           itemAttribute,
@@ -380,7 +380,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
       aria-label="Turn navigation"
     >
       <button
-        className={showTop ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-top" : "scroll-jump-top"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-top" : "scroll-jump-top"}`}
+        className={showTop ? `${controlClassName} ${namespace === "chatRuntime" ? "chatRuntime-jump-top" : "scroll-jump-top"} is-visible` : `${controlClassName} ${namespace === "chatRuntime" ? "chatRuntime-jump-top" : "scroll-jump-top"}`}
         type="button"
         {...{ [topDataAttr]: scope }}
         aria-label={copy.top}
@@ -397,7 +397,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
         <span className={iconClassName} aria-hidden="true">↑↑</span>
       </button>
       <button
-        className={showPrevious ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-prev" : "scroll-jump-prev"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-prev" : "scroll-jump-prev"}`}
+        className={showPrevious ? `${controlClassName} ${namespace === "chatRuntime" ? "chatRuntime-jump-prev" : "scroll-jump-prev"} is-visible` : `${controlClassName} ${namespace === "chatRuntime" ? "chatRuntime-jump-prev" : "scroll-jump-prev"}`}
         type="button"
         {...{ [prevDataAttr]: scope, [targetDataAttr]: state.previousID }}
         aria-label={copy.prev}
@@ -410,7 +410,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
         <span className={iconClassName} aria-hidden="true">↑</span>
       </button>
       <button
-        className={showNext ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-next" : "scroll-jump-next"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-next" : "scroll-jump-next"}`}
+        className={showNext ? `${controlClassName} ${namespace === "chatRuntime" ? "chatRuntime-jump-next" : "scroll-jump-next"} is-visible` : `${controlClassName} ${namespace === "chatRuntime" ? "chatRuntime-jump-next" : "scroll-jump-next"}`}
         type="button"
         {...{ [nextDataAttr]: scope, [targetDataAttr]: state.nextID }}
         aria-label={copy.next}
@@ -423,7 +423,7 @@ export const ScrollJumpStrip = memo(function ScrollJumpStrip({
         <span className={iconClassName} aria-hidden="true">↓</span>
       </button>
       <button
-        className={showBottom ? `${controlClassName} ${namespace === "terminal" ? "terminal-jump-bottom" : "scroll-jump-bottom"} is-visible` : `${controlClassName} ${namespace === "terminal" ? "terminal-jump-bottom" : "scroll-jump-bottom"}`}
+        className={showBottom ? `${controlClassName} ${namespace === "chatRuntime" ? "chatRuntime-jump-bottom" : "scroll-jump-bottom"} is-visible` : `${controlClassName} ${namespace === "chatRuntime" ? "chatRuntime-jump-bottom" : "scroll-jump-bottom"}`}
         type="button"
         {...{ [bottomDataAttr]: scope }}
         aria-label={copy.bottom}

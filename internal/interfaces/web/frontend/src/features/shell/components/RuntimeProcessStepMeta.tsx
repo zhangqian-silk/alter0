@@ -90,14 +90,14 @@ export function RuntimeProcessStepMeta({
   const resolvedDurationMS = typeof durationMS === "number" ? durationMS : event.duration_ms;
   const resolvedStatus = status || event.status;
   return (
-    <span className="terminal-step-meta">
-      <span className={`terminal-step-kind kind-${category}`} data-runtime-event-category={category}>
+    <span className="chatRuntime-step-meta">
+      <span className={`chatRuntime-step-kind kind-${category}`} data-runtime-event-category={category}>
         {runtimeTraceEventDisclosureLabel(event, language)}
       </span>
-      <span className="terminal-step-duration">
+      <span className="chatRuntime-step-duration">
         {runtimeProcessDurationLabel(resolvedDurationMS)}
       </span>
-      <span className={`terminal-step-status ${runtimeProcessStepStatusClassName(resolvedStatus)}`}>
+      <span className={`chatRuntime-step-status ${runtimeProcessStepStatusClassName(resolvedStatus)}`}>
         {runtimeProcessStepStatusLabel(resolvedStatus, language)}
       </span>
     </span>

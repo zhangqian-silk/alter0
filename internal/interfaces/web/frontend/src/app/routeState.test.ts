@@ -22,8 +22,8 @@ describe("routeState", () => {
 
   it("maps only the stable top-level workbench routes to canonical paths", () => {
     expect(parseWorkbenchRoute("/chat")).toBe("chat");
-    expect(parseWorkbenchRoute("/terminal")).toBe("terminal");
     expect(parseWorkbenchRoute("/settings")).toBe("settings");
+    expect(parseWorkbenchRoute("/chatRuntime")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/skill")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/memory")).toBe(DEFAULT_WORKBENCH_ROUTE);
     expect(parseWorkbenchRoute("/skills")).toBe(DEFAULT_WORKBENCH_ROUTE);
@@ -43,8 +43,8 @@ describe("routeState", () => {
     expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("");
 
-    navigateWorkbenchRoute("terminal");
-    expect(window.location.pathname).toBe("/terminal");
+    navigateWorkbenchRoute("chatRuntime");
+    expect(window.location.pathname).toBe("/chat");
     expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("");
 
@@ -90,15 +90,15 @@ describe("routeState", () => {
 
     expect(readWorkbenchRouteSessionID("chat")).toBe("session-chat-1");
 
-    writeWorkbenchRouteSessionID("terminal", "terminal-9");
+    writeWorkbenchRouteSessionID("chat", "chat-9");
 
     expect(window.location.search).toContain("foo=bar");
-    expect(window.location.search).toContain(`session_id=${hashSessionIDShort("terminal-9")}`);
-    expect(window.location.search).not.toContain("session_id=terminal-9");
-    expect(window.location.pathname).toBe("/terminal");
+    expect(window.location.search).toContain(`session_id=${hashSessionIDShort("chat-9")}`);
+    expect(window.location.search).not.toContain("session_id=chat-9");
+    expect(window.location.pathname).toBe("/chat");
     expect(window.location.hash).toBe("");
 
-    writeWorkbenchRouteSessionID("terminal", "");
+    writeWorkbenchRouteSessionID("chat", "");
 
     expect(window.location.search).not.toContain("session_id=");
     expect(window.location.search).toContain("foo=bar");

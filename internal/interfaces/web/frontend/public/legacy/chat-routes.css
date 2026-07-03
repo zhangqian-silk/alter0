@@ -15,11 +15,11 @@
   padding: var(--route-padding-top) var(--route-padding-x) var(--route-padding-bottom);
 }
 
-.route-view.terminal-route {
+.route-view.chatRuntime-route {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: var(--route-terminal-padding-top) var(--route-terminal-padding-x) var(--route-terminal-padding-bottom);
+  padding: var(--route-chatRuntime-padding-top) var(--route-chatRuntime-padding-x) var(--route-chatRuntime-padding-bottom);
   gap: 14px;
   background: var(--bg-soft);
   border-radius: 0;
@@ -117,7 +117,7 @@
   min-width: 0;
 }
 
-.route-body.terminal-route-body {
+.route-body.chatRuntime-route-body {
   display: flex;
   flex: 1;
   min-height: 0;
@@ -2262,7 +2262,7 @@
   background: #020617;
 }
 
-.control-task-terminal-screen {
+.control-task-chatRuntime-screen {
   margin: 0;
   min-height: 140px;
   padding: 12px;
@@ -2272,7 +2272,7 @@
   font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-.control-task-terminal-screen.is-empty {
+.control-task-chatRuntime-screen.is-empty {
   color: #94a3b8;
 }
 
@@ -2330,24 +2330,24 @@
   cursor: pointer;
 }
 
-.control-task-terminal-input {
+.control-task-chatRuntime-input {
   display: flex;
   flex-direction: column;
   gap: 10px;
   align-items: stretch;
 }
 
-.control-task-terminal-attachments {
+.control-task-chatRuntime-attachments {
   width: 100%;
 }
 
-.control-task-terminal-input-row {
+.control-task-chatRuntime-input-row {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-.control-task-terminal-upload {
+.control-task-chatRuntime-upload {
   min-height: 40px;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.38);
@@ -2359,7 +2359,7 @@
   cursor: pointer;
 }
 
-.control-task-terminal-input input[type="text"] {
+.control-task-chatRuntime-input input[type="text"] {
   flex: 1;
   min-height: 40px;
   border-radius: 10px;
@@ -2370,7 +2370,7 @@
   padding: 0 12px;
 }
 
-.control-task-terminal-input button[type="submit"] {
+.control-task-chatRuntime-input button[type="submit"] {
   min-height: 40px;
   border-radius: 10px;
   border: 1px solid #1d4ed8;
@@ -2382,19 +2382,19 @@
   cursor: pointer;
 }
 
-.control-task-terminal-input button:disabled,
-.control-task-terminal-input input:disabled {
+.control-task-chatRuntime-input button:disabled,
+.control-task-chatRuntime-input input:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.control-task-terminal-hint {
+.control-task-chatRuntime-hint {
   margin: 0;
   color: #64748b;
   font-size: 12px;
 }
 
-.control-task-terminal-note {
+.control-task-chatRuntime-note {
   margin: 0;
   color: #475569;
   font-size: 12px;

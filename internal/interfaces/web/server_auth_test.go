@@ -108,7 +108,7 @@ func TestAuthMiddlewareUsesStablePageLoginNext(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareUsesTerminalPathLoginNext(t *testing.T) {
+func TestAuthMiddlewareDoesNotTreatUnknownTopLevelPageAsStableLoginNext(t *testing.T) {
 	server := &Server{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		webLoginEnabled:  true,
@@ -119,7 +119,7 @@ func TestAuthMiddlewareUsesTerminalPathLoginNext(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/terminal?session_id=c15ece52", nil)
+	req := httptest.NewRequest(http.MethodGet, "/removed-route?session_id=c15ece52", nil)
 	req.Header.Set("Accept", "text/html")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -128,8 +128,8 @@ func TestAuthMiddlewareUsesTerminalPathLoginNext(t *testing.T) {
 		t.Fatalf("expected %d, got %d", http.StatusTemporaryRedirect, rec.Code)
 	}
 	location := rec.Header().Get("Location")
-	if location != "/login?next=%2Fterminal" {
-		t.Fatalf("expected compact terminal login redirect, got %q", location)
+	if location != "/login?next=%2Fchat" {
+		t.Fatalf("expected removed runtime path to fall back to chat login redirect, got %q", location)
 	}
 }
 

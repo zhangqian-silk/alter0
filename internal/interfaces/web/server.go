@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	chatruntimeapp "alter0/internal/chatruntime/application"
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 	codexapp "alter0/internal/codex/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
@@ -37,8 +39,6 @@ import (
 	"alter0/internal/shared/infrastructure/observability"
 	taskapp "alter0/internal/task/application"
 	taskdomain "alter0/internal/task/domain"
-	terminalapp "alter0/internal/terminal/application"
-	terminaldomain "alter0/internal/terminal/domain"
 )
 
 //go:embed static/dist
@@ -59,7 +59,6 @@ const (
 
 var workbenchPagePaths = map[string]struct{}{
 	"/chat":     {},
-	"/terminal": {},
 	"/settings": {},
 }
 
@@ -80,7 +79,7 @@ type Server struct {
 	scheduler         *schedulerapp.Manager
 	sessions          sessionHistoryService
 	tasks             taskService
-	terminals         terminalService
+	chatRuntimes      chatRuntimeService
 	runtime           runtimeRestarter
 	runtimeInfo       runtimeInfoProvider
 	memory            *memoryContextService
@@ -124,22 +123,22 @@ type taskService interface {
 	DeleteBySession(sessionID string) error
 }
 
-type terminalService interface {
-	Create(req terminalapp.CreateRequest) (terminaldomain.Session, error)
-	Recover(req terminalapp.RecoverRequest) (terminaldomain.Session, error)
-	List(ownerID string) []terminaldomain.Session
-	Get(ownerID string, sessionID string) (terminaldomain.Session, bool)
-	ListTurns(ownerID string, sessionID string) ([]terminalapp.TurnSummary, error)
-	GetRuntimeTraceEventDetail(ownerID string, sessionID string, turnID string, eventID string) (terminalapp.RuntimeTraceEventDetail, error)
-	ListEntries(ownerID string, sessionID string, cursor int, limit int) (terminalapp.EntryPage, error)
-	Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error)
-	InputWithAttachments(req terminalapp.InputRequest) (terminaldomain.Session, error)
-	SetPinned(ownerID string, sessionID string, pinned bool) (terminaldomain.Session, error)
-	Delete(ownerID string, sessionID string) (terminaldomain.Session, error)
+type chatRuntimeService interface {
+	Create(req chatruntimeapp.CreateRequest) (chatruntimedomain.Session, error)
+	Recover(req chatruntimeapp.RecoverRequest) (chatruntimedomain.Session, error)
+	List(ownerID string) []chatruntimedomain.Session
+	Get(ownerID string, sessionID string) (chatruntimedomain.Session, bool)
+	ListTurns(ownerID string, sessionID string) ([]chatruntimeapp.TurnSummary, error)
+	GetRuntimeTraceEventDetail(ownerID string, sessionID string, turnID string, eventID string) (chatruntimeapp.RuntimeTraceEventDetail, error)
+	ListEntries(ownerID string, sessionID string, cursor int, limit int) (chatruntimeapp.EntryPage, error)
+	Input(ownerID string, sessionID string, input string) (chatruntimedomain.Session, error)
+	InputWithAttachments(req chatruntimeapp.InputRequest) (chatruntimedomain.Session, error)
+	SetPinned(ownerID string, sessionID string, pinned bool) (chatruntimedomain.Session, error)
+	Delete(ownerID string, sessionID string) (chatruntimedomain.Session, error)
 }
 
-type terminalSessionUpdateHookSetter interface {
-	SetSessionUpdateHook(terminalapp.SessionUpdateHook)
+type chatRuntimeSessionUpdateHookSetter interface {
+	SetSessionUpdateHook(chatruntimeapp.SessionUpdateHook)
 }
 
 type runtimeRestarter interface {
@@ -339,7 +338,7 @@ func NewServer(
 	scheduler *schedulerapp.Manager,
 	sessions sessionHistoryService,
 	tasks taskService,
-	terminals terminalService,
+	chatRuntimes chatRuntimeService,
 	memoryOptions MemoryContextOptions,
 	securityOptions WebSecurityOptions,
 	llm llmService,
@@ -372,7 +371,7 @@ func NewServer(
 		scheduler:         scheduler,
 		sessions:          sessions,
 		tasks:             tasks,
-		terminals:         terminals,
+		chatRuntimes:      chatRuntimes,
 		memory:            newMemoryContextService(memoryOptions),
 		llm:               llm,
 		logger:            logger,
@@ -387,7 +386,7 @@ func NewServer(
 		workspaceRuntime:  newWorkspaceServiceRuntime(logger),
 		sessionEvents:     newSessionUpdateBroker(256),
 	}
-	server.registerTerminalSessionUpdateHook()
+	server.registerChatRuntimeSessionUpdateHook()
 	server.ensureMaintenanceService()
 	server.registerMaintenanceSchedulerJobs()
 	return server
@@ -461,10 +460,6 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/chat/sessions/updates", s.chatSessionUpdatesHandler)
 	mux.HandleFunc("/api/chat/sessions/recover", s.chatSessionRecoverHandler)
 	mux.HandleFunc("/api/chat/sessions/", s.chatSessionItemHandler)
-	mux.HandleFunc("/api/terminal/sessions", s.terminalSessionCollectionHandler)
-	mux.HandleFunc("/api/terminal/sessions/updates", s.terminalSessionUpdatesHandler)
-	mux.HandleFunc("/api/terminal/sessions/recover", s.terminalSessionRecoverHandler)
-	mux.HandleFunc("/api/terminal/sessions/", s.terminalSessionItemHandler)
 
 	assetsFS, err := webAssetFS("assets")
 	if err != nil {
@@ -640,7 +635,7 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, errorMessage string, nex
       <div class="copy">
         <h1>Alter0 Console Login</h1>
         <p class="lede">Start in a secure Alter0 workspace.</p>
-        <p>Enter the access password to continue into chat, terminal, and settings from one private workbench.</p>
+        <p>Enter the access password to continue into chat and settings from one private workbench.</p>
       </div>
       ` + alert + `
       <input type="hidden" name="next" value="` + html.EscapeString(nextPath) + `">
@@ -802,6 +797,10 @@ func normalizeLoginNext(raw string) string {
 	}
 	if _, ok := workbenchPagePaths[pathOnly]; ok {
 		return pathOnly
+	}
+	trimmedPath := strings.Trim(pathOnly, "/")
+	if trimmedPath != "" && !strings.Contains(trimmedPath, "/") {
+		return "/chat"
 	}
 	return candidate
 }

@@ -99,7 +99,7 @@ func (s *Service) loadStore(ctx context.Context) error {
 	for _, item := range items {
 		item.ID = strings.TrimSpace(item.ID)
 		item.SessionID = strings.TrimSpace(item.SessionID)
-		if item.ID == "" || !item.Status.IsTerminal() {
+		if item.ID == "" || !item.Status.IsChatRuntime() {
 			continue
 		}
 		if item.Phase == "" {

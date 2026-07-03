@@ -47,21 +47,14 @@ import {
 } from "../shell/components/runtimeTraceEvents";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
-const TERMINAL_ACTIVE_SESSION_STORAGE_KEY = "alter0.web.terminal.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
 const RECENT_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.recent.v1";
 const LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.long_term_snapshot.v1";
-const TERMINAL_LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.terminal.session.long_term_snapshot.v1";
 const SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.session.info_snapshot.v1";
-const TERMINAL_SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.terminal.session.info_snapshot.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
-const TERMINAL_COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.terminal.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
-const TERMINAL_COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.terminal.composer.attachments.v1";
 const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
-const TERMINAL_RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.terminal.runtime.event_filter.v1";
 const RUNTIME_CONFIG_STORAGE_KEY = "alter0.web.runtime.config.v1";
-const TERMINAL_RUNTIME_CONFIG_STORAGE_KEY = "alter0.web.terminal.runtime.config.v1";
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
 const NEW_CHAT_DRAFT_KEY = "__chat_new__";
 const MAX_COMPOSER_CHARS = 10000;
@@ -108,8 +101,8 @@ export function resolveChatSessionPollPlan(options: {
   };
 }
 
-export type ConversationRoute = "chat" | "terminal";
-const CONVERSATION_ROUTES: ConversationRoute[] = ["chat", "terminal"];
+export type ConversationRoute = "chat";
+const CONVERSATION_ROUTES: ConversationRoute[] = ["chat"];
 
 type ChatTarget = {
   type: "model";
@@ -453,31 +446,38 @@ function normalizeRuntimeEventFilter(value: unknown): RuntimeEventFilterID[] {
 }
 
 function activeSessionStorageKey(route: ConversationRoute): string {
-  return route === "terminal" ? TERMINAL_ACTIVE_SESSION_STORAGE_KEY : ACTIVE_SESSION_STORAGE_KEY;
+  void route;
+  return ACTIVE_SESSION_STORAGE_KEY;
 }
 
 function longTermSessionSnapshotStorageKey(route: ConversationRoute): string {
-  return route === "terminal" ? TERMINAL_LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY : LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY;
+  void route;
+  return LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY;
 }
 
 function sessionInfoSnapshotStorageKey(route: ConversationRoute): string {
-  return route === "terminal" ? TERMINAL_SESSION_INFO_SNAPSHOT_STORAGE_KEY : SESSION_INFO_SNAPSHOT_STORAGE_KEY;
+  void route;
+  return SESSION_INFO_SNAPSHOT_STORAGE_KEY;
 }
 
 function composerDraftStorageKey(route: ConversationRoute): string {
-  return route === "terminal" ? TERMINAL_COMPOSER_DRAFT_STORAGE_KEY : COMPOSER_DRAFT_STORAGE_KEY;
+  void route;
+  return COMPOSER_DRAFT_STORAGE_KEY;
 }
 
 function composerAttachmentDraftStorageKey(route: ConversationRoute): string {
-  return route === "terminal" ? TERMINAL_COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY : COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY;
+  void route;
+  return COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY;
 }
 
 function runtimeEventFilterStorageKey(route: ConversationRoute): string {
-  return route === "terminal" ? TERMINAL_RUNTIME_EVENT_FILTER_STORAGE_KEY : RUNTIME_EVENT_FILTER_STORAGE_KEY;
+  void route;
+  return RUNTIME_EVENT_FILTER_STORAGE_KEY;
 }
 
 function runtimeConfigStorageKey(route: ConversationRoute): string {
-  return route === "terminal" ? TERMINAL_RUNTIME_CONFIG_STORAGE_KEY : RUNTIME_CONFIG_STORAGE_KEY;
+  void route;
+  return RUNTIME_CONFIG_STORAGE_KEY;
 }
 
 function emptyRuntimeComposerConfig(stored = false): RuntimeComposerConfigState {
@@ -557,28 +557,29 @@ function persistRuntimeEventFilter(route: ConversationRoute, filter: RuntimeEven
 }
 
 function normalizeConversationRoute(route: string): ConversationRoute {
-  return route === "terminal" ? "terminal" : "chat";
+  void route;
+  return "chat";
 }
 
 function defaultActiveSessionID(route: ConversationRoute): string {
-  return route === "chat" ? CANONICAL_CHAT_SESSION_ID : "";
+  void route;
+  return CANONICAL_CHAT_SESSION_ID;
 }
 
 function newDraftKeyForRoute(route: ConversationRoute): string {
-  return route === "chat" ? NEW_CHAT_DRAFT_KEY : "__terminal_new__";
+  void route;
+  return NEW_CHAT_DRAFT_KEY;
 }
 
 function emptySessionsState(): SessionsState {
   return {
     chat: [],
-    terminal: [],
   };
 }
 
 function emptyActiveSessionState(): ActiveSessionState {
   return {
     chat: CANONICAL_CHAT_SESSION_ID,
-    terminal: "",
   };
 }
 
@@ -693,7 +694,7 @@ function normalizeRuntimeSessionDerivedStatus(session: ChatSession): string {
   const status = normalizeText(session.status) || "ready";
   if (
     !isConversationBusyStatus(status)
-    && !isTerminalRuntimeFailureStatus(status)
+    && !isChatRuntimeRuntimeFailureStatus(status)
     && hasRecoverableRuntimeState(session)
   ) {
     return "busy";
@@ -742,7 +743,6 @@ function cloneChatSession(session: ChatSession): ChatSession {
 function cloneSessionsState(sessionsByRoute: SessionsState): SessionsState {
   return {
     chat: normalizeRouteSessions("chat", (sessionsByRoute.chat || []).map(cloneChatSession)),
-    terminal: normalizeRouteSessions("terminal", (sessionsByRoute.terminal || []).map(cloneChatSession)),
   };
 }
 
@@ -986,7 +986,7 @@ function shouldBlockRuntimeInput(session: ChatSession): boolean {
   if (session.serverBacked !== true) {
     return false;
   }
-  if (isTerminalRuntimeFailureStatus(session.status)) {
+  if (isChatRuntimeRuntimeFailureStatus(session.status)) {
     return false;
   }
   return isConversationBusyStatus(session.status) || hasRecoverableRuntimeState(session);
@@ -1423,7 +1423,6 @@ function normalizeCachedSessionsState(value: unknown): SessionsState {
   const record = value as Record<string, unknown>;
   return {
     chat: normalizeRouteSessions("chat", normalizeStoredSessionList(record.chat)),
-    terminal: normalizeRouteSessions("terminal", normalizeStoredSessionList(record.terminal)),
   };
 }
 
@@ -1592,7 +1591,6 @@ function loadLegacySessionSnapshots(fallback?: SessionsState | null): LegacySess
   return {
     sessionsByRoute: {
       chat: mergeStoredRouteSessions("chat"),
-      terminal: mergeStoredRouteSessions("terminal"),
     },
     migratedLegacySnapshots,
   };
@@ -1743,7 +1741,6 @@ function writeConversationRuntimeCache(activeSessionByRoute: ActiveSessionState,
     cachedAt: Date.now(),
     activeSessionByRoute: {
       chat: normalizeText(activeSessionByRoute.chat) || CANONICAL_CHAT_SESSION_ID,
-      terminal: normalizeText(activeSessionByRoute.terminal),
     },
     sessionsByRoute: cloneSessionsState(sessionsByRoute),
   };
@@ -2021,13 +2018,13 @@ function normalizeRuntimeSession(
   };
 }
 
-function isTerminalRuntimeFailureStatus(status: string): boolean {
+function isChatRuntimeRuntimeFailureStatus(status: string): boolean {
   return ["error", "failed", "canceled", "cancelled", "interrupted"].includes(normalizeTaskStatus(status));
 }
 
 function resolveMergedRuntimeSessionStatus(previous: ChatSession | undefined, incoming: ChatSession, messages: ChatMessage[]): string {
   const incomingStatus = incoming.status || previous?.status || "";
-  if (!previous || isConversationBusyStatus(incomingStatus) || isTerminalRuntimeFailureStatus(incomingStatus)) {
+  if (!previous || isConversationBusyStatus(incomingStatus) || isChatRuntimeRuntimeFailureStatus(incomingStatus)) {
     return incomingStatus;
   }
   if (!shouldPollRuntimeBackedSession(previous)) {
@@ -2315,7 +2312,6 @@ export function ConversationRuntimeProvider({
   const activeSessionIDRef = useRef<string>(initialActiveSessionByRoute[route] || defaultActiveSessionID(route));
   const [sessionsLoadedByRoute, setSessionsLoadedByRoute] = useState<Record<ConversationRoute, boolean>>({
     chat: false,
-    terminal: false,
   });
   const runtimeCatalogs = useRuntimeSessionCatalogs(apiClient);
   const providers = runtimeCatalogs.providers as ChatProvider[];
@@ -2333,7 +2329,7 @@ export function ConversationRuntimeProvider({
   const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   const pollTimerRef = useRef<number>(0);
-  const updateCursorByRouteRef = useRef<Record<ConversationRoute, string>>({ chat: "0", terminal: "0" });
+  const updateCursorByRouteRef = useRef<Record<ConversationRoute, string>>({ chat: "0" });
   const recoveryPromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
   const earlierHistoryLoadKeysRef = useRef(new Set<string>());
   const processEventDetailLoadsRef = useRef(new Set<string>());
@@ -3064,10 +3060,6 @@ export function ConversationRuntimeProvider({
       chat: normalizeRouteSessions(
         "chat",
         mergeRuntimeSessions(sessionsByRoute.chat, sessionsByRouteRef.current.chat || []),
-      ),
-      terminal: normalizeRouteSessions(
-        "terminal",
-        mergeRuntimeSessions(sessionsByRoute.terminal, sessionsByRouteRef.current.terminal || []),
       ),
     };
   }, [sessionsByRoute]);

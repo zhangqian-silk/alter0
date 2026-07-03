@@ -248,7 +248,7 @@ function buildRuntimeSessionPromptBlocks(message: ChatMessageSnapshot): RuntimeT
     blocks.push({
       type: "attachments",
       galleryId: `${message.id}:prompt`,
-      className: "terminal-turn-attachments",
+      className: "chatRuntime-turn-attachments",
       items: promptAttachments.map((attachment) => ({
         key: attachment.id,
         name: attachment.name,
@@ -259,10 +259,10 @@ function buildRuntimeSessionPromptBlocks(message: ChatMessageSnapshot): RuntimeT
   if (promptText) {
     blocks.push({
       type: "prompt",
-      className: "terminal-log-row kind-command terminal-turn-prompt runtime-message runtime-message-user",
+      className: "chatRuntime-log-row kind-command chatRuntime-turn-prompt runtime-message runtime-message-user",
       bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-user-shell user-message-shell",
-      textClassName: "terminal-log-main",
-      timeClassName: "terminal-log-time",
+      textClassName: "chatRuntime-log-main",
+      timeClassName: "chatRuntime-log-time",
       text: promptText,
     });
   }
@@ -292,7 +292,7 @@ function buildChatTimelineItem(
       {
         type: "attachments",
         galleryId: message.id,
-        className: "terminal-turn-attachments",
+        className: "chatRuntime-turn-attachments",
         items: message.attachments.map((attachment) => ({
           key: attachment.id,
           name: attachment.name,
@@ -303,15 +303,15 @@ function buildChatTimelineItem(
     if (message.text.trim()) {
       blocks.push({
         type: "prompt",
-        className: "terminal-log-row kind-command terminal-turn-prompt conversation-turn-prompt",
-        textClassName: "terminal-log-main",
-        timeClassName: "terminal-log-time",
+        className: "chatRuntime-log-row kind-command chatRuntime-turn-prompt conversation-turn-prompt",
+        textClassName: "chatRuntime-log-main",
+        timeClassName: "chatRuntime-log-time",
         text: message.text,
       });
     }
     return {
       id: message.id,
-      className: "msg user terminal-turn-card conversation-turn-card runtime-message runtime-message-user conversation-message conversation-turn-user is-user",
+      className: "msg user chatRuntime-turn-card conversation-turn-card runtime-message runtime-message-user conversation-message conversation-turn-user is-user",
       articleProps: { "data-message-id": message.id },
       bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-user-shell user-message-shell",
       blocks,
@@ -327,10 +327,10 @@ function buildChatTimelineItem(
       && message.assistantTextDerivedFromPrompt === true;
     return {
       id: message.id,
-      className: "msg assistant terminal-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
+      className: "msg assistant chatRuntime-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
       articleProps: {
         "data-message-id": message.id,
-        "data-terminal-turn": runtimeSessionTimelineTurnID(message.id),
+        "data-chat-runtime-turn": runtimeSessionTimelineTurnID(message.id),
       },
       bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
       blocks: [
@@ -341,8 +341,8 @@ function buildChatTimelineItem(
           copyValue: message.status === "streaming" ? undefined : message.text,
           copyLabel: copy.copyValue,
           wrapperClassName: [
-            "terminal-final-output",
-            "terminal-turn-output",
+            "chatRuntime-final-output",
+            "chatRuntime-turn-output",
             "runtime-message",
             "runtime-message-assistant",
             "conversation-final-output",
@@ -351,11 +351,11 @@ function buildChatTimelineItem(
           ].filter(Boolean).join(" "),
           wrapperProps: {
             "data-conversation-final-output": message.id,
-            "data-terminal-final-output": runtimeSessionTimelineTurnID(message.id),
+            "data-chat-runtime-final-output": runtimeSessionTimelineTurnID(message.id),
           },
           bubbleClassName: "runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
-          className: "terminal-final-text conversation-final-text",
-          bodyClassName: "terminal-final-rendered conversation-final-rendered",
+          className: "chatRuntime-final-text conversation-final-text",
+          bodyClassName: "chatRuntime-final-rendered conversation-final-rendered",
         }] : []),
       ],
       footer,
@@ -369,64 +369,64 @@ function buildChatTimelineItem(
 
   return {
     id: message.id,
-    className: "msg assistant terminal-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
+    className: "msg assistant chatRuntime-turn-card conversation-turn-card runtime-message runtime-message-assistant conversation-message conversation-turn-assistant is-assistant",
     articleProps: {
       "data-message-id": message.id,
-      "data-terminal-turn": runtimeSessionTimelineTurnID(message.id),
+      "data-chat-runtime-turn": runtimeSessionTimelineTurnID(message.id),
     },
     bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
     blocks: [
       ...promptBlocks,
       {
         type: "process",
-        shellClassName: `runtime-thinking-shell terminal-process-shell ${collapsed ? "is-collapsed" : ""}`,
+        shellClassName: `runtime-thinking-shell chatRuntime-process-shell ${collapsed ? "is-collapsed" : ""}`,
         shellProps: {
           "data-conversation-process-shell": message.id,
-          "data-terminal-process-shell": runtimeSessionTimelineTurnID(message.id),
+          "data-chat-runtime-process-shell": runtimeSessionTimelineTurnID(message.id),
         },
-        toggleClassName: "runtime-thinking-toggle terminal-process-toggle",
+        toggleClassName: "runtime-thinking-toggle chatRuntime-process-toggle",
         toggleProps: {
           "data-conversation-process-toggle": message.id,
-          "data-terminal-process-toggle": runtimeSessionTimelineTurnID(message.id),
+          "data-chat-runtime-process-toggle": runtimeSessionTimelineTurnID(message.id),
         },
         title: (
           <>
-            <span className="terminal-step-toggle-icon" aria-hidden="true">{collapsed ? ">" : "v"}</span>
-            <span className="terminal-process-copy">
-              <span className="terminal-process-title">{copy.processLabel}</span>
-              <span className="terminal-process-summary">{copy.processEvents(parsed.events.length)}</span>
+            <span className="chatRuntime-step-toggle-icon" aria-hidden="true">{collapsed ? ">" : "v"}</span>
+            <span className="chatRuntime-process-copy">
+              <span className="chatRuntime-process-title">{copy.processLabel}</span>
+              <span className="chatRuntime-process-summary">{copy.processEvents(parsed.events.length)}</span>
             </span>
           </>
         ),
         expanded: !collapsed,
         onToggle: () => onToggleProcess?.(message.id),
-        bodyClassName: "terminal-process-body",
-        emptyState: <div className="terminal-process-empty">{copy.processEmpty}</div>,
+        bodyClassName: "chatRuntime-process-body",
+        emptyState: <div className="chatRuntime-process-empty">{copy.processEmpty}</div>,
         events: parsed.events.map((step, index) => {
           const stepID = runtimeTraceEventDetailID(step) || `${step.title}-${index}`;
           const expanded = Boolean(expandedProcessEvents[chatProcessEventKey(message.id, stepID)]);
           return {
             id: stepID,
-            itemClassName: "terminal-step-item",
+            itemClassName: "chatRuntime-step-item",
             itemProps: {
-              "data-terminal-step-item": stepID,
+              "data-chat-runtime-step-item": stepID,
               "data-conversation-process-step": stepID,
               "data-runtime-event-kind": step.kind,
               "data-runtime-event-source": step.source,
             },
             title: normalizeRuntimeTimelineText(step.summary || step.title) || `${copy.processLabel} ${index + 1}`,
-            titleClassName: "terminal-step-title",
+            titleClassName: "chatRuntime-step-title",
             meta: runtimeEventDisclosureMeta(step, language),
             expanded,
             onToggle: () => onToggleProcessEvent?.(message.id, stepID),
-            toggleClassName: "terminal-step-toggle",
+            toggleClassName: "chatRuntime-step-toggle",
             toggleProps: {
-              "data-terminal-step-toggle": stepID,
+              "data-chat-runtime-step-toggle": stepID,
               "data-conversation-process-step-toggle": stepID,
             },
-            bodyClassName: "terminal-step-body",
+            bodyClassName: "chatRuntime-step-body",
             detail: (
-              <div className="terminal-step-detail">
+              <div className="chatRuntime-step-detail">
                 {renderProcessEventDetail?.(message.id, step) || runtimeEventDetail(step)}
               </div>
             ),
@@ -439,14 +439,14 @@ function buildChatTimelineItem(
           markdown: parsed.answer,
           copyValue: message.text,
           copyLabel: copy.copyValue,
-          wrapperClassName: "terminal-final-output terminal-turn-output runtime-message runtime-message-assistant conversation-final-output",
+          wrapperClassName: "chatRuntime-final-output chatRuntime-turn-output runtime-message runtime-message-assistant conversation-final-output",
           wrapperProps: {
             "data-conversation-final-output": message.id,
-            "data-terminal-final-output": runtimeSessionTimelineTurnID(message.id),
+            "data-chat-runtime-final-output": runtimeSessionTimelineTurnID(message.id),
           },
           bubbleClassName: "runtime-message-bubble runtime-message-assistant-shell assistant-message-shell",
-          className: "terminal-final-text conversation-process-answer-shell conversation-final-text",
-          bodyClassName: "terminal-final-rendered conversation-process-answer conversation-final-rendered",
+          className: "chatRuntime-final-text conversation-process-answer-shell conversation-final-text",
+          bodyClassName: "chatRuntime-final-rendered conversation-process-answer conversation-final-rendered",
         },
       ] : []),
     ],

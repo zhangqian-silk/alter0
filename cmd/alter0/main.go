@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	chatruntimeapp "alter0/internal/chatruntime/application"
 	codexapp "alter0/internal/codex/application"
 	codexlocal "alter0/internal/codex/infrastructure/localfile"
 	controlapp "alter0/internal/control/application"
@@ -36,7 +37,6 @@ import (
 	localstorage "alter0/internal/storage/infrastructure/localfile"
 	taskapp "alter0/internal/task/application"
 	tasksummaryapp "alter0/internal/tasksummary/application"
-	terminalapp "alter0/internal/terminal/application"
 )
 
 type storageProfile struct {
@@ -160,7 +160,7 @@ func main() {
 
 	resolvedCodexCommand := resolveConfiguredCodexCommand(strings.TrimSpace(*codexCommand))
 	ensureDefaultCodexWorkspaceMode()
-	resolvedTaskTerminalShell := resolvedCodexCommand
+	resolvedTaskChatRuntimeShell := resolvedCodexCommand
 	resolvedDailyMemoryDir := filepath.Join(storageProfile.Dir, "memory")
 	resolvedLongTermMemoryPath := filepath.Join(storageProfile.Dir, "memory", "long-term", "MEMORY.md")
 	resolvedMandatoryContextFile := "SOUL.md"
@@ -242,8 +242,8 @@ func main() {
 		logger.Error("failed to initialize task service", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
-	terminalService := terminalapp.NewService(rootCtx, idGen, logger, terminalapp.Options{
-		Shell:         resolvedTaskTerminalShell,
+	chatRuntimeService := chatruntimeapp.NewService(rootCtx, idGen, logger, chatruntimeapp.Options{
+		Shell:         resolvedTaskChatRuntimeShell,
 		ShellArgsLine: "",
 	})
 
@@ -265,7 +265,7 @@ func main() {
 		scheduler,
 		sessionHistory,
 		taskService,
-		terminalService,
+		chatRuntimeService,
 		web.MemoryContextOptions{
 			LongTermPath:         resolvedLongTermMemoryPath,
 			DailyDir:             resolvedDailyMemoryDir,

@@ -1,5 +1,5 @@
 export const MOBILE_VIEWPORT_BREAKPOINT_PX = 1100;
-export const TERMINAL_SESSION_SHEET_BREAKPOINT_PX = 760;
+export const CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX = 760;
 export const MOBILE_VIEWPORT_SYNC_THRESHOLD_PX = 8;
 export const MOBILE_KEYBOARD_MIN_OFFSET_PX = 120;
 export const MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS = 240;
@@ -52,8 +52,8 @@ export function isMobileViewportWidth(width: number): boolean {
   return Number(width) <= MOBILE_VIEWPORT_BREAKPOINT_PX;
 }
 
-export function isTerminalSessionSheetViewportWidth(width: number): boolean {
-  return Number(width) <= TERMINAL_SESSION_SHEET_BREAKPOINT_PX;
+export function isChatRuntimeSessionSheetViewportWidth(width: number): boolean {
+  return Number(width) <= CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX;
 }
 
 export function deriveMobileViewportState(

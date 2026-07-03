@@ -6,7 +6,7 @@ export function RuntimeRouteHost({
   route,
   language,
 }: {
-  route: "chat" | "terminal";
+  route: "chat";
   language: LegacyShellLanguage;
 }) {
   return (

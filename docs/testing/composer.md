@@ -8,15 +8,13 @@ Web 侧所有需要文本输入、草稿恢复、提交控制与输入法兼容�
 
 - 主聊天输入框
 - Cron 提示词输入框
-- Control 任务终端输入框
-- Terminal 路由输入框
+- Control 任务运行时输入框
 
 当前实现已拆到各自 React 入口：
 
 - `internal/interfaces/web/frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx` 负责 Chat 主输入框的草稿恢复、字数限制、会话级草稿持久化与提交编排
 - `internal/interfaces/web/frontend/src/features/conversation-runtime/ConversationWorkspace.tsx` 与 `internal/interfaces/web/frontend/src/features/shell/components/RuntimeComposer.tsx` 负责 Chat 共享 Composer 的聚焦、附件、提交与移动端视口协调
-- `internal/interfaces/web/frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx` 负责 Terminal 路由输入框的草稿恢复、提交与输入态保持
-- Cron 与 Control 任务终端继续遵循同一 `data-composer-*` DOM 契约与 E2E 断言接口
+- Cron 与 Control 任务运行时继续遵循同一 `data-composer-*` DOM 契约与 E2E 断言接口
 
 E2E 侧统一通过 `internal/interfaces/web/e2e/helpers/components/composer.ts` 与
 `internal/interfaces/web/e2e/helpers/asserts/composer.ts` 接入该能力。
@@ -43,15 +41,10 @@ E2E 侧统一通过 `internal/interfaces/web/e2e/helpers/components/composer.ts`
 - 存储介质：`sessionStorage`
 - 草稿粒度：单输入框
 
-### Control 任务终端
+### Control 任务运行时
 
 - 存储介质：`localStorage`
-- 草稿粒度：按任务终端锚点隔离
-
-### Terminal 路由
-
-- 存储介质：`localStorage`
-- 草稿粒度：按终端会话隔离
+- 草稿粒度：按任务运行时锚点隔离
 
 ## 接入要求
 

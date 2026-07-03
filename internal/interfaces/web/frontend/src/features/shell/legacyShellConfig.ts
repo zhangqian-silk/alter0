@@ -20,7 +20,6 @@ export type PromptItem = {
 
 export type IconName =
   | "chat"
-  | "terminal"
   | "memory"
   | "skills"
   | "cron"
@@ -31,7 +30,6 @@ export type IconName =
 export const SETTINGS_WORKBENCH_ROUTE = "settings";
 export const TOP_LEVEL_WORKBENCH_ROUTES = [
   "chat",
-  "terminal",
   SETTINGS_WORKBENCH_ROUTE,
 ] as const;
 
@@ -43,7 +41,6 @@ export const NAV_GROUPS: NavGroup[] = [
     heading: "Workspace",
     items: [
       { label: "Chat", route: "chat", abbr: "C", icon: "chat", active: true },
-      { label: "Terminal", route: "terminal", abbr: "TE", icon: "terminal" },
       { label: "Settings", route: SETTINGS_WORKBENCH_ROUTE, abbr: "SE", icon: "settings" }
     ]
   }

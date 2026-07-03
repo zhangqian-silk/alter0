@@ -30,7 +30,7 @@ func TestRootHandlerRedirectsToChat(t *testing.T) {
 
 func TestRootHandlerRedirectsToChatWithoutQueryInference(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	req := httptest.NewRequest(http.MethodGet, "/?session_id=terminal-2&foo=bar", nil)
+	req := httptest.NewRequest(http.MethodGet, "/?session_id=chatRuntime-2&foo=bar", nil)
 	rec := httptest.NewRecorder()
 
 	server.rootHandler(rec, req)
@@ -84,21 +84,15 @@ func TestChatPageHandlerVersionsImmutableAssetsFromContent(t *testing.T) {
 	assertNotContains(t, body, `?v=20260604-md-table`)
 }
 
-func TestTerminalPageHandlerServesEmbeddedHTML(t *testing.T) {
+func TestChatRuntimePageHandlerIsRemoved(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	req := httptest.NewRequest(http.MethodGet, "/terminal", nil)
+	req := httptest.NewRequest(http.MethodGet, "/chatRuntime", nil)
 	rec := httptest.NewRecorder()
 
 	server.chatPageHandler(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
-	}
-	if !strings.Contains(rec.Header().Get("Content-Type"), "text/html") {
-		t.Fatalf("expected text/html response, got %q", rec.Header().Get("Content-Type"))
-	}
-	if !strings.Contains(rec.Body.String(), "Alter0 Chat") {
-		t.Fatalf("expected workbench page content")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, rec.Code)
 	}
 }
 
@@ -144,7 +138,6 @@ func TestWorkbenchPageHandlerServesAllCanonicalPagePaths(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	for _, path := range []string{
 		"/chat",
-		"/terminal",
 		"/settings",
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -162,12 +155,12 @@ func TestWorkbenchPageHandlerServesAllCanonicalPagePaths(t *testing.T) {
 }
 
 func TestWorkbenchInteractivePagePathsOnlyIncludeTopLevelRoutes(t *testing.T) {
-	for _, path := range []string{"/", "/chat", "/terminal", "/settings"} {
+	for _, path := range []string{"/", "/chat", "/settings"} {
 		if !isInteractivePagePath(path) {
 			t.Fatalf("expected %s to be an interactive workbench path", path)
 		}
 	}
-	for _, path := range []string{"/legacy-profile", "/memory", "/tasks", "/models", "/codex-accounts"} {
+	for _, path := range []string{"/chatRuntime", "/legacy-profile", "/memory", "/tasks", "/models", "/codex-accounts"} {
 		if isInteractivePagePath(path) {
 			t.Fatalf("expected retired settings path %s to stop being an interactive workbench path", path)
 		}
@@ -308,7 +301,7 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 	workspaceMarkers := []string{
 		`<RuntimeWorkspacePage controller={controller} />`,
 		`rootClassName: "runtime-workspace-view"`,
-		`const composerAlias = runtimeKind === "terminal" ? "terminal" : "conversation";`,
+		`const composerAlias = "conversation";`,
 		`data-composer-form={composerAlias}`,
 		`data-composer-input={composerAlias}`,
 		`data-composer-submit={composerAlias}`,
@@ -321,23 +314,9 @@ func TestChatComposerUsesReusableComponent(t *testing.T) {
 			t.Fatalf("expected chat workspace composer marker %q", marker)
 		}
 	}
-
-	terminalSource := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx") +
-		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeComposer.tsx")
-	terminalMarkers := []string{
-		`runtimeKind: "terminal"`,
-		`data-composer-form={composerAlias}`,
-		`data-composer-input={composerAlias}`,
-		`data-composer-submit={composerAlias}`,
-	}
-	for _, marker := range terminalMarkers {
-		if !strings.Contains(terminalSource, marker) {
-			t.Fatalf("expected terminal composer marker %q", marker)
-		}
-	}
 }
 
-func TestChatScriptUsesTerminalSessionInput(t *testing.T) {
+func TestChatScriptUsesChatRuntimeSessionInput(t *testing.T) {
 	script := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx")
 	markers := []string{
 		`createRuntimeSession(`,
@@ -347,7 +326,7 @@ func TestChatScriptUsesTerminalSessionInput(t *testing.T) {
 	}
 	for _, marker := range markers {
 		if !strings.Contains(script, marker) {
-			t.Fatalf("expected Terminal input marker %q", marker)
+			t.Fatalf("expected ChatRuntime input marker %q", marker)
 		}
 	}
 	removedMarkers := []string{

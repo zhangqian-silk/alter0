@@ -4,7 +4,7 @@
 
 ## 领域边界
 
-Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，并为上层 Chat、Chat、Task、Terminal 提供统一消息、路由、CLI Runtime 选择、调度与观测底座。
+Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，并为上层 Chat、Chat、Task、Chat 提供统一消息、路由、CLI Runtime 选择、调度与观测底座。
 
 ## 核心对象
 
@@ -51,7 +51,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 - 编排层先判断输入是命令还是自然语言。
 - 命令请求必须优先于复杂度评估执行，避免 `/help` 等命令进入模型或任务分流。
 - 当 `UnifiedMessage.Metadata` 显式声明 `alter0.execution.engine=codex` 时，斜线前缀输入不进入 alter0 `CommandRegistry`；该内容作为直连 Codex 会话输入原样交给 `ExecutionPort`，用于支持 Codex CLI 内置斜线命令。
-- Web 直连 Codex 会话的斜线命令候选属于前端输入辅助，不改变编排层路由语义；候选补全后的文本仍按原始用户输入进入统一消息链路。该辅助覆盖 Chat / Chat 的直连 Codex 模型选择，以及 Terminal 中 shell 明确为 Codex 的活动会话；候选集合按 Web 适用的 Codex CLI 斜线命令维护，并按命令作用分组顺序与短动作说明展示。权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选。
+- Web 直连 Codex 会话的斜线命令候选属于前端输入辅助，不改变编排层路由语义；候选补全后的文本仍按原始用户输入进入统一消息链路。该辅助覆盖 Chat 的直连 Codex 模型选择，以及 Chat 中 shell 明确为 Codex 的活动会话；候选集合按 Web 适用的 Codex CLI 斜线命令维护，并按命令作用分组顺序与短动作说明展示。权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入候选。
 - Agent 请求进入 `ExecutionPort`，再由 `RuntimeResolver` 选择默认 `Codex Direct` 或显式 `Claude Code + provider profile`。
 
 ### 命令执行

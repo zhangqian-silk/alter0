@@ -36,10 +36,10 @@ describe("legacy route layout stylesheet", () => {
       "utf8",
     );
 
-    expect(stylesheet).toContain(".control-task-terminal-input {");
+    expect(stylesheet).toContain(".control-task-chatRuntime-input {");
     expect(stylesheet).toContain("flex-direction: column;");
-    expect(stylesheet).toContain(".control-task-terminal-input-row {");
-    expect(stylesheet).toContain(".control-task-terminal-upload {");
+    expect(stylesheet).toContain(".control-task-chatRuntime-input-row {");
+    expect(stylesheet).toContain(".control-task-chatRuntime-upload {");
   });
 
   it("styles shared runtime markdown shells in chat-core without relying on assistant-specific wrappers", () => {
@@ -91,22 +91,22 @@ describe("legacy route layout stylesheet", () => {
     expect(mobileBlock).not.toContain("align-items: flex-start;");
   });
 
-  it("styles terminal final output through runtime markdown wrappers", () => {
+  it("styles chatRuntime final output through runtime markdown wrappers", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(
-      resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"),
+      resolve(currentDirectory, "../../../public/legacy/chat-runtime.css"),
       "utf8",
     );
 
-    expect(stylesheet).toContain(".terminal-final-text .message-markdown-toolbar,");
-    expect(stylesheet).toContain(".terminal-final-rendered .message-markdown-rendered > :first-child {");
-    expect(stylesheet).toContain(".terminal-final-rendered .message-markdown-rendered > :last-child {");
+    expect(stylesheet).toContain(".chatRuntime-final-text .message-markdown-toolbar,");
+    expect(stylesheet).toContain(".chatRuntime-final-rendered .message-markdown-rendered > :first-child {");
+    expect(stylesheet).toContain(".chatRuntime-final-rendered .message-markdown-rendered > :last-child {");
   });
 
   it("keeps legacy mobile page shells on the stable keyboard baseline", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(
-      resolve(currentDirectory, "../../../public/legacy/chat-terminal.css"),
+      resolve(currentDirectory, "../../../public/legacy/chat-runtime.css"),
       "utf8",
     );
 
@@ -120,9 +120,9 @@ describe("legacy route layout stylesheet", () => {
     const html = readFileSync(resolve(currentDirectory, "../../../index.html"), "utf8");
     const legacyEntry = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat.css"), "utf8");
 
-    expect(html).toContain('/legacy/chat.css?v=20260429-terminal-process-wrap');
-    expect(legacyEntry).toContain('@import url("./chat-core.css?v=20260429-terminal-process-wrap");');
-    expect(legacyEntry).toContain('@import url("./chat-routes.css?v=20260429-terminal-process-wrap");');
-    expect(legacyEntry).toContain('@import url("./chat-terminal.css?v=20260429-terminal-process-wrap");');
+    expect(html).toContain('/legacy/chat.css?v=20260429-chat-runtime-process-wrap');
+    expect(legacyEntry).toContain('@import url("./chat-core.css?v=20260429-chat-runtime-process-wrap");');
+    expect(legacyEntry).toContain('@import url("./chat-routes.css?v=20260429-chat-runtime-process-wrap");');
+    expect(legacyEntry).toContain('@import url("./chat-runtime.css?v=20260429-chat-runtime-process-wrap");');
   });
 });

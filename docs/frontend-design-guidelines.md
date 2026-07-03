@@ -9,7 +9,7 @@
 ## 适用范围
 
 - `internal/interfaces/web/frontend` 下的页面、组件、样式与交互改动
-- `internal/interfaces/web/static/dist` 对应的 Web Shell、Chat、Terminal、Control、Memory、Sessions、Tasks 等浏览器界面
+- `internal/interfaces/web/static/dist` 对应的 Web Shell、Chat、Chat、Control、Memory、Sessions、Tasks 等浏览器界面
 - 对外公开页面、独立 HTML 空间和其他品牌展示型 Web 页面
 
 ## 产品默认视觉立场
@@ -33,7 +33,7 @@
 
 ### 工作台与控制页
 
-- `Chat / Terminal / Settings Runtime / Memory / Schedules / Codex Runtime / Skills` 默认采用工作台式信息架构。
+- `Chat / Settings Runtime / Memory / Schedules / Codex Runtime / Skills` 默认采用工作台式信息架构。
 - 首屏优先暴露当前任务、列表、输入区、状态栏或配置区，不渲染额外 hero、品牌宣言、浮层徽章或装饰性摘要卡。
 - 默认使用克制配色、少量强调色、紧凑但可读的排版与稳定的阅读宽度。
 - 默认不使用大面积装饰渐变和过多投影，不把页面退化成“卡片墙”。
@@ -82,10 +82,10 @@
 
 - 桌面端保持全宽三栏工作台；`1100px` 及以下切换为抽屉式单列；`760px` 及以下继续压缩按钮与抽屉宽度。
 - 桌面端主 shell 样式不得使用 `border-radius: 999px` 作为按钮或标签半径；共享 shell 半径令牌保持在低圆角范围内，避免导航、状态和 composer 控件退回胶囊视觉。
-- `Chat` 空态欢迎区、`route-head`、`Terminal` 工作区与控制页正文继续遵守现有贴顶节奏和阅读宽度，不为单页视觉试验破坏稳定壳层。
+- `Chat` 空态欢迎区、`route-head`、`Chat` 工作区与控制页正文继续遵守现有贴顶节奏和阅读宽度，不为单页视觉试验破坏稳定壳层。
 - `Chat` 空态不额外挂载 workspace hero；页面类路由不额外挂载 route hero；主导航和会话栏不重复页面摘要。
 - 主导航使用纯文字品牌位与语言切换，保持工作台控件密度，不把导航底部做成营销式个人名片区或常驻账号卡片区。
-- `Skill` 运行态与 `Terminal` 的阅读焦点优先落在消息、Process、输出区和输入区，不让装饰层抢占首屏。
+- `Skill` 运行态与 `Chat` 的阅读焦点优先落在消息、Process、输出区和输入区，不让装饰层抢占首屏。
 - 运行页固定 header 默认保持两组控制：状态与 `Details`；Composer 默认保持“上层输入区 + 下层工具栏”两层结构，底部工具栏左侧使用正方形低圆角图标按钮承载上下文工具与附件入口，右侧只保留提交动作，并为主输入区保留足够横向留白。
 - 所有布局调整必须兼容 `VisualViewport`、移动端键盘贴底、会话设置底部面板、抽屉开合和滚动定位条。
 

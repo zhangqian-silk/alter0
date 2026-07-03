@@ -40,8 +40,8 @@
 - `internal/task/application/TEST_CASES.md`
 - `internal/task/domain/TEST_CASES.md`
 - `internal/tasksummary/application/TEST_CASES.md`
-- `internal/terminal/application/TEST_CASES.md`
-- `internal/terminal/domain/TEST_CASES.md`
+- `internal/chatruntime/application/TEST_CASES.md`
+- `internal/chatruntime/domain/TEST_CASES.md`
 
 ## Runtime & Orchestration
 
@@ -77,7 +77,7 @@
 边界：
 
 - CLI 测试只覆盖输入适配契约，不验证具体命令执行逻辑。
-- 终端交互通过 pipe 注入 stdin/stdout，避免依赖真实交互环境。
+- 运行时交互通过 pipe 注入 stdin/stdout，避免依赖真实交互环境。
 
 ### `internal/interfaces/web`
 
@@ -170,7 +170,7 @@
 边界：
 
 - Web 消息接口、会话落库与前端展示由 `internal/interfaces/web` 和前端测试覆盖。
-- Terminal 自身的 Codex thread 恢复由 `internal/terminal/application` 覆盖。
+- Chat 自身的 Codex thread 恢复由 `internal/chatruntime/application` 覆盖。
 
 ### `internal/execution/domain`
 
@@ -190,7 +190,7 @@
 - 心跳持久化、任务超时续租和 Web 展示归属 Task 与接口层测试。
 - 执行端口、Skill、MCP、Memory Context 注入由 `internal/execution/application` 既有测试覆盖。
 
-## Task, Terminal & Workspace
+## Task, Chat & Workspace
 
 ### `internal/task/domain`
 
@@ -211,7 +211,7 @@
 边界：
 
 - 任务生命周期、复杂度分流、并发、心跳续租、retry/cancel、日志流和删除清理由 `internal/task/application` 与 Web 测试覆盖。
-- Terminal 会话态、turn/runtime event 规则和旧持久化状态迁移由 `internal/terminal/domain` 与 `internal/terminal/application` 既有测试覆盖。
+- Chat 会话态、turn/runtime event 规则和旧持久化状态迁移由 `internal/chatruntime/domain` 与 `internal/chatruntime/application` 既有测试覆盖。
 
 ## Conversation & Session Experience
 

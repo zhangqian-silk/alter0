@@ -5,7 +5,7 @@ describe("runtimeSessionTurnsToTimelineMessages", () => {
   it("splits a runtime turn into separate user and assistant timeline messages", () => {
     const messages = runtimeSessionTurnsToTimelineMessages({
       sessionID: "session-1",
-      route: "terminal",
+      route: "chatRuntime",
       source: "runtime",
       turns: [{
         id: "turn-1",
@@ -23,14 +23,14 @@ describe("runtimeSessionTurnsToTimelineMessages", () => {
       id: "turn-1:user",
       role: "user",
       text: "hello",
-      route: "terminal",
+      route: "chatRuntime",
       source: "runtime",
     });
     expect(messages[1]).toMatchObject({
       id: "turn-1:assistant",
       role: "assistant",
       text: "Hello. I'm ready.",
-      route: "terminal",
+      route: "chatRuntime",
       source: "runtime",
     });
     expect(messages[1].promptText).toBe("");

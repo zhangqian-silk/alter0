@@ -4,7 +4,6 @@ import { waitForAppReady } from "../guards/app-ready";
 import { loginIfNeeded } from "../guards/login";
 import { createChatPage } from "../pages/chat";
 import { createCronPage } from "../pages/cron";
-import { createTerminalPage } from "../pages/terminal";
 
 async function ensureAppReady(page: Page): Promise<void> {
   await loginIfNeeded(page);
@@ -32,13 +31,4 @@ export async function openCronRoute(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/settings(?:\?.*)?$/);
   await page.getByRole("button", { name: /Schedules|定时任务/ }).click();
   await expect(createCronPage(page).routeGrid()).toBeVisible();
-}
-
-export async function openTerminalRoute(page: Page): Promise<void> {
-  await page.goto("/terminal");
-  await ensureAppReady(page);
-  await expect(page).toHaveURL(/\/terminal(?:\?.*)?$/);
-  await expect(page.locator("[data-runtime-view='terminal']")).toBeVisible();
-  await expect(page.locator("[data-runtime-workspace='terminal']")).toBeVisible();
-  await expectComposerReady(createTerminalPage(page).composer());
 }

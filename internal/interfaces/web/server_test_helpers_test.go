@@ -17,7 +17,7 @@ func readEmbeddedAssetRaw(t *testing.T, assetPath string) string {
 		parts := []string{
 			"static/dist/legacy/chat.css",
 			"static/dist/legacy/chat-core.css",
-			"static/dist/legacy/chat-terminal.css",
+			"static/dist/legacy/chat-runtime.css",
 			"static/dist/legacy/chat-routes.css",
 		}
 		var combined strings.Builder

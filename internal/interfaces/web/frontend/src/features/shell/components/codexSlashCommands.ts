@@ -109,15 +109,15 @@ export const CODEX_SLASH_COMMANDS = [
   {
     command: "/ps",
     label: {
-      en: "List terminals",
-      zh: "查看终端",
+      en: "List running sessions",
+      zh: "查看运行会话",
     },
   },
   {
     command: "/stop",
     label: {
-      en: "Stop terminals",
-      zh: "停止终端",
+      en: "Stop running sessions",
+      zh: "停止运行会话",
     },
   },
   {

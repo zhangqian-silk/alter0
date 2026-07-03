@@ -36,14 +36,14 @@ describe("PrimaryNav", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     fireEvent.click(screen.getByRole("button", { name: "Collapse navigation" }));
 
-    expect(onNavigate).toHaveBeenCalledWith("terminal");
+    expect(onNavigate).toHaveBeenCalledWith("settings");
     expect(onToggleNavCollapsed).toHaveBeenCalledTimes(1);
   });
 
-  it("limits the primary route surface to chat, terminal, and settings", () => {
+  it("limits the primary route surface to chat and settings", () => {
     render(
       <PrimaryNav
         currentRoute="chat"
@@ -56,8 +56,8 @@ describe("PrimaryNav", () => {
     );
 
     expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Terminal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ChatRuntime" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Skill" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Memory" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tasks" })).not.toBeInTheDocument();
@@ -131,14 +131,14 @@ describe("PrimaryNav", () => {
 
     render(
       <PrimaryNav
-        currentRoute="terminal"
+        currentRoute="chat"
         language="zh"
         navCollapsed={false}
         onNavigate={vi.fn()}
         onToggleLanguage={vi.fn()}
         onToggleNavCollapsed={vi.fn()}
         sessionRail={{
-          route: "terminal",
+          route: "chat",
           countLabel: "2 个会话",
           onPrimaryAction: onCreate,
           body: <div role="list"><div role="listitem">New</div></div>,

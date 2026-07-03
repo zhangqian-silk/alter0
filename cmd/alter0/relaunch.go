@@ -467,7 +467,7 @@ func prepareCommand(timeout time.Duration, dir string, name string, args ...stri
 	cmd.Dir = dir
 	if strings.EqualFold(strings.TrimSpace(name), "git") {
 		cmd.Env = append(os.Environ(),
-			"GIT_TERMINAL_PROMPT=0",
+			"GIT_CHAT_RUNTIME_PROMPT=0",
 			"GIT_HTTP_LOW_SPEED_LIMIT=1",
 			"GIT_HTTP_LOW_SPEED_TIME=30",
 		)

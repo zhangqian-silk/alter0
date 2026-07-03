@@ -9,15 +9,15 @@ describe("MessageMarkdownShell", () => {
         markdown={"# Message\n\nUse `pwd` before opening [Chat](/chat)."}
         copyValue="copy payload"
         copyLabel="Copy output"
-        className="terminal-final-text"
-        bodyClassName="terminal-final-rendered"
+        className="chatRuntime-final-text"
+        bodyClassName="chatRuntime-final-rendered"
       />,
     );
 
     const shell = container.querySelector(".message-markdown-shell");
     expect(shell?.children.item(0)).toHaveClass("message-markdown-body");
     expect(shell?.children.item(1)).toHaveClass("message-markdown-toolbar");
-    expect(container.querySelector(".terminal-final-rendered")).toContainHTML("<h1>Message</h1>");
+    expect(container.querySelector(".chatRuntime-final-rendered")).toContainHTML("<h1>Message</h1>");
     expect(container.querySelector(".chat-md-inline-code")).toHaveTextContent("pwd");
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chat");
   });

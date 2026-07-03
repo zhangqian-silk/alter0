@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	terminaldomain "alter0/internal/terminal/domain"
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 )
 
 const defaultSessionUpdatePollLimit = 50
@@ -184,34 +184,34 @@ func (s *Server) sessionUpdateBroker() *sessionUpdateBroker {
 	return s.sessionEvents
 }
 
-func (s *Server) registerTerminalSessionUpdateHook() {
+func (s *Server) registerChatRuntimeSessionUpdateHook() {
 	if s == nil {
 		return
 	}
-	setter, ok := s.terminals.(terminalSessionUpdateHookSetter)
+	setter, ok := s.chatRuntimes.(chatRuntimeSessionUpdateHookSetter)
 	if !ok {
 		return
 	}
-	setter.SetSessionUpdateHook(func(ownerID string, sessionID string, session terminaldomain.Session) {
+	setter.SetSessionUpdateHook(func(ownerID string, sessionID string, session chatruntimedomain.Session) {
 		s.sessionUpdateBroker().publish(ownerID, sessionID, "session.updated", map[string]any{
-			"session": s.buildTerminalSessionEventDetail(ownerID, session),
+			"session": s.buildChatRuntimeSessionEventDetail(ownerID, session),
 		})
 	})
 }
 
-func (s *Server) buildTerminalSessionEventDetail(ownerID string, session terminaldomain.Session) any {
-	return s.buildTerminalSessionDetail(ownerID, session, &http.Request{
+func (s *Server) buildChatRuntimeSessionEventDetail(ownerID string, session chatruntimedomain.Session) any {
+	return s.buildChatRuntimeSessionDetail(ownerID, session, &http.Request{
 		URL: &url.URL{RawQuery: "turn_limit=1"},
 	})
 }
 
-func (s *Server) terminalServicePublishesSessionEvents() bool {
-	_, ok := s.terminals.(terminalSessionUpdateHookSetter)
+func (s *Server) chatRuntimeServicePublishesSessionEvents() bool {
+	_, ok := s.chatRuntimes.(chatRuntimeSessionUpdateHookSetter)
 	return ok
 }
 
-func (s *Server) publishTerminalSessionEvent(ownerID string, sessionID string, eventType string, session any) {
-	if eventType == "session.updated" && s.terminalServicePublishesSessionEvents() {
+func (s *Server) publishChatRuntimeSessionEvent(ownerID string, sessionID string, eventType string, session any) {
+	if eventType == "session.updated" && s.chatRuntimeServicePublishesSessionEvents() {
 		return
 	}
 	payload := map[string]any{}
@@ -222,45 +222,35 @@ func (s *Server) publishTerminalSessionEvent(ownerID string, sessionID string, e
 }
 
 func (s *Server) chatSessionUpdatesHandler(w http.ResponseWriter, r *http.Request) {
-	s.terminalSessionUpdatesHandler(w, withTerminalClientID(r, chatSessionOwnerID))
+	s.chatRuntimeSessionUpdatesHandler(w, withChatRuntimeClientID(r, chatSessionOwnerID))
 }
 
-func (s *Server) terminalSessionUpdatesHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+func (s *Server) chatRuntimeSessionUpdatesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	ownerID := resolveTerminalClientID(r)
+	ownerID := resolveChatRuntimeClientID(r)
 	if ownerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error":      "terminal client id is required",
-			"error_code": "terminal_client_required",
+			"error":      "chatRuntime client id is required",
+			"error_code": "chatRuntime_client_required",
 		})
 		return
 	}
-	query := r.URL.Query()
-	since, _ := strconv.ParseInt(strings.TrimSpace(query.Get("since_event_id")), 10, 64)
-	limit, _ := strconv.Atoi(strings.TrimSpace(query.Get("limit")))
-	byteLimit, _ := strconv.Atoi(strings.TrimSpace(query.Get("byte_limit")))
-	manifest := sessionUpdateAckManifest{}
-	if r.Method == http.MethodPost {
-		defer r.Body.Close()
-		var body sessionUpdatePollBody
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
-			return
-		}
-		if parsedSince, ok := flexibleInt64(body.SinceEventID); ok {
-			since = parsedSince
-		}
-		if body.Limit > 0 {
-			limit = body.Limit
-		}
-		if body.ByteLimit > 0 {
-			byteLimit = body.ByteLimit
-		}
-		manifest = newSessionUpdateAckManifest(body.Sessions)
+	defer r.Body.Close()
+	var body sessionUpdatePollBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
 	}
+	var since int64
+	if parsedSince, ok := flexibleInt64(body.SinceEventID); ok {
+		since = parsedSince
+	}
+	limit := body.Limit
+	byteLimit := body.ByteLimit
+	manifest := newSessionUpdateAckManifest(body.Sessions)
 	events, cursor, resyncRequired, hasMore := s.sessionUpdateBroker().poll(ownerID, since, limit, byteLimit)
 	events = pruneSessionUpdateEvents(events, manifest)
 	writeJSON(w, http.StatusOK, sessionUpdatePollEnvelope{

@@ -6,27 +6,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
-	terminaldomain "alter0/internal/terminal/domain"
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 )
 
-const terminalStateDirectoryName = "state"
+const chatRuntimeStateDirectoryName = "state"
 
 type persistedSessionRecord struct {
-	Summary      terminaldomain.Session `json:"summary"`
-	TitleManual  *bool                  `json:"title_manual,omitempty"`
-	TitleAuto    *bool                  `json:"title_auto,omitempty"`
-	TitleScore   int                    `json:"title_score,omitempty"`
-	Entries      []terminaldomain.Entry `json:"entries,omitempty"`
-	Turns        []persistedTurnRecord  `json:"turns,omitempty"`
-	NextID       int                    `json:"next_id,omitempty"`
-	NextTurnID   int                    `json:"next_turn_id,omitempty"`
-	NextEventID  int                    `json:"next_event_id,omitempty"`
-	ThreadID     string                 `json:"thread_id,omitempty"`
-	ClosedByUser bool                   `json:"closed_by_user,omitempty"`
+	Summary      chatruntimedomain.Session `json:"summary"`
+	TitleManual  *bool                     `json:"title_manual,omitempty"`
+	TitleAuto    *bool                     `json:"title_auto,omitempty"`
+	TitleScore   int                       `json:"title_score,omitempty"`
+	Entries      []chatruntimedomain.Entry `json:"entries,omitempty"`
+	Turns        []persistedTurnRecord     `json:"turns,omitempty"`
+	NextID       int                       `json:"next_id,omitempty"`
+	NextTurnID   int                       `json:"next_turn_id,omitempty"`
+	NextEventID  int                       `json:"next_event_id,omitempty"`
+	ThreadID     string                    `json:"thread_id,omitempty"`
+	ClosedByUser bool                      `json:"closed_by_user,omitempty"`
 }
 
 type persistedTurnRecord struct {
@@ -58,34 +57,13 @@ func decodePersistedSessionRecord(data []byte) (persistedSessionRecord, error) {
 	if err := json.Unmarshal(data, &record); err != nil {
 		return persistedSessionRecord{}, err
 	}
-
-	legacy := struct {
-		NextStepID int `json:"next_step_id,omitempty"`
-		Turns      []struct {
-			Steps []persistedRuntimeEventRecord `json:"steps,omitempty"`
-		} `json:"turns,omitempty"`
-	}{}
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return persistedSessionRecord{}, err
-	}
-	if record.NextEventID <= 0 && legacy.NextStepID > 0 {
-		record.NextEventID = legacy.NextStepID
-	}
-	for index := range record.Turns {
-		if len(record.Turns[index].RuntimeEvents) > 0 || index >= len(legacy.Turns) {
-			continue
-		}
-		if len(legacy.Turns[index].Steps) > 0 {
-			record.Turns[index].RuntimeEvents = append([]persistedRuntimeEventRecord{}, legacy.Turns[index].Steps...)
-		}
-	}
 	return record, nil
 }
 
 func (s *Service) loadPersistedSessions() {
-	dir, err := resolveTerminalSessionStateDir(s.options.WorkingDir)
+	dir, err := resolveChatRuntimeSessionStateDir(s.options.WorkingDir)
 	if err != nil {
-		s.logger.Warn("load terminal session store failed", "error", err.Error())
+		s.logger.Warn("load chatRuntime session store failed", "error", err.Error())
 		return
 	}
 	items, err := os.ReadDir(dir)
@@ -93,12 +71,11 @@ func (s *Service) loadPersistedSessions() {
 		if errors.Is(err, os.ErrNotExist) {
 			return
 		}
-		s.logger.Warn("read terminal session store failed", "error", err.Error())
+		s.logger.Warn("read chatRuntime session store failed", "error", err.Error())
 		return
 	}
 
 	now := time.Now().UTC()
-	needsMigration := make([]*runtimeSession, 0)
 	s.mu.Lock()
 	for _, entry := range items {
 		if entry.IsDir() || strings.ToLower(filepath.Ext(entry.Name())) != ".json" {
@@ -107,12 +84,12 @@ func (s *Service) loadPersistedSessions() {
 		recordPath := filepath.Join(dir, entry.Name())
 		data, readErr := os.ReadFile(recordPath)
 		if readErr != nil {
-			s.logger.Warn("read terminal session record failed", "path", recordPath, "error", readErr.Error())
+			s.logger.Warn("read chatRuntime session record failed", "path", recordPath, "error", readErr.Error())
 			continue
 		}
 		record, err := decodePersistedSessionRecord(data)
 		if err != nil {
-			s.logger.Warn("decode terminal session record failed", "path", recordPath, "error", err.Error())
+			s.logger.Warn("decode chatRuntime session record failed", "path", recordPath, "error", err.Error())
 			continue
 		}
 		session := restorePersistedSession(record, now, s.options.WorkingDir)
@@ -120,21 +97,14 @@ func (s *Service) loadPersistedSessions() {
 			continue
 		}
 		s.sessions[session.summary.ID] = session
-		if persistedSessionRecordNeedsMigration(data, session) {
-			needsMigration = append(needsMigration, session)
-		}
 	}
 	s.mu.Unlock()
-
-	for _, session := range needsMigration {
-		s.persistSession(session)
-	}
 }
 
 func (s *Service) syncMissingPersistedSessions() {
-	dir, err := resolveTerminalSessionStateDir(s.options.WorkingDir)
+	dir, err := resolveChatRuntimeSessionStateDir(s.options.WorkingDir)
 	if err != nil {
-		s.logger.Warn("sync terminal session store failed", "error", err.Error())
+		s.logger.Warn("sync chatRuntime session store failed", "error", err.Error())
 		return
 	}
 	items, err := os.ReadDir(dir)
@@ -142,12 +112,11 @@ func (s *Service) syncMissingPersistedSessions() {
 		if errors.Is(err, os.ErrNotExist) {
 			return
 		}
-		s.logger.Warn("read terminal session store failed", "error", err.Error())
+		s.logger.Warn("read chatRuntime session store failed", "error", err.Error())
 		return
 	}
 
 	now := time.Now().UTC()
-	needsMigration := make([]*runtimeSession, 0)
 	for _, entry := range items {
 		if entry.IsDir() || strings.ToLower(filepath.Ext(entry.Name())) != ".json" {
 			continue
@@ -155,12 +124,12 @@ func (s *Service) syncMissingPersistedSessions() {
 		recordPath := filepath.Join(dir, entry.Name())
 		data, readErr := os.ReadFile(recordPath)
 		if readErr != nil {
-			s.logger.Warn("read terminal session record failed", "path", recordPath, "error", readErr.Error())
+			s.logger.Warn("read chatRuntime session record failed", "path", recordPath, "error", readErr.Error())
 			continue
 		}
 		record, err := decodePersistedSessionRecord(data)
 		if err != nil {
-			s.logger.Warn("decode terminal session record failed", "path", recordPath, "error", err.Error())
+			s.logger.Warn("decode chatRuntime session record failed", "path", recordPath, "error", err.Error())
 			continue
 		}
 		session := restorePersistedSession(record, now, s.options.WorkingDir)
@@ -173,13 +142,6 @@ func (s *Service) syncMissingPersistedSessions() {
 			s.sessions[session.summary.ID] = session
 		}
 		s.mu.Unlock()
-		if !exists && persistedSessionRecordNeedsMigration(data, session) {
-			needsMigration = append(needsMigration, session)
-		}
-	}
-
-	for _, session := range needsMigration {
-		s.persistSession(session)
 	}
 }
 
@@ -194,20 +156,20 @@ func (s *Service) persistSession(item *runtimeSession) {
 	if strings.TrimSpace(record.Summary.ID) == "" {
 		return
 	}
-	dir, err := resolveTerminalSessionStateDir(s.options.WorkingDir)
+	dir, err := resolveChatRuntimeSessionStateDir(s.options.WorkingDir)
 	if err != nil {
-		s.logger.Warn("prepare terminal session store failed", "session_id", record.Summary.ID, "error", err.Error())
+		s.logger.Warn("prepare chatRuntime session store failed", "session_id", record.Summary.ID, "error", err.Error())
 		return
 	}
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
-		s.logger.Warn("encode terminal session record failed", "session_id", record.Summary.ID, "error", err.Error())
+		s.logger.Warn("encode chatRuntime session record failed", "session_id", record.Summary.ID, "error", err.Error())
 		return
 	}
 	path := filepath.Join(dir, sanitizeWorkspaceSegment(record.Summary.ID)+".json")
 	tempPath := path + ".tmp"
 	if err := os.WriteFile(tempPath, data, 0o644); err != nil {
-		s.logger.Warn("write terminal session record failed", "path", tempPath, "error", err.Error())
+		s.logger.Warn("write chatRuntime session record failed", "path", tempPath, "error", err.Error())
 		return
 	}
 	if isRuntimeSessionDeleted(item) {
@@ -216,7 +178,7 @@ func (s *Service) persistSession(item *runtimeSession) {
 	}
 	if err := os.Rename(tempPath, path); err != nil {
 		_ = os.Remove(tempPath)
-		s.logger.Warn("commit terminal session record failed", "path", path, "error", err.Error())
+		s.logger.Warn("commit chatRuntime session record failed", "path", path, "error", err.Error())
 		return
 	}
 	s.hookMu.RLock()
@@ -228,7 +190,7 @@ func (s *Service) persistSession(item *runtimeSession) {
 }
 
 func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string) (*runtimeSession, error) {
-	ownerID = normalizeTerminalOwnerID(ownerID)
+	ownerID = normalizeChatRuntimeOwnerID(ownerID)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil, ErrSessionNotFound
@@ -239,7 +201,7 @@ func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string)
 	s.mu.RUnlock()
 	if ok {
 		existing.mu.RLock()
-		matched := normalizeTerminalOwnerID(existing.summary.OwnerID) == ownerID
+		matched := normalizeChatRuntimeOwnerID(existing.summary.OwnerID) == ownerID
 		existing.mu.RUnlock()
 		if !matched {
 			return nil, ErrSessionNotFound
@@ -247,50 +209,43 @@ func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string)
 		return existing, nil
 	}
 
-	dir, err := resolveTerminalSessionStateDir(s.options.WorkingDir)
+	dir, err := resolveChatRuntimeSessionStateDir(s.options.WorkingDir)
 	if err != nil {
-		s.logger.Warn("resolve terminal session state dir failed", "session_id", sessionID, "error", err.Error())
+		s.logger.Warn("resolve chatRuntime session state dir failed", "session_id", sessionID, "error", err.Error())
 		return nil, ErrSessionNotFound
 	}
 	path := filepath.Join(dir, sanitizeWorkspaceSegment(sessionID)+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			s.logger.Warn("read terminal session record failed", "path", path, "error", err.Error())
+			s.logger.Warn("read chatRuntime session record failed", "path", path, "error", err.Error())
 		}
 		return nil, ErrSessionNotFound
 	}
 	record, err := decodePersistedSessionRecord(data)
 	if err != nil {
-		s.logger.Warn("decode terminal session record failed", "path", path, "error", err.Error())
+		s.logger.Warn("decode chatRuntime session record failed", "path", path, "error", err.Error())
 		return nil, ErrSessionNotFound
 	}
 	session := restorePersistedSession(record, time.Now().UTC(), s.options.WorkingDir)
 	if session == nil || strings.TrimSpace(session.summary.OwnerID) != ownerID {
 		return nil, ErrSessionNotFound
 	}
-	needsMigration := persistedSessionRecordNeedsMigration(data, session)
 
 	s.mu.Lock()
 	if existing, ok := s.sessions[sessionID]; ok {
 		existing.mu.RLock()
-		matched := normalizeTerminalOwnerID(existing.summary.OwnerID) == ownerID
+		matched := normalizeChatRuntimeOwnerID(existing.summary.OwnerID) == ownerID
 		existing.mu.RUnlock()
 		if !matched {
 			s.mu.Unlock()
 			return nil, ErrSessionNotFound
 		}
 		s.mu.Unlock()
-		if needsMigration {
-			s.persistSession(existing)
-		}
 		return existing, nil
 	}
 	s.sessions[sessionID] = session
 	s.mu.Unlock()
-	if needsMigration {
-		s.persistSession(session)
-	}
 	return session, nil
 }
 
@@ -306,7 +261,7 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 		TitleManual:  boolPointer(item.titleManual),
 		TitleAuto:    boolPointer(item.titleAuto),
 		TitleScore:   item.titleScore,
-		Entries:      append([]terminaldomain.Entry{}, item.entries...),
+		Entries:      append([]chatruntimedomain.Entry{}, item.entries...),
 		NextID:       item.nextID,
 		NextTurnID:   item.nextTurnID,
 		NextEventID:  item.nextEventID,
@@ -365,22 +320,22 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 		return nil
 	}
 	summary := record.Summary
-	summary.OwnerID = normalizeTerminalOwnerID(summary.OwnerID)
-	summary.Status = terminaldomain.NormalizeSessionStatus(summary.Status)
+	summary.OwnerID = normalizeChatRuntimeOwnerID(summary.OwnerID)
+	summary.Status = chatruntimedomain.NormalizeSessionStatus(summary.Status)
 	if workspaceDir, err := resolveSessionWorkspacePath(baseDir, sessionID); err == nil {
 		summary.WorkingDir = workspaceDir
 	}
-	if strings.TrimSpace(summary.TerminalSessionID) == "" {
-		summary.TerminalSessionID = sessionID
+	if strings.TrimSpace(summary.RuntimeSessionID) == "" {
+		summary.RuntimeSessionID = sessionID
 	}
 	threadID := strings.TrimSpace(record.ThreadID)
 	if threadID == "" {
-		threadID = resolveRecoveredThreadID(sessionID, summary.TerminalSessionID)
+		threadID = resolveRecoveredThreadID(sessionID, summary.RuntimeSessionID)
 	}
 	session := &runtimeSession{
 		summary:      summary,
 		titleScore:   record.TitleScore,
-		entries:      append([]terminaldomain.Entry{}, record.Entries...),
+		entries:      append([]chatruntimedomain.Entry{}, record.Entries...),
 		nextID:       record.NextID,
 		nextTurnID:   record.NextTurnID,
 		nextEventID:  record.NextEventID,
@@ -442,29 +397,6 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	return session
 }
 
-func persistedSessionRecordNeedsMigration(data []byte, session *runtimeSession) bool {
-	if session == nil {
-		return false
-	}
-	latestRecord, deleted := snapshotPersistedSession(session)
-	if deleted {
-		return false
-	}
-	latestData, err := json.Marshal(latestRecord)
-	if err != nil {
-		return false
-	}
-	var original any
-	if err := json.Unmarshal(data, &original); err != nil {
-		return false
-	}
-	var latest any
-	if err := json.Unmarshal(latestData, &latest); err != nil {
-		return false
-	}
-	return !reflect.DeepEqual(original, latest)
-}
-
 func boolPointer(value bool) *bool {
 	return &value
 }
@@ -482,7 +414,7 @@ func normalizeRestoredSessionState(session *runtimeSession, now time.Time) {
 		}
 		session.nextID = nextID
 	}
-	liveStatus := terminaldomain.NormalizeSessionStatus(session.summary.Status) == terminaldomain.SessionStatusBusy
+	liveStatus := chatruntimedomain.NormalizeSessionStatus(session.summary.Status) == chatruntimedomain.SessionStatusBusy
 	for _, turn := range session.turns {
 		if turn == nil {
 			continue
@@ -514,9 +446,9 @@ func normalizeRestoredSessionState(session *runtimeSession, now time.Time) {
 	}
 	if liveStatus {
 		if session.closedByUser {
-			session.summary.Status = terminaldomain.SessionStatusExited
+			session.summary.Status = chatruntimedomain.SessionStatusExited
 		} else {
-			session.summary.Status = terminaldomain.SessionStatusInterrupted
+			session.summary.Status = chatruntimedomain.SessionStatusInterrupted
 			if strings.TrimSpace(session.summary.ErrorMessage) == "" {
 				session.summary.ErrorMessage = "codex runtime exited"
 			}
@@ -528,7 +460,7 @@ func normalizeRestoredSessionState(session *runtimeSession, now time.Time) {
 			session.summary.UpdatedAt = now
 		}
 	}
-	session.summary.Status = terminaldomain.NormalizeSessionStatus(session.summary.Status)
+	session.summary.Status = chatruntimedomain.NormalizeSessionStatus(session.summary.Status)
 	session.turnRunning = false
 	session.turnCancel = nil
 	session.activeTurnID = ""
@@ -557,18 +489,18 @@ func maxRuntimeOrdinal(value string, prefixes ...string) int {
 	return maxOrdinal
 }
 
-func resolveTerminalSessionStateDir(baseDir string) (string, error) {
-	dir, err := resolveTerminalSessionStatePath(baseDir)
+func resolveChatRuntimeSessionStateDir(baseDir string) (string, error) {
+	dir, err := resolveChatRuntimeSessionStatePath(baseDir)
 	if err != nil {
 		return "", err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("prepare terminal session store: %w", err)
+		return "", fmt.Errorf("prepare chatRuntime session store: %w", err)
 	}
 	return dir, nil
 }
 
-func resolveTerminalSessionStatePath(baseDir string) (string, error) {
+func resolveChatRuntimeSessionStatePath(baseDir string) (string, error) {
 	root := strings.TrimSpace(baseDir)
 	if root == "" {
 		root = "."
@@ -576,19 +508,19 @@ func resolveTerminalSessionStatePath(baseDir string) (string, error) {
 	dir := filepath.Join(
 		root,
 		defaultWorkspaceRootDirName,
-		terminalStateDirectoryName,
-		workspaceTerminalDirName,
+		chatRuntimeStateDirectoryName,
+		workspaceChatRuntimeDirName,
 		workspaceSessionsDirName,
 	)
 	absolute, err := filepath.Abs(dir)
 	if err != nil {
-		return "", fmt.Errorf("resolve terminal session store path: %w", err)
+		return "", fmt.Errorf("resolve chatRuntime session store path: %w", err)
 	}
 	return absolute, nil
 }
 
-func resolveTerminalSessionStateFilePath(baseDir string, sessionID string) (string, error) {
-	dir, err := resolveTerminalSessionStatePath(baseDir)
+func resolveChatRuntimeSessionStateFilePath(baseDir string, sessionID string) (string, error) {
+	dir, err := resolveChatRuntimeSessionStatePath(baseDir)
 	if err != nil {
 		return "", err
 	}
@@ -599,12 +531,12 @@ func resolveTerminalSessionStateFilePath(baseDir string, sessionID string) (stri
 	return filepath.Join(dir, sanitizedSessionID+".json"), nil
 }
 
-func removeTerminalSessionStateFile(path string) error {
+func removeChatRuntimeSessionStateFile(path string) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove terminal session record: %w", err)
+		return fmt.Errorf("remove chatRuntime session record: %w", err)
 	}
 	return nil
 }

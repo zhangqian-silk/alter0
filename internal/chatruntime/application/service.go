@@ -18,41 +18,40 @@ import (
 	"sync"
 	"time"
 
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 	"alter0/internal/codex/infrastructure/runtimeconfig"
 	execdomain "alter0/internal/execution/domain"
 	sharedapp "alter0/internal/shared/application"
-	terminaldomain "alter0/internal/terminal/domain"
 )
 
 const (
-	defaultCodexCommand               = "codex"
-	defaultCodexSandbox               = "danger-full-access"
-	defaultLinuxSandboxBwrapFeature   = "use_linux_sandbox_bwrap"
-	defaultWorkspaceRootDirName       = ".alter0"
-	workspaceDirectoryName            = "workspaces"
-	workspaceTerminalDirName          = "terminal"
-	workspaceSessionsDirName          = "sessions"
-	terminalTurnAttachmentDirName     = "input-attachments"
-	terminalCodexHomeDirName          = "codex-home"
-	defaultTerminalSessionTitle       = "New"
-	maxEntryPageLimit                 = 200
-	terminalHostUnavailableMessage    = "terminal host unavailable"
-	terminalCompactionRecoveryMessage = "codex context compaction failed; next input will continue the previous runtime thread in the same workspace"
+	defaultCodexCommand                  = "codex"
+	defaultCodexSandbox                  = "danger-full-access"
+	defaultLinuxSandboxBwrapFeature      = "use_linux_sandbox_bwrap"
+	defaultWorkspaceRootDirName          = ".alter0"
+	workspaceDirectoryName               = "workspaces"
+	workspaceChatRuntimeDirName          = "chat"
+	workspaceSessionsDirName             = "sessions"
+	chatRuntimeTurnAttachmentDirName     = "input-attachments"
+	chatRuntimeCodexHomeDirName          = "codex-home"
+	defaultChatRuntimeSessionTitle       = "New"
+	maxEntryPageLimit                    = 200
+	chatRuntimeHostUnavailableMessage    = "chatRuntime host unavailable"
+	chatRuntimeCompactionRecoveryMessage = "codex context compaction failed; next input will continue the previous runtime thread in the same workspace"
 )
 
 var (
-	ErrSessionOwnerRequired     = errors.New("terminal session owner is required")
-	ErrSessionNotFound          = errors.New("terminal session not found")
-	ErrSessionNotRunning        = errors.New("terminal session is not running")
-	ErrSessionBusy              = errors.New("terminal session is processing another turn")
-	ErrSessionInputRequired     = errors.New("terminal input is required")
-	ErrSessionRecoverIDRequired = errors.New("terminal recovery session id is required")
-	ErrTurnNotFound             = errors.New("terminal turn not found")
-	ErrRuntimeEventNotFound     = errors.New("terminal runtime event not found")
+	ErrSessionOwnerRequired     = errors.New("chat session owner is required")
+	ErrSessionNotFound          = errors.New("chat session not found")
+	ErrSessionNotRunning        = errors.New("chat session is not running")
+	ErrSessionBusy              = errors.New("chat session is processing another turn")
+	ErrSessionInputRequired     = errors.New("chat input is required")
+	ErrSessionRecoverIDRequired = errors.New("chat recovery session id is required")
+	ErrTurnNotFound             = errors.New("chat turn not found")
+	ErrRuntimeEventNotFound     = errors.New("chatRuntime event not found")
 )
 
-const terminalOwnerID = "terminal"
-const legacySharedTerminalOwnerID = "shared"
+const chatRuntimeOwnerID = "chat"
 
 type Options struct {
 	WorkingDir    string
@@ -67,13 +66,13 @@ type CreateRequest struct {
 }
 
 type RecoverRequest struct {
-	OwnerID           string
-	SessionID         string
-	TerminalSessionID string
-	Title             string
-	CreatedAt         time.Time
-	LastOutputAt      time.Time
-	UpdatedAt         time.Time
+	OwnerID          string
+	SessionID        string
+	RuntimeSessionID string
+	Title            string
+	CreatedAt        time.Time
+	LastOutputAt     time.Time
+	UpdatedAt        time.Time
 }
 
 type InputRequest struct {
@@ -85,14 +84,14 @@ type InputRequest struct {
 }
 
 type EntryPage struct {
-	Items      []terminaldomain.Entry `json:"items"`
-	Cursor     int                    `json:"cursor"`
-	NextCursor int                    `json:"next_cursor"`
-	HasMore    bool                   `json:"has_more"`
+	Items      []chatruntimedomain.Entry `json:"items"`
+	Cursor     int                       `json:"cursor"`
+	NextCursor int                       `json:"next_cursor"`
+	HasMore    bool                      `json:"has_more"`
 }
 
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
-type SessionUpdateHook func(ownerID string, sessionID string, session terminaldomain.Session)
+type SessionUpdateHook func(ownerID string, sessionID string, session chatruntimedomain.Session)
 
 type Service struct {
 	rootCtx     context.Context
@@ -142,11 +141,11 @@ type preparedTurnAttachment struct {
 type runtimeSession struct {
 	mu sync.RWMutex
 
-	summary      terminaldomain.Session
+	summary      chatruntimedomain.Session
 	titleManual  bool
 	titleAuto    bool
 	titleScore   int
-	entries      []terminaldomain.Entry
+	entries      []chatruntimedomain.Entry
 	nextID       int
 	turns        []*runtimeTurn
 	activeTurnID string
@@ -215,43 +214,43 @@ func (s *Service) SetSessionUpdateHook(hook SessionUpdateHook) {
 	s.updateHook = hook
 }
 
-func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
-	ownerID := normalizeTerminalOwnerID(req.OwnerID)
+func (s *Service) Create(req CreateRequest) (chatruntimedomain.Session, error) {
+	ownerID := normalizeChatRuntimeOwnerID(req.OwnerID)
 
 	s.mu.Lock()
 
 	command := resolveCodexCommand(s.options)
-	sessionID := "terminal-" + s.newID()
+	sessionID := "chat-" + s.newID()
 	workspaceDir, err := resolveSessionWorkspaceDir(s.options.WorkingDir, sessionID)
 	if err != nil {
 		s.mu.Unlock()
-		return terminaldomain.Session{}, err
+		return chatruntimedomain.Session{}, err
 	}
 	title := strings.TrimSpace(req.Title)
 	titleManual := false
 	titleAuto := false
 	if title == "" {
-		title = defaultTerminalSessionTitle
+		title = defaultChatRuntimeSessionTitle
 		titleAuto = true
 	} else {
 		titleManual = true
 	}
 	now := time.Now().UTC()
 	session := &runtimeSession{
-		summary: terminaldomain.Session{
-			ID:                sessionID,
-			TerminalSessionID: sessionID,
-			OwnerID:           ownerID,
-			Title:             title,
-			Shell:             command.label,
-			WorkingDir:        workspaceDir,
-			Status:            terminaldomain.SessionStatusReady,
-			CreatedAt:         now,
-			UpdatedAt:         now,
+		summary: chatruntimedomain.Session{
+			ID:               sessionID,
+			RuntimeSessionID: sessionID,
+			OwnerID:          ownerID,
+			Title:            title,
+			Shell:            command.label,
+			WorkingDir:       workspaceDir,
+			Status:           chatruntimedomain.SessionStatusReady,
+			CreatedAt:        now,
+			UpdatedAt:        now,
 		},
 		titleManual: titleManual,
 		titleAuto:   titleAuto,
-		entries:     []terminaldomain.Entry{},
+		entries:     []chatruntimedomain.Entry{},
 	}
 	s.sessions[sessionID] = session
 	s.mu.Unlock()
@@ -260,21 +259,21 @@ func (s *Service) Create(req CreateRequest) (terminaldomain.Session, error) {
 	return session.snapshot(), nil
 }
 
-func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
-	ownerID := normalizeTerminalOwnerID(req.OwnerID)
+func (s *Service) Recover(req RecoverRequest) (chatruntimedomain.Session, error) {
+	ownerID := normalizeChatRuntimeOwnerID(req.OwnerID)
 
 	sessionID := strings.TrimSpace(req.SessionID)
 	if sessionID == "" {
-		return terminaldomain.Session{}, ErrSessionRecoverIDRequired
+		return chatruntimedomain.Session{}, ErrSessionRecoverIDRequired
 	}
 
 	s.mu.Lock()
 
 	if existing, ok := s.sessions[sessionID]; ok {
 		snapshot := existing.snapshot()
-		if normalizeTerminalOwnerID(snapshot.OwnerID) != ownerID {
+		if normalizeChatRuntimeOwnerID(snapshot.OwnerID) != ownerID {
 			s.mu.Unlock()
-			return terminaldomain.Session{}, ErrSessionNotFound
+			return chatruntimedomain.Session{}, ErrSessionNotFound
 		}
 		s.mu.Unlock()
 		return snapshot, nil
@@ -284,14 +283,14 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 	workspaceDir, err := resolveSessionWorkspaceDir(s.options.WorkingDir, sessionID)
 	if err != nil {
 		s.mu.Unlock()
-		return terminaldomain.Session{}, err
+		return chatruntimedomain.Session{}, err
 	}
 	title := strings.TrimSpace(req.Title)
 	titleManual := false
 	titleAuto := false
 	titleScore := 0
 	if title == "" {
-		title = defaultTerminalSessionTitle
+		title = defaultChatRuntimeSessionTitle
 		titleAuto = true
 	} else {
 		titleAuto, titleScore = inferAutoSessionTitleState(title, sessionID)
@@ -303,28 +302,28 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 	if !lastOutputAt.IsZero() && updatedAt.Before(lastOutputAt) {
 		updatedAt = lastOutputAt
 	}
-	terminalSessionID := strings.TrimSpace(req.TerminalSessionID)
-	if terminalSessionID == "" {
-		terminalSessionID = sessionID
+	chatRuntimeSessionID := strings.TrimSpace(req.RuntimeSessionID)
+	if chatRuntimeSessionID == "" {
+		chatRuntimeSessionID = sessionID
 	}
 	session := &runtimeSession{
-		summary: terminaldomain.Session{
-			ID:                sessionID,
-			TerminalSessionID: terminalSessionID,
-			OwnerID:           ownerID,
-			Title:             title,
-			Shell:             command.label,
-			WorkingDir:        workspaceDir,
-			Status:            terminaldomain.SessionStatusReady,
-			CreatedAt:         createdAt,
-			LastOutputAt:      lastOutputAt,
-			UpdatedAt:         updatedAt,
+		summary: chatruntimedomain.Session{
+			ID:               sessionID,
+			RuntimeSessionID: chatRuntimeSessionID,
+			OwnerID:          ownerID,
+			Title:            title,
+			Shell:            command.label,
+			WorkingDir:       workspaceDir,
+			Status:           chatruntimedomain.SessionStatusReady,
+			CreatedAt:        createdAt,
+			LastOutputAt:     lastOutputAt,
+			UpdatedAt:        updatedAt,
 		},
 		titleManual: titleManual,
 		titleAuto:   titleAuto,
 		titleScore:  titleScore,
-		entries:     []terminaldomain.Entry{},
-		threadID:    resolveRecoveredThreadID(sessionID, terminalSessionID),
+		entries:     []chatruntimedomain.Entry{},
+		threadID:    resolveRecoveredThreadID(sessionID, chatRuntimeSessionID),
 	}
 	s.sessions[sessionID] = session
 	s.mu.Unlock()
@@ -333,8 +332,8 @@ func (s *Service) Recover(req RecoverRequest) (terminaldomain.Session, error) {
 	return session.snapshot(), nil
 }
 
-func (s *Service) List(ownerID string) []terminaldomain.Session {
-	ownerID = normalizeTerminalOwnerID(ownerID)
+func (s *Service) List(ownerID string) []chatruntimedomain.Session {
+	ownerID = normalizeChatRuntimeOwnerID(ownerID)
 	s.syncMissingPersistedSessions()
 
 	s.mu.RLock()
@@ -344,11 +343,11 @@ func (s *Service) List(ownerID string) []terminaldomain.Session {
 	}
 	s.mu.RUnlock()
 
-	items := make([]terminaldomain.Session, 0, len(sessions))
+	items := make([]chatruntimedomain.Session, 0, len(sessions))
 	for _, item := range sessions {
 		s.reconcileOrphanedRuntimeSession(item)
 		snapshot := item.snapshot()
-		if normalizeTerminalOwnerID(snapshot.OwnerID) != ownerID {
+		if normalizeChatRuntimeOwnerID(snapshot.OwnerID) != ownerID {
 			continue
 		}
 		items = append(items, snapshot)
@@ -357,8 +356,8 @@ func (s *Service) List(ownerID string) []terminaldomain.Session {
 		if items[i].Pinned != items[j].Pinned {
 			return items[i].Pinned
 		}
-		leftAt := terminalSessionSortAt(items[i])
-		rightAt := terminalSessionSortAt(items[j])
+		leftAt := chatRuntimeSessionSortAt(items[i])
+		rightAt := chatRuntimeSessionSortAt(items[j])
 		if leftAt.Equal(rightAt) {
 			if items[i].CreatedAt.Equal(items[j].CreatedAt) {
 				return items[i].ID > items[j].ID
@@ -370,7 +369,7 @@ func (s *Service) List(ownerID string) []terminaldomain.Session {
 	return items
 }
 
-func terminalSessionSortAt(session terminaldomain.Session) time.Time {
+func chatRuntimeSessionSortAt(session chatruntimedomain.Session) time.Time {
 	if !session.LastOutputAt.IsZero() {
 		return session.LastOutputAt
 	}
@@ -380,24 +379,24 @@ func terminalSessionSortAt(session terminaldomain.Session) time.Time {
 	return session.UpdatedAt
 }
 
-func (s *Service) Get(ownerID string, sessionID string) (terminaldomain.Session, bool) {
+func (s *Service) Get(ownerID string, sessionID string) (chatruntimedomain.Session, bool) {
 	item, err := s.getOrRestoreOwnedSession(ownerID, sessionID)
 	if err != nil {
-		return terminaldomain.Session{}, false
+		return chatruntimedomain.Session{}, false
 	}
 	s.reconcileOrphanedRuntimeSession(item)
 	return item.snapshot(), true
 }
 
-func (s *Service) SetPinned(ownerID string, sessionID string, pinned bool) (terminaldomain.Session, error) {
+func (s *Service) SetPinned(ownerID string, sessionID string, pinned bool) (chatruntimedomain.Session, error) {
 	item, err := s.getOwnedSession(ownerID, sessionID)
 	if err != nil {
 		if !errors.Is(err, ErrSessionNotFound) {
-			return terminaldomain.Session{}, err
+			return chatruntimedomain.Session{}, err
 		}
 		item, err = s.restorePersistedOwnedSession(ownerID, sessionID)
 		if err != nil {
-			return terminaldomain.Session{}, err
+			return chatruntimedomain.Session{}, err
 		}
 	}
 
@@ -407,7 +406,7 @@ func (s *Service) SetPinned(ownerID string, sessionID string, pinned bool) (term
 	item.mu.Unlock()
 
 	s.persistSession(item)
-	snapshot.Status = terminaldomain.NormalizeSessionStatus(snapshot.Status)
+	snapshot.Status = chatruntimedomain.NormalizeSessionStatus(snapshot.Status)
 	return snapshot, nil
 }
 
@@ -473,7 +472,7 @@ func (s *Service) ListEntries(ownerID string, sessionID string, cursor int, limi
 		cursor = item.nextID
 	}
 
-	items := make([]terminaldomain.Entry, 0, limit)
+	items := make([]chatruntimedomain.Entry, 0, limit)
 	nextCursor := cursor
 	for _, entry := range item.entries {
 		if entry.Cursor < cursor {
@@ -496,7 +495,7 @@ func (s *Service) ListEntries(ownerID string, sessionID string, cursor int, limi
 	}, nil
 }
 
-func (s *Service) Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error) {
+func (s *Service) Input(ownerID string, sessionID string, input string) (chatruntimedomain.Session, error) {
 	return s.InputWithAttachments(InputRequest{
 		OwnerID:   ownerID,
 		SessionID: sessionID,
@@ -504,15 +503,15 @@ func (s *Service) Input(ownerID string, sessionID string, input string) (termina
 	})
 }
 
-func (s *Service) InputWithAttachments(req InputRequest) (terminaldomain.Session, error) {
+func (s *Service) InputWithAttachments(req InputRequest) (chatruntimedomain.Session, error) {
 	item, err := s.getOwnedSession(req.OwnerID, req.SessionID)
 	if err != nil {
 		if !errors.Is(err, ErrSessionNotFound) {
-			return terminaldomain.Session{}, err
+			return chatruntimedomain.Session{}, err
 		}
 		item, err = s.restorePersistedOwnedSession(req.OwnerID, req.SessionID)
 		if err != nil {
-			return terminaldomain.Session{}, err
+			return chatruntimedomain.Session{}, err
 		}
 	}
 	s.reconcileOrphanedRuntimeSession(item)
@@ -523,7 +522,7 @@ func (s *Service) InputWithAttachments(req InputRequest) (terminaldomain.Session
 		prompt = defaultAttachmentPrompt(attachments)
 	}
 	if prompt == "" {
-		return terminaldomain.Session{}, ErrSessionInputRequired
+		return chatruntimedomain.Session{}, ErrSessionInputRequired
 	}
 
 	turnCtx, turnCancel := context.WithCancel(s.rootCtx)
@@ -532,12 +531,12 @@ func (s *Service) InputWithAttachments(req InputRequest) (terminaldomain.Session
 	if item.turnRunning {
 		item.mu.Unlock()
 		turnCancel()
-		return terminaldomain.Session{}, ErrSessionBusy
+		return chatruntimedomain.Session{}, ErrSessionBusy
 	}
-	if terminaldomain.NormalizeSessionStatus(item.summary.Status) == terminaldomain.SessionStatusBusy {
+	if chatruntimedomain.NormalizeSessionStatus(item.summary.Status) == chatruntimedomain.SessionStatusBusy {
 		item.mu.Unlock()
 		turnCancel()
-		return terminaldomain.Session{}, ErrSessionNotRunning
+		return chatruntimedomain.Session{}, ErrSessionNotRunning
 	}
 	now := time.Now().UTC()
 	if nextTitle, nextAuto, nextScore, changed := nextAutoSessionTitle(
@@ -552,7 +551,7 @@ func (s *Service) InputWithAttachments(req InputRequest) (terminaldomain.Session
 		item.titleAuto = nextAuto
 		item.titleScore = nextScore
 	}
-	item.summary.Status = terminaldomain.SessionStatusBusy
+	item.summary.Status = chatruntimedomain.SessionStatusBusy
 	item.summary.UpdatedAt = now
 	item.summary.FinishedAt = time.Time{}
 	item.summary.ErrorMessage = ""
@@ -566,33 +565,33 @@ func (s *Service) InputWithAttachments(req InputRequest) (terminaldomain.Session
 	item.mu.Unlock()
 	s.persistSession(item)
 
-	go s.runTurn(item, turnCtx, turn.ID, prompt, attachments, cloneTerminalSkillContext(req.SkillContext))
+	go s.runTurn(item, turnCtx, turn.ID, prompt, attachments, cloneChatRuntimeSkillContext(req.SkillContext))
 
 	return snapshot, nil
 }
 
-func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Session, error) {
+func (s *Service) Delete(ownerID string, sessionID string) (chatruntimedomain.Session, error) {
 	item, err := s.getOwnedSession(ownerID, sessionID)
 	if err != nil {
 		if !errors.Is(err, ErrSessionNotFound) {
-			return terminaldomain.Session{}, err
+			return chatruntimedomain.Session{}, err
 		}
 		item, err = s.restorePersistedOwnedSession(ownerID, sessionID)
 		if err != nil {
-			return terminaldomain.Session{}, err
+			return chatruntimedomain.Session{}, err
 		}
 	}
 
 	snapshot := item.snapshot()
-	statePath, err := resolveTerminalSessionStateFilePath(s.options.WorkingDir, snapshot.ID)
+	statePath, err := resolveChatRuntimeSessionStateFilePath(s.options.WorkingDir, snapshot.ID)
 	if err != nil {
-		return terminaldomain.Session{}, err
+		return chatruntimedomain.Session{}, err
 	}
 	workspaceDir := strings.TrimSpace(snapshot.WorkingDir)
 	if workspaceDir == "" {
 		workspaceDir, err = resolveSessionWorkspacePath(s.options.WorkingDir, snapshot.ID)
 		if err != nil {
-			return terminaldomain.Session{}, err
+			return chatruntimedomain.Session{}, err
 		}
 	}
 
@@ -600,7 +599,7 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 	current, ok := s.sessions[sessionID]
 	if !ok {
 		s.mu.Unlock()
-		return terminaldomain.Session{}, ErrSessionNotFound
+		return chatruntimedomain.Session{}, ErrSessionNotFound
 	}
 	item = current
 	item.mu.Lock()
@@ -617,14 +616,14 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 	s.mu.Unlock()
 
 	var cleanupErr error
-	if err := removeTerminalSessionStateFile(statePath); err != nil {
+	if err := removeChatRuntimeSessionStateFile(statePath); err != nil {
 		cleanupErr = errors.Join(cleanupErr, err)
 	}
 	if err := os.RemoveAll(workspaceDir); err != nil {
 		if wasRunning {
-			s.cleanupTerminalWorkspaceAfterDelete(snapshot.ID, workspaceDir)
+			s.cleanupChatRuntimeWorkspaceAfterDelete(snapshot.ID, workspaceDir)
 		} else {
-			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove terminal workspace: %w", err))
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove chatRuntime workspace: %w", err))
 		}
 	}
 	if cleanupErr != nil {
@@ -633,7 +632,7 @@ func (s *Service) Delete(ownerID string, sessionID string) (terminaldomain.Sessi
 	return snapshot, nil
 }
 
-func (s *Service) cleanupTerminalWorkspaceAfterDelete(sessionID string, workspaceDir string) {
+func (s *Service) cleanupChatRuntimeWorkspaceAfterDelete(sessionID string, workspaceDir string) {
 	workspaceDir = strings.TrimSpace(workspaceDir)
 	if workspaceDir == "" {
 		return
@@ -643,7 +642,7 @@ func (s *Service) cleanupTerminalWorkspaceAfterDelete(sessionID string, workspac
 			time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
 			if err := os.RemoveAll(workspaceDir); err != nil {
 				if attempt == 4 {
-					s.logger.Warn("remove deleted running terminal workspace failed", "session_id", sessionID, "path", workspaceDir, "error", err.Error())
+					s.logger.Warn("remove deleted running chatRuntime workspace failed", "session_id", sessionID, "path", workspaceDir, "error", err.Error())
 				}
 				continue
 			}
@@ -666,8 +665,8 @@ func (s *Service) shutdown() {
 			item.turnCancel()
 			item.turnCancel = nil
 		}
-		if !item.closedByUser && terminaldomain.NormalizeSessionStatus(item.summary.Status) == terminaldomain.SessionStatusBusy {
-			item.markInterruptedLocked(item.turnByIDLocked(item.activeTurnID), time.Now().UTC(), terminalHostUnavailableMessage)
+		if !item.closedByUser && chatruntimedomain.NormalizeSessionStatus(item.summary.Status) == chatruntimedomain.SessionStatusBusy {
+			item.markInterruptedLocked(item.turnByIDLocked(item.activeTurnID), time.Now().UTC(), chatRuntimeHostUnavailableMessage)
 		}
 		item.turnRunning = false
 		item.mu.Unlock()
@@ -687,14 +686,14 @@ func (s *Service) reconcileOrphanedRuntimeSession(item *runtimeSession) {
 		return
 	}
 	turn := item.orphanedRuntimeTurnLocked()
-	if turn == nil && terminaldomain.NormalizeSessionStatus(item.summary.Status) != terminaldomain.SessionStatusBusy {
+	if turn == nil && chatruntimedomain.NormalizeSessionStatus(item.summary.Status) != chatruntimedomain.SessionStatusBusy {
 		item.mu.Unlock()
 		return
 	}
 	item.turnRunning = false
 	item.turnCancel = nil
 	item.activeTurnID = ""
-	item.markInterruptedLocked(turn, now, terminalHostUnavailableMessage)
+	item.markInterruptedLocked(turn, now, chatRuntimeHostUnavailableMessage)
 	item.mu.Unlock()
 
 	s.persistSession(item)
@@ -724,7 +723,7 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 	cmd := runner(runCtx, command.path, args...)
 	if workspaceDir := item.workspaceDir(); workspaceDir != "" {
 		cmd.Dir = workspaceDir
-		env, runtimeErr := prepareTerminalCodexRuntime(workspaceDir, skillContext)
+		env, runtimeErr := prepareChatRuntimeCodexRuntime(workspaceDir, skillContext)
 		if runtimeErr != nil {
 			s.finishTurn(item, turnID, runtimeErr, "")
 			return
@@ -834,7 +833,7 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 		if threadID := strings.TrimSpace(event.ThreadID); threadID != "" {
 			item.mu.Lock()
 			item.threadID = threadID
-			item.summary.TerminalSessionID = threadID
+			item.summary.RuntimeSessionID = threadID
 			item.summary.UpdatedAt = time.Now().UTC()
 			item.mu.Unlock()
 			s.persistSession(item)
@@ -921,7 +920,7 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 			output := normalizeChunk(event.Item.AggregatedOutput)
 			step.Preview = summarizeRuntimeEventSummary(strings.TrimSpace(command))
 			step.Blocks = []RuntimeDetailBlock{{
-				Type:     "terminal",
+				Type:     "chatRuntime",
 				Title:    "Shell",
 				Content:  strings.TrimSpace(strings.Join([]string{command, output}, "\n\n")),
 				Language: "shell",
@@ -968,7 +967,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	if item.closedByUser {
 		item.summary.UpdatedAt = now
 		item.summary.FinishedAt = now
-		item.summary.Status = terminaldomain.SessionStatusExited
+		item.summary.Status = chatruntimedomain.SessionStatusExited
 		if turn != nil && turn.FinishedAt.IsZero() {
 			turn.Status = "completed"
 			turn.FinishedAt = now
@@ -979,7 +978,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		return
 	}
 
-	item.summary.Status = terminaldomain.SessionStatusReady
+	item.summary.Status = chatruntimedomain.SessionStatusReady
 	item.summary.UpdatedAt = now
 	item.summary.FinishedAt = time.Time{}
 	item.summary.ExitCode = nil
@@ -997,19 +996,19 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	}
 
 	if errors.Is(turnErr, context.Canceled) || errors.Is(s.rootCtx.Err(), context.Canceled) {
-		item.markInterruptedLocked(turn, now, terminalHostUnavailableMessage)
+		item.markInterruptedLocked(turn, now, chatRuntimeHostUnavailableMessage)
 		item.mu.Unlock()
 		s.persistSession(item)
 		return
 	}
 
 	if isCodexCompactionFailure(stderrText, turnErr) {
-		item.summary.ErrorMessage = terminalCompactionRecoveryMessage
+		item.summary.ErrorMessage = chatRuntimeCompactionRecoveryMessage
 		item.appendEntryLocked("system", "codex previous runtime thread retained after context compaction failure")
 		if turn != nil {
 			turn.Status = "failed"
 			turn.FinishedAt = now
-			item.newSystemEventLocked(turn, "Compaction failed", terminalCompactionRecoveryMessage, now, "failed")
+			item.newSystemEventLocked(turn, "Compaction failed", chatRuntimeCompactionRecoveryMessage, now, "failed")
 			turn.promoteFinalOutput()
 		}
 		item.mu.Unlock()
@@ -1045,7 +1044,7 @@ func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtime
 	}
 
 	if errors.Is(turnErr, context.Canceled) || errors.Is(s.rootCtx.Err(), context.Canceled) {
-		reason := terminalHostUnavailableMessage
+		reason := chatRuntimeHostUnavailableMessage
 		if turn.Status != "interrupted" {
 			turn.Status = "interrupted"
 		}
@@ -1146,7 +1145,7 @@ func (s *runtimeSession) ensureCommandEventLocked(turn *runtimeTurn, itemID stri
 		step.ItemID = strings.TrimSpace(itemID)
 		step.Preview = summarizeRuntimeEventSummary(command)
 		step.Blocks = []RuntimeDetailBlock{{
-			Type:     "terminal",
+			Type:     "chatRuntime",
 			Title:    "Shell",
 			Content:  strings.TrimSpace(command),
 			Language: "shell",
@@ -1197,7 +1196,7 @@ func (t *runtimeTurn) summary(sessionID string) TurnSummary {
 			continue
 		}
 		seq++
-		runtimeTraceEvents = append(runtimeTraceEvents, terminalRuntimeTraceEvent(sessionID, t.ID, seq, event.summary()))
+		runtimeTraceEvents = append(runtimeTraceEvents, chatRuntimeRuntimeTraceEvent(sessionID, t.ID, seq, event.summary()))
 	}
 	return TurnSummary{
 		ID:                 t.ID,
@@ -1251,8 +1250,8 @@ func (s *runtimeEventRecord) summary() runtimeEventSummary {
 
 func (s *runtimeEventRecord) runtimeTraceEventDetail(sessionID string, turnID string, seq int) RuntimeTraceEventDetail {
 	summary := s.summary()
-	event := terminalRuntimeTraceEvent(sessionID, turnID, seq, summary)
-	event.Blocks = terminalRuntimeBlocks(summary.Blocks, summary.Preview, event.Kind, false)
+	event := chatRuntimeRuntimeTraceEvent(sessionID, turnID, seq, summary)
+	event.Blocks = chatRuntimeRuntimeBlocks(summary.Blocks, summary.Preview, event.Kind, false)
 	return RuntimeTraceEventDetail{
 		TurnID:     turnID,
 		Event:      event,
@@ -1491,7 +1490,7 @@ func imagePathsFromPreparedTurnAttachments(items []preparedTurnAttachment) []str
 	return out
 }
 
-func cloneTerminalSkillContext(input *execdomain.SkillContext) *execdomain.SkillContext {
+func cloneChatRuntimeSkillContext(input *execdomain.SkillContext) *execdomain.SkillContext {
 	if input == nil {
 		return nil
 	}
@@ -1601,9 +1600,9 @@ func prepareTurnInputAttachments(workspaceDir string, turnID string, attachments
 		return nil, nil
 	}
 	if strings.TrimSpace(workspaceDir) == "" {
-		return nil, errors.New("terminal workspace is empty")
+		return nil, errors.New("chatRuntime workspace is empty")
 	}
-	dir := filepath.Join(workspaceDir, terminalTurnAttachmentDirName, sanitizeWorkspaceSegment(turnID))
+	dir := filepath.Join(workspaceDir, chatRuntimeTurnAttachmentDirName, sanitizeWorkspaceSegment(turnID))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("prepare turn attachment dir: %w", err)
 	}
@@ -1768,7 +1767,7 @@ func normalizeChunk(value string) string {
 	return text
 }
 
-func isTerminalOutputStream(stream string) bool {
+func isChatRuntimeOutputStream(stream string) bool {
 	switch strings.ToLower(strings.TrimSpace(stream)) {
 	case "stdout", "stderr":
 		return true
@@ -1778,7 +1777,7 @@ func isTerminalOutputStream(stream string) bool {
 }
 
 func (s *Service) getOwnedSession(ownerID string, sessionID string) (*runtimeSession, error) {
-	ownerID = normalizeTerminalOwnerID(ownerID)
+	ownerID = normalizeChatRuntimeOwnerID(ownerID)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil, ErrSessionNotFound
@@ -1792,7 +1791,7 @@ func (s *Service) getOwnedSession(ownerID string, sessionID string) (*runtimeSes
 	}
 
 	item.mu.RLock()
-	matched := normalizeTerminalOwnerID(item.summary.OwnerID) == ownerID
+	matched := normalizeChatRuntimeOwnerID(item.summary.OwnerID) == ownerID
 	item.mu.RUnlock()
 	if !matched {
 		return nil, ErrSessionNotFound
@@ -1811,10 +1810,10 @@ func (s *Service) getOrRestoreOwnedSession(ownerID string, sessionID string) (*r
 	return s.restorePersistedOwnedSession(ownerID, sessionID)
 }
 
-func normalizeTerminalOwnerID(ownerID string) string {
+func normalizeChatRuntimeOwnerID(ownerID string) string {
 	ownerID = strings.TrimSpace(ownerID)
-	if ownerID == "" || ownerID == legacySharedTerminalOwnerID {
-		return terminalOwnerID
+	if ownerID == "" {
+		return chatRuntimeOwnerID
 	}
 	return ownerID
 }
@@ -1823,7 +1822,7 @@ func (s *Service) countActiveLocked() int {
 	total := 0
 	for _, item := range s.sessions {
 		snapshot := item.snapshot()
-		if terminaldomain.IsSessionOpenStatus(snapshot.Status) {
+		if chatruntimedomain.IsSessionOpenStatus(snapshot.Status) {
 			total++
 		}
 	}
@@ -1853,38 +1852,38 @@ func normalizeRecoveredOptionalTime(value time.Time) time.Time {
 	return value.UTC()
 }
 
-func resolveRecoveredThreadID(sessionID string, terminalSessionID string) string {
-	threadID := strings.TrimSpace(terminalSessionID)
+func resolveRecoveredThreadID(sessionID string, chatRuntimeSessionID string) string {
+	threadID := strings.TrimSpace(chatRuntimeSessionID)
 	if threadID == "" || threadID == strings.TrimSpace(sessionID) {
 		return ""
 	}
 	return threadID
 }
 
-func prepareTerminalCodexRuntime(workspaceDir string, skillContext *execdomain.SkillContext) ([]string, error) {
-	materializedSkillContext, skillFiles, err := materializeTerminalSkillContextFiles(skillContext)
+func prepareChatRuntimeCodexRuntime(workspaceDir string, skillContext *execdomain.SkillContext) ([]string, error) {
+	materializedSkillContext, skillFiles, err := materializeChatRuntimeSkillContextFiles(skillContext)
 	if err != nil {
 		return nil, err
 	}
 	managedFiles := append([]runtimeconfig.ManagedFile{}, skillFiles...)
 	managedFiles = append(managedFiles, runtimeconfig.ManagedFile{
 		RelativePath: ".alter0/codex-runtime/skills.md",
-		Content:      renderTerminalSkillContextMarkdown(materializedSkillContext),
+		Content:      renderChatRuntimeSkillContextMarkdown(materializedSkillContext),
 		Mode:         0o644,
 	})
 	prepared, err := runtimeconfig.Prepare(runtimeconfig.Spec{
-		RuntimeHome:      filepath.Join(workspaceDir, terminalCodexHomeDirName),
+		RuntimeHome:      filepath.Join(workspaceDir, chatRuntimeCodexHomeDirName),
 		WorkspaceDir:     workspaceDir,
 		ManagedFiles:     managedFiles,
-		RootInstructions: "- Read `.alter0/codex-runtime/skills.md` before acting. Apply only the skills selected for the current Terminal turn.",
+		RootInstructions: "- Read `.alter0/codex-runtime/skills.md` before acting. Apply only the skills selected for the current ChatRuntime turn.",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("prepare terminal codex runtime: %w", err)
+		return nil, fmt.Errorf("prepare chatRuntime codex runtime: %w", err)
 	}
 	return prepared.Env, nil
 }
 
-func materializeTerminalSkillContextFiles(skillContext *execdomain.SkillContext) (*execdomain.SkillContext, []runtimeconfig.ManagedFile, error) {
+func materializeChatRuntimeSkillContextFiles(skillContext *execdomain.SkillContext) (*execdomain.SkillContext, []runtimeconfig.ManagedFile, error) {
 	if skillContext == nil || len(skillContext.Skills) == 0 {
 		return skillContext, nil, nil
 	}
@@ -1898,9 +1897,9 @@ func materializeTerminalSkillContextFiles(skillContext *execdomain.SkillContext)
 	}
 	materialized, err := runtimeconfig.MaterializeFileBackedSkillReferences(refs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("materialize terminal skill files: %w", err)
+		return nil, nil, fmt.Errorf("materialize chatRuntime skill files: %w", err)
 	}
-	updated := cloneTerminalSkillContext(skillContext)
+	updated := cloneChatRuntimeSkillContext(skillContext)
 	for i := range updated.Skills {
 		if filePath := materialized.FilePaths[fmt.Sprintf("%d", i)]; strings.TrimSpace(filePath) != "" {
 			updated.Skills[i].FilePath = filePath
@@ -1909,10 +1908,10 @@ func materializeTerminalSkillContextFiles(skillContext *execdomain.SkillContext)
 	return updated, materialized.ManagedFiles, nil
 }
 
-func renderTerminalSkillContextMarkdown(skillContext *execdomain.SkillContext) string {
+func renderChatRuntimeSkillContextMarkdown(skillContext *execdomain.SkillContext) string {
 	lines := []string{"# Skills", ""}
 	if skillContext == nil || len(skillContext.Skills) == 0 {
-		lines = append(lines, "No skills selected for this Terminal turn.", "")
+		lines = append(lines, "No skills selected for this Chat turn.", "")
 		return strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
 	}
 	protocol := strings.TrimSpace(skillContext.Protocol)
@@ -1975,13 +1974,13 @@ func resolveSessionWorkspacePath(baseDir string, sessionID string) (string, erro
 		root,
 		defaultWorkspaceRootDirName,
 		workspaceDirectoryName,
-		workspaceTerminalDirName,
+		workspaceChatRuntimeDirName,
 		workspaceSessionsDirName,
 		sanitizedSessionID,
 	)
 	absolute, err := filepath.Abs(workspaceDir)
 	if err != nil {
-		return "", fmt.Errorf("resolve terminal workspace path: %w", err)
+		return "", fmt.Errorf("resolve chatRuntime workspace path: %w", err)
 	}
 	return absolute, nil
 }
@@ -1992,7 +1991,7 @@ func resolveSessionWorkspaceDir(baseDir string, sessionID string) (string, error
 		return "", err
 	}
 	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
-		return "", fmt.Errorf("prepare terminal workspace: %w", err)
+		return "", fmt.Errorf("prepare chatRuntime workspace: %w", err)
 	}
 	return workspaceDir, nil
 }
@@ -2054,14 +2053,14 @@ func (s *runtimeSession) appendEntryLocked(stream string, text string) {
 		return
 	}
 	now := time.Now().UTC()
-	s.entries = append(s.entries, terminaldomain.Entry{
+	s.entries = append(s.entries, chatruntimedomain.Entry{
 		Cursor:    s.nextID,
 		Stream:    strings.TrimSpace(stream),
 		Text:      content,
 		CreatedAt: now,
 	})
 	s.nextID++
-	if isTerminalOutputStream(stream) {
+	if isChatRuntimeOutputStream(stream) {
 		s.summary.LastOutputAt = now
 	}
 	s.summary.UpdatedAt = now
@@ -2070,12 +2069,12 @@ func (s *runtimeSession) appendEntryLocked(stream string, text string) {
 func (s *runtimeSession) markInterruptedLocked(turn *runtimeTurn, now time.Time, message string) {
 	reason := strings.TrimSpace(message)
 	if reason == "" {
-		reason = terminalHostUnavailableMessage
+		reason = chatRuntimeHostUnavailableMessage
 	}
-	summaryText := "terminal interrupted: " + reason
+	summaryText := "chatRuntime interrupted: " + reason
 	alreadyRecorded := hasRuntimeTurnSystemEvent(turn, "Interrupted", reason)
 
-	s.summary.Status = terminaldomain.SessionStatusInterrupted
+	s.summary.Status = chatruntimedomain.SessionStatusInterrupted
 	s.summary.ErrorMessage = reason
 	s.summary.FinishedAt = now
 	if s.summary.UpdatedAt.Before(now) {
@@ -2143,10 +2142,10 @@ func isRuntimeTurnLive(turn *runtimeTurn) bool {
 	return normalized == "" || normalized == "running" || normalized == "starting" || normalized == "queued" || normalized == "in_progress"
 }
 
-func (s *runtimeSession) snapshot() terminaldomain.Session {
+func (s *runtimeSession) snapshot() chatruntimedomain.Session {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	snapshot := s.summary
-	snapshot.Status = terminaldomain.NormalizeSessionStatus(snapshot.Status)
+	snapshot.Status = chatruntimedomain.NormalizeSessionStatus(snapshot.Status)
 	return snapshot
 }

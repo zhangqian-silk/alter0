@@ -15,13 +15,13 @@ func TestTaskStatusAndLogLevelClassifiers(t *testing.T) {
 		}
 	}
 	for _, status := range []TaskStatus{TaskStatusSuccess, TaskStatusFailed, TaskStatusCanceled} {
-		if !status.IsTerminal() {
-			t.Fatalf("%q IsTerminal() = false, want true", status)
+		if !status.IsChatRuntime() {
+			t.Fatalf("%q IsChatRuntime() = false, want true", status)
 		}
 	}
 	for _, status := range []TaskStatus{TaskStatusQueued, TaskStatusRunning} {
-		if status.IsTerminal() {
-			t.Fatalf("%q IsTerminal() = true, want false", status)
+		if status.IsChatRuntime() {
+			t.Fatalf("%q IsChatRuntime() = true, want false", status)
 		}
 	}
 	for _, level := range []TaskLogLevel{TaskLogLevelInfo, TaskLogLevelWarn, TaskLogLevelError} {

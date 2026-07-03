@@ -9,7 +9,7 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 1. 聊天输入框的未发送内容保护
 2. 输入法合成态下的稳定输入
 3. 草稿持久化、会话隔离与恢复
-4. Terminal 兼容入口的共享 Conversation runtime 挂载、创建提交与视口布局
+4. Chat 共享 Conversation runtime 的创建提交与视口布局
 5. 受保护路由与 API 的登录态接入
 
 ## 代码位置
@@ -23,7 +23,6 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 - `internal/interfaces/web/e2e/chat.spec.ts`
 - `internal/interfaces/web/e2e/cron.spec.ts`
 - `internal/interfaces/web/e2e/runtime-workspace.spec.ts`
-- `internal/interfaces/web/e2e/terminal.spec.ts`
 - `internal/interfaces/web/e2e/helpers/asserts/composer.ts`
 - `internal/interfaces/web/e2e/helpers/asserts/input.ts`
 - `internal/interfaces/web/e2e/helpers/components/composer.ts`
@@ -32,8 +31,6 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 - `internal/interfaces/web/e2e/helpers/flows/chat-draft.ts`
 - `internal/interfaces/web/e2e/helpers/flows/chat-session.ts`
 - `internal/interfaces/web/e2e/helpers/flows/routes.ts`
-- `internal/interfaces/web/e2e/helpers/flows/terminal-runtime.ts`
-- `internal/interfaces/web/e2e/helpers/flows/terminal-session.ts`
 - `internal/interfaces/web/e2e/helpers/guards/app-ready.ts`
 - `internal/interfaces/web/e2e/helpers/guards/login.ts`
 - `internal/interfaces/web/e2e/helpers/guards/unsaved.ts`
@@ -42,10 +39,8 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 - `internal/interfaces/web/e2e/helpers/pages/cron.ts`
 - `internal/interfaces/web/e2e/helpers/pages/login.ts`
 - `internal/interfaces/web/e2e/helpers/pages/app-shell.ts`
-- `internal/interfaces/web/e2e/helpers/pages/terminal.ts`
 - `internal/interfaces/web/e2e/helpers/scenarios/chat.ts`
 - `internal/interfaces/web/e2e/helpers/scenarios/cron.ts`
-- `internal/interfaces/web/e2e/helpers/scenarios/terminal.ts`
 
 相关输入组件说明：
 
@@ -60,7 +55,6 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 - 执行全部 E2E：`npm run test:e2e`
 - 执行聊天专项：`npx playwright test -c playwright.config.js e2e/chat.spec.ts`
 - 执行 Cron 专项：`npx playwright test -c playwright.config.js e2e/cron.spec.ts`
-- 执行 Terminal 专项：`npx playwright test -c playwright.config.js e2e/terminal.spec.ts`
 
 若通过 `alter0` 服务内的 `Codex CLI` 执行上述命令，需先在宿主机 root 下运行一次：
 
@@ -90,7 +84,7 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 - `helpers/pages/app-shell.ts`：全局导航菜单等壳层控件
 - `helpers/guards/app-ready.ts`：统一等待前端进入可交互态
 - `helpers/guards/login.ts`：受保护页面登录守卫
-- `helpers/flows/routes.ts`：统一聊天、Settings/Schedules 与 Terminal 兼容入口打开
+- `helpers/flows/routes.ts`：统一聊天与 Settings/Schedules 打开
 - `helpers/flows/auth.ts`：统一解析登录密码，并为 API 请求补登录态
 
 ### 输入与交互
@@ -100,17 +94,14 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 - `helpers/interactions/ime.ts`：统一输入法合成开始与提交流程
 - `helpers/guards/unsaved.ts`：统一未发送草稿确认守卫
 - 复用输入组件统一暴露 `data-composer-*` 稳定标识，包括输入、提交、计数、草稿态、合成态与 pending 态
-- Terminal 兼容入口复用 Conversation runtime，但按 Terminal owner 暴露 `data-runtime-view="terminal"`、`data-runtime-workspace="terminal"`、`data-runtime-screen="terminal"`、`data-composer-input="terminal"` 与 `data-runtime-create-session="terminal"` 等稳定标识
+- Chat 运行入口暴露 `data-runtime-view="conversation"`、`data-runtime-workspace="conversation"`、`data-runtime-screen="conversation"`、`data-composer-input="conversation"` 与 `data-runtime-create-session="conversation"` 等稳定标识
 
 ### 场景能力
 
 - `helpers/scenarios/chat.ts`：统一 Chat 路由打开、草稿装载、双会话草稿准备与刷新后的可交互态恢复
 - `helpers/scenarios/cron.ts`：统一 Settings/Schedules 打开与调度列表可见态准备
-- `helpers/scenarios/terminal.ts`：保留旧 Terminal 客户端绑定与会话预置 helper；当前 `/terminal` 主入口专项优先验证共享 Conversation runtime 兼容契约
 - `helpers/flows/chat-session.ts`：聊天会话切换、删除与激活态流程
 - `helpers/flows/chat-draft.ts`：聊天草稿准备与双会话草稿场景
-- `helpers/flows/terminal-session.ts`：Terminal 会话创建、选择与预置数据
-- `helpers/flows/terminal-runtime.ts`：Terminal 轮询等待与重绘等待
 
 ## 当前覆盖
 
@@ -128,16 +119,10 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 
 - 通过 `Settings > Schedules` 渲染 `/api/control/cron/jobs` 返回的调度任务
 
-### Terminal
-
-- `/terminal` 作为兼容入口挂载共享 Conversation runtime，同时使用 Terminal owner 的接口、会话、本地缓存与 DOM 别名
-- 从页面创建 Terminal-owned 会话并提交消息
-- 桌面与移动端正文滚动区保持在 Composer 上方，软键盘变化后不遮挡输入区
-
 ### Shared Runtime Workspace
 
 - `chat` 首次点击发送即提交当前草稿
-- `chat / terminal` 的正文滚动区与底部 Composer 保持独立边界，不出现正文被输入区遮挡
+- `chat` 的正文滚动区与底部 Composer 保持独立边界，不出现正文被输入区遮挡
 
 ## 维护约束
 

@@ -96,7 +96,7 @@ describe("ChatMessageRegion", () => {
     );
 
     const article = document.querySelector("[data-message-id='message-1']") as HTMLElement;
-    expect(article).toHaveClass("terminal-turn-card");
+    expect(article).toHaveClass("chatRuntime-turn-card");
     expect(article).toHaveClass("conversation-message");
     expect(article).toHaveClass("runtime-message");
     expect(article).toHaveClass("runtime-message-assistant");
@@ -105,7 +105,7 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".message-markdown-toolbar")).toBeInTheDocument();
     expect(article.querySelector(".message-markdown-copy")).toBeInTheDocument();
     expect(article.querySelector(".message-markdown-body")).toBeInTheDocument();
-    expect(article.querySelector(".terminal-final-output")).toBeInTheDocument();
+    expect(article.querySelector(".chatRuntime-final-output")).toBeInTheDocument();
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
     expect(article.querySelector(".assistant-message-shell")).toBeInTheDocument();
     expect(article.querySelector(".runtime-message-bubble")).toBeInTheDocument();
@@ -150,12 +150,12 @@ describe("ChatMessageRegion", () => {
     );
 
     const article = document.querySelector("[data-message-id='message-2']") as HTMLElement;
-    expect(article.querySelector(".terminal-turn-prompt")).toBeInTheDocument();
+    expect(article.querySelector(".chatRuntime-turn-prompt")).toBeInTheDocument();
     expect(article).toHaveClass("runtime-message");
     expect(article).toHaveClass("runtime-message-user");
     expect(article.querySelector(".runtime-message-bubble")).toBeInTheDocument();
     expect(article.querySelector(".runtime-message-user-shell")).toBeInTheDocument();
-    expect(article.querySelector(".terminal-log-time")).not.toBeInTheDocument();
+    expect(article.querySelector(".chatRuntime-log-time")).not.toBeInTheDocument();
     expect(article.textContent).not.toContain("10:20");
   });
 
@@ -268,10 +268,10 @@ describe("ChatMessageRegion", () => {
 
     const article = document.querySelector("[data-message-id='message-2']") as HTMLElement;
     const image = screen.getByRole("img", { name: "diagram.png" });
-    expect(article).toHaveClass("terminal-turn-card");
+    expect(article).toHaveClass("chatRuntime-turn-card");
     expect(article).toHaveClass("conversation-message");
     expect(article).toHaveClass("is-user");
-    expect(article.querySelector(".terminal-turn-prompt")).toBeInTheDocument();
+    expect(article.querySelector(".chatRuntime-turn-prompt")).toBeInTheDocument();
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
     expect(article.querySelector(".user-message-shell")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-attachment-gallery='message-2']")).toBeInTheDocument();
@@ -299,19 +299,19 @@ describe("ChatMessageRegion", () => {
     );
 
     const article = document.querySelector("[data-message-id='message-1']") as HTMLElement;
-    expect(article.querySelector(".terminal-process-shell")).toHaveClass("runtime-thinking-shell");
-    expect(article.querySelector(".terminal-process-toggle")).toHaveClass("runtime-thinking-toggle");
-    expect(article.querySelector(".terminal-process-toggle")).toHaveTextContent("Thinking");
-    expect(article.querySelector(".terminal-process-toggle")).toHaveTextContent("4 steps");
-    expect(article.querySelector(".terminal-process-shell")).not.toHaveClass("conversation-process-shell");
-    expect(article.querySelector(".terminal-process-toggle")).not.toHaveClass("conversation-process-toggle");
-    expect(article.querySelector(".terminal-process-body")).toBeInTheDocument();
+    expect(article.querySelector(".chatRuntime-process-shell")).toHaveClass("runtime-thinking-shell");
+    expect(article.querySelector(".chatRuntime-process-toggle")).toHaveClass("runtime-thinking-toggle");
+    expect(article.querySelector(".chatRuntime-process-toggle")).toHaveTextContent("Thinking");
+    expect(article.querySelector(".chatRuntime-process-toggle")).toHaveTextContent("4 steps");
+    expect(article.querySelector(".chatRuntime-process-shell")).not.toHaveClass("conversation-process-shell");
+    expect(article.querySelector(".chatRuntime-process-toggle")).not.toHaveClass("conversation-process-toggle");
+    expect(article.querySelector(".chatRuntime-process-body")).toBeInTheDocument();
     expect(article.querySelector(".conversation-process-body")).not.toBeInTheDocument();
-    expect(article.querySelectorAll(".terminal-step-item")).toHaveLength(4);
+    expect(article.querySelectorAll(".chatRuntime-step-item")).toHaveLength(4);
     expect(article.querySelectorAll(".conversation-process-step")).toHaveLength(0);
-    expect(article.querySelector(".terminal-step-toggle")).toBeInTheDocument();
+    expect(article.querySelector(".chatRuntime-step-toggle")).toBeInTheDocument();
     expect(article.querySelector(".conversation-process-step-head")).not.toBeInTheDocument();
-    expect(article.querySelector(".terminal-step-title")).toBeInTheDocument();
+    expect(article.querySelector(".chatRuntime-step-title")).toBeInTheDocument();
     expect(article.querySelector(".conversation-process-step-title")).not.toBeInTheDocument();
     expect(article).toHaveTextContent("Review runtime styles");
     expect(article).toHaveTextContent("Verify regression coverage");
@@ -322,7 +322,7 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
   });
 
-  it("renders chat process events with the same collapsible rows as terminal", async () => {
+  it("renders chat process events with the same collapsible rows as chatRuntime", async () => {
     const onToggleProcessEvent = vi.fn();
     const message = buildAssistantMessage({
       text: "Final answer.",
@@ -339,13 +339,13 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
-    const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
+    const step = document.querySelector("[data-chat-runtime-step-item='step-1']") as HTMLElement;
     expect(step).toHaveAttribute("data-conversation-process-step", "step-1");
-    const toggle = step.querySelector("[data-terminal-step-toggle='step-1']") as HTMLButtonElement;
+    const toggle = step.querySelector("[data-chat-runtime-step-toggle='step-1']") as HTMLButtonElement;
     expect(toggle).toBeInTheDocument();
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(step.querySelector(".terminal-step-body")).toHaveAttribute("hidden");
-    expect(step.querySelector(".terminal-step-detail")).toBeInTheDocument();
+    expect(step.querySelector(".chatRuntime-step-body")).toHaveAttribute("hidden");
+    expect(step.querySelector(".chatRuntime-step-detail")).toBeInTheDocument();
 
     fireEvent.click(toggle);
     expect(onToggleProcessEvent).toHaveBeenCalledWith("message-1", "step-1");
@@ -359,12 +359,12 @@ describe("ChatMessageRegion", () => {
         onToggleProcessEvent={onToggleProcessEvent}
       />,
     );
-    const expandedToggle = document.querySelector("[data-terminal-step-toggle='step-1']") as HTMLButtonElement;
+    const expandedToggle = document.querySelector("[data-chat-runtime-step-toggle='step-1']") as HTMLButtonElement;
     expect(expandedToggle).toHaveAttribute("aria-expanded", "true");
-    expect(document.querySelector("[data-terminal-step-item='step-1'] .terminal-step-body")).not.toHaveAttribute("hidden");
+    expect(document.querySelector("[data-chat-runtime-step-item='step-1'] .chatRuntime-step-body")).not.toHaveAttribute("hidden");
   });
 
-  it("renders shell process event details as terminal blocks on the first expanded frame", () => {
+  it("renders shell process event details as chatRuntime blocks on the first expanded frame", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
@@ -388,7 +388,7 @@ describe("ChatMessageRegion", () => {
                 summary: "sed -n '1,120p' AGENTS.md",
                 blocks: [
                   {
-                    type: "terminal",
+                    type: "chatRuntime",
                     command: "sed -n '1,120p' AGENTS.md",
                     output: "# Rule\n\n## Collaboration",
                     language: "shell",
@@ -406,11 +406,11 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
-    const step = document.querySelector("[data-terminal-step-item='shell-step']") as HTMLElement;
-    const content = step.querySelector(".terminal-step-content code") as HTMLElement;
+    const step = document.querySelector("[data-chat-runtime-step-item='shell-step']") as HTMLElement;
+    const content = step.querySelector(".chatRuntime-step-content code") as HTMLElement;
     expect(content).toBeInTheDocument();
     expect(content.textContent).toBe("sed -n '1,120p' AGENTS.md\n\n# Rule\n\n## Collaboration");
-    expect(step.querySelector(".terminal-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
+    expect(step.querySelector(".chatRuntime-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
   });
 
   it("renders markdown process event details through the final rich block on the first expanded frame", () => {
@@ -452,15 +452,15 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
-    const step = document.querySelector("[data-terminal-step-item='commentary-step']") as HTMLElement;
-    const block = step.querySelector(".terminal-rich-block.type-markdown") as HTMLElement;
+    const step = document.querySelector("[data-chat-runtime-step-item='commentary-step']") as HTMLElement;
+    const block = step.querySelector(".chatRuntime-rich-block.type-markdown") as HTMLElement;
     expect(block).toBeInTheDocument();
-    expect(block.querySelector(".terminal-step-content.terminal-step-richtext")).toBeInTheDocument();
+    expect(block.querySelector(".chatRuntime-step-content.chatRuntime-step-richtext")).toBeInTheDocument();
     expect(block.querySelector(".message-markdown-rendered")).toHaveTextContent("Review state before rendering.");
-    expect(step.querySelector(".terminal-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
+    expect(step.querySelector(".chatRuntime-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
   });
 
-  it("renders runtime code process details with the terminal rich header", () => {
+  it("renders runtime code process details with the chatRuntime rich header", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
@@ -502,11 +502,11 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
-    const step = document.querySelector("[data-terminal-step-item='code-step']") as HTMLElement;
-    const block = step.querySelector(".terminal-rich-block.type-code") as HTMLElement;
+    const step = document.querySelector("[data-chat-runtime-step-item='code-step']") as HTMLElement;
+    const block = step.querySelector(".chatRuntime-rich-block.type-code") as HTMLElement;
     expect(block).toBeInTheDocument();
-    expect(block.querySelector(".terminal-rich-head")).toHaveTextContent("src/features/runtime.ts:7");
-    expect(block.querySelector(".terminal-rich-pre.terminal-step-content code")).toHaveTextContent("export const enabled = true;");
+    expect(block.querySelector(".chatRuntime-rich-head")).toHaveTextContent("src/features/runtime.ts:7");
+    expect(block.querySelector(".chatRuntime-rich-pre.chatRuntime-step-content code")).toHaveTextContent("export const enabled = true;");
   });
 
   it("renders process event detail through the final rich block on the first expanded frame", () => {
@@ -525,12 +525,12 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
-    const step = document.querySelector("[data-terminal-step-item='step-1']") as HTMLElement;
-    const block = step.querySelector(".terminal-rich-block.type-markdown") as HTMLElement;
+    const step = document.querySelector("[data-chat-runtime-step-item='step-1']") as HTMLElement;
+    const block = step.querySelector(".chatRuntime-rich-block.type-markdown") as HTMLElement;
     expect(block).toBeInTheDocument();
-    expect(block.querySelector(".terminal-step-content.terminal-step-richtext")).toBeInTheDocument();
+    expect(block.querySelector(".chatRuntime-step-content.chatRuntime-step-richtext")).toBeInTheDocument();
     expect(block.querySelector(".message-markdown-rendered")).toHaveTextContent("Repository root detected.");
-    expect(step.querySelector(".terminal-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
+    expect(step.querySelector(".chatRuntime-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
   });
 
   it("uses a compact localized thought disclosure for completed skill process details", () => {
@@ -561,7 +561,7 @@ describe("ChatMessageRegion", () => {
     expect(toggle).toHaveTextContent("已思考");
     expect(toggle).toHaveTextContent("4 步");
     expect(toggle).not.toHaveTextContent("过程");
-    expect(toggle.querySelector(".terminal-step-toggle-icon")).toHaveTextContent(">");
+    expect(toggle.querySelector(".chatRuntime-step-toggle-icon")).toHaveTextContent(">");
   });
 
   it("filters chat process disclosure by runtime event type", () => {
@@ -619,11 +619,11 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
-    const step = document.querySelector("[data-terminal-step-item='plan-step']") as HTMLElement;
-    expect(step.querySelector(".terminal-step-kind")).toHaveTextContent("Plan");
+    const step = document.querySelector("[data-chat-runtime-step-item='plan-step']") as HTMLElement;
+    expect(step.querySelector(".chatRuntime-step-kind")).toHaveTextContent("Plan");
   });
 
-  it("uses the shared terminal step meta for runtime chat process rows", () => {
+  it("uses the shared chatRuntime step meta for runtime chat process rows", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
@@ -642,8 +642,8 @@ describe("ChatMessageRegion", () => {
               lifecycle: "completed",
               status: "completed",
               duration_ms: 18200,
-              title: "sed -n '1,120p' internal/terminal/application/session.go",
-              blocks: [{ type: "terminal", command: "sed -n '1,120p' internal/terminal/application/session.go" }],
+              title: "sed -n '1,120p' internal/chatruntime/application/session.go",
+              blocks: [{ type: "chatRuntime", command: "sed -n '1,120p' internal/chatruntime/application/session.go" }],
               visibility: "collapsed",
             },
           ],
@@ -652,13 +652,13 @@ describe("ChatMessageRegion", () => {
       />,
     );
 
-    const step = document.querySelector("[data-terminal-step-item='command-step']") as HTMLElement;
-    const meta = step.querySelector(".terminal-step-meta") as HTMLElement;
+    const step = document.querySelector("[data-chat-runtime-step-item='command-step']") as HTMLElement;
+    const meta = step.querySelector(".chatRuntime-step-meta") as HTMLElement;
     expect(meta).toBeInTheDocument();
-    expect(meta.querySelector(".terminal-step-kind")).toHaveTextContent("Commands");
-    expect(meta.querySelector(".terminal-step-duration")).toHaveTextContent("18s");
-    expect(meta.querySelector(".terminal-step-status")).toHaveTextContent("Ready");
-    expect(meta.querySelector(".terminal-step-status")).toHaveClass("status-success");
+    expect(meta.querySelector(".chatRuntime-step-kind")).toHaveTextContent("Commands");
+    expect(meta.querySelector(".chatRuntime-step-duration")).toHaveTextContent("18s");
+    expect(meta.querySelector(".chatRuntime-step-status")).toHaveTextContent("Ready");
+    expect(meta.querySelector(".chatRuntime-step-status")).toHaveClass("status-success");
   });
 
 });

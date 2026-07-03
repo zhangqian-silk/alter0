@@ -261,7 +261,7 @@ describe("ConversationWorkspace", () => {
           text: "",
           attachments: [],
           route: "chat",
-          source: "terminal",
+          source: "chatRuntime",
           error: false,
           status: "running",
           at: Date.parse("2026-04-23T09:01:00Z"),
@@ -435,19 +435,18 @@ describe("ConversationWorkspace", () => {
     }
   });
 
-  it("exposes Terminal runtime aliases when the shared workspace is mounted on the terminal route", () => {
-    runtimeMock.route = "terminal";
-    renderWorkspace({ route: "terminal", isMobileViewport: false });
+  it("exposes Chat runtime aliases for the shared workspace", () => {
+    renderWorkspace({ route: "chat", isMobileViewport: false });
 
-    expect(document.querySelector("[data-runtime-view='terminal']")).toHaveAttribute("data-runtime-route", "terminal");
-    expect(document.querySelector("[data-runtime-workspace='terminal']")).toHaveAttribute("data-runtime-route", "terminal");
-    expect(document.querySelector("[data-runtime-screen='terminal']")).toBeInTheDocument();
-    expect(document.querySelector("[data-runtime-session-list='terminal']")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-view='conversation']")).toHaveAttribute("data-runtime-route", "chat");
+    expect(document.querySelector("[data-runtime-workspace='conversation']")).toHaveAttribute("data-runtime-route", "chat");
+    expect(document.querySelector("[data-runtime-screen='conversation']")).toBeInTheDocument();
+    expect(document.querySelector("[data-runtime-session-list='conversation']")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-select='session-1']")).toBeInTheDocument();
-    expect(document.querySelector("[data-runtime-create-session='terminal']")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /Type a message/i })).toHaveAttribute("data-composer-input", "terminal");
-    expect(screen.getByRole("button", { name: "Add attachment" })).toHaveAttribute("data-runtime-composer-upload", "terminal");
-    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("data-runtime-submit", "terminal");
+    expect(document.querySelector("[data-runtime-create-session='chat']")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Type a message/i })).toHaveAttribute("data-composer-input", "conversation");
+    expect(screen.getByRole("button", { name: "Add attachment" })).toHaveAttribute("data-runtime-composer-upload", "chat");
+    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("data-runtime-submit", "chat");
   });
 
   it("keeps the mobile composer visible but non-interactive while the primary navigation drawer is open", () => {
@@ -469,7 +468,7 @@ describe("ConversationWorkspace", () => {
     }
   });
 
-  it("disables the Chat composer while the active Terminal-backed session is busy", () => {
+  it("disables the Chat composer while the active ChatRuntime-backed session is busy", () => {
     runtimeMock.busy = true;
     runtimeMock.activeSession = {
       ...runtimeMock.activeSession,

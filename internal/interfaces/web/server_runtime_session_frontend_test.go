@@ -5,12 +5,11 @@ import (
 	"testing"
 )
 
-func TestChatAndTerminalShareRuntimeSessionController(t *testing.T) {
+func TestChatUsesRuntimeSessionController(t *testing.T) {
 	controller := readWorkspaceFile(t, "frontend/src/features/shell/components/runtimeSessionController.ts")
 	catalogs := readWorkspaceFile(t, "frontend/src/features/shell/components/runtimeSessionCatalogs.ts")
 	viewModel := readWorkspaceFile(t, "frontend/src/features/shell/components/runtimeSessionViewModel.ts")
 	chat := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx")
-	terminal := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
 
 	controllerMarkers := []string{
 		"export function useRuntimeSessionController",
@@ -45,18 +44,9 @@ func TestChatAndTerminalShareRuntimeSessionController(t *testing.T) {
 		}
 	}
 
-	importMarkers := []string{"useRuntimeSessionController", "useRuntimeSessionCatalogs", "runtimeSessionTurnsToTimelineMessages"}
-	for _, source := range []struct {
-		name string
-		body string
-	}{
-		{name: "chat", body: chat},
-		{name: "terminal", body: terminal},
-	} {
-		for _, importMarker := range importMarkers {
-			if !strings.Contains(source.body, importMarker) {
-				t.Fatalf("expected %s runtime page to consume shared %s", source.name, importMarker)
-			}
+	for _, importMarker := range []string{"useRuntimeSessionController", "useRuntimeSessionCatalogs", "runtimeSessionTurnsToTimelineMessages"} {
+		if !strings.Contains(chat, importMarker) {
+			t.Fatalf("expected Chat runtime page to consume shared %s", importMarker)
 		}
 	}
 }
@@ -92,7 +82,6 @@ func TestRuntimePagesDoNotForkSessionStateMachines(t *testing.T) {
 	viewModel := readWorkspaceFile(t, "frontend/src/features/shell/components/runtimeSessionViewModel.ts")
 	chat := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx")
 	chatWorkspace := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
-	terminal := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
 
 	for _, marker := range []string{
 		"resolveRuntimeSessionPollPlan",
@@ -118,12 +107,6 @@ func TestRuntimePagesDoNotForkSessionStateMachines(t *testing.T) {
 	if !strings.Contains(chatWorkspace, "buildRuntimeSessionTimelineItems") {
 		t.Fatalf("expected Chat workspace to consume shared runtime timeline builder")
 	}
-	if !strings.Contains(terminal, "buildRuntimeSessionTimelineItems") {
-		t.Fatalf("expected Terminal workspace to consume shared runtime timeline builder")
-	}
-	if strings.Contains(terminal, "buildTerminalTimelineItems") {
-		t.Fatalf("did not expect Terminal to keep a private timeline item builder")
-	}
 	for _, marker := range []string{
 		"enableProgressiveHistory: false",
 		"loadEarlierHistory",
@@ -138,25 +121,21 @@ func TestRuntimePagesDoNotForkSessionStateMachines(t *testing.T) {
 		body string
 	}{
 		{name: "chat", body: chat},
-		{name: "terminal", body: terminal},
 	} {
 		for _, forbidden := range []string{
 			"manageState: false",
 			"progressiveHistoryLoadsRef",
 			"progressiveHistoryLoadedRef",
-			"buildTerminalTimelineItems",
-			"terminalTurnsToRuntimeTimelineMessages",
-			"mergeTerminalTurns",
-			"mergeTerminalTurnPaging",
-			"terminalTurnRuntimeEvents",
-			"compareTerminalTurns",
+			"buildChatRuntimeTimelineItems",
+			"chatRuntimeTurnsToRuntimeTimelineMessages",
+			"mergeChatRuntimeTurns",
+			"mergeChatRuntimeTurnPaging",
+			"chatRuntimeTurnRuntimeEvents",
+			"compareChatRuntimeTurns",
 		} {
 			if strings.Contains(source.body, forbidden) {
 				t.Fatalf("did not expect %s page to fork runtime session state with %q", source.name, forbidden)
 			}
 		}
-	}
-	if strings.Contains(terminal, "enableProgressiveHistory: false") {
-		t.Fatalf("did not expect terminal page to disable shared progressive history")
 	}
 }

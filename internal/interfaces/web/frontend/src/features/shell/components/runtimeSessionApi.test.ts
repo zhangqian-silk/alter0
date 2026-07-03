@@ -14,7 +14,6 @@ import {
 describe("runtime session api", () => {
   const cases: Array<{ route: RuntimeSessionRoute; root: string }> = [
     { route: "chat", root: "/api/chat/sessions" },
-    { route: "terminal", root: "/api/terminal/sessions" },
   ];
 
   it.each(cases)("builds $route endpoints from the same helpers", ({ route, root }) => {

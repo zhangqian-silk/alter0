@@ -9,7 +9,7 @@
 ## 边界
 
 - CLI 测试不验证具体命令行为；命令行为由 Orchestration 测试覆盖。
-- stdin/stdout 使用 pipe 注入，不依赖交互式终端。
+- stdin/stdout 使用 pipe 注入，不依赖交互式会话。
 
 ## 执行
 

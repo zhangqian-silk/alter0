@@ -60,7 +60,6 @@ export function WorkbenchApp() {
      const [navOpen, setNavOpen] = useState(false);
      setNavOpen(false);
      setNavOpen((current) => !current);
-     route === "terminal" ? "route-body terminal-route-body" : "route-body"
   */
   const [route, navigate] = useWorkbenchRoute();
   const [language, setLanguage] = useState<LegacyShellLanguage>(() =>
@@ -81,12 +80,12 @@ export function WorkbenchApp() {
       return rail;
     });
   }, []);
-  const runtimeRouteActive = isConversationRoute(route) || route === "terminal";
+  const runtimeRouteActive = isConversationRoute(route);
   const fallbackSessionRail = useMemo<WorkbenchSessionRail | null>(() => {
     if (!runtimeRouteActive) {
       return null;
     }
-    const newLabel = getLegacyShellCopy(language).terminalNewShort;
+    const newLabel = language === "zh" ? "新对话" : "New";
     return {
       route,
       countLabel: language === "zh" ? "1 个会话" : "1 session",
@@ -246,7 +245,7 @@ export function WorkbenchApp() {
         {isMobileViewport ? null : primaryNav}
         <main className="workbench-main">
           <div className="chat-pane page-mode workbench-pane-shell" data-route={route} data-workbench-pane-shell>
-            {isConversationRoute(route) || route === "terminal" ? (
+            {isConversationRoute(route) ? (
               <RuntimeRouteHost route={route} language={language} />
             ) : (
               <RoutePageFrame

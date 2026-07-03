@@ -4,8 +4,8 @@
 
 - Codex/OpenAI 复杂度预测解析、提示词、timeout EWMA/backoff/fallback。
 - 异步规则分流、文档型请求保留流式、预测失败 fallback。
-- worker 并发上限、任务提交/完成、幂等、队列位置/等待、终端日志捕获。
-- retry/cancel/timeout/heartbeat 续租、Task summary 精简、Terminal timeout 默认值。
+- worker 并发上限、任务提交/完成、幂等、队列位置/等待、执行日志捕获。
+- retry/cancel/timeout/heartbeat 续租、Task summary 精简、ChatRuntime timeout 默认值。
 
 ## 边界
 

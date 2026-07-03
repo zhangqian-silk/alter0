@@ -13,17 +13,13 @@ const (
 	SessionStatusExited      SessionStatus = "exited"
 	SessionStatusFailed      SessionStatus = "failed"
 	SessionStatusInterrupted SessionStatus = "interrupted"
-
-	// Legacy values kept for persisted-state compatibility.
-	SessionStatusStarting SessionStatus = "starting"
-	SessionStatusRunning  SessionStatus = "running"
 )
 
 func NormalizeSessionStatus(status SessionStatus) SessionStatus {
 	switch strings.ToLower(strings.TrimSpace(string(status))) {
-	case "", string(SessionStatusReady), string(SessionStatusRunning):
+	case "", string(SessionStatusReady):
 		return SessionStatusReady
-	case string(SessionStatusBusy), string(SessionStatusStarting):
+	case string(SessionStatusBusy):
 		return SessionStatusBusy
 	case string(SessionStatusExited):
 		return SessionStatusExited
@@ -57,18 +53,18 @@ type Entry struct {
 }
 
 type Session struct {
-	ID                string        `json:"id"`
-	TerminalSessionID string        `json:"terminal_session_id,omitempty"`
-	OwnerID           string        `json:"owner_id,omitempty"`
-	Title             string        `json:"title,omitempty"`
-	Shell             string        `json:"shell,omitempty"`
-	WorkingDir        string        `json:"working_dir,omitempty"`
-	Status            SessionStatus `json:"status"`
-	Pinned            bool          `json:"pinned"`
-	CreatedAt         time.Time     `json:"created_at,omitempty"`
-	LastOutputAt      time.Time     `json:"last_output_at,omitempty"`
-	UpdatedAt         time.Time     `json:"updated_at,omitempty"`
-	FinishedAt        time.Time     `json:"finished_at,omitempty"`
-	ExitCode          *int          `json:"exit_code,omitempty"`
-	ErrorMessage      string        `json:"error_message,omitempty"`
+	ID               string        `json:"id"`
+	RuntimeSessionID string        `json:"runtime_session_id,omitempty"`
+	OwnerID          string        `json:"owner_id,omitempty"`
+	Title            string        `json:"title,omitempty"`
+	Shell            string        `json:"shell,omitempty"`
+	WorkingDir       string        `json:"working_dir,omitempty"`
+	Status           SessionStatus `json:"status"`
+	Pinned           bool          `json:"pinned"`
+	CreatedAt        time.Time     `json:"created_at,omitempty"`
+	LastOutputAt     time.Time     `json:"last_output_at,omitempty"`
+	UpdatedAt        time.Time     `json:"updated_at,omitempty"`
+	FinishedAt       time.Time     `json:"finished_at,omitempty"`
+	ExitCode         *int          `json:"exit_code,omitempty"`
+	ErrorMessage     string        `json:"error_message,omitempty"`
 }

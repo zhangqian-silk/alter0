@@ -127,8 +127,8 @@ func TestWorkspaceServiceGatewayProxiesRegisteredHTTPWebService(t *testing.T) {
 	upstreamCalled := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalled = true
-		if r.URL.Path != "/api/terminal/sessions" {
-			t.Fatalf("expected upstream path /api/terminal/sessions, got %s", r.URL.Path)
+		if r.URL.Path != "/api/chat/sessions" {
+			t.Fatalf("expected upstream path /api/chat/sessions, got %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"items":[]}`)
@@ -158,7 +158,7 @@ func TestWorkspaceServiceGatewayProxiesRegisteredHTTPWebService(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions", nil)
 	req.Host = entry.Host
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

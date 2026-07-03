@@ -21,7 +21,7 @@ func TestRuntimeMarkdownStoreRecordDoesNotWriteMemoryFilesDirectly(t *testing.T)
 	})
 
 	finished := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
-	task := buildTerminalSummaryTask("task-r032-1", taskdomain.TaskStatusSuccess, finished, "initial")
+	task := buildChatRuntimeSummaryTask("task-r032-1", taskdomain.TaskStatusSuccess, finished, "initial")
 	store.Record(task)
 
 	dailyPath := filepath.Join(dailyDir, "2026-03-04.md")
@@ -48,7 +48,7 @@ func TestRuntimeMarkdownStoreRebuildReturnsNoMemoryRefs(t *testing.T) {
 	})
 
 	finished := time.Date(2026, 3, 4, 11, 0, 0, 0, time.UTC)
-	first := buildTerminalSummaryTask("task-r032-2", taskdomain.TaskStatusFailed, finished, "first")
+	first := buildChatRuntimeSummaryTask("task-r032-2", taskdomain.TaskStatusFailed, finished, "first")
 	refs, err := store.Rebuild(first)
 	if err != nil {
 		t.Fatalf("first rebuild: %v", err)
@@ -72,7 +72,7 @@ func TestRecorderGroupFanout(t *testing.T) {
 	r1 := &stubTaskRecorder{}
 	r2 := &stubTaskRecorder{}
 	group := NewRecorderGroup(r1, r2)
-	group.Record(buildTerminalSummaryTask("task-r032-3", taskdomain.TaskStatusSuccess, time.Now().UTC(), "ok"))
+	group.Record(buildChatRuntimeSummaryTask("task-r032-3", taskdomain.TaskStatusSuccess, time.Now().UTC(), "ok"))
 	if r1.called != 1 || r2.called != 1 {
 		t.Fatalf("expected record fanout once, got r1=%d r2=%d", r1.called, r2.called)
 	}
@@ -88,7 +88,7 @@ func (s *stubTaskRecorder) Record(task taskdomain.Task) {
 	}
 }
 
-func buildTerminalSummaryTask(taskID string, status taskdomain.TaskStatus, finishedAt time.Time, result string) taskdomain.Task {
+func buildChatRuntimeSummaryTask(taskID string, status taskdomain.TaskStatus, finishedAt time.Time, result string) taskdomain.Task {
 	if finishedAt.IsZero() {
 		finishedAt = time.Now().UTC()
 	}

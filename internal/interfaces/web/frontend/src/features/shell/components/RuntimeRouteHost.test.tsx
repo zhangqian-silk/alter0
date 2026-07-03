@@ -19,16 +19,11 @@ vi.mock("../../conversation-runtime/ConversationWorkspace", () => ({
   ConversationWorkspace: () => <div data-testid="conversation-workspace"></div>,
 }));
 
-vi.mock("./ReactManagedTerminalRouteBody", () => ({
-  ReactManagedTerminalRouteBody: () => <div data-testid="terminal-runtime-body"></div>,
-}));
-
 describe("RuntimeRouteHost", () => {
-  it("keeps the terminal path as a compatibility entry backed by Chat runtime", () => {
-    render(<RuntimeRouteHost route="terminal" language="en" />);
+  it("mounts the Chat runtime workspace", () => {
+    render(<RuntimeRouteHost route="chat" language="en" />);
 
-    expect(screen.getByTestId("conversation-runtime-provider")).toHaveAttribute("data-route", "terminal");
+    expect(screen.getByTestId("conversation-runtime-provider")).toHaveAttribute("data-route", "chat");
     expect(screen.getByTestId("conversation-workspace")).toBeInTheDocument();
-    expect(screen.queryByTestId("terminal-runtime-body")).not.toBeInTheDocument();
   });
 });

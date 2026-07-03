@@ -45,7 +45,7 @@ Skill & Memory 负责 CLI Runtime 的上下文注入、Skill 仓库、Markdown �
 
 - Chat 是通用自然语言入口。
 - Chat 是选择 Skill 组合的任务入口；代码开发、旅行攻略、结构化写作等业务能力以 Skill 组合和交付规则表达。
-- Terminal 是前端手动选择的独立终端入口；自然语言 Auto 模式固定进入 Chat。
+- Chat 是前端手动选择的独立运行时入口；自然语言 Auto 模式固定进入 Chat。
 - 当前稳定入口模型面向一对一用户会话。
 
 ## Skill Repository
