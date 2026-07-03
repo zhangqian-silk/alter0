@@ -188,7 +188,7 @@ function RuntimeTimelineBlockNode({ block }: { block: RuntimeTimelineBlock }) {
       const promptContent = (
         <>
           <div className={block.textClassName}>
-            <span className="terminal-log-text">{block.text}</span>
+            <span className="chatRuntime-log-text">{block.text}</span>
           </div>
           {block.timeLabel ? <span className={block.timeClassName}>{block.timeLabel}</span> : null}
         </>
@@ -232,7 +232,7 @@ function RuntimeTimelineBlockNode({ block }: { block: RuntimeTimelineBlock }) {
                     onClick={event.onToggle}
                     {...event.toggleProps}
                   >
-                    <span className="terminal-step-toggle-icon" aria-hidden="true">
+                    <span className="chatRuntime-step-toggle-icon" aria-hidden="true">
                       {event.expanded ? "v" : ">"}
                     </span>
                     <span className={event.titleClassName}>{event.title}</span>

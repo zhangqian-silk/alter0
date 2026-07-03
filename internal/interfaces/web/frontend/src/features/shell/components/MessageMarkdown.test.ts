@@ -263,8 +263,8 @@ describe("renderMessageMarkdownToHTML", () => {
     expect(tables).toHaveLength(conversationMarkdownSyntaxFixture.expected.tableCount);
     expect(tables.some((table) => table.textContent?.includes("短"))).toBe(true);
     expect(tables.some((table) => table.textContent?.includes("这是一段较长的中文单元格内容"))).toBe(true);
-    expect(tables.some((table) => table.textContent?.includes("/api/terminal/sessions/abcd1234"))).toBe(true);
-    expect(container.querySelector(".chat-md-table code")).toHaveTextContent("/api/terminal/sessions/abcd1234");
+    expect(tables.some((table) => table.textContent?.includes("/api/chat/sessions/abcd1234"))).toBe(true);
+    expect(container.querySelector(".chat-md-table code")).toHaveTextContent("/api/chat/sessions/abcd1234");
     expect(container.querySelector('a[href="https://example.com/docs/very/long/path?query=markdown-table-demo"]')).toHaveTextContent(
       "长链接",
     );

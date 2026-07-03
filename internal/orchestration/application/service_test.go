@@ -351,7 +351,7 @@ func TestHandleUnknownSlashInputFallsThroughToAgent(t *testing.T) {
 	}
 }
 
-func TestHandleAgentTerminalTaskBypassesHistoryMemory(t *testing.T) {
+func TestHandleAgentChatRuntimeTaskBypassesHistoryMemory(t *testing.T) {
 	dir := t.TempDir()
 	contextPath := filepath.Join(dir, "SOUL.md")
 	if err := os.WriteFile(contextPath, []byte("response_style: concise\n"), 0o644); err != nil {
@@ -361,7 +361,7 @@ func TestHandleAgentTerminalTaskBypassesHistoryMemory(t *testing.T) {
 	registry := &stubRegistry{}
 	telemetry := newSpyTelemetry()
 	executor := &stubExecutor{
-		output: "terminal response",
+		output: "chatRuntime response",
 	}
 	longTermStore := &stubLongTermMemoryStore{
 		snapshot: longTermMemorySnapshot{
@@ -405,9 +405,9 @@ func TestHandleAgentTerminalTaskBypassesHistoryMemory(t *testing.T) {
 		}),
 	)
 
-	msg := validMessage("continue current terminal session")
+	msg := validMessage("continue current chatRuntime session")
 	msg.Metadata = map[string]string{
-		terminalTaskTypeMetadataKey: terminalTaskTypeValue,
+		chatRuntimeTaskTypeMetadataKey: chatRuntimeTaskTypeValue,
 	}
 	result, err := service.Handle(context.Background(), msg)
 	if err != nil {
@@ -439,12 +439,12 @@ func TestHandleAgentTerminalTaskBypassesHistoryMemory(t *testing.T) {
 	if got := result.Metadata[memoryHistoryBypassedMetadataKey]; got != "true" {
 		t.Fatalf("expected memory_history_bypassed=true, got %q", got)
 	}
-	if got := result.Metadata[memoryHistoryScopeMetadataKey]; got != memoryHistoryScopeTerminalSession {
-		t.Fatalf("expected memory_history_scope=terminal_session, got %q", got)
+	if got := result.Metadata[memoryHistoryScopeMetadataKey]; got != memoryHistoryScopeChatRuntimeSession {
+		t.Fatalf("expected memory_history_scope=chatRuntime_session, got %q", got)
 	}
 }
 
-func TestHandleCommandTerminalTaskSkipsMemoryRecord(t *testing.T) {
+func TestHandleCommandChatRuntimeTaskSkipsMemoryRecord(t *testing.T) {
 	registry := &stubRegistry{
 		handlers: map[string]orchdomain.CommandHandler{
 			"echo": &stubHandler{name: "echo", output: "ok"},
@@ -468,7 +468,7 @@ func TestHandleCommandTerminalTaskSkipsMemoryRecord(t *testing.T) {
 
 	msg := validMessage("/echo hi")
 	msg.Metadata = map[string]string{
-		terminalTaskInteractiveMetadataKey: "true",
+		chatRuntimeTaskInteractiveMetadataKey: "true",
 	}
 	result, err := service.Handle(context.Background(), msg)
 	if err != nil {

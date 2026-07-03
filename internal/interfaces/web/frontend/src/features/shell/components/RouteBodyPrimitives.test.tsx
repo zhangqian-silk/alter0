@@ -56,7 +56,7 @@ describe("RouteFieldRow", () => {
   });
 
   it("keeps long copy payloads out of DOM attributes while preserving clipboard writes", async () => {
-    const longValue = "terminal output line\n".repeat(512);
+    const longValue = "chatRuntime output line\n".repeat(512);
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -83,8 +83,8 @@ describe("RouteFieldRow", () => {
   it("renders markdown body before the copy toolbar so browser text selection follows visual order", () => {
     const { container } = render(
       <MessageMarkdownShell
-        markdown="selectable terminal output"
-        copyValue="selectable terminal output"
+        markdown="selectable chatRuntime output"
+        copyValue="selectable chatRuntime output"
         copyLabel="Copy output"
       />,
     );
@@ -97,8 +97,8 @@ describe("RouteFieldRow", () => {
   it("renders markdown output as static selectable text without entering edit mode", () => {
     const { container } = render(
       <MessageMarkdownShell
-        markdown="selectable terminal output"
-        copyValue="selectable terminal output"
+        markdown="selectable chatRuntime output"
+        copyValue="selectable chatRuntime output"
         copyLabel="Copy output"
       />,
     );
@@ -114,8 +114,8 @@ describe("RouteFieldRow", () => {
     vi.useFakeTimers();
     const { container } = render(
       <MessageMarkdownShell
-        markdown="selectable terminal output"
-        copyValue="selectable terminal output"
+        markdown="selectable chatRuntime output"
+        copyValue="selectable chatRuntime output"
         copyLabel="Copy output"
       />,
     );

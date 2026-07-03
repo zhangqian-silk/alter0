@@ -1608,15 +1608,12 @@ test.describe("Chat composer", () => {
     expect((localeBox?.y ?? 0) + (localeBox?.height ?? 0)).toBeLessThanOrEqual((after.bottom ?? 0) + 1);
   });
 
-  test("navigates without prompting when unsent content is cached", async ({ page }) => {
+  test("keeps unsent content when re-entering Chat", async ({ page }) => {
     const { appShellPage, composer } = await openChatWorkspaceWithDraft(page, "unsent draft");
     await expectComposerState(composer, { draft: "dirty" });
     page.on("dialog", async (dialog) => {
       throw new Error(`unexpected unsent draft dialog: ${dialog.message()}`);
     });
-
-    await appShellPage.routeMenuItem("terminal").click();
-    await expect(page).toHaveURL(/\/terminal(?:\?.*)?$/);
 
     await appShellPage.routeMenuItem("chat").click();
     await expect(page).toHaveURL(/\/chat(?:\?.*)?$/);
@@ -1718,9 +1715,9 @@ test.describe("Chat composer", () => {
     await expectComposerReady(composer);
     await expect(page.locator(".runtime-session-title").first()).toContainText("先拉取仓库");
 
-    await input.fill("修改 terminal 和 skill 的会话标题");
+    await input.fill("修改 chatRuntime 和 skill 的会话标题");
     await composer.submitButton().click();
-    await expect(chatPage.latestUserBubble()).toContainText("修改 terminal 和 skill 的会话标题");
+    await expect(chatPage.latestUserBubble()).toContainText("修改 chatRuntime 和 skill 的会话标题");
     await expectComposerReady(composer);
     await expect(page.locator(".runtime-session-title").first()).toContainText("先拉取仓库");
   });
@@ -1795,7 +1792,7 @@ test.describe("Chat composer", () => {
                 final_output: "任务已完成",
                 runtime_trace_events: [
                   ["event-1", "读取运行状态", "检查仓库状态、当前分支和工作区清洁度。"],
-                  ["event-2", "定位 Thinking 样式", "确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。"],
+                  ["event-2", "定位 Thinking 样式", "确认移动端展开逻辑来自 .runtime-thinking-shell .chatRuntime-process-body。"],
                   ["event-3", "调整展开方式", "将过程详情保持在当前消息内联展开，不再脱离消息流。"],
                   ["event-4", "回归验证", "补充样式断言并确认最终回复仍独立展示。"],
                 ].map(([id, title, summary], index) => ({
@@ -1839,7 +1836,7 @@ test.describe("Chat composer", () => {
           final_output: "任务已完成",
           runtime_trace_events: [
             ["event-1", "读取运行状态", "检查仓库状态、当前分支和工作区清洁度。"],
-            ["event-2", "定位 Thinking 样式", "确认移动端展开逻辑来自 .runtime-thinking-shell .terminal-process-body。"],
+            ["event-2", "定位 Thinking 样式", "确认移动端展开逻辑来自 .runtime-thinking-shell .chatRuntime-process-body。"],
             ["event-3", "调整展开方式", "将过程详情保持在当前消息内联展开，不再脱离消息流。"],
             ["event-4", "回归验证", "补充样式断言并确认最终回复仍独立展示。"],
           ].map(([id, title, summary], index) => ({
@@ -1867,7 +1864,7 @@ test.describe("Chat composer", () => {
 
     const assistantMessage = latestAssistantMessage(page);
     await expect(assistantMessage.locator("[data-conversation-process-shell]")).toBeVisible();
-    await assistantMessage.locator(".terminal-process-body").evaluate((node) => {
+    await assistantMessage.locator(".chatRuntime-process-body").evaluate((node) => {
       if (node instanceof HTMLElement) {
         node.hidden = false;
         node.removeAttribute("hidden");
@@ -1876,8 +1873,8 @@ test.describe("Chat composer", () => {
     await expect(assistantMessage.locator("[data-conversation-process-toggle]")).toContainText("Thinking");
     await expect(assistantMessage.locator("[data-conversation-process-toggle]")).toContainText("4 steps");
     await expect(assistantMessage.locator("[data-conversation-process-step]")).toHaveCount(4);
-    await expect(assistantMessage.locator(".terminal-step-body").first()).toContainText("检查仓库状态");
-    await expect(assistantMessage.locator(".terminal-step-body").nth(2)).toContainText("当前消息内联展开");
+    await expect(assistantMessage.locator(".chatRuntime-step-body").first()).toContainText("检查仓库状态");
+    await expect(assistantMessage.locator(".chatRuntime-step-body").nth(2)).toContainText("当前消息内联展开");
     await expect(assistantMessage.locator(".conversation-process-answer-shell")).toContainText("任务已完成");
     await expect(assistantMessage.locator(".conversation-process-answer-shell")).not.toContainText("[process] action:");
   });
@@ -1906,7 +1903,7 @@ test.describe("Chat composer", () => {
                 final_output: "任务已完成",
                 runtime_trace_events: [
                   ["mobile-event-1", "确认目标工作区", "需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。"],
-                  ["mobile-event-2", "读取前端契约", "检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。"],
+                  ["mobile-event-2", "读取前端契约", "检查 Chat 与 ChatRuntime 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。"],
                   ["mobile-event-3", "调整移动端展开", "移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。"],
                   ["mobile-event-4", "同步静态产物", "重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。"],
                   ["mobile-event-5", "部署预览服务", "通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。"],
@@ -1952,7 +1949,7 @@ test.describe("Chat composer", () => {
           final_output: "任务已完成",
           runtime_trace_events: [
             ["mobile-event-1", "确认目标工作区", "需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中，并检查工作区结构、远端分支和当前 HEAD 是否对齐。"],
-            ["mobile-event-2", "读取前端契约", "检查 Chat 与 Terminal 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。"],
+            ["mobile-event-2", "读取前端契约", "检查 Chat 与 ChatRuntime 共享的 RuntimeTimeline process block，确认 Thinking 披露入口复用同一 DOM 契约。"],
             ["mobile-event-3", "调整移动端展开", "移动端 Process 展开体保持在当前 assistant 消息内，避免独立 fixed 面板遮挡 Composer 或脱离上下文。"],
             ["mobile-event-4", "同步静态产物", "重新构建前端产物，使部署子域名加载新的哈希 CSS 和 JS。"],
             ["mobile-event-5", "部署预览服务", "通过 session scoped web 服务注册到短哈希子域名，并使用 /readyz 完成健康检查。"],
@@ -1981,23 +1978,23 @@ test.describe("Chat composer", () => {
     await waitForAppReady(page);
     const assistantMessage = latestAssistantMessage(page);
     await expect(assistantMessage.locator("[data-conversation-process-shell]")).toBeVisible();
-    await assistantMessage.locator(".terminal-process-body").evaluate((node) => {
+    await assistantMessage.locator(".chatRuntime-process-body").evaluate((node) => {
       if (node instanceof HTMLElement) {
         node.hidden = false;
         node.removeAttribute("hidden");
       }
     });
 
-    const processBody = assistantMessage.locator(".terminal-step-body").first();
+    const processBody = assistantMessage.locator(".chatRuntime-step-body").first();
     await expect(processBody).toContainText("需要把远端最新的 alter0 项目克隆到当前会话的单独工作区中");
     await expect(assistantMessage.locator("[data-conversation-process-toggle]")).toContainText("6 steps");
     await expect(assistantMessage.locator("[data-conversation-process-step]")).toHaveCount(6);
     await assistantMessage.locator("[data-conversation-process-step-toggle]").first().click();
-    await expect(assistantMessage.locator(".terminal-step-body").nth(5)).toContainText("增加多步骤思考过程 fixture");
+    await expect(assistantMessage.locator(".chatRuntime-step-body").nth(5)).toContainText("增加多步骤思考过程 fixture");
 
     const metrics = await processBody.evaluate((node) => {
       const detail = node instanceof HTMLElement ? node : null;
-      const rendered = detail?.querySelector(".terminal-step-richtext");
+      const rendered = detail?.querySelector(".chatRuntime-step-richtext");
       const step = detail?.closest("[data-conversation-process-step]");
       const shell = detail?.closest("[data-conversation-process-shell]");
       if (!detail || !(rendered instanceof HTMLElement) || !(step instanceof HTMLElement) || !(shell instanceof HTMLElement)) {

@@ -21,9 +21,9 @@
   --route-padding-x: 28px;
   --route-padding-top: 24px;
   --route-padding-bottom: 48px;
-  --route-terminal-padding-x: 20px;
-  --route-terminal-padding-top: 18px;
-  --route-terminal-padding-bottom: 20px;
+  --route-chatRuntime-padding-x: 20px;
+  --route-chatRuntime-padding-top: 18px;
+  --route-chatRuntime-padding-bottom: 20px;
   --shadow-soft: 0 18px 40px -34px rgba(8, 37, 69, 0.18);
   --shadow-card: 0 34px 70px -44px rgba(8, 37, 69, 0.24);
   --content-width: clamp(860px, calc(100vw - var(--nav-width) - var(--session-width) - 160px), 1240px);

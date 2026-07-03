@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 	schedulerdomain "alter0/internal/scheduler/domain"
 	sessionapp "alter0/internal/session/application"
 	sharedapp "alter0/internal/shared/application"
 	shareddomain "alter0/internal/shared/domain"
 	taskapp "alter0/internal/task/application"
 	taskdomain "alter0/internal/task/domain"
-	terminaldomain "alter0/internal/terminal/domain"
 )
 
 const (
@@ -39,24 +39,24 @@ type sessionTouchService interface {
 }
 
 type maintenanceRunResponse struct {
-	JobID                         string    `json:"job_id"`
-	Status                        string    `json:"status"`
-	StartedAt                     time.Time `json:"started_at,omitempty"`
-	FinishedAt                    time.Time `json:"finished_at,omitempty"`
-	NextRunAt                     time.Time `json:"next_run_at,omitempty"`
-	DeletedCount                  int       `json:"deleted_count,omitempty"`
-	SkippedPinnedCount            int       `json:"skipped_pinned_count,omitempty"`
-	SkippedProtectedCount         int       `json:"skipped_protected_count,omitempty"`
-	ScannedCount                  int       `json:"scanned_count,omitempty"`
-	TerminalDeletedCount          int       `json:"terminal_deleted_count,omitempty"`
-	TerminalSkippedPinnedCount    int       `json:"terminal_skipped_pinned_count,omitempty"`
-	TerminalSkippedProtectedCount int       `json:"terminal_skipped_protected_count,omitempty"`
-	TerminalScannedCount          int       `json:"terminal_scanned_count,omitempty"`
-	ChangedFiles                  []string  `json:"changed_files,omitempty"`
-	Error                         string    `json:"error,omitempty"`
+	JobID                            string    `json:"job_id"`
+	Status                           string    `json:"status"`
+	StartedAt                        time.Time `json:"started_at,omitempty"`
+	FinishedAt                       time.Time `json:"finished_at,omitempty"`
+	NextRunAt                        time.Time `json:"next_run_at,omitempty"`
+	DeletedCount                     int       `json:"deleted_count,omitempty"`
+	SkippedPinnedCount               int       `json:"skipped_pinned_count,omitempty"`
+	SkippedProtectedCount            int       `json:"skipped_protected_count,omitempty"`
+	ScannedCount                     int       `json:"scanned_count,omitempty"`
+	ChatRuntimeDeletedCount          int       `json:"chatRuntime_deleted_count,omitempty"`
+	ChatRuntimeSkippedPinnedCount    int       `json:"chatRuntime_skipped_pinned_count,omitempty"`
+	ChatRuntimeSkippedProtectedCount int       `json:"chatRuntime_skipped_protected_count,omitempty"`
+	ChatRuntimeScannedCount          int       `json:"chatRuntime_scanned_count,omitempty"`
+	ChangedFiles                     []string  `json:"changed_files,omitempty"`
+	Error                            string    `json:"error,omitempty"`
 }
 
-type terminalCleanupResult struct {
+type chatRuntimeCleanupResult struct {
 	DeletedCount          int
 	SkippedPinnedCount    int
 	SkippedProtectedCount int
@@ -181,16 +181,16 @@ func (m *maintenanceService) RunSessionCleanup(now time.Time) maintenanceRunResp
 			cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete workspace for %s: %v", sessionID, err))
 		}
 	}
-	terminalResult, terminalCleanupErrors := m.cleanupInactiveTerminalSessions(now, defaultMaintenanceInactiveDuration, protectedSessionIDs)
-	cleanupErrors = append(cleanupErrors, terminalCleanupErrors...)
-	run.DeletedCount = result.DeletedCount + terminalResult.DeletedCount
-	run.SkippedPinnedCount = result.SkippedPinnedCount + terminalResult.SkippedPinnedCount
-	run.SkippedProtectedCount = result.SkippedProtectedCount + terminalResult.SkippedProtectedCount
-	run.ScannedCount = result.ScannedCount + terminalResult.ScannedCount
-	run.TerminalDeletedCount = terminalResult.DeletedCount
-	run.TerminalSkippedPinnedCount = terminalResult.SkippedPinnedCount
-	run.TerminalSkippedProtectedCount = terminalResult.SkippedProtectedCount
-	run.TerminalScannedCount = terminalResult.ScannedCount
+	chatRuntimeResult, chatRuntimeCleanupErrors := m.cleanupInactiveChatRuntimeSessions(now, defaultMaintenanceInactiveDuration, protectedSessionIDs)
+	cleanupErrors = append(cleanupErrors, chatRuntimeCleanupErrors...)
+	run.DeletedCount = result.DeletedCount + chatRuntimeResult.DeletedCount
+	run.SkippedPinnedCount = result.SkippedPinnedCount + chatRuntimeResult.SkippedPinnedCount
+	run.SkippedProtectedCount = result.SkippedProtectedCount + chatRuntimeResult.SkippedProtectedCount
+	run.ScannedCount = result.ScannedCount + chatRuntimeResult.ScannedCount
+	run.ChatRuntimeDeletedCount = chatRuntimeResult.DeletedCount
+	run.ChatRuntimeSkippedPinnedCount = chatRuntimeResult.SkippedPinnedCount
+	run.ChatRuntimeSkippedProtectedCount = chatRuntimeResult.SkippedProtectedCount
+	run.ChatRuntimeScannedCount = chatRuntimeResult.ScannedCount
 	if len(cleanupErrors) > 0 {
 		run.Status = "failed"
 		run.Error = strings.Join(cleanupErrors, "; ")
@@ -200,9 +200,9 @@ func (m *maintenanceService) RunSessionCleanup(now time.Time) maintenanceRunResp
 	return run
 }
 
-func (m *maintenanceService) cleanupInactiveTerminalSessions(now time.Time, inactiveDuration time.Duration, protectedSessionIDs []string) (terminalCleanupResult, []string) {
-	var result terminalCleanupResult
-	if m == nil || m.server == nil || m.server.terminals == nil {
+func (m *maintenanceService) cleanupInactiveChatRuntimeSessions(now time.Time, inactiveDuration time.Duration, protectedSessionIDs []string) (chatRuntimeCleanupResult, []string) {
+	var result chatRuntimeCleanupResult
+	if m == nil || m.server == nil || m.server.chatRuntimes == nil {
 		return result, nil
 	}
 	if now.IsZero() {
@@ -216,8 +216,8 @@ func (m *maintenanceService) cleanupInactiveTerminalSessions(now time.Time, inac
 	}
 	cutoff := now.Add(-inactiveDuration)
 	var cleanupErrors []string
-	for _, ownerID := range []string{terminalSessionOwnerID, chatSessionOwnerID} {
-		for _, session := range m.server.terminals.List(ownerID) {
+	for _, ownerID := range []string{chatSessionOwnerID} {
+		for _, session := range m.server.chatRuntimes.List(ownerID) {
 			sessionID := strings.TrimSpace(session.ID)
 			if sessionID == "" {
 				continue
@@ -231,16 +231,16 @@ func (m *maintenanceService) cleanupInactiveTerminalSessions(now time.Time, inac
 				result.SkippedProtectedCount++
 				continue
 			}
-			if terminaldomain.NormalizeSessionStatus(session.Status) == terminaldomain.SessionStatusBusy {
+			if chatruntimedomain.NormalizeSessionStatus(session.Status) == chatruntimedomain.SessionStatusBusy {
 				result.SkippedProtectedCount++
 				continue
 			}
-			lastActiveAt := terminalMaintenanceLastActiveAt(session)
+			lastActiveAt := chatRuntimeMaintenanceLastActiveAt(session)
 			if lastActiveAt.IsZero() || !lastActiveAt.Before(cutoff) {
 				continue
 			}
-			if _, err := m.server.terminals.Delete(ownerID, sessionID); err != nil {
-				cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete terminal session %s: %v", sessionID, err))
+			if _, err := m.server.chatRuntimes.Delete(ownerID, sessionID); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Sprintf("delete chatRuntime session %s: %v", sessionID, err))
 				continue
 			}
 			result.DeletedCount++
@@ -249,7 +249,7 @@ func (m *maintenanceService) cleanupInactiveTerminalSessions(now time.Time, inac
 	return result, cleanupErrors
 }
 
-func terminalMaintenanceLastActiveAt(session terminaldomain.Session) time.Time {
+func chatRuntimeMaintenanceLastActiveAt(session chatruntimedomain.Session) time.Time {
 	lastActiveAt := session.LastOutputAt
 	for _, candidate := range []time.Time{session.UpdatedAt, session.CreatedAt, session.FinishedAt} {
 		if candidate.After(lastActiveAt) {

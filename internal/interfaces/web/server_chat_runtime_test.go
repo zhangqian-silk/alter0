@@ -10,95 +10,95 @@ import (
 	"testing"
 	"time"
 
+	chatruntimeapp "alter0/internal/chatruntime/application"
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
-	terminalapp "alter0/internal/terminal/application"
-	terminaldomain "alter0/internal/terminal/domain"
 )
 
-type stubWebTerminalService struct {
-	createReq      terminalapp.CreateRequest
-	createResp     terminaldomain.Session
+type stubWebChatRuntimeService struct {
+	createReq      chatruntimeapp.CreateRequest
+	createResp     chatruntimedomain.Session
 	createErr      error
-	recoverReq     terminalapp.RecoverRequest
-	recoverResp    terminaldomain.Session
+	recoverReq     chatruntimeapp.RecoverRequest
+	recoverResp    chatruntimedomain.Session
 	recoverErr     error
-	listResp       []terminaldomain.Session
-	listByOwner    map[string][]terminaldomain.Session
-	getResp        terminaldomain.Session
+	listResp       []chatruntimedomain.Session
+	listByOwner    map[string][]chatruntimedomain.Session
+	getResp        chatruntimedomain.Session
 	getOK          bool
-	inputResp      terminaldomain.Session
+	inputResp      chatruntimedomain.Session
 	inputErr       error
-	pinResp        terminaldomain.Session
+	pinResp        chatruntimedomain.Session
 	pinErr         error
-	deleteResp     terminaldomain.Session
+	deleteResp     chatruntimedomain.Session
 	deleteErr      error
 	deleteIDs      []string
 	deleteOwnerIDs []string
-	turnsResp      []terminalapp.TurnSummary
+	turnsResp      []chatruntimeapp.TurnSummary
 	turnsErr       error
-	eventResp      terminalapp.RuntimeTraceEventDetail
+	eventResp      chatruntimeapp.RuntimeTraceEventDetail
 	stepErr        error
-	entryPage      terminalapp.EntryPage
+	entryPage      chatruntimeapp.EntryPage
 	entryErr       error
 	lastOwnerID    string
 	lastID         string
 	lastInput      string
 	lastPinned     bool
-	inputReq       terminalapp.InputRequest
-	updateHook     terminalapp.SessionUpdateHook
+	inputReq       chatruntimeapp.InputRequest
+	updateHook     chatruntimeapp.SessionUpdateHook
 }
 
-func (s *stubWebTerminalService) Create(req terminalapp.CreateRequest) (terminaldomain.Session, error) {
+func (s *stubWebChatRuntimeService) Create(req chatruntimeapp.CreateRequest) (chatruntimedomain.Session, error) {
 	s.createReq = req
 	return s.createResp, s.createErr
 }
 
-func (s *stubWebTerminalService) Recover(req terminalapp.RecoverRequest) (terminaldomain.Session, error) {
+func (s *stubWebChatRuntimeService) Recover(req chatruntimeapp.RecoverRequest) (chatruntimedomain.Session, error) {
 	s.recoverReq = req
 	return s.recoverResp, s.recoverErr
 }
 
-func (s *stubWebTerminalService) List(ownerID string) []terminaldomain.Session {
+func (s *stubWebChatRuntimeService) List(ownerID string) []chatruntimedomain.Session {
 	s.lastOwnerID = ownerID
 	if s.listByOwner != nil {
-		return append([]terminaldomain.Session{}, s.listByOwner[ownerID]...)
+		return append([]chatruntimedomain.Session{}, s.listByOwner[ownerID]...)
 	}
-	return append([]terminaldomain.Session{}, s.listResp...)
+	return append([]chatruntimedomain.Session{}, s.listResp...)
 }
 
-func (s *stubWebTerminalService) Get(ownerID string, sessionID string) (terminaldomain.Session, bool) {
+func (s *stubWebChatRuntimeService) Get(ownerID string, sessionID string) (chatruntimedomain.Session, bool) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
 	return s.getResp, s.getOK
 }
 
-func (s *stubWebTerminalService) ListTurns(ownerID string, sessionID string) ([]terminalapp.TurnSummary, error) {
+func (s *stubWebChatRuntimeService) ListTurns(ownerID string, sessionID string) ([]chatruntimeapp.TurnSummary, error) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
-	return append([]terminalapp.TurnSummary{}, s.turnsResp...), s.turnsErr
+	return append([]chatruntimeapp.TurnSummary{}, s.turnsResp...), s.turnsErr
 }
 
-func (s *stubWebTerminalService) GetRuntimeTraceEventDetail(ownerID string, sessionID string, turnID string, eventID string) (terminalapp.RuntimeTraceEventDetail, error) {
+func (s *stubWebChatRuntimeService) GetRuntimeTraceEventDetail(ownerID string, sessionID string, turnID string, eventID string) (chatruntimeapp.RuntimeTraceEventDetail, error) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID + ":" + turnID + ":" + eventID
 	return s.eventResp, s.stepErr
 }
 
-func (s *stubWebTerminalService) ListEntries(ownerID string, sessionID string, _ int, _ int) (terminalapp.EntryPage, error) {
+func (s *stubWebChatRuntimeService) ListEntries(ownerID string, sessionID string, _ int, _ int) (chatruntimeapp.EntryPage, error) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
 	return s.entryPage, s.entryErr
 }
 
-func (s *stubWebTerminalService) Input(ownerID string, sessionID string, input string) (terminaldomain.Session, error) {
+func (s *stubWebChatRuntimeService) Input(ownerID string, sessionID string, input string) (chatruntimedomain.Session, error) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
 	s.lastInput = input
 	return s.inputResp, s.inputErr
 }
 
-func (s *stubWebTerminalService) InputWithAttachments(req terminalapp.InputRequest) (terminaldomain.Session, error) {
+func (s *stubWebChatRuntimeService) InputWithAttachments(req chatruntimeapp.InputRequest) (chatruntimedomain.Session, error) {
 	s.lastOwnerID = req.OwnerID
 	s.lastID = req.SessionID
 	s.lastInput = req.Input
@@ -106,14 +106,14 @@ func (s *stubWebTerminalService) InputWithAttachments(req terminalapp.InputReque
 	return s.inputResp, s.inputErr
 }
 
-func (s *stubWebTerminalService) SetPinned(ownerID string, sessionID string, pinned bool) (terminaldomain.Session, error) {
+func (s *stubWebChatRuntimeService) SetPinned(ownerID string, sessionID string, pinned bool) (chatruntimedomain.Session, error) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
 	s.lastPinned = pinned
 	return s.pinResp, s.pinErr
 }
 
-func (s *stubWebTerminalService) Delete(ownerID string, sessionID string) (terminaldomain.Session, error) {
+func (s *stubWebChatRuntimeService) Delete(ownerID string, sessionID string) (chatruntimedomain.Session, error) {
 	s.lastOwnerID = ownerID
 	s.lastID = sessionID
 	s.deleteIDs = append(s.deleteIDs, sessionID)
@@ -121,34 +121,34 @@ func (s *stubWebTerminalService) Delete(ownerID string, sessionID string) (termi
 	return s.deleteResp, s.deleteErr
 }
 
-func (s *stubWebTerminalService) SetSessionUpdateHook(hook terminalapp.SessionUpdateHook) {
+func (s *stubWebChatRuntimeService) SetSessionUpdateHook(hook chatruntimeapp.SessionUpdateHook) {
 	s.updateHook = hook
 }
 
-func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
-	service := &stubWebTerminalService{
-		createResp: terminaldomain.Session{
-			ID:           "terminal-1",
-			OwnerID:      terminalSessionOwnerID,
-			Title:        "terminal-1",
-			Status:       terminaldomain.SessionStatusReady,
+func TestChatRuntimeSessionCollectionHandlerCreatesSession(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		createResp: chatruntimedomain.Session{
+			ID:           "chatRuntime-1",
+			OwnerID:      chatSessionOwnerID,
+			Title:        "chatRuntime-1",
+			Status:       chatruntimedomain.SessionStatusReady,
 			CreatedAt:    time.Now().UTC(),
 			LastOutputAt: time.Now().UTC(),
 			UpdatedAt:    time.Now().UTC(),
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions", bytes.NewBufferString(`{}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions", bytes.NewBufferString(`{}`))
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionCollectionHandler(rec, req)
+	server.chatRuntimeSessionCollectionHandler(rec, req)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected status 201, got %d", rec.Code)
 	}
-	if service.createReq.OwnerID != terminalSessionOwnerID {
-		t.Fatalf("expected terminal owner, got %q", service.createReq.OwnerID)
+	if service.createReq.OwnerID != chatSessionOwnerID {
+		t.Fatalf("expected chatRuntime owner, got %q", service.createReq.OwnerID)
 	}
 
 	var payload map[string]any
@@ -159,8 +159,8 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected session payload, got %v", payload)
 	}
-	if session["id"] != "terminal-1" {
-		t.Fatalf("expected terminal id terminal-1, got %v", session["id"])
+	if session["id"] != "chatRuntime-1" {
+		t.Fatalf("expected chatRuntime id chatRuntime-1, got %v", session["id"])
 	}
 	if _, ok := session["last_output_at"].(string); !ok {
 		t.Fatalf("expected last_output_at in session payload, got %v", session["last_output_at"])
@@ -173,34 +173,34 @@ func TestTerminalSessionCollectionHandlerCreatesSession(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionCollectionHandlerReturnsComparableSessionSummaries(t *testing.T) {
-	service := &stubWebTerminalService{
-		listResp: []terminaldomain.Session{
+func TestChatRuntimeSessionCollectionHandlerReturnsComparableSessionSummaries(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		listResp: []chatruntimedomain.Session{
 			{
-				ID:           "terminal-older-active",
-				OwnerID:      terminalSessionOwnerID,
+				ID:           "chatRuntime-older-active",
+				OwnerID:      chatSessionOwnerID,
 				Title:        "Older active",
-				Status:       terminaldomain.SessionStatusReady,
+				Status:       chatruntimedomain.SessionStatusReady,
 				CreatedAt:    time.Date(2026, 4, 21, 3, 30, 0, 0, time.UTC),
 				LastOutputAt: time.Date(2026, 4, 23, 4, 30, 0, 0, time.UTC),
 				UpdatedAt:    time.Date(2026, 4, 23, 4, 31, 0, 0, time.UTC),
 			},
 			{
-				ID:        "terminal-new-idle",
-				OwnerID:   terminalSessionOwnerID,
+				ID:        "chatRuntime-new-idle",
+				OwnerID:   chatSessionOwnerID,
 				Title:     "New idle",
-				Status:    terminaldomain.SessionStatusReady,
+				Status:    chatruntimedomain.SessionStatusReady,
 				CreatedAt: time.Date(2026, 4, 23, 3, 30, 0, 0, time.UTC),
 				UpdatedAt: time.Date(2026, 4, 23, 3, 30, 0, 0, time.UTC),
 			},
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions", nil)
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionCollectionHandler(rec, req)
+	server.chatRuntimeSessionCollectionHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -226,20 +226,47 @@ func TestTerminalSessionCollectionHandlerReturnsComparableSessionSummaries(t *te
 	}
 }
 
-func TestTerminalSessionSummaryRevisionDistinguishesSubMillisecondUpdates(t *testing.T) {
-	first := buildTerminalSessionSummary(terminaldomain.Session{
-		ID:        "terminal-fast-1",
-		OwnerID:   terminalSessionOwnerID,
+func TestChatSessionItemHandlerRejectsRemovedRuntimePathFallback(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		getResp: chatruntimedomain.Session{
+			ID:        "chat-1",
+			OwnerID:   chatSessionOwnerID,
+			Title:     "Chat 1",
+			Status:    chatruntimedomain.SessionStatusReady,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+		getOK: true,
+	}
+	server := &Server{chatRuntimes: service}
+
+	req := httptest.NewRequest(http.MethodGet, "/removed-runtime/sessions/chat-1", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected removed runtime session path to be rejected, got %d", rec.Code)
+	}
+	if service.lastID != "" {
+		t.Fatalf("expected no runtime session lookup for removed runtime path, got %q", service.lastID)
+	}
+}
+
+func TestChatRuntimeSessionSummaryRevisionDistinguishesSubMillisecondUpdates(t *testing.T) {
+	first := buildChatRuntimeSessionSummary(chatruntimedomain.Session{
+		ID:        "chatRuntime-fast-1",
+		OwnerID:   chatSessionOwnerID,
 		Title:     "Fast 1",
-		Status:    terminaldomain.SessionStatusReady,
+		Status:    chatruntimedomain.SessionStatusReady,
 		CreatedAt: time.Date(2026, 4, 23, 4, 30, 0, 0, time.UTC),
 		UpdatedAt: time.Date(2026, 4, 23, 4, 30, 1, 123400, time.UTC),
 	})
-	second := buildTerminalSessionSummary(terminaldomain.Session{
-		ID:        "terminal-fast-2",
-		OwnerID:   terminalSessionOwnerID,
+	second := buildChatRuntimeSessionSummary(chatruntimedomain.Session{
+		ID:        "chatRuntime-fast-2",
+		OwnerID:   chatSessionOwnerID,
 		Title:     "Fast 2",
-		Status:    terminaldomain.SessionStatusReady,
+		Status:    chatruntimedomain.SessionStatusReady,
 		CreatedAt: time.Date(2026, 4, 23, 4, 30, 0, 0, time.UTC),
 		UpdatedAt: time.Date(2026, 4, 23, 4, 30, 1, 124400, time.UTC),
 	})
@@ -253,14 +280,14 @@ func TestTerminalSessionSummaryRevisionDistinguishesSubMillisecondUpdates(t *tes
 
 func TestChatSessionUpdatesHandlerReturnsIncrementalOwnerEvents(t *testing.T) {
 	server := &Server{sessionEvents: newSessionUpdateBroker(8)}
-	server.publishTerminalSessionEvent(chatSessionOwnerID, "chat-1", "session.updated", terminaldomain.Session{
+	server.publishChatRuntimeSessionEvent(chatSessionOwnerID, "chat-1", "session.updated", chatruntimedomain.Session{
 		ID:      "chat-1",
 		OwnerID: chatSessionOwnerID,
 		Title:   "Running chat",
-		Status:  terminaldomain.SessionStatusBusy,
+		Status:  chatruntimedomain.SessionStatusBusy,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/updates?since_event_id=0", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/updates", strings.NewReader(`{"since_event_id":0}`))
 	rec := httptest.NewRecorder()
 
 	server.chatSessionUpdatesHandler(rec, req)
@@ -289,6 +316,18 @@ func TestChatSessionUpdatesHandlerReturnsIncrementalOwnerEvents(t *testing.T) {
 	session, ok := event.Payload["session"].(map[string]any)
 	if !ok || session["status"] != "busy" {
 		t.Fatalf("expected busy session payload, got %+v", event.Payload)
+	}
+}
+
+func TestChatSessionUpdatesHandlerRejectsRemovedGetCompatibility(t *testing.T) {
+	server := &Server{sessionEvents: newSessionUpdateBroker(8)}
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/updates?since_event_id=0", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatSessionUpdatesHandler(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status 405 for unsupported updates method, got %d", rec.Code)
 	}
 }
 
@@ -366,9 +405,9 @@ func TestChatSessionUpdatesHandlerPrunesKnownRuntimeTraceEvents(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionUpdateHookReturnsBoundedSessionDetailTurns(t *testing.T) {
-	service := &stubWebTerminalService{
-		turnsResp: []terminalapp.TurnSummary{{
+func TestChatRuntimeSessionUpdateHookReturnsBoundedSessionDetailTurns(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		turnsResp: []chatruntimeapp.TurnSummary{{
 			ID:          "turn-old",
 			Prompt:      "old",
 			Status:      "completed",
@@ -380,19 +419,19 @@ func TestTerminalSessionUpdateHookReturnsBoundedSessionDetailTurns(t *testing.T)
 			FinalOutput: "done",
 		}},
 	}
-	server := &Server{terminals: service, sessionEvents: newSessionUpdateBroker(8)}
-	server.registerTerminalSessionUpdateHook()
+	server := &Server{chatRuntimes: service, sessionEvents: newSessionUpdateBroker(8)}
+	server.registerChatRuntimeSessionUpdateHook()
 	if service.updateHook == nil {
 		t.Fatalf("expected session update hook to be registered")
 	}
-	service.updateHook(chatSessionOwnerID, "chat-1", terminaldomain.Session{
+	service.updateHook(chatSessionOwnerID, "chat-1", chatruntimedomain.Session{
 		ID:      "chat-1",
 		OwnerID: chatSessionOwnerID,
 		Title:   "Running chat",
-		Status:  terminaldomain.SessionStatusBusy,
+		Status:  chatruntimedomain.SessionStatusBusy,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/updates?since_event_id=0", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/updates", strings.NewReader(`{"since_event_id":0}`))
 	rec := httptest.NewRecorder()
 
 	server.chatSessionUpdatesHandler(rec, req)
@@ -422,7 +461,7 @@ func TestTerminalSessionUpdateHookReturnsBoundedSessionDetailTurns(t *testing.T)
 func TestChatSessionUpdatesHandlerRequestsResyncWhenCursorCannotResume(t *testing.T) {
 	server := &Server{sessionEvents: newSessionUpdateBroker(8)}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/updates?since_event_id=42", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/updates", strings.NewReader(`{"since_event_id":42}`))
 	rec := httptest.NewRecorder()
 
 	server.chatSessionUpdatesHandler(rec, req)
@@ -449,8 +488,8 @@ func TestChatSessionUpdatesHandlerRequestsResyncWhenCursorCannotResume(t *testin
 func TestSessionUpdatePollRequestsResyncWhenCursorFallsBehindGlobalWindow(t *testing.T) {
 	broker := newSessionUpdateBroker(2)
 	broker.publish(chatSessionOwnerID, "chat-1", "session.updated", nil)
-	broker.publish(terminalSessionOwnerID, "terminal-1", "session.updated", nil)
-	broker.publish(terminalSessionOwnerID, "terminal-2", "session.updated", nil)
+	broker.publish(chatSessionOwnerID, "chatRuntime-1", "session.updated", nil)
+	broker.publish(chatSessionOwnerID, "chatRuntime-2", "session.updated", nil)
 
 	events, cursor, resyncRequired, hasMore := broker.poll(chatSessionOwnerID, 1, 50, 64*1024)
 
@@ -463,32 +502,32 @@ func TestSessionUpdatePollRequestsResyncWhenCursorFallsBehindGlobalWindow(t *tes
 }
 
 func TestChatSessionNamedRouteHandlersUseChatOwner(t *testing.T) {
-	service := &stubWebTerminalService{
-		createResp: terminaldomain.Session{
+	service := &stubWebChatRuntimeService{
+		createResp: chatruntimedomain.Session{
 			ID:        "chat-1",
 			OwnerID:   chatSessionOwnerID,
 			Title:     "chat-1",
-			Status:    terminaldomain.SessionStatusReady,
+			Status:    chatruntimedomain.SessionStatusReady,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
-		inputResp: terminaldomain.Session{
+		inputResp: chatruntimedomain.Session{
 			ID:        "chat-1",
 			OwnerID:   chatSessionOwnerID,
 			Title:     "chat-1",
-			Status:    terminaldomain.SessionStatusBusy,
+			Status:    chatruntimedomain.SessionStatusBusy,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
-		eventResp: terminalapp.RuntimeTraceEventDetail{
+		eventResp: chatruntimeapp.RuntimeTraceEventDetail{
 			TurnID: "turn-1",
-			Blocks: []terminalapp.RuntimeBlock{{
+			Blocks: []chatruntimeapp.RuntimeBlock{{
 				Type: "markdown",
 				Text: "detail",
 			}},
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
 	createReq := httptest.NewRequest(http.MethodPost, "/api/chat/sessions", bytes.NewBufferString(`{}`))
 	createRec := httptest.NewRecorder()
@@ -527,55 +566,55 @@ func TestChatSessionNamedRouteHandlersUseChatOwner(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionItemHandlerWritesInput(t *testing.T) {
-	service := &stubWebTerminalService{
-		inputResp: terminaldomain.Session{
-			ID:        "terminal-2",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-2",
-			Status:    terminaldomain.SessionStatusBusy,
+func TestChatRuntimeSessionItemHandlerWritesInput(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		inputResp: chatruntimedomain.Session{
+			ID:        "chatRuntime-2",
+			OwnerID:   chatSessionOwnerID,
+			Title:     "chatRuntime-2",
+			Status:    chatruntimedomain.SessionStatusBusy,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"input":"pwd"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", bytes.NewBufferString(`{"input":"pwd"}`))
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if service.lastOwnerID != terminalSessionOwnerID {
-		t.Fatalf("expected terminal owner, got %q", service.lastOwnerID)
+	if service.lastOwnerID != chatSessionOwnerID {
+		t.Fatalf("expected chatRuntime owner, got %q", service.lastOwnerID)
 	}
-	if service.lastID != "terminal-2" {
-		t.Fatalf("expected session terminal-2, got %q", service.lastID)
+	if service.lastID != "chatRuntime-2" {
+		t.Fatalf("expected session chatRuntime-2, got %q", service.lastID)
 	}
 	if service.lastInput != "pwd" {
 		t.Fatalf("expected input pwd, got %q", service.lastInput)
 	}
 }
 
-func TestTerminalSessionItemHandlerWritesImageAttachments(t *testing.T) {
-	service := &stubWebTerminalService{
-		inputResp: terminaldomain.Session{
-			ID:        "terminal-2",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-2",
-			Status:    terminaldomain.SessionStatusBusy,
+func TestChatRuntimeSessionItemHandlerWritesImageAttachments(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		inputResp: chatruntimedomain.Session{
+			ID:        "chatRuntime-2",
+			OwnerID:   chatSessionOwnerID,
+			Title:     "chatRuntime-2",
+			Status:    chatruntimedomain.SessionStatusBusy,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"attachments":[{"name":"diagram.png","content_type":"image/png","data_url":"data:image/png;base64,ZmFrZQ=="}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", bytes.NewBufferString(`{"attachments":[{"name":"diagram.png","content_type":"image/png","data_url":"data:image/png;base64,ZmFrZQ=="}]}`))
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -591,13 +630,13 @@ func TestTerminalSessionItemHandlerWritesImageAttachments(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionItemHandlerPassesSelectedSkills(t *testing.T) {
-	service := &stubWebTerminalService{
-		inputResp: terminaldomain.Session{
-			ID:        "terminal-2",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-2",
-			Status:    terminaldomain.SessionStatusBusy,
+func TestChatRuntimeSessionItemHandlerPassesSelectedSkills(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		inputResp: chatruntimedomain.Session{
+			ID:        "chatRuntime-2",
+			OwnerID:   chatSessionOwnerID,
+			Title:     "chatRuntime-2",
+			Status:    chatruntimedomain.SessionStatusBusy,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
@@ -611,7 +650,7 @@ func TestTerminalSessionItemHandlerPassesSelectedSkills(t *testing.T) {
 		Scope:   controldomain.CapabilityScopeGlobal,
 		Version: controldomain.DefaultCapabilityVersion,
 		Metadata: map[string]string{
-			"skill.description": "Summarize terminal work.",
+			"skill.description": "Summarize chatRuntime work.",
 			"skill.guide":       "Use concise structured summaries.",
 			"skill.file_path":   ".alter0/skills/summary/SKILL.md",
 		},
@@ -631,12 +670,12 @@ func TestTerminalSessionItemHandlerPassesSelectedSkills(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert private skill failed: %v", err)
 	}
-	server := &Server{terminals: service, control: control}
+	server := &Server{chatRuntimes: service, control: control}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"input":"summarize","skill_ids":["summary","private","missing"]}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", bytes.NewBufferString(`{"input":"summarize","skill_ids":["summary","private","missing"]}`))
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
@@ -655,13 +694,13 @@ func TestTerminalSessionItemHandlerPassesSelectedSkills(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionItemHandlerDefaultsMissingSkillIDsToAllPublicSkills(t *testing.T) {
-	service := &stubWebTerminalService{
-		inputResp: terminaldomain.Session{
-			ID:        "terminal-2",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-2",
-			Status:    terminaldomain.SessionStatusBusy,
+func TestChatRuntimeSessionItemHandlerDefaultsMissingSkillIDsToAllPublicSkills(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		inputResp: chatruntimedomain.Session{
+			ID:        "chatRuntime-2",
+			OwnerID:   chatSessionOwnerID,
+			Title:     "chatRuntime-2",
+			Status:    chatruntimedomain.SessionStatusBusy,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
@@ -675,7 +714,7 @@ func TestTerminalSessionItemHandlerDefaultsMissingSkillIDsToAllPublicSkills(t *t
 		Scope:   controldomain.CapabilityScopeGlobal,
 		Version: controldomain.DefaultCapabilityVersion,
 		Metadata: map[string]string{
-			"skill.description": "Summarize terminal work.",
+			"skill.description": "Summarize chatRuntime work.",
 		},
 	}); err != nil {
 		t.Fatalf("upsert summary skill failed: %v", err)
@@ -713,12 +752,12 @@ func TestTerminalSessionItemHandlerDefaultsMissingSkillIDsToAllPublicSkills(t *t
 	}); err != nil {
 		t.Fatalf("upsert private skill failed: %v", err)
 	}
-	server := &Server{terminals: service, control: control}
+	server := &Server{chatRuntimes: service, control: control}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"input":"summarize"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", bytes.NewBufferString(`{"input":"summarize"}`))
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
@@ -742,13 +781,13 @@ func TestTerminalSessionItemHandlerDefaultsMissingSkillIDsToAllPublicSkills(t *t
 	}
 }
 
-func TestTerminalSessionItemHandlerTreatsExplicitEmptySkillIDsAsNoSkills(t *testing.T) {
-	service := &stubWebTerminalService{
-		inputResp: terminaldomain.Session{
-			ID:        "terminal-2",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-2",
-			Status:    terminaldomain.SessionStatusBusy,
+func TestChatRuntimeSessionItemHandlerTreatsExplicitEmptySkillIDsAsNoSkills(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		inputResp: chatruntimedomain.Session{
+			ID:        "chatRuntime-2",
+			OwnerID:   chatSessionOwnerID,
+			Title:     "chatRuntime-2",
+			Status:    chatruntimedomain.SessionStatusBusy,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
@@ -764,12 +803,12 @@ func TestTerminalSessionItemHandlerTreatsExplicitEmptySkillIDsAsNoSkills(t *test
 	}); err != nil {
 		t.Fatalf("upsert summary skill failed: %v", err)
 	}
-	server := &Server{terminals: service, control: control}
+	server := &Server{chatRuntimes: service, control: control}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-2/input", bytes.NewBufferString(`{"input":"summarize","skill_ids":[]}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", bytes.NewBufferString(`{"input":"summarize","skill_ids":[]}`))
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
@@ -779,83 +818,83 @@ func TestTerminalSessionItemHandlerTreatsExplicitEmptySkillIDsAsNoSkills(t *test
 	}
 }
 
-func TestTerminalSessionRecoverHandlerRestoresStoredSession(t *testing.T) {
-	service := &stubWebTerminalService{
-		recoverResp: terminaldomain.Session{
-			ID:                "terminal-recover",
-			OwnerID:           terminalSessionOwnerID,
-			Title:             "Recovered",
-			TerminalSessionID: "thread-recover",
-			Status:            terminaldomain.SessionStatusReady,
-			CreatedAt:         time.Date(2026, 3, 19, 10, 0, 0, 0, time.UTC),
-			UpdatedAt:         time.Date(2026, 3, 19, 10, 5, 0, 0, time.UTC),
+func TestChatRuntimeSessionRecoverHandlerRestoresStoredSession(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		recoverResp: chatruntimedomain.Session{
+			ID:               "chatRuntime-recover",
+			OwnerID:          chatSessionOwnerID,
+			Title:            "Recovered",
+			RuntimeSessionID: "thread-recover",
+			Status:           chatruntimedomain.SessionStatusReady,
+			CreatedAt:        time.Date(2026, 3, 19, 10, 0, 0, 0, time.UTC),
+			UpdatedAt:        time.Date(2026, 3, 19, 10, 5, 0, 0, time.UTC),
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/recover", bytes.NewBufferString(`{"id":"terminal-recover","terminal_session_id":"thread-recover","title":"Recovered","created_at":"2026-03-19T10:00:00Z","updated_at":"2026-03-19T10:05:00Z"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/recover", bytes.NewBufferString(`{"id":"chatRuntime-recover","runtime_session_id":"thread-recover","title":"Recovered","created_at":"2026-03-19T10:00:00Z","updated_at":"2026-03-19T10:05:00Z"}`))
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionRecoverHandler(rec, req)
+	server.chatRuntimeSessionRecoverHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if service.recoverReq.OwnerID != terminalSessionOwnerID {
-		t.Fatalf("expected terminal owner, got %q", service.recoverReq.OwnerID)
+	if service.recoverReq.OwnerID != chatSessionOwnerID {
+		t.Fatalf("expected chatRuntime owner, got %q", service.recoverReq.OwnerID)
 	}
-	if service.recoverReq.SessionID != "terminal-recover" {
+	if service.recoverReq.SessionID != "chatRuntime-recover" {
 		t.Fatalf("expected recover session id, got %q", service.recoverReq.SessionID)
 	}
-	if service.recoverReq.TerminalSessionID != "thread-recover" {
-		t.Fatalf("expected recover thread id, got %q", service.recoverReq.TerminalSessionID)
+	if service.recoverReq.RuntimeSessionID != "thread-recover" {
+		t.Fatalf("expected recover thread id, got %q", service.recoverReq.RuntimeSessionID)
 	}
 }
 
-func TestTerminalSessionItemHandlerRejectsRemovedCloseRoute(t *testing.T) {
-	service := &stubWebTerminalService{}
-	server := &Server{terminals: service}
+func TestChatRuntimeSessionItemHandlerRejectsRemovedCloseRoute(t *testing.T) {
+	service := &stubWebChatRuntimeService{}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-3/close", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-3/close", nil)
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d", rec.Code)
 	}
 	if service.lastID != "" {
-		t.Fatalf("expected close route to bypass terminal service, got %q", service.lastID)
+		t.Fatalf("expected close route to bypass chatRuntime service, got %q", service.lastID)
 	}
 }
 
-func TestTerminalSessionItemHandlerPinsSession(t *testing.T) {
-	service := &stubWebTerminalService{
-		pinResp: terminaldomain.Session{
-			ID:        "terminal-4",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-4",
-			Status:    terminaldomain.SessionStatusReady,
+func TestChatRuntimeSessionItemHandlerPinsSession(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		pinResp: chatruntimedomain.Session{
+			ID:        "chatRuntime-4",
+			OwnerID:   chatSessionOwnerID,
+			Title:     "chatRuntime-4",
+			Status:    chatruntimedomain.SessionStatusReady,
 			Pinned:    true,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-4/pin", bytes.NewBufferString(`{"pinned":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-4/pin", bytes.NewBufferString(`{"pinned":true}`))
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if service.lastOwnerID != terminalSessionOwnerID {
-		t.Fatalf("expected terminal owner, got %q", service.lastOwnerID)
+	if service.lastOwnerID != chatSessionOwnerID {
+		t.Fatalf("expected chatRuntime owner, got %q", service.lastOwnerID)
 	}
-	if service.lastID != "terminal-4" {
-		t.Fatalf("expected session terminal-4, got %q", service.lastID)
+	if service.lastID != "chatRuntime-4" {
+		t.Fatalf("expected session chatRuntime-4, got %q", service.lastID)
 	}
 	if !service.lastPinned {
 		t.Fatalf("expected pinned true")
@@ -874,24 +913,24 @@ func TestTerminalSessionItemHandlerPinsSession(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionItemHandlerUnpinsSessionWithExplicitFalse(t *testing.T) {
-	service := &stubWebTerminalService{
-		pinResp: terminaldomain.Session{
-			ID:        "terminal-4",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-4",
-			Status:    terminaldomain.SessionStatusReady,
+func TestChatRuntimeSessionItemHandlerUnpinsSessionWithExplicitFalse(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		pinResp: chatruntimedomain.Session{
+			ID:        "chatRuntime-4",
+			OwnerID:   chatSessionOwnerID,
+			Title:     "chatRuntime-4",
+			Status:    chatruntimedomain.SessionStatusReady,
 			Pinned:    false,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/terminal-4/pin", bytes.NewBufferString(`{"pinned":false}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-4/pin", bytes.NewBufferString(`{"pinned":false}`))
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -914,63 +953,63 @@ func TestTerminalSessionItemHandlerUnpinsSessionWithExplicitFalse(t *testing.T) 
 	}
 }
 
-func TestTerminalSessionItemHandlerDeletesSession(t *testing.T) {
-	service := &stubWebTerminalService{
-		deleteResp: terminaldomain.Session{
-			ID:         "terminal-4",
-			OwnerID:    terminalSessionOwnerID,
-			Title:      "terminal-4",
-			Status:     terminaldomain.SessionStatusExited,
+func TestChatRuntimeSessionItemHandlerDeletesSession(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		deleteResp: chatruntimedomain.Session{
+			ID:         "chatRuntime-4",
+			OwnerID:    chatSessionOwnerID,
+			Title:      "chatRuntime-4",
+			Status:     chatruntimedomain.SessionStatusExited,
 			CreatedAt:  time.Now().UTC(),
 			UpdatedAt:  time.Now().UTC(),
 			FinishedAt: time.Now().UTC(),
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/terminal/sessions/terminal-4", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/chat/sessions/chatRuntime-4", nil)
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("expected status 204, got %d", rec.Code)
 	}
-	if service.lastOwnerID != terminalSessionOwnerID {
-		t.Fatalf("expected terminal owner, got %q", service.lastOwnerID)
+	if service.lastOwnerID != chatSessionOwnerID {
+		t.Fatalf("expected chatRuntime owner, got %q", service.lastOwnerID)
 	}
-	if service.lastID != "terminal-4" {
-		t.Fatalf("expected session terminal-4, got %q", service.lastID)
+	if service.lastID != "chatRuntime-4" {
+		t.Fatalf("expected session chatRuntime-4, got %q", service.lastID)
 	}
 	if body := strings.TrimSpace(rec.Body.String()); body != "" {
 		t.Fatalf("expected empty response body, got %q", body)
 	}
 }
 
-func TestTerminalSessionItemHandlerReturnsTurnsInSessionDetail(t *testing.T) {
-	service := &stubWebTerminalService{
-		getResp: terminaldomain.Session{
-			ID:        "terminal-4",
-			OwnerID:   terminalSessionOwnerID,
-			Title:     "terminal-4",
-			Status:    terminaldomain.SessionStatusReady,
+func TestChatRuntimeSessionItemHandlerReturnsTurnsInSessionDetail(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		getResp: chatruntimedomain.Session{
+			ID:        "chatRuntime-4",
+			OwnerID:   chatSessionOwnerID,
+			Title:     "chatRuntime-4",
+			Status:    chatruntimedomain.SessionStatusReady,
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
 		getOK: true,
-		turnsResp: []terminalapp.TurnSummary{{
+		turnsResp: []chatruntimeapp.TurnSummary{{
 			ID:          "turn-1",
 			Prompt:      "pwd",
 			Status:      "completed",
 			FinalOutput: "/workspace/alter0",
 		}},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/chatRuntime-4", nil)
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -990,27 +1029,27 @@ func TestTerminalSessionItemHandlerReturnsTurnsInSessionDetail(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionItemHandlerPagesTurnsInSessionDetail(t *testing.T) {
-	service := &stubWebTerminalService{
-		getResp: terminaldomain.Session{
-			ID:      "terminal-4",
-			OwnerID: terminalSessionOwnerID,
-			Status:  terminaldomain.SessionStatusReady,
+func TestChatRuntimeSessionItemHandlerPagesTurnsInSessionDetail(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		getResp: chatruntimedomain.Session{
+			ID:      "chatRuntime-4",
+			OwnerID: chatSessionOwnerID,
+			Status:  chatruntimedomain.SessionStatusReady,
 		},
 		getOK: true,
-		turnsResp: []terminalapp.TurnSummary{
+		turnsResp: []chatruntimeapp.TurnSummary{
 			{ID: "turn-1", Prompt: "one", Status: "completed", FinalOutput: "1"},
 			{ID: "turn-2", Prompt: "two", Status: "completed", FinalOutput: "2"},
 			{ID: "turn-3", Prompt: "three", Status: "completed", FinalOutput: "3"},
 			{ID: "turn-4", Prompt: "four", Status: "completed", FinalOutput: "4"},
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4?turn_limit=2", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/chatRuntime-4?turn_limit=2", nil)
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -1037,32 +1076,32 @@ func TestTerminalSessionItemHandlerPagesTurnsInSessionDetail(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionItemHandlerUsesCompactDefaultTurnPage(t *testing.T) {
-	turns := make([]terminalapp.TurnSummary, 45)
+func TestChatRuntimeSessionItemHandlerUsesCompactDefaultTurnPage(t *testing.T) {
+	turns := make([]chatruntimeapp.TurnSummary, 45)
 	for index := range turns {
 		turnNumber := index + 1
-		turns[index] = terminalapp.TurnSummary{
+		turns[index] = chatruntimeapp.TurnSummary{
 			ID:          fmt.Sprintf("turn-%02d", turnNumber),
 			Prompt:      fmt.Sprintf("prompt-%02d", turnNumber),
 			Status:      "completed",
 			FinalOutput: fmt.Sprintf("output-%02d", turnNumber),
 		}
 	}
-	service := &stubWebTerminalService{
-		getResp: terminaldomain.Session{
-			ID:      "terminal-4",
-			OwnerID: terminalSessionOwnerID,
-			Status:  terminaldomain.SessionStatusReady,
+	service := &stubWebChatRuntimeService{
+		getResp: chatruntimedomain.Session{
+			ID:      "chatRuntime-4",
+			OwnerID: chatSessionOwnerID,
+			Status:  chatruntimedomain.SessionStatusReady,
 		},
 		getOK:     true,
 		turnsResp: turns,
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/chatRuntime-4", nil)
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -1086,33 +1125,33 @@ func TestTerminalSessionItemHandlerUsesCompactDefaultTurnPage(t *testing.T) {
 	}
 }
 
-func TestTerminalSessionItemHandlerCapsTurnPageByApproximatePayloadSize(t *testing.T) {
-	largeOutput := strings.Repeat("large terminal output\n", 5000)
-	turns := make([]terminalapp.TurnSummary, 5)
+func TestChatRuntimeSessionItemHandlerCapsTurnPageByApproximatePayloadSize(t *testing.T) {
+	largeOutput := strings.Repeat("large chatRuntime output\n", 5000)
+	turns := make([]chatruntimeapp.TurnSummary, 5)
 	for index := range turns {
 		turnNumber := index + 1
-		turns[index] = terminalapp.TurnSummary{
+		turns[index] = chatruntimeapp.TurnSummary{
 			ID:          fmt.Sprintf("turn-%02d", turnNumber),
 			Prompt:      fmt.Sprintf("prompt-%02d", turnNumber),
 			Status:      "completed",
 			FinalOutput: largeOutput,
 		}
 	}
-	service := &stubWebTerminalService{
-		getResp: terminaldomain.Session{
-			ID:      "terminal-4",
-			OwnerID: terminalSessionOwnerID,
-			Status:  terminaldomain.SessionStatusReady,
+	service := &stubWebChatRuntimeService{
+		getResp: chatruntimedomain.Session{
+			ID:      "chatRuntime-4",
+			OwnerID: chatSessionOwnerID,
+			Status:  chatruntimedomain.SessionStatusReady,
 		},
 		getOK:     true,
 		turnsResp: turns,
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4?turn_limit=5", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/chatRuntime-4?turn_limit=5", nil)
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -1136,26 +1175,26 @@ func TestTerminalSessionItemHandlerCapsTurnPageByApproximatePayloadSize(t *testi
 	}
 }
 
-func TestTerminalSessionItemHandlerReturnsRuntimeTraceEventDetail(t *testing.T) {
-	service := &stubWebTerminalService{
-		eventResp: terminalapp.RuntimeTraceEventDetail{
+func TestChatRuntimeSessionItemHandlerReturnsRuntimeTraceEventDetail(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		eventResp: chatruntimeapp.RuntimeTraceEventDetail{
 			TurnID: "turn-1",
-			Event: terminalapp.RuntimeTraceEvent{
+			Event: chatruntimeapp.RuntimeTraceEvent{
 				ID:         "event-1",
 				TurnID:     "turn-1",
 				Seq:        1,
 				Source:     "adapter",
-				Provider:   terminalapp.RuntimeProviderRef{Engine: "codex", Adapter: "codex_cli_json"},
+				Provider:   chatruntimeapp.RuntimeProviderRef{Engine: "codex", Adapter: "codex_cli_json"},
 				Role:       "assistant",
 				Kind:       "shell_command",
 				Lifecycle:  "completed",
 				Status:     "completed",
 				Title:      "pwd",
-				Blocks:     []terminalapp.RuntimeBlock{},
+				Blocks:     []chatruntimeapp.RuntimeBlock{},
 				Visibility: "collapsed",
 			},
-			Blocks: []terminalapp.RuntimeBlock{{
-				Type:    "terminal",
+			Blocks: []chatruntimeapp.RuntimeBlock{{
+				Type:    "chatRuntime",
 				Title:   "Shell",
 				Command: "pwd",
 				Output:  "/workspace/alter0",
@@ -1163,17 +1202,17 @@ func TestTerminalSessionItemHandlerReturnsRuntimeTraceEventDetail(t *testing.T) 
 			Searchable: true,
 		},
 	}
-	server := &Server{terminals: service}
+	server := &Server{chatRuntimes: service}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/sessions/terminal-4/turns/turn-1/events/event-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/chatRuntime-4/turns/turn-1/events/event-1", nil)
 	rec := httptest.NewRecorder()
 
-	server.terminalSessionItemHandler(rec, req)
+	server.chatSessionItemHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if service.lastID != "terminal-4:turn-1:event-1" {
+	if service.lastID != "chatRuntime-4:turn-1:event-1" {
 		t.Fatalf("expected event lookup path, got %q", service.lastID)
 	}
 
@@ -1187,29 +1226,5 @@ func TestTerminalSessionItemHandlerReturnsRuntimeTraceEventDetail(t *testing.T) 
 	}
 	if event["turn_id"] != "turn-1" {
 		t.Fatalf("expected turn_id turn-1, got %v", event["turn_id"])
-	}
-}
-
-func TestTerminalViewPreservesInputDraftAcrossPaint(t *testing.T) {
-	script := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx") +
-		readWorkspaceFile(t, "frontend/src/features/shell/components/RuntimeComposer.tsx")
-	markers := []string{
-		"window.localStorage.getItem(`terminal:${activeSessionID}`) || \"\"",
-		"window.localStorage.setItem(`terminal:${activeSessionID}`, inputValue);",
-		"window.localStorage.removeItem(`terminal:${sessionID}`);",
-		"window.localStorage.removeItem(`terminal:${session.id}`);",
-		"const timer = window.setTimeout(() => {",
-		`runtimeKind: "terminal"`,
-		`data-runtime-composer-kind={runtimeKind}`,
-		`data-runtime-composer-input={runtimeKind}`,
-		`data-runtime-composer-submit={runtimeKind}`,
-		`data-composer-form={composerAlias}`,
-		`data-composer-input={composerAlias}`,
-		`data-composer-submit={composerAlias}`,
-	}
-	for _, marker := range markers {
-		if !strings.Contains(script, marker) {
-			t.Fatalf("expected terminal focus marker %q", marker)
-		}
 	}
 }

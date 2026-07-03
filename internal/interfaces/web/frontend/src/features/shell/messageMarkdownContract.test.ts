@@ -3,13 +3,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 describe("message markdown rendering contract", () => {
-  it("uses one shared generic markdown shell for chat, chat, and terminal", () => {
+  it("uses one shared generic markdown shell for chat", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const sourceRoot = resolve(currentDirectory, "../..");
     const files = [
       "features/shell/components/RuntimeTimeline.tsx",
       "features/shell/components/ChatMessageRegion.tsx",
-      "features/shell/components/ReactManagedTerminalRouteBody.tsx",
       "features/shell/components/MessageMarkdown.ts",
       "features/shell/components/MessageMarkdownShell.tsx",
       "features/shell/shellLayoutStyles.test.ts",

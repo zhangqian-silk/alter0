@@ -161,7 +161,7 @@ func normalizeOptions(options Options) Options {
 }
 
 func (s *Store) Record(task taskdomain.Task) {
-	if !task.Status.IsTerminal() {
+	if !task.Status.IsChatRuntime() {
 		return
 	}
 	summary := normalizeSummary(task)

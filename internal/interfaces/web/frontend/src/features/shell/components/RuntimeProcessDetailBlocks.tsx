@@ -60,9 +60,9 @@ export function isRuntimeProcessNarrativeBlockType(blockType: string) {
 
 function runtimeBlockToProcessDetailBlock(block: RuntimeBlock): RuntimeProcessDetailBlock | null {
   switch (block.type) {
-    case "terminal":
+    case "chatRuntime":
       return {
-        type: "terminal",
+        type: "chatRuntime",
         title: block.title || "Shell",
         content: [block.command, block.output].filter(Boolean).join("\n\n"),
         language: block.language,
@@ -132,11 +132,11 @@ function renderRuntimeProcessDetailBlock(block: RuntimeProcessDetailBlock, key: 
   return (
     <section
       key={key}
-      className={`route-surface-dark terminal-rich-block type-${blockType || "text"}`}
+      className={`route-surface-dark chatRuntime-rich-block type-${blockType || "text"}`}
     >
       {blockTitle || blockFile ? (
-        <div className="terminal-rich-head">
-          <div className="terminal-rich-copy">
+        <div className="chatRuntime-rich-head">
+          <div className="chatRuntime-rich-copy">
             {blockTitle ? <strong>{blockTitle}</strong> : null}
             {blockFile ? (
               <span>
@@ -150,10 +150,10 @@ function renderRuntimeProcessDetailBlock(block: RuntimeProcessDetailBlock, key: 
       {isRuntimeProcessNarrativeBlockType(blockType) ? (
         <MessageMarkdownHTML
           html={renderMessageMarkdownToHTML(content)}
-          className="terminal-step-content terminal-step-richtext"
+          className="chatRuntime-step-content chatRuntime-step-richtext"
         />
       ) : (
-        <pre className={`terminal-rich-pre terminal-step-content${blockType === "diff" ? " terminal-diff-block" : ""}`}>
+        <pre className={`chatRuntime-rich-pre chatRuntime-step-content${blockType === "diff" ? " chatRuntime-diff-block" : ""}`}>
           <code>{content}</code>
         </pre>
       )}

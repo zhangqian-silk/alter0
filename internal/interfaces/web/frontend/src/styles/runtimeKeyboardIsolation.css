@@ -22,7 +22,7 @@
   .chat-pane:not(.page-mode),
   .chat-pane.page-mode,
   [data-runtime-view="conversation"],
-  [data-runtime-view="terminal"],
+  [data-runtime-view="chatRuntime"],
   .runtime-workspace,
   .runtime-workspace-body {
     min-height: 0;
@@ -40,13 +40,13 @@
   }
 
   [data-runtime-view="conversation"] .runtime-workspace-body,
-  [data-runtime-view="terminal"] .runtime-workspace-body,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body,
   [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-mobile-header,
-  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-mobile-header,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-mobile-header,
   [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-head,
-  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-head,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-head,
   [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-panel,
-  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-panel {
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-panel {
     transform: none !important;
     transition: none;
   }
@@ -69,7 +69,7 @@
   }
 
   [data-runtime-view="conversation"] .runtime-workspace-screen,
-  [data-runtime-view="terminal"] .runtime-workspace-screen {
+  [data-runtime-view="chatRuntime"] .runtime-workspace-screen {
     padding-bottom: 20px;
     scroll-padding-bottom: 20px;
   }
@@ -113,17 +113,17 @@
 
 @media (max-width: 760px) {
   [data-runtime-view="conversation"] .runtime-workspace-body,
-  [data-runtime-view="terminal"] .runtime-workspace-body,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body,
   .runtime-workspace-body[data-runtime-view="conversation"],
-  .runtime-workspace-body[data-runtime-view="terminal"] {
+  .runtime-workspace-body[data-runtime-view="chatRuntime"] {
     --runtime-mobile-header-fixed-height: 56px;
     grid-template-rows: var(--runtime-mobile-header-fixed-height) minmax(0, 1fr) auto;
   }
 
   [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-mobile-header,
-  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-mobile-header,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-mobile-header,
   .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-mobile-header,
-  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-workspace-mobile-header {
+  .runtime-workspace-body[data-runtime-view="chatRuntime"] > .runtime-workspace-mobile-header {
     position: fixed !important;
     top: var(--mobile-viewport-offset-top, 0px);
     left: 0;
@@ -137,23 +137,23 @@
   }
 
   [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-head,
-  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-head,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-head,
   .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-head,
-  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-workspace-head {
+  .runtime-workspace-body[data-runtime-view="chatRuntime"] > .runtime-workspace-head {
     display: none;
   }
 
   [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-panel,
-  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-workspace-panel,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-panel,
   .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-panel,
-  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-workspace-panel {
+  .runtime-workspace-body[data-runtime-view="chatRuntime"] > .runtime-workspace-panel {
     grid-row: 2;
   }
 
   [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-composer-shell,
-  [data-runtime-view="terminal"] .runtime-workspace-body > .runtime-composer-shell,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-composer-shell,
   .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-composer-shell,
-  .runtime-workspace-body[data-runtime-view="terminal"] > .runtime-composer-shell {
+  .runtime-workspace-body[data-runtime-view="chatRuntime"] > .runtime-composer-shell {
     grid-row: 3;
   }
 }
@@ -174,8 +174,8 @@
     justify-content: stretch;
   }
 
-  [data-runtime-view="conversation"] .runtime-thinking-shell.terminal-process-shell,
-  .runtime-workspace-body[data-runtime-view="conversation"] .runtime-thinking-shell.terminal-process-shell {
+  [data-runtime-view="conversation"] .runtime-thinking-shell.chatRuntime-process-shell,
+  .runtime-workspace-body[data-runtime-view="conversation"] .runtime-thinking-shell.chatRuntime-process-shell {
     justify-self: stretch;
     margin: 0 0 14px;
   }

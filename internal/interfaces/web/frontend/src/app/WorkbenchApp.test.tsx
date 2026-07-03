@@ -94,8 +94,8 @@ vi.mock("../features/shell/components/PrimaryNav", () => ({
       <button type="button" onClick={() => onNavigate("settings")}>
         go settings
       </button>
-      <button type="button" onClick={() => onNavigate("terminal")}>
-        go terminal
+      <button type="button" onClick={() => onNavigate("chatRuntime")}>
+        go removed chatRuntime
       </button>
       <button type="button" onClick={() => onToggleLanguage()}>
         toggle language
@@ -175,16 +175,16 @@ describe("WorkbenchApp", () => {
     expect(screen.queryByRole("button", { name: "Close panels" })).not.toBeInTheDocument();
   });
 
-  it("navigates routes without confirming when the composer has cached unsent content", async () => {
+  it("falls back to Chat without confirming when navigating to the removed ChatRuntime route", async () => {
     render(<WorkbenchApp />);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     document.body.setAttribute("data-composer-unsaved-state", "dirty");
 
     try {
-      fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
+      fireEvent.click(screen.getByRole("button", { name: "go removed chatRuntime" }));
 
       await waitFor(() => {
-        expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "terminal");
+        expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "chat");
       });
       expect(confirmSpy).not.toHaveBeenCalled();
       expect(document.body).not.toHaveAttribute("data-composer-unsaved-confirm");
@@ -236,17 +236,16 @@ describe("WorkbenchApp", () => {
     expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
   });
 
-  it("keeps a stable session rail shell before the runtime route registers its list", () => {
+  it("keeps a stable Chat session rail shell before the runtime route registers its list", () => {
     mockRuntimeRouteHostRegistersRail = false;
-    window.history.replaceState({}, "", "/terminal");
 
     render(<WorkbenchApp />);
 
-    expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-route", "terminal");
-    expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "terminal");
+    expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-route", "chat");
+    expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
   });
 
-  it("uses one active runtime session rail when switching between chat and terminal", async () => {
+  it("keeps the Chat runtime session rail when navigating to the removed ChatRuntime route", async () => {
     render(<WorkbenchApp />);
 
     await waitFor(() => {
@@ -254,12 +253,12 @@ describe("WorkbenchApp", () => {
     });
     expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:chat");
 
-    fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
+    fireEvent.click(screen.getByRole("button", { name: "go removed chatRuntime" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "terminal");
+      expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
     });
-    expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:terminal");
+    expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:chat");
 
     fireEvent.click(screen.getByRole("button", { name: "go chat" }));
 
@@ -267,7 +266,7 @@ describe("WorkbenchApp", () => {
       expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
     });
     expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:chat");
-    expect(screen.getByTestId("primary-nav-session-rail-body")).not.toHaveTextContent("session rail body:terminal");
+    expect(screen.getByTestId("primary-nav-session-rail-body")).not.toHaveTextContent("session rail body:chatRuntime");
   });
 
   it("renders settings inside the unified settings page frame", async () => {
@@ -301,21 +300,21 @@ describe("WorkbenchApp", () => {
     expect(shell).toHaveClass("overlay-open");
   });
 
-  it("renders the terminal route as a direct runtime workspace frame without route-page wrappers", async () => {
+  it("does not render a ChatRuntime runtime workspace for the removed ChatRuntime route", async () => {
     const { container } = render(<WorkbenchApp />);
 
-    fireEvent.click(screen.getByRole("button", { name: "go terminal" }));
+    fireEvent.click(screen.getByRole("button", { name: "go removed chatRuntime" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "terminal");
+      expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "chat");
     });
 
     const paneShell = container.querySelector("[data-workbench-pane-shell]") as HTMLElement;
     expect(paneShell).toBeInTheDocument();
     expect(paneShell.firstElementChild).toBe(screen.getByTestId("runtime-route-host"));
-    expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "terminal");
-    expect(container.querySelector(".route-view.terminal-route")).not.toBeInTheDocument();
-    expect(container.querySelector(".route-body.terminal-route-body")).not.toBeInTheDocument();
+    expect(screen.getByTestId("runtime-route-host")).toHaveAttribute("data-route", "chat");
+    expect(container.querySelector(".route-view.chatRuntime-route")).not.toBeInTheDocument();
+    expect(container.querySelector(".route-body.chatRuntime-route-body")).not.toBeInTheDocument();
   });
 
   it("installs and cleans up the mobile viewport sync controller at the app root", () => {

@@ -12,7 +12,7 @@ func TestStoreSnapshotInjectsRecentWindowByDefault(t *testing.T) {
 	now := time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
 
 	for idx := 0; idx < 8; idx++ {
-		task := buildTerminalTask(
+		task := buildChatRuntimeTask(
 			"task-default-"+time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC).Add(time.Duration(idx)*time.Minute).Format("150405"),
 			"session-default",
 			taskdomain.TaskStatusSuccess,
@@ -42,8 +42,8 @@ func TestStoreSnapshotTriggersDeepRetrievalAndDrillDown(t *testing.T) {
 	store := NewStore(Options{RecentWindow: 5, DeepTopK: 5, DetailLogLimit: 2, DetailArtifactLimit: 1})
 	now := time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
 
-	store.Record(buildTerminalTask("task-recent", "session-a", taskdomain.TaskStatusSuccess, "release", "recent deploy result", now.Add(-20*time.Minute)))
-	legacy := buildTerminalTask("task-legacy", "session-b", taskdomain.TaskStatusFailed, "migration", "legacy migration failed", now.Add(-7*24*time.Hour))
+	store.Record(buildChatRuntimeTask("task-recent", "session-a", taskdomain.TaskStatusSuccess, "release", "recent deploy result", now.Add(-20*time.Minute)))
+	legacy := buildChatRuntimeTask("task-legacy", "session-b", taskdomain.TaskStatusFailed, "migration", "legacy migration failed", now.Add(-7*24*time.Hour))
 	legacy.Logs = append(legacy.Logs,
 		taskdomain.TaskLog{Timestamp: now.Add(-7*24*time.Hour + time.Minute), Level: taskdomain.TaskLogLevelError, Message: "db timeout"},
 		taskdomain.TaskLog{Timestamp: now.Add(-7*24*time.Hour + 2*time.Minute), Level: taskdomain.TaskLogLevelWarn, Message: "retry exhausted"},
@@ -79,8 +79,8 @@ func TestStoreSnapshotPreventsFalseTriggerAndFallbackOnMiss(t *testing.T) {
 	store := NewStore(Options{RecentWindow: 4, DeepTopK: 3})
 	now := time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
 
-	store.Record(buildTerminalTask("task-1", "session-1", taskdomain.TaskStatusSuccess, "release", "release done", now.Add(-2*time.Hour)))
-	store.Record(buildTerminalTask("task-2", "session-2", taskdomain.TaskStatusSuccess, "ops", "ops done", now.Add(-time.Hour)))
+	store.Record(buildChatRuntimeTask("task-1", "session-1", taskdomain.TaskStatusSuccess, "release", "release done", now.Add(-2*time.Hour)))
+	store.Record(buildChatRuntimeTask("task-2", "session-2", taskdomain.TaskStatusSuccess, "ops", "ops done", now.Add(-time.Hour)))
 
 	overridden := store.Snapshot("不要查历史，只看当前任务", now)
 	if overridden.DeepTriggered {
@@ -108,7 +108,7 @@ func TestStoreSnapshotPreventsFalseTriggerAndFallbackOnMiss(t *testing.T) {
 	}
 }
 
-func buildTerminalTask(taskID string, sessionID string, status taskdomain.TaskStatus, taskType string, result string, finishedAt time.Time) taskdomain.Task {
+func buildChatRuntimeTask(taskID string, sessionID string, status taskdomain.TaskStatus, taskType string, result string, finishedAt time.Time) taskdomain.Task {
 	if finishedAt.IsZero() {
 		finishedAt = time.Now().UTC()
 	}

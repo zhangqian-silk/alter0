@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 	execdomain "alter0/internal/execution/domain"
-	terminaldomain "alter0/internal/terminal/domain"
 )
 
 func TestResolveCodexCommandUsesDefaultCommand(t *testing.T) {
@@ -82,13 +81,13 @@ func TestBuildCodexTurnPromptIncludesWorkspaceFiles(t *testing.T) {
 	}
 }
 
-func TestRenderTerminalSkillContextMarkdownIncludesSelectedSkills(t *testing.T) {
-	content := renderTerminalSkillContextMarkdown(&execdomain.SkillContext{
+func TestRenderChatRuntimeSkillContextMarkdownIncludesSelectedSkills(t *testing.T) {
+	content := renderChatRuntimeSkillContextMarkdown(&execdomain.SkillContext{
 		Protocol: execdomain.SkillContextProtocolVersion,
 		Skills: []execdomain.SkillSpec{{
 			ID:          "summary",
 			Name:        "Summary",
-			Description: "Summarize terminal work.",
+			Description: "Summarize chat work.",
 			Guide:       "Use concise structured summaries.",
 			FilePath:    ".alter0/skills/summary/SKILL.md",
 			Constraints: []string{"Keep output brief."},
@@ -110,15 +109,15 @@ func TestRenderTerminalSkillContextMarkdownIncludesSelectedSkills(t *testing.T) 
 	}
 }
 
-func TestRenderTerminalSkillContextMarkdownMarksEmptySelection(t *testing.T) {
-	content := renderTerminalSkillContextMarkdown(nil)
+func TestRenderChatRuntimeSkillContextMarkdownMarksEmptySelection(t *testing.T) {
+	content := renderChatRuntimeSkillContextMarkdown(nil)
 
-	if !strings.Contains(content, "No skills selected for this Terminal turn.") {
+	if !strings.Contains(content, "No skills selected for this Chat turn.") {
 		t.Fatalf("expected empty skill selection marker, got:\n%s", content)
 	}
 }
 
-func TestPrepareTerminalCodexRuntimeMaterializesSelectedSkillFiles(t *testing.T) {
+func TestPrepareChatRuntimeCodexRuntimeMaterializesSelectedSkillFiles(t *testing.T) {
 	rootDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(rootDir, "docs", "skills", "frontend-design", "scripts"), 0o755); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
@@ -143,7 +142,7 @@ func TestPrepareTerminalCodexRuntimeMaterializesSelectedSkillFiles(t *testing.T)
 	})
 
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
-	_, err = prepareTerminalCodexRuntime(workspaceDir, &execdomain.SkillContext{
+	_, err = prepareChatRuntimeCodexRuntime(workspaceDir, &execdomain.SkillContext{
 		Protocol: execdomain.SkillContextProtocolVersion,
 		Skills: []execdomain.SkillSpec{{
 			ID:       "frontend-design",
@@ -152,7 +151,7 @@ func TestPrepareTerminalCodexRuntimeMaterializesSelectedSkillFiles(t *testing.T)
 		}},
 	})
 	if err != nil {
-		t.Fatalf("prepareTerminalCodexRuntime() error = %v", err)
+		t.Fatalf("prepareChatRuntimeCodexRuntime() error = %v", err)
 	}
 
 	materializedPath := filepath.Join(workspaceDir, ".alter0", "codex-runtime", "skills", "frontend-design", "SKILL.md")
@@ -198,7 +197,7 @@ func TestPrepareTurnInputAttachmentsUsesWorkspaceFilesWithoutDataURLs(t *testing
 	if len(attachments) != 1 {
 		t.Fatalf("expected 1 prepared attachment, got %+v", attachments)
 	}
-	if attachments[0].PromptPath != filepath.ToSlash(filepath.Join(terminalTurnAttachmentDirName, "turn-1", "requirements.md")) {
+	if attachments[0].PromptPath != filepath.ToSlash(filepath.Join(chatRuntimeTurnAttachmentDirName, "turn-1", "requirements.md")) {
 		t.Fatalf("unexpected prompt path %+v", attachments[0])
 	}
 	data, err := os.ReadFile(attachments[0].Path)
@@ -231,7 +230,7 @@ func TestCreateAssignsSessionWorkspaceDir(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "sessions", session.ID)
+	expected := filepath.Join(baseDir, ".alter0", "workspaces", "chat", "sessions", session.ID)
 	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
 		t.Fatalf("expected workspace %q, got %q", expected, session.WorkingDir)
 	}
@@ -253,10 +252,10 @@ func TestCreateUsesNewAsDefaultSessionTitle(t *testing.T) {
 	}
 
 	if session.Title != "New" {
-		t.Fatalf("expected default terminal session title %q, got %q", "New", session.Title)
+		t.Fatalf("expected default chatRuntime session title %q, got %q", "New", session.Title)
 	}
-	if !strings.HasPrefix(session.ID, "terminal-") {
-		t.Fatalf("expected generated terminal session id, got %q", session.ID)
+	if !strings.HasPrefix(session.ID, "chat-") {
+		t.Fatalf("expected generated chatRuntime session id, got %q", session.ID)
 	}
 }
 
@@ -266,13 +265,13 @@ func TestRecoverAssignsDeterministicWorkspaceDir(t *testing.T) {
 
 	session, err := service.Recover(RecoverRequest{
 		OwnerID:   "owner-recover",
-		SessionID: "terminal-recover",
+		SessionID: "chat-recover",
 	})
 	if err != nil {
 		t.Fatalf("recover session: %v", err)
 	}
 
-	expected := filepath.Join(baseDir, ".alter0", "workspaces", "terminal", "sessions", "terminal-recover")
+	expected := filepath.Join(baseDir, ".alter0", "workspaces", "chat", "sessions", "chat-recover")
 	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
 		t.Fatalf("expected recovered workspace %q, got %q", expected, session.WorkingDir)
 	}
@@ -296,7 +295,7 @@ func TestCreateAssignsDistinctWorkspacePerSession(t *testing.T) {
 	}
 }
 
-func TestTerminalInputUsesSessionScopedCodexHome(t *testing.T) {
+func TestChatRuntimeInputUsesSessionScopedCodexHome(t *testing.T) {
 	baseDir := t.TempDir()
 	activeHome := filepath.Join(t.TempDir(), "active-codex-home")
 	if err := os.MkdirAll(activeHome, 0o755); err != nil {
@@ -312,14 +311,14 @@ func TestTerminalInputUsesSessionScopedCodexHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	t.Setenv("TERMINAL_HELPER_EXPECT_CODEX_HOME_SUFFIX", filepath.Join(session.WorkingDir, terminalCodexHomeDirName))
+	t.Setenv("CHAT_RUNTIME_HELPER_EXPECT_CODEX_HOME_SUFFIX", filepath.Join(session.WorkingDir, chatRuntimeCodexHomeDirName))
 
 	if _, err := service.Input("owner-runtime-home", session.ID, "first prompt"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	waitForSessionEntries(t, service, "owner-runtime-home", session.ID, 2)
 
-	if _, err := os.Stat(filepath.Join(session.WorkingDir, terminalCodexHomeDirName, "auth.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(session.WorkingDir, chatRuntimeCodexHomeDirName, "auth.json")); err != nil {
 		t.Fatalf("expected session codex auth copy: %v", err)
 	}
 }
@@ -333,7 +332,7 @@ func TestCreateStartsSessionReady(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if session.Status != terminaldomain.SessionStatusReady {
+	if session.Status != chatruntimedomain.SessionStatusReady {
 		t.Fatalf("expected ready status after create, got %q", session.Status)
 	}
 }
@@ -353,10 +352,10 @@ func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
 	}
 
 	firstSnapshot, firstEntries := waitForSessionEntries(t, service, "owner-a", session.ID, 2)
-	if firstSnapshot.TerminalSessionID != "thread-first-prompt" {
-		t.Fatalf("expected runtime thread id, got %q", firstSnapshot.TerminalSessionID)
+	if firstSnapshot.RuntimeSessionID != "thread-first-prompt" {
+		t.Fatalf("expected runtime thread id, got %q", firstSnapshot.RuntimeSessionID)
 	}
-	if firstSnapshot.Status != terminaldomain.SessionStatusReady {
+	if firstSnapshot.Status != chatruntimedomain.SessionStatusReady {
 		t.Fatalf("expected ready after first turn, got %q", firstSnapshot.Status)
 	}
 	if got := firstEntries[1].Text; got != "mock:first prompt" {
@@ -368,8 +367,8 @@ func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
 	}
 
 	secondSnapshot, secondEntries := waitForSessionEntries(t, service, "owner-a", session.ID, 4)
-	if secondSnapshot.TerminalSessionID != "thread-first-prompt" {
-		t.Fatalf("expected resumed thread id, got %q", secondSnapshot.TerminalSessionID)
+	if secondSnapshot.RuntimeSessionID != "thread-first-prompt" {
+		t.Fatalf("expected resumed thread id, got %q", secondSnapshot.RuntimeSessionID)
 	}
 	if got := secondEntries[3].Text; got != "mock:second prompt" {
 		t.Fatalf("expected second reply, got %q", got)
@@ -386,7 +385,7 @@ func TestServiceInputWithAttachmentsPassesImageFlagsAndPersistsTurnAttachments(t
 		t.Fatalf("create session: %v", err)
 	}
 
-	t.Setenv("TERMINAL_HELPER_EXPECT_IMAGE_COUNT", "1")
+	t.Setenv("CHAT_RUNTIME_HELPER_EXPECT_IMAGE_COUNT", "1")
 	attachment := execdomain.UserAttachment{
 		Name:        "diagram.png",
 		ContentType: "image/png",
@@ -503,11 +502,11 @@ func TestServiceInputUpgradesAutoTitleWhenLaterPromptIsMoreSpecific(t *testing.T
 		t.Fatalf("expected bootstrap title after first input, got %q", firstSnapshot.Title)
 	}
 
-	if _, err := service.Input("owner-title-upgrade", session.ID, "修改 terminal 和 chat 的会话标题"); err != nil {
+	if _, err := service.Input("owner-title-upgrade", session.ID, "修改 chatRuntime 和 chat 的会话标题"); err != nil {
 		t.Fatalf("second input: %v", err)
 	}
 	secondSnapshot, _ := waitForSessionEntries(t, service, "owner-title-upgrade", session.ID, 4)
-	if secondSnapshot.Title != "修改 terminal 和 chat 的会话标题" {
+	if secondSnapshot.Title != "修改 chatRuntime 和 chat 的会话标题" {
 		t.Fatalf("expected upgraded title, got %q", secondSnapshot.Title)
 	}
 }
@@ -581,7 +580,7 @@ func TestServiceInputKeepsManualTitleWhenLaterPromptChanges(t *testing.T) {
 		t.Fatalf("first input: %v", err)
 	}
 	_, _ = waitForSessionEntries(t, service, "owner-manual-title", session.ID, 2)
-	if _, err := service.Input("owner-manual-title", session.ID, "修改 terminal 和 chat 的会话标题"); err != nil {
+	if _, err := service.Input("owner-manual-title", session.ID, "修改 chatRuntime 和 chat 的会话标题"); err != nil {
 		t.Fatalf("second input: %v", err)
 	}
 	snapshot, _ := waitForSessionEntries(t, service, "owner-manual-title", session.ID, 4)
@@ -594,18 +593,18 @@ func TestServiceRecoverRestoresCodexThreadForFollowUpInput(t *testing.T) {
 	service := newTestService("success")
 
 	session, err := service.Recover(RecoverRequest{
-		OwnerID:           "owner-recover",
-		SessionID:         "terminal-recover",
-		TerminalSessionID: "thread-recovered",
-		Title:             "terminal-recover",
-		CreatedAt:         time.Date(2026, 3, 19, 10, 0, 0, 0, time.UTC),
-		UpdatedAt:         time.Date(2026, 3, 19, 10, 5, 0, 0, time.UTC),
+		OwnerID:          "owner-recover",
+		SessionID:        "chat-recover",
+		RuntimeSessionID: "thread-recovered",
+		Title:            "chat-recover",
+		CreatedAt:        time.Date(2026, 3, 19, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:        time.Date(2026, 3, 19, 10, 5, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("recover session: %v", err)
 	}
-	if session.TerminalSessionID != "thread-recovered" {
-		t.Fatalf("expected recovered thread id, got %q", session.TerminalSessionID)
+	if session.RuntimeSessionID != "thread-recovered" {
+		t.Fatalf("expected recovered thread id, got %q", session.RuntimeSessionID)
 	}
 
 	if _, err := service.Input("owner-recover", session.ID, "follow-up prompt"); err != nil {
@@ -613,8 +612,8 @@ func TestServiceRecoverRestoresCodexThreadForFollowUpInput(t *testing.T) {
 	}
 
 	snapshot, entries := waitForSessionEntries(t, service, "owner-recover", session.ID, 2)
-	if snapshot.TerminalSessionID != "thread-recovered" {
-		t.Fatalf("expected recovered runtime thread id, got %q", snapshot.TerminalSessionID)
+	if snapshot.RuntimeSessionID != "thread-recovered" {
+		t.Fatalf("expected recovered runtime thread id, got %q", snapshot.RuntimeSessionID)
 	}
 	if got := entries[1].Text; got != "mock:follow-up prompt" {
 		t.Fatalf("expected resumed reply, got %q", got)
@@ -637,13 +636,13 @@ func TestServiceRecoverRejectsSessionOwnedByAnotherOwner(t *testing.T) {
 	snapshot, _ := waitForSessionEntries(t, service, "owner-original", session.ID, 2)
 
 	recovered, err := service.Recover(RecoverRequest{
-		OwnerID:           "owner-rebound",
-		SessionID:         session.ID,
-		TerminalSessionID: snapshot.TerminalSessionID,
-		Title:             snapshot.Title,
-		CreatedAt:         snapshot.CreatedAt,
-		LastOutputAt:      snapshot.LastOutputAt,
-		UpdatedAt:         snapshot.UpdatedAt,
+		OwnerID:          "owner-rebound",
+		SessionID:        session.ID,
+		RuntimeSessionID: snapshot.RuntimeSessionID,
+		Title:            snapshot.Title,
+		CreatedAt:        snapshot.CreatedAt,
+		LastOutputAt:     snapshot.LastOutputAt,
+		UpdatedAt:        snapshot.UpdatedAt,
 	})
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("expected ownership mismatch to be rejected, got session=%+v err=%v", recovered, err)
@@ -668,19 +667,19 @@ func TestServiceRecoverRejectsEmptySessionOwnedByAnotherOwner(t *testing.T) {
 	}
 
 	recovered, err := service.Recover(RecoverRequest{
-		OwnerID:           "owner-rebound",
-		SessionID:         session.ID,
-		TerminalSessionID: session.TerminalSessionID,
-		Title:             session.Title,
-		CreatedAt:         session.CreatedAt,
-		UpdatedAt:         session.UpdatedAt,
+		OwnerID:          "owner-rebound",
+		SessionID:        session.ID,
+		RuntimeSessionID: session.RuntimeSessionID,
+		Title:            session.Title,
+		CreatedAt:        session.CreatedAt,
+		UpdatedAt:        session.UpdatedAt,
 	})
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("expected empty session ownership mismatch to be rejected, got session=%+v err=%v", recovered, err)
 	}
 }
 
-func TestServiceRecoverRejectsTerminalIdentityMismatchForAnotherOwner(t *testing.T) {
+func TestServiceRecoverRejectsChatRuntimeIdentityMismatchForAnotherOwner(t *testing.T) {
 	service := newTestService("success")
 
 	session, err := service.Create(CreateRequest{
@@ -696,12 +695,12 @@ func TestServiceRecoverRejectsTerminalIdentityMismatchForAnotherOwner(t *testing
 	snapshot, _ := waitForSessionEntries(t, service, "owner-original", session.ID, 2)
 
 	recovered, err := service.Recover(RecoverRequest{
-		OwnerID:           "owner-wrong",
-		SessionID:         session.ID,
-		TerminalSessionID: snapshot.TerminalSessionID + "-other",
+		OwnerID:          "owner-wrong",
+		SessionID:        session.ID,
+		RuntimeSessionID: snapshot.RuntimeSessionID + "-other",
 	})
 	if !errors.Is(err, ErrSessionNotFound) {
-		t.Fatalf("expected terminal identity mismatch owner to be rejected, got session=%+v err=%v", recovered, err)
+		t.Fatalf("expected chatRuntime identity mismatch owner to be rejected, got session=%+v err=%v", recovered, err)
 	}
 }
 
@@ -720,8 +719,8 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 		t.Fatalf("first input: %v", err)
 	}
 	firstSnapshot, _ := waitForSessionEntries(t, service, "owner-restart", session.ID, 2)
-	if firstSnapshot.TerminalSessionID != "thread-first-prompt" {
-		t.Fatalf("expected persisted thread id, got %q", firstSnapshot.TerminalSessionID)
+	if firstSnapshot.RuntimeSessionID != "thread-first-prompt" {
+		t.Fatalf("expected persisted thread id, got %q", firstSnapshot.RuntimeSessionID)
 	}
 
 	restarted := newTestServiceWithBaseDir("success", baseDir)
@@ -739,8 +738,8 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 	if restored.Title != "persisted-session" {
 		t.Fatalf("expected restored title, got %q", restored.Title)
 	}
-	if restored.TerminalSessionID != "thread-first-prompt" {
-		t.Fatalf("expected restored thread id, got %q", restored.TerminalSessionID)
+	if restored.RuntimeSessionID != "thread-first-prompt" {
+		t.Fatalf("expected restored thread id, got %q", restored.RuntimeSessionID)
 	}
 
 	if _, err := restarted.Input("owner-restart", session.ID, "after restart"); err != nil {
@@ -750,8 +749,8 @@ func TestServiceLoadsPersistedSessionsAfterRestart(t *testing.T) {
 	if snapshot.Title != "persisted-session" {
 		t.Fatalf("expected manual title to stay unchanged after restart, got %q", snapshot.Title)
 	}
-	if snapshot.TerminalSessionID != "thread-first-prompt" {
-		t.Fatalf("expected resumed thread id after restart, got %q", snapshot.TerminalSessionID)
+	if snapshot.RuntimeSessionID != "thread-first-prompt" {
+		t.Fatalf("expected resumed thread id after restart, got %q", snapshot.RuntimeSessionID)
 	}
 	if got := entries[3].Text; got != "mock:after restart" {
 		t.Fatalf("expected resumed reply after restart, got %q", got)
@@ -765,7 +764,7 @@ func TestServiceListLoadsPersistedSessionsCreatedAfterServiceStart(t *testing.T)
 
 	session, err := writer.Recover(RecoverRequest{
 		OwnerID:   "owner-late-list",
-		SessionID: "terminal-late-list",
+		SessionID: "chat-late-list",
 		Title:     "late persisted session",
 	})
 	if err != nil {
@@ -783,7 +782,7 @@ func TestServiceListLoadsPersistedSessionsCreatedAfterServiceStart(t *testing.T)
 
 func TestServiceLoadPersistedSessionRepairsSupplementalConstraintAutoTitle(t *testing.T) {
 	baseDir := t.TempDir()
-	statePath, err := resolveTerminalSessionStateFilePath(baseDir, "persisted-supplemental-title")
+	statePath, err := resolveChatRuntimeSessionStateFilePath(baseDir, "persisted-supplemental-title")
 	if err != nil {
 		t.Fatalf("resolve state path: %v", err)
 	}
@@ -828,251 +827,6 @@ func TestServiceLoadPersistedSessionRepairsSupplementalConstraintAutoTitle(t *te
 	}
 }
 
-func TestServiceLoadPersistedSessionsMigratesLegacyRuntimeEvents(t *testing.T) {
-	baseDir := t.TempDir()
-	statePath, err := resolveTerminalSessionStateFilePath(baseDir, "legacy-runtime-events")
-	if err != nil {
-		t.Fatalf("resolve state path: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
-		t.Fatalf("prepare state dir: %v", err)
-	}
-	legacyRecord := `{
-  "summary": {
-    "id": "legacy-runtime-events",
-    "owner_id": "owner-legacy-runtime",
-    "title": "legacy runtime events",
-    "status": "ready"
-  },
-  "turns": [
-    {
-      "id": "turn-1",
-      "prompt": "inspect legacy trace",
-      "status": "completed",
-      "steps": [
-        {
-          "id": "step-1",
-          "type": "shell",
-          "title": "sed -n '1,20p' internal/terminal/application/store.go",
-          "status": "completed",
-          "preview": "package application",
-          "blocks": [
-            {
-              "type": "code",
-              "language": "go",
-              "content": "package application\n"
-            }
-          ],
-          "searchable": true
-        }
-      ]
-    }
-  ],
-  "next_step_id": 2,
-  "next_turn_id": 1
-}`
-	if err := os.WriteFile(statePath, []byte(legacyRecord), 0o644); err != nil {
-		t.Fatalf("write legacy state: %v", err)
-	}
-
-	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
-
-	turns, err := service.ListTurns("owner-legacy-runtime", "legacy-runtime-events")
-	if err != nil {
-		t.Fatalf("list migrated turns: %v", err)
-	}
-	if len(turns) != 1 || len(turns[0].RuntimeTraceEvents) != 1 {
-		t.Fatalf("expected restored runtime trace event, got %+v", turns)
-	}
-	if turns[0].RuntimeTraceEvents[0].ID != "step-1" {
-		t.Fatalf("expected legacy event id to stay stable, got %+v", turns[0].RuntimeTraceEvents[0])
-	}
-
-	migratedData, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read migrated state: %v", err)
-	}
-	migrated := map[string]any{}
-	if err := json.Unmarshal(migratedData, &migrated); err != nil {
-		t.Fatalf("decode migrated state: %v", err)
-	}
-	if _, ok := migrated["next_step_id"]; ok {
-		t.Fatalf("expected legacy next_step_id to be removed, got %s", string(migratedData))
-	}
-	if got := migrated["next_event_id"]; got != float64(2) {
-		t.Fatalf("expected next_event_id 2 after migration, got %#v in %s", got, string(migratedData))
-	}
-	rawTurns, ok := migrated["turns"].([]any)
-	if !ok || len(rawTurns) != 1 {
-		t.Fatalf("expected migrated turns, got %#v", migrated["turns"])
-	}
-	rawTurn, ok := rawTurns[0].(map[string]any)
-	if !ok {
-		t.Fatalf("expected migrated turn object, got %#v", rawTurns[0])
-	}
-	if _, ok := rawTurn["steps"]; ok {
-		t.Fatalf("expected legacy steps to be removed, got %s", string(migratedData))
-	}
-	rawEvents, ok := rawTurn["runtime_events"].([]any)
-	if !ok || len(rawEvents) != 1 {
-		t.Fatalf("expected runtime_events to be persisted, got %#v", rawTurn["runtime_events"])
-	}
-}
-
-func TestServiceLoadPersistedSessionsMigratesLegacySessionRecordShape(t *testing.T) {
-	baseDir := t.TempDir()
-	statePath, err := resolveTerminalSessionStateFilePath(baseDir, "legacy-session-shape")
-	if err != nil {
-		t.Fatalf("resolve state path: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
-		t.Fatalf("prepare state dir: %v", err)
-	}
-	legacyRecord := `{
-  "summary": {
-    "id": "legacy-session-shape",
-    "owner_id": "shared",
-    "title": "legacy session shape",
-    "status": "running"
-  },
-  "entries": [
-    { "cursor": 7, "stream": "stdout", "text": "old output" }
-  ],
-  "turns": [
-    {
-      "id": "turn-3",
-      "prompt": "upgrade me",
-      "status": "completed",
-      "final_output": "done"
-    }
-  ]
-}`
-	if err := os.WriteFile(statePath, []byte(legacyRecord), 0o644); err != nil {
-		t.Fatalf("write legacy state: %v", err)
-	}
-
-	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
-	snapshot, ok := service.Get(terminalOwnerID, "legacy-session-shape")
-	if !ok {
-		t.Fatalf("expected legacy session shape to restore")
-	}
-	if snapshot.OwnerID != terminalOwnerID {
-		t.Fatalf("expected restored owner to normalize to terminal, got %q", snapshot.OwnerID)
-	}
-	if snapshot.TerminalSessionID != "legacy-session-shape" {
-		t.Fatalf("expected restored terminal session id, got %q", snapshot.TerminalSessionID)
-	}
-	if snapshot.Status != terminaldomain.SessionStatusReady {
-		t.Fatalf("expected legacy running status to normalize to ready, got %q", snapshot.Status)
-	}
-
-	migratedData, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read migrated state: %v", err)
-	}
-	migrated := map[string]any{}
-	if err := json.Unmarshal(migratedData, &migrated); err != nil {
-		t.Fatalf("decode migrated state: %v", err)
-	}
-	summary, ok := migrated["summary"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected migrated summary object, got %#v", migrated["summary"])
-	}
-	if got := summary["owner_id"]; got != terminalOwnerID {
-		t.Fatalf("expected persisted owner_id terminal, got %#v in %s", got, string(migratedData))
-	}
-	if got := summary["terminal_session_id"]; got != "legacy-session-shape" {
-		t.Fatalf("expected persisted terminal_session_id, got %#v in %s", got, string(migratedData))
-	}
-	if got := summary["status"]; got != string(terminaldomain.SessionStatusReady) {
-		t.Fatalf("expected persisted ready status, got %#v in %s", got, string(migratedData))
-	}
-	if got := migrated["next_id"]; got != float64(8) {
-		t.Fatalf("expected migrated next_id 8, got %#v in %s", got, string(migratedData))
-	}
-	if got := migrated["next_turn_id"]; got != float64(3) {
-		t.Fatalf("expected migrated next_turn_id 3, got %#v in %s", got, string(migratedData))
-	}
-	if _, ok := migrated["next_step_id"]; ok {
-		t.Fatalf("expected latest record shape without next_step_id, got %s", string(migratedData))
-	}
-}
-
-func TestServiceGetMigratesLegacyRuntimeEventsFromPersistedState(t *testing.T) {
-	baseDir := t.TempDir()
-	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
-	statePath, err := resolveTerminalSessionStateFilePath(baseDir, "legacy-runtime-events-on-read")
-	if err != nil {
-		t.Fatalf("resolve state path: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
-		t.Fatalf("prepare state dir: %v", err)
-	}
-	legacyRecord := `{
-  "summary": {
-    "id": "legacy-runtime-events-on-read",
-    "owner_id": "owner-legacy-read",
-    "title": "legacy runtime events on read",
-    "status": "ready"
-  },
-  "turns": [
-    {
-      "id": "turn-1",
-      "prompt": "read legacy trace",
-      "status": "completed",
-      "steps": [
-        {
-          "id": "step-1",
-          "type": "message",
-          "title": "Legacy event",
-          "status": "completed",
-          "preview": "legacy preview",
-          "blocks": [
-            {
-              "type": "markdown",
-              "content": "legacy detail"
-            }
-          ]
-        }
-      ]
-    }
-  ],
-  "next_step_id": 2,
-  "next_turn_id": 1
-}`
-	if err := os.WriteFile(statePath, []byte(legacyRecord), 0o644); err != nil {
-		t.Fatalf("write legacy state: %v", err)
-	}
-
-	snapshot, ok := service.Get("owner-legacy-read", "legacy-runtime-events-on-read")
-	if !ok {
-		t.Fatalf("expected legacy state to restore on read")
-	}
-	if snapshot.ID != "legacy-runtime-events-on-read" {
-		t.Fatalf("expected restored snapshot, got %+v", snapshot)
-	}
-
-	migratedData, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read migrated state: %v", err)
-	}
-	migrated := map[string]any{}
-	if err := json.Unmarshal(migratedData, &migrated); err != nil {
-		t.Fatalf("decode migrated state: %v", err)
-	}
-	if _, ok := migrated["next_step_id"]; ok {
-		t.Fatalf("expected legacy next_step_id to be removed, got %s", string(migratedData))
-	}
-	rawTurns := migrated["turns"].([]any)
-	rawTurn := rawTurns[0].(map[string]any)
-	if _, ok := rawTurn["steps"]; ok {
-		t.Fatalf("expected legacy steps to be removed, got %s", string(migratedData))
-	}
-	if got := migrated["next_event_id"]; got != float64(2) {
-		t.Fatalf("expected next_event_id 2 after read migration, got %#v", got)
-	}
-}
-
 func TestServiceKeepsIdleReadySessionReadyAfterRestart(t *testing.T) {
 	baseDir := t.TempDir()
 	service := newTestServiceWithBaseDir("success", baseDir)
@@ -1090,7 +844,7 @@ func TestServiceKeepsIdleReadySessionReadyAfterRestart(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected restored idle session after restart")
 	}
-	if restored.Status != terminaldomain.SessionStatusReady {
+	if restored.Status != chatruntimedomain.SessionStatusReady {
 		t.Fatalf("expected idle session to stay ready after restart, got %q", restored.Status)
 	}
 }
@@ -1112,7 +866,7 @@ func TestServiceDeleteRemovesPersistedStateAndWorkspace(t *testing.T) {
 	}
 	snapshot, _ := waitForSessionEntries(t, service, "owner-delete", session.ID, 2)
 
-	statePath, err := resolveTerminalSessionStateFilePath(baseDir, session.ID)
+	statePath, err := resolveChatRuntimeSessionStateFilePath(baseDir, session.ID)
 	if err != nil {
 		t.Fatalf("resolve state path: %v", err)
 	}
@@ -1155,7 +909,7 @@ func TestServiceDeleteRunningSessionDoesNotRecreatePersistedState(t *testing.T) 
 	if _, err := service.Input("owner-delete-running", session.ID, "long prompt"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
-	statePath, err := resolveTerminalSessionStateFilePath(baseDir, session.ID)
+	statePath, err := resolveChatRuntimeSessionStateFilePath(baseDir, session.ID)
 	if err != nil {
 		t.Fatalf("resolve state path: %v", err)
 	}
@@ -1205,8 +959,8 @@ func TestServiceInputRecoversPersistedSessionWhenRuntimeMissing(t *testing.T) {
 	if snapshot.Title != "empty-before-input" {
 		t.Fatalf("expected restored title, got %q", snapshot.Title)
 	}
-	if snapshot.TerminalSessionID != "thread-first-prompt-after-restore" {
-		t.Fatalf("expected restored thread id, got %q", snapshot.TerminalSessionID)
+	if snapshot.RuntimeSessionID != "thread-first-prompt-after-restore" {
+		t.Fatalf("expected restored thread id, got %q", snapshot.RuntimeSessionID)
 	}
 	if got := entries[1].Text; got != "mock:first prompt after restore" {
 		t.Fatalf("expected recovered reply, got %q", got)
@@ -1245,7 +999,7 @@ func TestServiceInputReturnsBusySnapshotWhileTurnRuns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("input: %v", err)
 	}
-	if snapshot.Status != terminaldomain.SessionStatusBusy {
+	if snapshot.Status != chatruntimedomain.SessionStatusBusy {
 		t.Fatalf("expected busy snapshot while turn runs, got %q", snapshot.Status)
 	}
 }
@@ -1253,7 +1007,7 @@ func TestServiceInputReturnsBusySnapshotWhileTurnRuns(t *testing.T) {
 func TestServiceSessionUpdateHookPublishesBusyAndFinalSnapshots(t *testing.T) {
 	service := newTestService("success")
 	statuses := make(chan string, 8)
-	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session terminaldomain.Session) {
+	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session chatruntimedomain.Session) {
 		if ownerID == "owner-hook" && sessionID == session.ID {
 			statuses <- string(session.Status)
 		}
@@ -1273,10 +1027,10 @@ func TestServiceSessionUpdateHookPublishesBusyAndFinalSnapshots(t *testing.T) {
 	for !seenBusy || !seenReady {
 		select {
 		case status := <-statuses:
-			if status == string(terminaldomain.SessionStatusBusy) {
+			if status == string(chatruntimedomain.SessionStatusBusy) {
 				seenBusy = true
 			}
-			if status == string(terminaldomain.SessionStatusReady) {
+			if status == string(chatruntimedomain.SessionStatusReady) {
 				seenReady = true
 			}
 		case <-deadline:
@@ -1288,7 +1042,7 @@ func TestServiceSessionUpdateHookPublishesBusyAndFinalSnapshots(t *testing.T) {
 func TestServiceCreateReleasesGlobalLockBeforeSessionUpdateHook(t *testing.T) {
 	service := newTestService("success")
 	hookCanReadSession := make(chan bool, 1)
-	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session terminaldomain.Session) {
+	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session chatruntimedomain.Session) {
 		_, ok := service.Get(ownerID, sessionID)
 		hookCanReadSession <- ok
 	})
@@ -1321,7 +1075,7 @@ func TestServiceCreateReleasesGlobalLockBeforeSessionUpdateHook(t *testing.T) {
 func TestServiceRecoverReleasesGlobalLockBeforeSessionUpdateHook(t *testing.T) {
 	service := newTestService("success")
 	hookCanReadSession := make(chan bool, 1)
-	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session terminaldomain.Session) {
+	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session chatruntimedomain.Session) {
 		_, ok := service.Get(ownerID, sessionID)
 		hookCanReadSession <- ok
 	})
@@ -1330,7 +1084,7 @@ func TestServiceRecoverReleasesGlobalLockBeforeSessionUpdateHook(t *testing.T) {
 	go func() {
 		_, err := service.Recover(RecoverRequest{
 			OwnerID:   "owner-recover-hook",
-			SessionID: "terminal-recovered-hook",
+			SessionID: "chat-recovered-hook",
 		})
 		done <- err
 	}()
@@ -1371,8 +1125,8 @@ func TestServiceShutdownAppendsInterruptedNoticeOnce(t *testing.T) {
 	service.shutdown()
 	time.Sleep(500 * time.Millisecond)
 
-	snapshot, entries := waitForSessionStatus(t, service, "owner-shutdown", session.ID, terminaldomain.SessionStatusInterrupted)
-	const interruptedMessage = "terminal interrupted: terminal host unavailable"
+	snapshot, entries := waitForSessionStatus(t, service, "owner-shutdown", session.ID, chatruntimedomain.SessionStatusInterrupted)
+	const interruptedMessage = "chatRuntime interrupted: chatRuntime host unavailable"
 	count := 0
 	for _, entry := range entries {
 		if entry.Text == interruptedMessage {
@@ -1382,7 +1136,7 @@ func TestServiceShutdownAppendsInterruptedNoticeOnce(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("expected interrupted message once, got %d entries: %+v", count, entries)
 	}
-	if snapshot.ErrorMessage != "terminal host unavailable" {
+	if snapshot.ErrorMessage != "chatRuntime host unavailable" {
 		t.Fatalf("expected interrupted error message, got %q", snapshot.ErrorMessage)
 	}
 }
@@ -1401,15 +1155,15 @@ func TestServiceInterruptedNoticeAppendsAgainAfterNextTurn(t *testing.T) {
 		t.Fatalf("start first input: %v", err)
 	}
 	service.shutdown()
-	waitForSessionStatus(t, service, "owner-repeat-interrupt", session.ID, terminaldomain.SessionStatusInterrupted)
+	waitForSessionStatus(t, service, "owner-repeat-interrupt", session.ID, chatruntimedomain.SessionStatusInterrupted)
 
 	if _, err := service.Input("owner-repeat-interrupt", session.ID, "second long prompt"); err != nil {
 		t.Fatalf("start second input: %v", err)
 	}
 	service.shutdown()
-	_, entries := waitForSessionStatus(t, service, "owner-repeat-interrupt", session.ID, terminaldomain.SessionStatusInterrupted)
+	_, entries := waitForSessionStatus(t, service, "owner-repeat-interrupt", session.ID, chatruntimedomain.SessionStatusInterrupted)
 
-	const interruptedMessage = "terminal interrupted: terminal host unavailable"
+	const interruptedMessage = "chatRuntime interrupted: chatRuntime host unavailable"
 	count := 0
 	for _, entry := range entries {
 		if entry.Text == interruptedMessage {
@@ -1470,8 +1224,8 @@ func TestServiceKeepsThreadAfterCodexCompactionFailure(t *testing.T) {
 	}
 
 	failedSnapshot, failedEntries := waitForSessionError(t, service, "owner-compact", session.ID)
-	if failedSnapshot.TerminalSessionID != "thread-first-prompt" {
-		t.Fatalf("expected failed compaction to keep terminal session id, got %q (error=%q, entries=%+v)", failedSnapshot.TerminalSessionID, failedSnapshot.ErrorMessage, failedEntries)
+	if failedSnapshot.RuntimeSessionID != "thread-first-prompt" {
+		t.Fatalf("expected failed compaction to keep chatRuntime session id, got %q (error=%q, entries=%+v)", failedSnapshot.RuntimeSessionID, failedSnapshot.ErrorMessage, failedEntries)
 	}
 	if !strings.Contains(failedSnapshot.ErrorMessage, "continue the previous runtime thread") {
 		t.Fatalf("expected compaction recovery message, got %q", failedSnapshot.ErrorMessage)
@@ -1493,8 +1247,8 @@ func TestServiceKeepsThreadAfterCodexCompactionFailure(t *testing.T) {
 	}
 
 	recoveredSnapshot, entries := waitForSessionEntries(t, service, "owner-compact", session.ID, 4)
-	if recoveredSnapshot.TerminalSessionID != "thread-first-prompt" {
-		t.Fatalf("expected previous thread after compaction failure, got %q", recoveredSnapshot.TerminalSessionID)
+	if recoveredSnapshot.RuntimeSessionID != "thread-first-prompt" {
+		t.Fatalf("expected previous thread after compaction failure, got %q", recoveredSnapshot.RuntimeSessionID)
 	}
 	if got := entries[len(entries)-1].Text; got != "mock:second prompt" {
 		t.Fatalf("expected second prompt to run on fresh thread, got %q", got)
@@ -1505,19 +1259,19 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	service := &Service{
 		sessions: map[string]*runtimeSession{
-			"terminal-output-newer": {
-				summary: terminaldomain.Session{
-					ID:           "terminal-output-newer",
-					OwnerID:      terminalOwnerID,
+			"chat-output-newer": {
+				summary: chatruntimedomain.Session{
+					ID:           "chat-output-newer",
+					OwnerID:      chatRuntimeOwnerID,
 					CreatedAt:    now.Add(-10 * time.Minute),
 					LastOutputAt: now.Add(-2 * time.Minute),
 					UpdatedAt:    now.Add(-4 * time.Minute),
 				},
 			},
-			"terminal-updated-newer": {
-				summary: terminaldomain.Session{
-					ID:           "terminal-updated-newer",
-					OwnerID:      terminalOwnerID,
+			"chat-updated-newer": {
+				summary: chatruntimedomain.Session{
+					ID:           "chat-updated-newer",
+					OwnerID:      chatRuntimeOwnerID,
 					CreatedAt:    now.Add(-9 * time.Minute),
 					LastOutputAt: now.Add(-3 * time.Minute),
 					UpdatedAt:    now.Add(-1 * time.Minute),
@@ -1526,31 +1280,31 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 		},
 	}
 
-	items := service.List(terminalOwnerID)
+	items := service.List(chatRuntimeOwnerID)
 	if len(items) != 2 {
 		t.Fatalf("expected 2 sessions, got %d", len(items))
 	}
-	if items[0].ID != "terminal-output-newer" {
+	if items[0].ID != "chat-output-newer" {
 		t.Fatalf("expected last output ordering, got first session %q", items[0].ID)
 	}
 }
 
-func TestServiceListSeparatesSessionsByOwner(t *testing.T) {
+func TestServiceListSeparatesChatSessionsFromOtherOwners(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	service := &Service{
 		sessions: map[string]*runtimeSession{
-			"terminal-chat": {
-				summary: terminaldomain.Session{
-					ID:        "terminal-chat",
+			"chat-chat": {
+				summary: chatruntimedomain.Session{
+					ID:        "chat-chat",
 					OwnerID:   "chat",
 					CreatedAt: now,
 					UpdatedAt: now,
 				},
 			},
-			"terminal-standard": {
-				summary: terminaldomain.Session{
-					ID:        "terminal-standard",
-					OwnerID:   terminalOwnerID,
+			"other-standard": {
+				summary: chatruntimedomain.Session{
+					ID:        "other-standard",
+					OwnerID:   "owner-other",
 					CreatedAt: now.Add(time.Minute),
 					UpdatedAt: now.Add(time.Minute),
 				},
@@ -1559,33 +1313,37 @@ func TestServiceListSeparatesSessionsByOwner(t *testing.T) {
 	}
 
 	chatItems := service.List("chat")
-	if len(chatItems) != 1 || chatItems[0].ID != "terminal-chat" {
+	if len(chatItems) != 1 || chatItems[0].ID != "chat-chat" {
 		t.Fatalf("expected only chat-owned sessions, got %+v", chatItems)
 	}
-	terminalItems := service.List("")
-	if len(terminalItems) != 1 || terminalItems[0].ID != "terminal-standard" {
-		t.Fatalf("expected only terminal sessions, got %+v", terminalItems)
+	defaultItems := service.List("")
+	if len(defaultItems) != 1 || defaultItems[0].ID != "chat-chat" {
+		t.Fatalf("expected empty owner to list chat sessions, got %+v", defaultItems)
 	}
-	if _, ok := service.Get(terminalOwnerID, "terminal-chat"); ok {
-		t.Fatalf("expected terminal owner to be unable to read chat session")
+	otherItems := service.List("owner-other")
+	if len(otherItems) != 1 || otherItems[0].ID != "other-standard" {
+		t.Fatalf("expected only other owner sessions, got %+v", otherItems)
+	}
+	if _, ok := service.Get(chatRuntimeOwnerID, "other-standard"); ok {
+		t.Fatalf("expected chat owner to be unable to read other owner session")
 	}
 }
 
 func TestServiceListReconcilesOrphanedBusySession(t *testing.T) {
 	service := newTestService("success")
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
-	sessionID := "terminal-orphan-list"
+	sessionID := "chat-orphan-list"
 	insertOrphanedBusyRuntimeSession(t, service, "owner-orphan-list", sessionID, now)
 
 	items := service.List("owner-orphan-list")
 	if len(items) != 1 {
 		t.Fatalf("expected orphaned session in list, got %+v", items)
 	}
-	if items[0].Status != terminaldomain.SessionStatusInterrupted {
+	if items[0].Status != chatruntimedomain.SessionStatusInterrupted {
 		t.Fatalf("expected list to reconcile interrupted status, got %q", items[0].Status)
 	}
-	if items[0].ErrorMessage != terminalHostUnavailableMessage {
-		t.Fatalf("expected terminal host error, got %q", items[0].ErrorMessage)
+	if items[0].ErrorMessage != chatRuntimeHostUnavailableMessage {
+		t.Fatalf("expected chatRuntime host error, got %q", items[0].ErrorMessage)
 	}
 
 	turns, err := service.ListTurns("owner-orphan-list", sessionID)
@@ -1604,7 +1362,7 @@ func TestServiceListReconcilesOrphanedBusySession(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected reconciled session to persist")
 	}
-	if restored.Status != terminaldomain.SessionStatusInterrupted {
+	if restored.Status != chatruntimedomain.SessionStatusInterrupted {
 		t.Fatalf("expected persisted interrupted status, got %q", restored.Status)
 	}
 }
@@ -1612,19 +1370,19 @@ func TestServiceListReconcilesOrphanedBusySession(t *testing.T) {
 func TestServiceInputReconcilesOrphanedBusySessionBeforeBusyCheck(t *testing.T) {
 	service := newTestService("success")
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
-	sessionID := "terminal-orphan-input"
+	sessionID := "chat-orphan-input"
 	insertOrphanedBusyRuntimeSession(t, service, "owner-orphan-input", sessionID, now)
 
 	snapshot, err := service.Input("owner-orphan-input", sessionID, "continue after restart")
 	if err != nil {
 		t.Fatalf("expected input to continue reconciled session, got %v", err)
 	}
-	if snapshot.Status != terminaldomain.SessionStatusBusy {
+	if snapshot.Status != chatruntimedomain.SessionStatusBusy {
 		t.Fatalf("expected new input to start a busy turn, got %q", snapshot.Status)
 	}
 
 	final, entries := waitForSessionEntries(t, service, "owner-orphan-input", sessionID, 3)
-	if final.Status != terminaldomain.SessionStatusReady {
+	if final.Status != chatruntimedomain.SessionStatusReady {
 		t.Fatalf("expected continued session to finish ready, got %q", final.Status)
 	}
 	if len(entries) < 3 {
@@ -1632,7 +1390,7 @@ func TestServiceInputReconcilesOrphanedBusySessionBeforeBusyCheck(t *testing.T) 
 	}
 	foundInterruptedEntry := false
 	for _, entry := range entries {
-		if entry.Stream == "system" && strings.Contains(entry.Text, "terminal interrupted") {
+		if entry.Stream == "system" && strings.Contains(entry.Text, "chatRuntime interrupted") {
 			foundInterruptedEntry = true
 			break
 		}
@@ -1656,21 +1414,21 @@ func TestServiceListDoesNotInterruptLiveWorker(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected live session in list, got %+v", items)
 	}
-	if items[0].Status != terminaldomain.SessionStatusBusy {
+	if items[0].Status != chatruntimedomain.SessionStatusBusy {
 		t.Fatalf("expected live worker to remain busy, got %q", items[0].Status)
 	}
 
 	waitForSessionEntries(t, service, "owner-live-worker", session.ID, 2)
 }
 
-func TestServiceNormalizesLegacySharedOwnerToTerminal(t *testing.T) {
+func TestServiceDoesNotNormalizeSharedOwnerToChat(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	service := &Service{
 		sessions: map[string]*runtimeSession{
-			"terminal-legacy": {
-				summary: terminaldomain.Session{
-					ID:        "terminal-legacy",
-					OwnerID:   legacySharedTerminalOwnerID,
+			"shared-session": {
+				summary: chatruntimedomain.Session{
+					ID:        "shared-session",
+					OwnerID:   "shared",
 					CreatedAt: now,
 					UpdatedAt: now,
 				},
@@ -1678,15 +1436,15 @@ func TestServiceNormalizesLegacySharedOwnerToTerminal(t *testing.T) {
 		},
 	}
 
-	items := service.List(terminalOwnerID)
-	if len(items) != 1 || items[0].ID != "terminal-legacy" {
-		t.Fatalf("expected legacy shared owner to list as terminal, got %+v", items)
+	items := service.List(chatRuntimeOwnerID)
+	if len(items) != 0 {
+		t.Fatalf("expected chat owner to ignore shared sessions, got %+v", items)
 	}
-	if _, ok := service.Get("", "terminal-legacy"); !ok {
-		t.Fatalf("expected empty owner to normalize to terminal and read legacy shared session")
+	if _, ok := service.Get("", "shared-session"); ok {
+		t.Fatalf("expected empty owner to normalize to chat and ignore shared sessions")
 	}
-	if _, ok := service.Get("chat", "terminal-legacy"); ok {
-		t.Fatalf("expected chat owner to be unable to read legacy terminal session")
+	if _, ok := service.Get("shared", "shared-session"); !ok {
+		t.Fatalf("expected explicit shared owner to remain isolated")
 	}
 }
 
@@ -1695,7 +1453,7 @@ func TestServiceSetPinnedPersistsAndSortsPinnedSessionsFirst(t *testing.T) {
 	service := NewService(context.Background(), nil, nil, Options{WorkingDir: t.TempDir()})
 	older, err := service.Recover(RecoverRequest{
 		OwnerID:   "owner-pin",
-		SessionID: "terminal-older",
+		SessionID: "chat-older",
 		CreatedAt: now.Add(-20 * time.Minute),
 		UpdatedAt: now.Add(-20 * time.Minute),
 	})
@@ -1704,7 +1462,7 @@ func TestServiceSetPinnedPersistsAndSortsPinnedSessionsFirst(t *testing.T) {
 	}
 	if _, err := service.Recover(RecoverRequest{
 		OwnerID:   "owner-pin",
-		SessionID: "terminal-newer",
+		SessionID: "chat-newer",
 		CreatedAt: now.Add(-5 * time.Minute),
 		UpdatedAt: now.Add(-5 * time.Minute),
 	}); err != nil {
@@ -1743,7 +1501,7 @@ func TestServiceSetPinnedFalsePersistsAcrossRestore(t *testing.T) {
 	service := NewService(context.Background(), nil, nil, Options{WorkingDir: workingDir})
 	session, err := service.Recover(RecoverRequest{
 		OwnerID:   "owner-unpin",
-		SessionID: "terminal-unpin",
+		SessionID: "chat-unpin",
 		CreatedAt: now.Add(-20 * time.Minute),
 		UpdatedAt: now.Add(-20 * time.Minute),
 	})
@@ -1774,9 +1532,9 @@ func TestServiceSetPinnedFalsePersistsAcrossRestore(t *testing.T) {
 
 func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *testing.T) {
 	session := &runtimeSession{
-		summary: terminaldomain.Session{
-			ID:        "terminal-output-flags",
-			OwnerID:   terminalOwnerID,
+		summary: chatruntimedomain.Session{
+			ID:        "chat-output-flags",
+			OwnerID:   chatRuntimeOwnerID,
 			CreatedAt: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
 		},
 	}
@@ -1804,7 +1562,7 @@ func TestRuntimeSessionAppendEntryLockedUpdatesLastOutputAtOnlyForRealOutput(t *
 }
 
 func newTestService(mode string) *Service {
-	baseDir, err := os.MkdirTemp("", "alter0-terminal-service-test-*")
+	baseDir, err := os.MkdirTemp("", "alter0-chat-service-test-*")
 	if err != nil {
 		panic(err)
 	}
@@ -1814,12 +1572,12 @@ func newTestService(mode string) *Service {
 func newTestServiceWithBaseDir(mode string, baseDir string) *Service {
 	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
 	service.runner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
-		cmdArgs := append([]string{"-test.run=TestTerminalServiceHelperProcess", "--", name}, args...)
+		cmdArgs := append([]string{"-test.run=TestChatRuntimeServiceHelperProcess", "--", name}, args...)
 		cmd := exec.CommandContext(ctx, os.Args[0], cmdArgs...)
 		cmd.Env = append(
 			os.Environ(),
-			"GO_WANT_TERMINAL_HELPER_PROCESS=1",
-			"TERMINAL_HELPER_MODE="+mode,
+			"GO_WANT_CHAT_RUNTIME_HELPER_PROCESS=1",
+			"CHAT_RUNTIME_HELPER_MODE="+mode,
 		)
 		return cmd
 	}
@@ -1834,18 +1592,18 @@ func insertOrphanedBusyRuntimeSession(t *testing.T, service *Service, ownerID st
 		t.Fatalf("prepare workspace: %v", err)
 	}
 	item := &runtimeSession{
-		summary: terminaldomain.Session{
-			ID:                sessionID,
-			TerminalSessionID: sessionID,
-			OwnerID:           ownerID,
-			Title:             "Orphaned session",
-			Shell:             defaultCodexCommand,
-			WorkingDir:        workspaceDir,
-			Status:            terminaldomain.SessionStatusBusy,
-			CreatedAt:         now.Add(-time.Minute),
-			UpdatedAt:         now,
+		summary: chatruntimedomain.Session{
+			ID:               sessionID,
+			RuntimeSessionID: sessionID,
+			OwnerID:          ownerID,
+			Title:            "Orphaned session",
+			Shell:            defaultCodexCommand,
+			WorkingDir:       workspaceDir,
+			Status:           chatruntimedomain.SessionStatusBusy,
+			CreatedAt:        now.Add(-time.Minute),
+			UpdatedAt:        now,
 		},
-		entries: []terminaldomain.Entry{
+		entries: []chatruntimedomain.Entry{
 			{
 				Cursor:    0,
 				Stream:    "input",
@@ -1882,7 +1640,7 @@ func insertOrphanedBusyRuntimeSession(t *testing.T, service *Service, ownerID st
 	service.persistSession(item)
 }
 
-func waitForSessionEntries(t *testing.T, service *Service, ownerID string, sessionID string, want int) (terminaldomain.Session, []terminaldomain.Entry) {
+func waitForSessionEntries(t *testing.T, service *Service, ownerID string, sessionID string, want int) (chatruntimedomain.Session, []chatruntimedomain.Entry) {
 	t.Helper()
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -1896,16 +1654,16 @@ func waitForSessionEntries(t *testing.T, service *Service, ownerID string, sessi
 		if err != nil {
 			t.Fatalf("list entries: %v", err)
 		}
-		if len(page.Items) >= want && snapshot.Status == terminaldomain.SessionStatusReady {
+		if len(page.Items) >= want && snapshot.Status == chatruntimedomain.SessionStatusReady {
 			return snapshot, page.Items
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("timed out waiting for %d terminal entries", want)
-	return terminaldomain.Session{}, nil
+	t.Fatalf("timed out waiting for %d chatRuntime entries", want)
+	return chatruntimedomain.Session{}, nil
 }
 
-func waitForSessionError(t *testing.T, service *Service, ownerID string, sessionID string) (terminaldomain.Session, []terminaldomain.Entry) {
+func waitForSessionError(t *testing.T, service *Service, ownerID string, sessionID string) (chatruntimedomain.Session, []chatruntimedomain.Entry) {
 	t.Helper()
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -1924,11 +1682,11 @@ func waitForSessionError(t *testing.T, service *Service, ownerID string, session
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatal("timed out waiting for terminal auth failure")
-	return terminaldomain.Session{}, nil
+	t.Fatal("timed out waiting for chatRuntime auth failure")
+	return chatruntimedomain.Session{}, nil
 }
 
-func waitForSessionStatus(t *testing.T, service *Service, ownerID string, sessionID string, want terminaldomain.SessionStatus) (terminaldomain.Session, []terminaldomain.Entry) {
+func waitForSessionStatus(t *testing.T, service *Service, ownerID string, sessionID string, want chatruntimedomain.SessionStatus) (chatruntimedomain.Session, []chatruntimedomain.Entry) {
 	t.Helper()
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -1947,12 +1705,12 @@ func waitForSessionStatus(t *testing.T, service *Service, ownerID string, sessio
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("timed out waiting for terminal status %q", want)
-	return terminaldomain.Session{}, nil
+	t.Fatalf("timed out waiting for chatRuntime status %q", want)
+	return chatruntimedomain.Session{}, nil
 }
 
-func TestTerminalServiceHelperProcess(t *testing.T) {
-	if os.Getenv("GO_WANT_TERMINAL_HELPER_PROCESS") != "1" {
+func TestChatRuntimeServiceHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_CHAT_RUNTIME_HELPER_PROCESS") != "1" {
 		return
 	}
 
@@ -1981,24 +1739,24 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 	if execIndex < 1 {
 		os.Exit(2)
 	}
-	terminalArgs := forwarded[execIndex+1:]
-	if expectedHome := strings.TrimSpace(os.Getenv("TERMINAL_HELPER_EXPECT_CODEX_HOME_SUFFIX")); expectedHome != "" {
+	chatRuntimeArgs := forwarded[execIndex+1:]
+	if expectedHome := strings.TrimSpace(os.Getenv("CHAT_RUNTIME_HELPER_EXPECT_CODEX_HOME_SUFFIX")); expectedHome != "" {
 		actualHome := filepath.Clean(strings.TrimSpace(os.Getenv("CODEX_HOME")))
 		expectedHome = filepath.Clean(expectedHome)
 		if actualHome != expectedHome {
 			os.Exit(2)
 		}
 	}
-	if expectedImageCount := strings.TrimSpace(os.Getenv("TERMINAL_HELPER_EXPECT_IMAGE_COUNT")); expectedImageCount != "" {
+	if expectedImageCount := strings.TrimSpace(os.Getenv("CHAT_RUNTIME_HELPER_EXPECT_IMAGE_COUNT")); expectedImageCount != "" {
 		want := 0
 		fmt.Sscanf(expectedImageCount, "%d", &want)
 		have := 0
-		for index := 0; index < len(terminalArgs)-1; index += 1 {
-			if terminalArgs[index] != "-i" || index+1 >= len(terminalArgs) {
+		for index := 0; index < len(chatRuntimeArgs)-1; index += 1 {
+			if chatRuntimeArgs[index] != "-i" || index+1 >= len(chatRuntimeArgs) {
 				continue
 			}
 			have++
-			if _, err := os.Stat(terminalArgs[index+1]); err != nil {
+			if _, err := os.Stat(chatRuntimeArgs[index+1]); err != nil {
 				os.Exit(2)
 			}
 		}
@@ -2007,24 +1765,24 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 		}
 	}
 
-	mode := os.Getenv("TERMINAL_HELPER_MODE")
+	mode := os.Getenv("CHAT_RUNTIME_HELPER_MODE")
 	if mode == "sleep" {
 		time.Sleep(300 * time.Millisecond)
 	}
 
 	resumeIndex := -1
-	for index, arg := range terminalArgs {
+	for index, arg := range chatRuntimeArgs {
 		if arg == "resume" {
 			resumeIndex = index
 			break
 		}
 	}
 	if resumeIndex >= 0 {
-		if len(terminalArgs) < resumeIndex+4 {
+		if len(chatRuntimeArgs) < resumeIndex+4 {
 			os.Exit(2)
 		}
-		threadID := terminalArgs[len(terminalArgs)-2]
-		prompt := terminalArgs[len(terminalArgs)-1]
+		threadID := chatRuntimeArgs[len(chatRuntimeArgs)-2]
+		prompt := chatRuntimeArgs[len(chatRuntimeArgs)-1]
 		fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
 		fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)
 		fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":%q}}\n", "mock:"+prompt)
@@ -2032,7 +1790,7 @@ func TestTerminalServiceHelperProcess(t *testing.T) {
 		os.Exit(0)
 	}
 
-	prompt := terminalArgs[len(terminalArgs)-1]
+	prompt := chatRuntimeArgs[len(chatRuntimeArgs)-1]
 	threadID := "thread-" + strings.ReplaceAll(prompt, " ", "-")
 	fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
 	fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)

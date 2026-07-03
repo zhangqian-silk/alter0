@@ -21,12 +21,13 @@ describe("legacyShellConfig", () => {
     expect(uniqueRoutes.size).toBe(routes.length);
   });
 
-  it("keeps only chat, terminal, and settings as primary navigation routes", () => {
+  it("keeps only chat and settings as primary navigation routes", () => {
     const workspaceRoutes = NAV_GROUPS[0].items.map((item) => item.route);
     const allRoutes = NAV_GROUPS.flatMap((group) => group.items.map((item) => item.route));
 
-    expect(workspaceRoutes).toEqual(["chat", "terminal", "settings"]);
-    expect(allRoutes).toEqual(["chat", "terminal", "settings"]);
+    expect(workspaceRoutes).toEqual(["chat", "settings"]);
+    expect(allRoutes).toEqual(["chat", "settings"]);
+    expect(allRoutes).not.toContain("chatRuntime");
     expect(allRoutes).not.toContain("memory");
     expect(allRoutes).not.toContain("tasks");
     expect(allRoutes).not.toContain("codex-accounts");

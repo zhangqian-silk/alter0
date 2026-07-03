@@ -14,7 +14,7 @@ export async function waitForAppReady(page: Page, timeout = 20000): Promise<void
       document.querySelector(".app-shell, main");
     const routeBody =
       document.getElementById("routeBody") ||
-      document.querySelector(".route-body, .terminal-route-body, [data-runtime-workspace], main");
+      document.querySelector(".route-body, .chatRuntime-route-body, [data-runtime-workspace], main");
     const routeVisible = routeBody instanceof HTMLElement;
     const hasMenuButton = Array.from(document.querySelectorAll("button")).some((button) =>
       (button.textContent || "").trim() === "Menu",

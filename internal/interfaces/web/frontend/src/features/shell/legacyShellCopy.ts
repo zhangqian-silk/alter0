@@ -10,14 +10,12 @@ type LegacyShellCopy = {
   primaryNavLabel: string;
   chatMenu: string;
   chatSessions: string;
-  terminalSessions: string;
-  terminalNewShort: string;
+  chatNewShort: string;
   workspaceEyebrow: string;
   routeEyebrow: string;
   workspaceModeLabel: string;
   workspaceModeConversation: string;
   workspaceModePage: string;
-  workspaceModeTerminal: string;
   workspaceFocusLabel: string;
   settingsSectionsLabel: string;
   sessionHeader: string;
@@ -82,7 +80,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     },
     routes: {
       chat: "Chat",
-      terminal: "Terminal",
       settings: "Settings",
       runtime: "Runtime",
       schedules: "Schedules",
@@ -103,7 +100,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       channels: "Channels",
       sessions: "Sessions",
       tasks: "Tasks",
-      terminal: "Terminal",
       settings: "Settings",
       runtime: "Runtime",
       schedules: "Schedules",
@@ -122,7 +118,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       channels: "Manage connection channels",
       sessions: "View archived sessions with source filters",
       tasks: "Observe runtime tasks with source, status, and timeline filters",
-      terminal: "Persistent Codex CLI sessions with runtime-aligned status",
       "cron-jobs": "Configure schedules and trace fired sessions",
       memory: "Summary-first memory view with task history drill-down",
       skills: "Skills configuration",
@@ -136,14 +131,12 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     primaryNavLabel: "Primary workspace navigation",
     chatMenu: "Menu",
     chatSessions: "Sessions",
-    terminalSessions: "Sessions",
-    terminalNewShort: "New",
+    chatNewShort: "New",
     workspaceEyebrow: "Workspace cockpit",
     routeEyebrow: "Control surface",
     workspaceModeLabel: "Mode",
     workspaceModeConversation: "Conversation stream",
     workspaceModePage: "Operational page",
-    workspaceModeTerminal: "Terminal runtime",
     workspaceFocusLabel: "Focus",
     settingsSectionsLabel: "Settings sections",
     sessionHeader: "Work with Alter0",
@@ -206,7 +199,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     },
     routes: {
       chat: "对话",
-      terminal: "终端代理",
       settings: "设置",
       runtime: "运行时",
       schedules: "定时任务",
@@ -227,7 +219,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       channels: "通道",
       sessions: "会话列表",
       tasks: "任务观测",
-      terminal: "终端",
       settings: "设置",
       runtime: "运行时",
       schedules: "定时任务",
@@ -246,7 +237,6 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
       channels: "管理连接通道",
       sessions: "查看归档会话并按来源筛选",
       tasks: "基于来源、状态和时间范围观测运行任务",
-      terminal: "独立终端会话，状态与实际 shell 进程保持一致",
       "cron-jobs": "配置调度并追踪触发会话",
       memory: "任务摘要优先展示，支持按需下钻日志与产物",
       skills: "技能配置",
@@ -259,15 +249,13 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     },
     primaryNavLabel: "主工作区导航",
     chatMenu: "菜单",
-    chatSessions: "会话",
-    terminalSessions: "会话列表",
-    terminalNewShort: "新建",
+    chatSessions: "会话列表",
+    chatNewShort: "新建",
     workspaceEyebrow: "工作区驾驶舱",
     routeEyebrow: "控制台界面",
     workspaceModeLabel: "模式",
     workspaceModeConversation: "会话流",
     workspaceModePage: "运营页面",
-    workspaceModeTerminal: "终端运行态",
     workspaceFocusLabel: "焦点",
     settingsSectionsLabel: "设置分区",
     sessionHeader: "与 Alter0 协作",

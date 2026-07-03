@@ -10,51 +10,50 @@ import (
 	"strings"
 	"time"
 
+	chatruntimeapp "alter0/internal/chatruntime/application"
 	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
-	terminalapp "alter0/internal/terminal/application"
 )
 
-const terminalSessionOwnerID = "terminal"
 const chatSessionOwnerID = "chat"
-const defaultTerminalTurnDetailLimit = 20
-const maxTerminalTurnDetailLimit = 160
-const maxTerminalTurnDetailBytes = 256 * 1024
+const defaultChatRuntimeTurnDetailLimit = 20
+const maxChatRuntimeTurnDetailLimit = 160
+const maxChatRuntimeTurnDetailBytes = 256 * 1024
 
-type terminalClientIDContextKey struct{}
+type chatRuntimeClientIDContextKey struct{}
 
-type terminalSessionCreateRequest struct {
+type chatRuntimeSessionCreateRequest struct {
 	Title string `json:"title,omitempty"`
 }
 
-type terminalSessionInputRequest struct {
+type chatRuntimeSessionInputRequest struct {
 	Input       string                     `json:"input"`
 	Attachments []messageAttachmentRequest `json:"attachments,omitempty"`
 	SkillIDs    *[]string                  `json:"skill_ids,omitempty"`
 }
 
-type terminalSessionPinRequest struct {
+type chatRuntimeSessionPinRequest struct {
 	Pinned *bool `json:"pinned"`
 }
 
-type terminalSessionRecoverRequest struct {
-	ID                string    `json:"id"`
-	TerminalSessionID string    `json:"terminal_session_id,omitempty"`
-	Title             string    `json:"title,omitempty"`
-	CreatedAt         time.Time `json:"created_at,omitempty"`
-	LastOutputAt      time.Time `json:"last_output_at,omitempty"`
-	UpdatedAt         time.Time `json:"updated_at,omitempty"`
+type chatRuntimeSessionRecoverRequest struct {
+	ID               string    `json:"id"`
+	RuntimeSessionID string    `json:"runtime_session_id,omitempty"`
+	Title            string    `json:"title,omitempty"`
+	CreatedAt        time.Time `json:"created_at,omitempty"`
+	LastOutputAt     time.Time `json:"last_output_at,omitempty"`
+	UpdatedAt        time.Time `json:"updated_at,omitempty"`
 }
 
-type terminalSessionEnvelope struct {
+type chatRuntimeSessionEnvelope struct {
 	Session any `json:"session"`
 }
 
-type terminalSessionListEnvelope struct {
+type chatRuntimeSessionListEnvelope struct {
 	Items []any `json:"items"`
 }
 
-type terminalTurnPagingEnvelope struct {
+type chatRuntimeTurnPagingEnvelope struct {
 	Limit            int    `json:"limit"`
 	Total            int    `json:"total"`
 	ByteLimit        int    `json:"byte_limit"`
@@ -66,52 +65,52 @@ type terminalTurnPagingEnvelope struct {
 	NextBeforeTurnID string `json:"next_before_turn_id,omitempty"`
 }
 
-func (s *Server) terminalSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
-	if s.terminals == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "terminal service unavailable"})
+func (s *Server) chatRuntimeSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.chatRuntimes == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatRuntime service unavailable"})
 		return
 	}
 
-	ownerID := resolveTerminalClientID(r)
+	ownerID := resolveChatRuntimeClientID(r)
 	switch r.Method {
 	case http.MethodGet:
-		items := s.terminals.List(ownerID)
+		items := s.chatRuntimes.List(ownerID)
 		summaries := make([]any, 0, len(items))
 		for _, item := range items {
-			summaries = append(summaries, buildTerminalSessionSummary(item))
+			summaries = append(summaries, buildChatRuntimeSessionSummary(item))
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": summaries})
 	case http.MethodPost:
 		defer r.Body.Close()
 		if ownerID == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error":      "terminal client id is required",
-				"error_code": "terminal_client_required",
+				"error":      "chatRuntime client id is required",
+				"error_code": "chatRuntime_client_required",
 			})
 			return
 		}
-		var req terminalSessionCreateRequest
+		var req chatRuntimeSessionCreateRequest
 		if r.Body != nil {
 			_ = json.NewDecoder(r.Body).Decode(&req)
 		}
-		session, err := s.terminals.Create(terminalapp.CreateRequest{
+		session, err := s.chatRuntimes.Create(chatruntimeapp.CreateRequest{
 			OwnerID: ownerID,
 			Title:   strings.TrimSpace(req.Title),
 		})
 		if err != nil {
-			s.writeTerminalError(w, err)
+			s.writeChatRuntimeError(w, err)
 			return
 		}
-		s.publishTerminalSessionEvent(ownerID, session.ID, "session.created", session)
-		writeJSON(w, http.StatusCreated, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
+		s.publishChatRuntimeSessionEvent(ownerID, session.ID, "session.created", session)
+		writeJSON(w, http.StatusCreated, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
 }
 
-func (s *Server) terminalSessionRecoverHandler(w http.ResponseWriter, r *http.Request) {
-	if s.terminals == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "terminal service unavailable"})
+func (s *Server) chatRuntimeSessionRecoverHandler(w http.ResponseWriter, r *http.Request) {
+	if s.chatRuntimes == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatRuntime service unavailable"})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -119,74 +118,71 @@ func (s *Server) terminalSessionRecoverHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	ownerID := resolveTerminalClientID(r)
+	ownerID := resolveChatRuntimeClientID(r)
 	if ownerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error":      "terminal client id is required",
-			"error_code": "terminal_client_required",
+			"error":      "chatRuntime client id is required",
+			"error_code": "chatRuntime_client_required",
 		})
 		return
 	}
 
 	defer r.Body.Close()
-	var req terminalSessionRecoverRequest
+	var req chatRuntimeSessionRecoverRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
 
-	session, err := s.terminals.Recover(terminalapp.RecoverRequest{
-		OwnerID:           ownerID,
-		SessionID:         strings.TrimSpace(req.ID),
-		TerminalSessionID: strings.TrimSpace(req.TerminalSessionID),
-		Title:             strings.TrimSpace(req.Title),
-		CreatedAt:         req.CreatedAt,
-		LastOutputAt:      req.LastOutputAt,
-		UpdatedAt:         req.UpdatedAt,
+	session, err := s.chatRuntimes.Recover(chatruntimeapp.RecoverRequest{
+		OwnerID:          ownerID,
+		SessionID:        strings.TrimSpace(req.ID),
+		RuntimeSessionID: strings.TrimSpace(req.RuntimeSessionID),
+		Title:            strings.TrimSpace(req.Title),
+		CreatedAt:        req.CreatedAt,
+		LastOutputAt:     req.LastOutputAt,
+		UpdatedAt:        req.UpdatedAt,
 	})
 	if err != nil {
-		s.writeTerminalError(w, err)
+		s.writeChatRuntimeError(w, err)
 		return
 	}
-	s.publishTerminalSessionEvent(ownerID, session.ID, "session.updated", session)
-	writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
+	s.publishChatRuntimeSessionEvent(ownerID, session.ID, "session.updated", session)
+	writeJSON(w, http.StatusOK, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 }
 
 func (s *Server) chatSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
-	s.terminalSessionCollectionHandler(w, withTerminalClientID(r, chatSessionOwnerID))
+	s.chatRuntimeSessionCollectionHandler(w, withChatRuntimeClientID(r, chatSessionOwnerID))
 }
 
 func (s *Server) chatSessionRecoverHandler(w http.ResponseWriter, r *http.Request) {
-	s.terminalSessionRecoverHandler(w, withTerminalClientID(r, chatSessionOwnerID))
+	s.chatRuntimeSessionRecoverHandler(w, withChatRuntimeClientID(r, chatSessionOwnerID))
 }
 
 func (s *Server) chatSessionItemHandler(w http.ResponseWriter, r *http.Request) {
-	next := withAttachmentRoutePrefix(withTerminalClientID(r, chatSessionOwnerID), "/api/chat/sessions")
-	if next != nil && next.URL != nil {
-		urlCopy := *next.URL
-		urlCopy.Path = strings.TrimPrefix(urlCopy.Path, "/api/chat/sessions/")
-		urlCopy.Path = "/api/terminal/sessions/" + strings.Trim(urlCopy.Path, "/")
-		next = next.Clone(next.Context())
-		next.URL = &urlCopy
-	}
-	s.terminalSessionItemHandler(w, next)
+	next := withAttachmentRoutePrefix(withChatRuntimeClientID(r, chatSessionOwnerID), "/api/chat/sessions")
+	s.chatRuntimeSessionItemHandler(w, next)
 }
 
-func withTerminalClientID(r *http.Request, clientID string) *http.Request {
+func withChatRuntimeClientID(r *http.Request, clientID string) *http.Request {
 	if r == nil {
 		return r
 	}
-	ctx := context.WithValue(r.Context(), terminalClientIDContextKey{}, strings.TrimSpace(clientID))
+	ctx := context.WithValue(r.Context(), chatRuntimeClientIDContextKey{}, strings.TrimSpace(clientID))
 	return r.WithContext(ctx)
 }
 
-func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Request) {
-	if s.terminals == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "terminal service unavailable"})
+func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Request) {
+	if s.chatRuntimes == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatRuntime service unavailable"})
 		return
 	}
 
-	path := strings.TrimPrefix(r.URL.Path, "/api/terminal/sessions/")
+	path := strings.TrimPrefix(r.URL.Path, "/api/chat/sessions/")
+	if path == r.URL.Path {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+		return
+	}
 	path = strings.Trim(path, "/")
 	if path == "" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
@@ -195,15 +191,15 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 
 	parts := strings.Split(path, "/")
 	sessionID := strings.TrimSpace(parts[0])
-	ownerID := resolveTerminalClientID(r)
+	ownerID := resolveChatRuntimeClientID(r)
 	if len(parts) == 1 {
 		if r.Method == http.MethodDelete {
-			session, err := s.terminals.Delete(ownerID, sessionID)
+			session, err := s.chatRuntimes.Delete(ownerID, sessionID)
 			if err != nil {
-				s.writeTerminalError(w, err)
+				s.writeChatRuntimeError(w, err)
 				return
 			}
-			s.publishTerminalSessionEvent(ownerID, sessionID, "session.deleted", session)
+			s.publishChatRuntimeSessionEvent(ownerID, sessionID, "session.deleted", session)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -211,16 +207,16 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
-		session, ok := s.terminals.Get(ownerID, sessionID)
+		session, ok := s.chatRuntimes.Get(ownerID, sessionID)
 		if !ok {
 			writeJSON(w, http.StatusNotFound, map[string]string{
-				"error":      "terminal session not found",
-				"error_code": "terminal_session_not_found",
+				"error":      "chatRuntime session not found",
+				"error_code": "chatRuntime_session_not_found",
 			})
 			return
 		}
 		s.touchSessionActivity(sessionID)
-		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 		return
 	}
 
@@ -235,7 +231,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		defer r.Body.Close()
-		var req terminalSessionPinRequest
+		var req chatRuntimeSessionPinRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
@@ -244,22 +240,22 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pinned is required"})
 			return
 		}
-		session, err := s.terminals.SetPinned(ownerID, sessionID, *req.Pinned)
+		session, err := s.chatRuntimes.SetPinned(ownerID, sessionID, *req.Pinned)
 		if err != nil {
-			s.writeTerminalError(w, err)
+			s.writeChatRuntimeError(w, err)
 			return
 		}
-		s.publishTerminalSessionEvent(ownerID, session.ID, "session.updated", session)
-		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
+		s.publishChatRuntimeSessionEvent(ownerID, session.ID, "session.updated", session)
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 	case "turns":
 		if len(parts) == 2 {
 			if r.Method != http.MethodGet {
 				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 				return
 			}
-			items, err := s.terminals.ListTurns(ownerID, sessionID)
+			items, err := s.chatRuntimes.ListTurns(ownerID, sessionID)
 			if err != nil {
-				s.writeTerminalError(w, err)
+				s.writeChatRuntimeError(w, err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"items": items})
@@ -270,9 +266,9 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 				return
 			}
-			detail, err := s.terminals.GetRuntimeTraceEventDetail(ownerID, sessionID, strings.TrimSpace(parts[2]), strings.TrimSpace(parts[4]))
+			detail, err := s.chatRuntimes.GetRuntimeTraceEventDetail(ownerID, sessionID, strings.TrimSpace(parts[2]), strings.TrimSpace(parts[4]))
 			if err != nil {
-				s.writeTerminalError(w, err)
+				s.writeChatRuntimeError(w, err)
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"event": detail})
@@ -286,9 +282,9 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 		}
 		cursor, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("cursor")))
 		limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
-		page, err := s.terminals.ListEntries(ownerID, sessionID, cursor, limit)
+		page, err := s.chatRuntimes.ListEntries(ownerID, sessionID, cursor, limit)
 		if err != nil {
-			s.writeTerminalError(w, err)
+			s.writeChatRuntimeError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, page)
@@ -307,7 +303,7 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		defer r.Body.Close()
-		var req terminalSessionInputRequest
+		var req chatRuntimeSessionInputRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
@@ -321,59 +317,59 @@ func (s *Server) terminalSessionItemHandler(w http.ResponseWriter, r *http.Reque
 		if input == "" && len(attachments) > 0 {
 			input = defaultAttachmentContent(attachments)
 		}
-		session, err := s.terminals.InputWithAttachments(terminalapp.InputRequest{
+		session, err := s.chatRuntimes.InputWithAttachments(chatruntimeapp.InputRequest{
 			OwnerID:      ownerID,
 			SessionID:    sessionID,
 			Input:        input,
 			Attachments:  attachments,
-			SkillContext: s.resolveTerminalSkillContext(req.SkillIDs),
+			SkillContext: s.resolveChatRuntimeSkillContext(req.SkillIDs),
 		})
 		if err != nil {
-			s.writeTerminalError(w, err)
+			s.writeChatRuntimeError(w, err)
 			return
 		}
 		s.touchSessionActivity(sessionID)
-		s.publishTerminalSessionEvent(ownerID, session.ID, "session.updated", session)
-		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildTerminalSessionDetail(ownerID, session, r)})
+		s.publishChatRuntimeSessionEvent(ownerID, session.ID, "session.updated", session)
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})
 	}
 }
 
-func (s *Server) buildTerminalSessionDetail(ownerID string, session any, r *http.Request) any {
-	if s.terminals == nil {
+func (s *Server) buildChatRuntimeSessionDetail(ownerID string, session any, r *http.Request) any {
+	if s.chatRuntimes == nil {
 		return session
 	}
-	sessionMap, ok := terminalSessionMap(session)
+	sessionMap, ok := chatRuntimeSessionMap(session)
 	if !ok {
 		return session
 	}
-	applyTerminalSessionComparableFields(sessionMap)
+	applyChatRuntimeSessionComparableFields(sessionMap)
 	sessionID := strings.TrimSpace(fmt.Sprintf("%v", sessionMap["id"]))
 	if sessionID == "" {
 		return session
 	}
-	turns, err := s.terminals.ListTurns(ownerID, sessionID)
+	turns, err := s.chatRuntimes.ListTurns(ownerID, sessionID)
 	if err == nil {
-		items, paging := pageTerminalTurns(turns, r)
+		items, paging := pageChatRuntimeTurns(turns, r)
 		sessionMap["turns"] = items
 		sessionMap["turns_paging"] = paging
 	}
 	return sessionMap
 }
 
-func buildTerminalSessionSummary(session any) any {
-	sessionMap, ok := terminalSessionMap(session)
+func buildChatRuntimeSessionSummary(session any) any {
+	sessionMap, ok := chatRuntimeSessionMap(session)
 	if !ok {
 		return session
 	}
-	applyTerminalSessionComparableFields(sessionMap)
+	applyChatRuntimeSessionComparableFields(sessionMap)
 	delete(sessionMap, "turns")
 	delete(sessionMap, "turns_paging")
 	return sessionMap
 }
 
-func terminalSessionMap(session any) (map[string]any, bool) {
+func chatRuntimeSessionMap(session any) (map[string]any, bool) {
 	sessionMap := map[string]any{}
 	encoded, err := json.Marshal(session)
 	if err != nil {
@@ -385,18 +381,18 @@ func terminalSessionMap(session any) (map[string]any, bool) {
 	return sessionMap, true
 }
 
-func applyTerminalSessionComparableFields(sessionMap map[string]any) {
+func applyChatRuntimeSessionComparableFields(sessionMap map[string]any) {
 	if sessionMap == nil {
 		return
 	}
 	activityAt := latestNonZeroTime(
-		parseTerminalSessionPayloadTime(sessionMap["last_output_at"]),
-		parseTerminalSessionPayloadTime(sessionMap["updated_at"]),
-		parseTerminalSessionPayloadTime(sessionMap["created_at"]),
+		parseChatRuntimeSessionPayloadTime(sessionMap["last_output_at"]),
+		parseChatRuntimeSessionPayloadTime(sessionMap["updated_at"]),
+		parseChatRuntimeSessionPayloadTime(sessionMap["created_at"]),
 	)
 	revisionAt := latestNonZeroTime(
 		activityAt,
-		parseTerminalSessionPayloadTime(sessionMap["finished_at"]),
+		parseChatRuntimeSessionPayloadTime(sessionMap["finished_at"]),
 	)
 	if !activityAt.IsZero() {
 		sessionMap["activity_at"] = activityAt.UTC().Format(time.RFC3339Nano)
@@ -406,7 +402,7 @@ func applyTerminalSessionComparableFields(sessionMap map[string]any) {
 	}
 }
 
-func parseTerminalSessionPayloadTime(value any) time.Time {
+func parseChatRuntimeSessionPayloadTime(value any) time.Time {
 	switch typed := value.(type) {
 	case time.Time:
 		if typed.IsZero() || typed.Year() <= 1 {
@@ -441,8 +437,8 @@ func latestNonZeroTime(values ...time.Time) time.Time {
 	return latest
 }
 
-func pageTerminalTurns(turns []terminalapp.TurnSummary, r *http.Request) ([]terminalapp.TurnSummary, terminalTurnPagingEnvelope) {
-	limit := defaultTerminalTurnDetailLimit
+func pageChatRuntimeTurns(turns []chatruntimeapp.TurnSummary, r *http.Request) ([]chatruntimeapp.TurnSummary, chatRuntimeTurnPagingEnvelope) {
+	limit := defaultChatRuntimeTurnDetailLimit
 	beforeTurnID := ""
 	if r != nil {
 		query := r.URL.Query()
@@ -453,8 +449,8 @@ func pageTerminalTurns(turns []terminalapp.TurnSummary, r *http.Request) ([]term
 			}
 		}
 	}
-	if limit > maxTerminalTurnDetailLimit {
-		limit = maxTerminalTurnDetailLimit
+	if limit > maxChatRuntimeTurnDetailLimit {
+		limit = maxChatRuntimeTurnDetailLimit
 	}
 	total := len(turns)
 	end := total
@@ -479,18 +475,18 @@ func pageTerminalTurns(turns []terminalapp.TurnSummary, r *http.Request) ([]term
 	start := end
 	approxBytes := 0
 	for index := end - 1; index >= candidateStart; index-- {
-		turnBytes := approximateTerminalTurnBytes(turns[index])
-		if start < end && approxBytes+turnBytes > maxTerminalTurnDetailBytes {
+		turnBytes := approximateChatRuntimeTurnBytes(turns[index])
+		if start < end && approxBytes+turnBytes > maxChatRuntimeTurnDetailBytes {
 			break
 		}
 		approxBytes += turnBytes
 		start = index
 	}
-	items := append([]terminalapp.TurnSummary{}, turns[start:end]...)
-	paging := terminalTurnPagingEnvelope{
+	items := append([]chatruntimeapp.TurnSummary{}, turns[start:end]...)
+	paging := chatRuntimeTurnPagingEnvelope{
 		Limit:         limit,
 		Total:         total,
-		ByteLimit:     maxTerminalTurnDetailBytes,
+		ByteLimit:     maxChatRuntimeTurnDetailBytes,
 		ApproxBytes:   approxBytes,
 		HasMoreBefore: start > 0,
 		HasMoreAfter:  end < total,
@@ -503,7 +499,7 @@ func pageTerminalTurns(turns []terminalapp.TurnSummary, r *http.Request) ([]term
 	return items, paging
 }
 
-func approximateTerminalTurnBytes(turn terminalapp.TurnSummary) int {
+func approximateChatRuntimeTurnBytes(turn chatruntimeapp.TurnSummary) int {
 	raw, err := json.Marshal(turn)
 	if err != nil {
 		return len(turn.ID) + len(turn.Prompt) + len(turn.FinalOutput)
@@ -511,21 +507,21 @@ func approximateTerminalTurnBytes(turn terminalapp.TurnSummary) int {
 	return len(raw)
 }
 
-func (s *Server) resolveTerminalSkillContext(skillIDs *[]string) *execdomain.SkillContext {
+func (s *Server) resolveChatRuntimeSkillContext(skillIDs *[]string) *execdomain.SkillContext {
 	if s.control == nil {
 		return nil
 	}
 	selectedOnly := skillIDs != nil
 	include := map[string]struct{}{}
 	if selectedOnly {
-		include = normalizeTerminalSkillIDSet(*skillIDs)
+		include = normalizeChatRuntimeSkillIDSet(*skillIDs)
 		if len(include) == 0 {
 			return nil
 		}
 	}
 	skills := make([]execdomain.SkillSpec, 0)
 	for _, capability := range s.control.ListCapabilitiesByType(controldomain.CapabilityTypeSkill) {
-		if !capability.Enabled || !isPublicTerminalSkillCapability(capability) {
+		if !capability.Enabled || !isPublicChatRuntimeSkillCapability(capability) {
 			continue
 		}
 		id := strings.TrimSpace(capability.ID)
@@ -537,7 +533,7 @@ func (s *Server) resolveTerminalSkillContext(skillIDs *[]string) *execdomain.Ski
 				continue
 			}
 		}
-		skills = append(skills, terminalSkillSpecFromCapability(capability))
+		skills = append(skills, chatRuntimeSkillSpecFromCapability(capability))
 	}
 	if len(skills) == 0 {
 		return nil
@@ -548,7 +544,7 @@ func (s *Server) resolveTerminalSkillContext(skillIDs *[]string) *execdomain.Ski
 	}
 }
 
-func normalizeTerminalSkillIDSet(values []string) map[string]struct{} {
+func normalizeChatRuntimeSkillIDSet(values []string) map[string]struct{} {
 	out := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		trimmed := strings.TrimSpace(value)
@@ -559,7 +555,7 @@ func normalizeTerminalSkillIDSet(values []string) map[string]struct{} {
 	return out
 }
 
-func isPublicTerminalSkillCapability(capability controldomain.Capability) bool {
+func isPublicChatRuntimeSkillCapability(capability controldomain.Capability) bool {
 	metadata := capability.Metadata
 	visibility := strings.ToLower(strings.TrimSpace(metadata["alter0.skill.visibility"]))
 	if visibility == "" {
@@ -568,7 +564,7 @@ func isPublicTerminalSkillCapability(capability controldomain.Capability) bool {
 	return visibility != "private"
 }
 
-func terminalSkillSpecFromCapability(capability controldomain.Capability) execdomain.SkillSpec {
+func chatRuntimeSkillSpecFromCapability(capability controldomain.Capability) execdomain.SkillSpec {
 	metadata := capability.Metadata
 	description := strings.TrimSpace(metadata["skill.description"])
 	if description == "" {
@@ -579,15 +575,15 @@ func terminalSkillSpecFromCapability(capability controldomain.Capability) execdo
 		Name:        strings.TrimSpace(capability.Name),
 		Description: description,
 		Guide:       strings.TrimSpace(metadata["skill.guide"]),
-		Priority:    parseTerminalSkillPriority(metadata["skill.priority"]),
-		Constraints: parseTerminalSkillList(metadata["skill.constraints"]),
-		Abilities:   parseTerminalSkillList(metadata["skill.abilities"]),
+		Priority:    parseChatRuntimeSkillPriority(metadata["skill.priority"]),
+		Constraints: parseChatRuntimeSkillList(metadata["skill.constraints"]),
+		Abilities:   parseChatRuntimeSkillList(metadata["skill.abilities"]),
 		FilePath:    strings.TrimSpace(metadata["skill.file_path"]),
-		Writable:    parseTerminalSkillWritable(metadata["skill.writable"]),
+		Writable:    parseChatRuntimeSkillWritable(metadata["skill.writable"]),
 	}
 }
 
-func parseTerminalSkillPriority(raw string) int {
+func parseChatRuntimeSkillPriority(raw string) int {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil {
 		return 100
@@ -595,7 +591,7 @@ func parseTerminalSkillPriority(raw string) int {
 	return value
 }
 
-func parseTerminalSkillWritable(raw string) bool {
+func parseChatRuntimeSkillWritable(raw string) bool {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "1", "true", "yes", "y", "on":
 		return true
@@ -604,19 +600,19 @@ func parseTerminalSkillWritable(raw string) bool {
 	}
 }
 
-func parseTerminalSkillList(raw string) []string {
+func parseChatRuntimeSkillList(raw string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return nil
 	}
 	var decoded []string
 	if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
-		return normalizeTerminalSkillStringList(decoded)
+		return normalizeChatRuntimeSkillStringList(decoded)
 	}
-	return normalizeTerminalSkillStringList(strings.Split(trimmed, ","))
+	return normalizeChatRuntimeSkillStringList(strings.Split(trimmed, ","))
 }
 
-func normalizeTerminalSkillStringList(values []string) []string {
+func normalizeChatRuntimeSkillStringList(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
 		trimmed := strings.TrimSpace(value)
@@ -630,67 +626,65 @@ func normalizeTerminalSkillStringList(values []string) []string {
 	return out
 }
 
-func (s *Server) writeTerminalError(w http.ResponseWriter, err error) {
+func (s *Server) writeChatRuntimeError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, terminalapp.ErrSessionOwnerRequired):
+	case errors.Is(err, chatruntimeapp.ErrSessionOwnerRequired):
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error":      err.Error(),
-			"error_code": "terminal_client_required",
+			"error_code": "chatRuntime_client_required",
 		})
-	case errors.Is(err, terminalapp.ErrSessionInputRequired):
+	case errors.Is(err, chatruntimeapp.ErrSessionInputRequired):
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error":      err.Error(),
-			"error_code": "terminal_input_required",
+			"error_code": "chatRuntime_input_required",
 		})
-	case errors.Is(err, terminalapp.ErrSessionRecoverIDRequired):
+	case errors.Is(err, chatruntimeapp.ErrSessionRecoverIDRequired):
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error":      err.Error(),
-			"error_code": "terminal_recover_session_required",
+			"error_code": "chatRuntime_recover_session_required",
 		})
-	case errors.Is(err, terminalapp.ErrSessionNotFound):
+	case errors.Is(err, chatruntimeapp.ErrSessionNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error":      err.Error(),
-			"error_code": "terminal_session_not_found",
+			"error_code": "chatRuntime_session_not_found",
 		})
-	case errors.Is(err, terminalapp.ErrTurnNotFound):
+	case errors.Is(err, chatruntimeapp.ErrTurnNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error":      err.Error(),
-			"error_code": "terminal_turn_not_found",
+			"error_code": "chatRuntime_turn_not_found",
 		})
-	case errors.Is(err, terminalapp.ErrRuntimeEventNotFound):
+	case errors.Is(err, chatruntimeapp.ErrRuntimeEventNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error":      err.Error(),
-			"error_code": "terminal_step_not_found",
+			"error_code": "chatRuntime_step_not_found",
 		})
-	case errors.Is(err, terminalapp.ErrSessionBusy):
+	case errors.Is(err, chatruntimeapp.ErrSessionBusy):
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error":      err.Error(),
-			"error_code": "terminal_session_busy",
+			"error_code": "chatRuntime_session_busy",
 		})
-	case errors.Is(err, terminalapp.ErrSessionNotRunning):
+	case errors.Is(err, chatruntimeapp.ErrSessionNotRunning):
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error":      err.Error(),
-			"error_code": "terminal_session_not_running",
+			"error_code": "chatRuntime_session_not_running",
 		})
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error":      err.Error(),
-			"error_code": "terminal_request_invalid",
+			"error_code": "chatRuntime_request_invalid",
 		})
 	}
 }
 
-func resolveTerminalClientID(r *http.Request) string {
+func resolveChatRuntimeClientID(r *http.Request) string {
 	if r == nil {
-		return terminalSessionOwnerID
+		return chatSessionOwnerID
 	}
-	if value, ok := r.Context().Value(terminalClientIDContextKey{}).(string); ok {
+	if value, ok := r.Context().Value(chatRuntimeClientIDContextKey{}).(string); ok {
 		switch strings.ToLower(strings.TrimSpace(value)) {
 		case chatSessionOwnerID:
 			return chatSessionOwnerID
-		case terminalSessionOwnerID:
-			return terminalSessionOwnerID
 		}
 	}
-	return terminalSessionOwnerID
+	return chatSessionOwnerID
 }

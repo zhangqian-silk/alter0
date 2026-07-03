@@ -3,17 +3,17 @@ import {
   MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS,
   MOBILE_VIEWPORT_BREAKPOINT_PX,
   MOBILE_VIEWPORT_SYNC_THRESHOLD_PX,
-  TERMINAL_SESSION_SHEET_BREAKPOINT_PX,
+  CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX,
   createDefaultMobileViewportState,
   deriveMobileViewportState,
   isMobileViewportWidth,
-  isTerminalSessionSheetViewportWidth
+  isChatRuntimeSessionSheetViewportWidth
 } from "./mobileViewport";
 
 describe("shared viewport mobileViewport", () => {
   it("keeps viewport breakpoints aligned with the legacy shell", () => {
     expect(MOBILE_VIEWPORT_BREAKPOINT_PX).toBe(1100);
-    expect(TERMINAL_SESSION_SHEET_BREAKPOINT_PX).toBe(760);
+    expect(CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX).toBe(760);
     expect(MOBILE_VIEWPORT_SYNC_THRESHOLD_PX).toBe(8);
     expect(MOBILE_KEYBOARD_MIN_OFFSET_PX).toBe(120);
     expect(MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS).toBe(240);
@@ -22,8 +22,8 @@ describe("shared viewport mobileViewport", () => {
   it("matches the legacy mobile breakpoint helpers", () => {
     expect(isMobileViewportWidth(1100)).toBe(true);
     expect(isMobileViewportWidth(1101)).toBe(false);
-    expect(isTerminalSessionSheetViewportWidth(760)).toBe(true);
-    expect(isTerminalSessionSheetViewportWidth(761)).toBe(false);
+    expect(isChatRuntimeSessionSheetViewportWidth(760)).toBe(true);
+    expect(isChatRuntimeSessionSheetViewportWidth(761)).toBe(false);
   });
 
   it("resets viewport state and css values outside mobile layouts", () => {

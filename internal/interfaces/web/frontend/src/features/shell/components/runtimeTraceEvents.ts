@@ -74,7 +74,7 @@ export type RuntimeBlock =
   | { type: "tool_input"; json: unknown }
   | { type: "tool_output"; text?: string; json?: unknown; is_error?: boolean }
   | {
-      type: "terminal";
+      type: "chatRuntime";
       title?: string;
       command?: string;
       output?: string;

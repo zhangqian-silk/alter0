@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	terminalTaskInteractiveMetadataKey = "alter0.task.terminal_interactive"
-	terminalTaskTypeMetadataKey        = "alter0.task.type"
-	terminalTaskTypeValue              = "terminal"
-	memoryHistoryBypassedMetadataKey   = "memory_history_bypassed"
-	memoryHistoryScopeMetadataKey      = "memory_history_scope"
-	memoryHistoryScopeTerminalSession  = "terminal_session"
+	chatRuntimeTaskInteractiveMetadataKey = "alter0.task.chatRuntime_interactive"
+	chatRuntimeTaskTypeMetadataKey        = "alter0.task.type"
+	chatRuntimeTaskTypeValue              = "chatRuntime"
+	memoryHistoryBypassedMetadataKey      = "memory_history_bypassed"
+	memoryHistoryScopeMetadataKey         = "memory_history_scope"
+	memoryHistoryScopeChatRuntimeSession  = "chatRuntime_session"
 )
 
 type ExecutionPort interface {
@@ -163,7 +163,7 @@ func (s *Service) handle(
 	onEvent func(shareddomain.StreamEvent) error,
 ) (shareddomain.OrchestrationResult, error) {
 	startedAt := time.Now()
-	terminalSessionOnly := isTerminalSessionContextOnly(msg.Metadata)
+	chatRuntimeSessionOnly := isChatRuntimeSessionContextOnly(msg.Metadata)
 	result := shareddomain.OrchestrationResult{
 		MessageID: msg.MessageID,
 		SessionID: msg.SessionID,
@@ -213,7 +213,7 @@ func (s *Service) handle(
 				return result, err
 			}
 		}
-		if !terminalSessionOnly {
+		if !chatRuntimeSessionOnly {
 			s.longTerm.Record(msg, result.Route, result.Output)
 		}
 		s.onSuccess(msg, result.Route, startedAt)
@@ -224,11 +224,11 @@ func (s *Service) handle(
 		mandatorySnapshot := s.mandatory.Snapshot(msg.ReceivedAt)
 		execMessage := msg
 		conflictMetadata := map[string]string{}
-		if terminalSessionOnly {
+		if chatRuntimeSessionOnly {
 			execMessage.Content = buildMandatoryContextPrompt(msg.Content, mandatorySnapshot)
 			execMessage.Metadata = mergeStringMap(
 				msg.Metadata,
-				mergeStringMap(mandatorySnapshot.Metadata(), terminalSessionOnlyMetadata()),
+				mergeStringMap(mandatorySnapshot.Metadata(), chatRuntimeSessionOnlyMetadata()),
 			)
 		} else {
 			longTermSnapshot := s.longTerm.Snapshot(msg, msg.Content, msg.ReceivedAt)
@@ -295,12 +295,12 @@ func (s *Service) handle(
 
 		result.Output = nlResult.Output
 		result.ProcessSteps = append([]shareddomain.ProcessStep(nil), nlResult.ProcessSteps...)
-		if terminalSessionOnly {
-			result.Metadata = mergeStringMap(result.Metadata, terminalSessionOnlyMetadata())
+		if chatRuntimeSessionOnly {
+			result.Metadata = mergeStringMap(result.Metadata, chatRuntimeSessionOnlyMetadata())
 		}
 		result.Metadata = mergeStringMap(result.Metadata, mandatorySnapshot.ResultMetadata())
 		result.Metadata = mergeStringMap(result.Metadata, nlResult.Metadata)
-		if !terminalSessionOnly {
+		if !chatRuntimeSessionOnly {
 			s.longTerm.Record(msg, result.Route, nlResult.Output)
 		}
 		s.onSuccess(msg, result.Route, startedAt)
@@ -313,16 +313,16 @@ func (s *Service) handle(
 	}
 }
 
-func isTerminalSessionContextOnly(metadata map[string]string) bool {
+func isChatRuntimeSessionContextOnly(metadata map[string]string) bool {
 	if len(metadata) == 0 {
 		return false
 	}
-	if parseTruthyString(metadata[terminalTaskInteractiveMetadataKey]) {
+	if parseTruthyString(metadata[chatRuntimeTaskInteractiveMetadataKey]) {
 		return true
 	}
 	return strings.EqualFold(
-		strings.TrimSpace(metadata[terminalTaskTypeMetadataKey]),
-		terminalTaskTypeValue,
+		strings.TrimSpace(metadata[chatRuntimeTaskTypeMetadataKey]),
+		chatRuntimeTaskTypeValue,
 	)
 }
 
@@ -335,10 +335,10 @@ func parseTruthyString(raw string) bool {
 	}
 }
 
-func terminalSessionOnlyMetadata() map[string]string {
+func chatRuntimeSessionOnlyMetadata() map[string]string {
 	return map[string]string{
 		memoryHistoryBypassedMetadataKey: "true",
-		memoryHistoryScopeMetadataKey:    memoryHistoryScopeTerminalSession,
+		memoryHistoryScopeMetadataKey:    memoryHistoryScopeChatRuntimeSession,
 	}
 }
 

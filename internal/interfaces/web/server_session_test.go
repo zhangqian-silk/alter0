@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 	sessionapp "alter0/internal/session/application"
 	sessiondomain "alter0/internal/session/domain"
 	shareddomain "alter0/internal/shared/domain"
 	taskapp "alter0/internal/task/application"
 	taskdomain "alter0/internal/task/domain"
-	terminaldomain "alter0/internal/terminal/domain"
 )
 
 type stubSessionHistory struct {
@@ -344,43 +344,43 @@ func TestSessionCleanupHandlerDeletesInactiveSessionsAndWorkspaces(t *testing.T)
 	}
 }
 
-func TestSessionCleanupHandlerDeletesInactiveTerminalSessions(t *testing.T) {
+func TestSessionCleanupHandlerSkipsPinnedBusyAndRecentChatRuntimeSessions(t *testing.T) {
 	now := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
 	old := now.Add(-8 * 24 * time.Hour)
 	recent := now.Add(-2 * time.Hour)
 	history := &stubSessionHistory{}
-	terminals := &stubWebTerminalService{
-		listByOwner: map[string][]terminaldomain.Session{
-			terminalSessionOwnerID: {
+	chatRuntimes := &stubWebChatRuntimeService{
+		listByOwner: map[string][]chatruntimedomain.Session{
+			chatSessionOwnerID: {
 				{
-					ID:           "terminal-old",
-					OwnerID:      terminalSessionOwnerID,
-					Status:       terminaldomain.SessionStatusReady,
+					ID:           "chatRuntime-old",
+					OwnerID:      chatSessionOwnerID,
+					Status:       chatruntimedomain.SessionStatusReady,
 					CreatedAt:    old,
 					LastOutputAt: old,
 					UpdatedAt:    old,
 				},
 				{
-					ID:           "terminal-pinned",
-					OwnerID:      terminalSessionOwnerID,
-					Status:       terminaldomain.SessionStatusReady,
+					ID:           "chatRuntime-pinned",
+					OwnerID:      chatSessionOwnerID,
+					Status:       chatruntimedomain.SessionStatusReady,
 					Pinned:       true,
 					CreatedAt:    old,
 					LastOutputAt: old,
 					UpdatedAt:    old,
 				},
 				{
-					ID:           "terminal-busy",
-					OwnerID:      terminalSessionOwnerID,
-					Status:       terminaldomain.SessionStatusBusy,
+					ID:           "chatRuntime-busy",
+					OwnerID:      chatSessionOwnerID,
+					Status:       chatruntimedomain.SessionStatusBusy,
 					CreatedAt:    old,
 					LastOutputAt: old,
 					UpdatedAt:    old,
 				},
 				{
-					ID:           "terminal-recent",
-					OwnerID:      terminalSessionOwnerID,
-					Status:       terminaldomain.SessionStatusReady,
+					ID:           "chatRuntime-recent",
+					OwnerID:      chatSessionOwnerID,
+					Status:       chatruntimedomain.SessionStatusReady,
 					CreatedAt:    old,
 					LastOutputAt: recent,
 					UpdatedAt:    recent,
@@ -389,52 +389,50 @@ func TestSessionCleanupHandlerDeletesInactiveTerminalSessions(t *testing.T) {
 		},
 	}
 	server := &Server{
-		sessions:  history,
-		terminals: terminals,
-		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		sessions:     history,
+		chatRuntimes: chatRuntimes,
+		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	server.ensureMaintenanceService()
 
 	body := server.maintenance.RunSessionCleanup(now)
 
-	if len(terminals.deleteIDs) != 1 || terminals.deleteIDs[0] != "terminal-old" {
-		t.Fatalf("expected only old terminal deleted, got %+v", terminals.deleteIDs)
+	if len(chatRuntimes.deleteIDs) != 1 || chatRuntimes.deleteIDs[0] != "chatRuntime-old" {
+		t.Fatalf("expected only old chatRuntime deleted, got %+v", chatRuntimes.deleteIDs)
 	}
-	if len(terminals.deleteOwnerIDs) != 1 || terminals.deleteOwnerIDs[0] != terminalSessionOwnerID+":terminal-old" {
-		t.Fatalf("expected only old terminal session deleted, got %+v", terminals.deleteOwnerIDs)
+	if len(chatRuntimes.deleteOwnerIDs) != 1 || chatRuntimes.deleteOwnerIDs[0] != chatSessionOwnerID+":chatRuntime-old" {
+		t.Fatalf("expected only old chatRuntime session deleted, got %+v", chatRuntimes.deleteOwnerIDs)
 	}
 	if body.DeletedCount != 1 || body.SkippedPinnedCount != 1 || body.SkippedProtectedCount != 1 || body.ScannedCount != 4 {
-		t.Fatalf("expected combined terminal cleanup counts, got %+v", body)
+		t.Fatalf("expected combined chatRuntime cleanup counts, got %+v", body)
 	}
-	if body.TerminalDeletedCount != 1 || body.TerminalSkippedPinnedCount != 1 || body.TerminalSkippedProtectedCount != 1 || body.TerminalScannedCount != 4 {
-		t.Fatalf("expected terminal cleanup counts, got %+v", body)
+	if body.ChatRuntimeDeletedCount != 1 || body.ChatRuntimeSkippedPinnedCount != 1 || body.ChatRuntimeSkippedProtectedCount != 1 || body.ChatRuntimeScannedCount != 4 {
+		t.Fatalf("expected chatRuntime cleanup counts, got %+v", body)
 	}
 	if history.lastCleanupOption.InactiveDuration != 7*24*time.Hour {
 		t.Fatalf("expected session cleanup still invoked with fixed threshold, got %+v", history.lastCleanupOption)
 	}
 }
 
-func TestSessionCleanupHandlerDeletesInactiveChatOwnedTerminalSessions(t *testing.T) {
+func TestSessionCleanupHandlerDeletesInactiveChatRuntimeSessions(t *testing.T) {
 	now := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
 	old := now.Add(-8 * 24 * time.Hour)
 	history := &stubSessionHistory{}
-	terminals := &stubWebTerminalService{
-		listByOwner: map[string][]terminaldomain.Session{
-			terminalSessionOwnerID: {
-				{
-					ID:           "terminal-old",
-					OwnerID:      terminalSessionOwnerID,
-					Status:       terminaldomain.SessionStatusReady,
-					CreatedAt:    old,
-					LastOutputAt: old,
-					UpdatedAt:    old,
-				},
-			},
+	chatRuntimes := &stubWebChatRuntimeService{
+		listByOwner: map[string][]chatruntimedomain.Session{
 			chatSessionOwnerID: {
 				{
 					ID:           "chat-old",
 					OwnerID:      chatSessionOwnerID,
-					Status:       terminaldomain.SessionStatusReady,
+					Status:       chatruntimedomain.SessionStatusReady,
+					CreatedAt:    old,
+					LastOutputAt: old,
+					UpdatedAt:    old,
+				},
+				{
+					ID:           "chat-older",
+					OwnerID:      chatSessionOwnerID,
+					Status:       chatruntimedomain.SessionStatusReady,
 					CreatedAt:    old,
 					LastOutputAt: old,
 					UpdatedAt:    old,
@@ -443,23 +441,23 @@ func TestSessionCleanupHandlerDeletesInactiveChatOwnedTerminalSessions(t *testin
 		},
 	}
 	server := &Server{
-		sessions:  history,
-		terminals: terminals,
-		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		sessions:     history,
+		chatRuntimes: chatRuntimes,
+		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	server.ensureMaintenanceService()
 
 	body := server.maintenance.RunSessionCleanup(now)
 
 	expectedDeletes := []string{
-		terminalSessionOwnerID + ":terminal-old",
 		chatSessionOwnerID + ":chat-old",
+		chatSessionOwnerID + ":chat-older",
 	}
-	if !reflect.DeepEqual(terminals.deleteOwnerIDs, expectedDeletes) {
-		t.Fatalf("expected terminal and chat terminal deletes, got %+v", terminals.deleteOwnerIDs)
+	if !reflect.DeepEqual(chatRuntimes.deleteOwnerIDs, expectedDeletes) {
+		t.Fatalf("expected chat runtime deletes, got %+v", chatRuntimes.deleteOwnerIDs)
 	}
-	if body.TerminalDeletedCount != 2 || body.TerminalScannedCount != 2 {
-		t.Fatalf("expected combined terminal cleanup counts, got %+v", body)
+	if body.ChatRuntimeDeletedCount != 2 || body.ChatRuntimeScannedCount != 2 {
+		t.Fatalf("expected combined chatRuntime cleanup counts, got %+v", body)
 	}
 }
 
@@ -556,7 +554,7 @@ func TestSessionCleanupHandlerProtectsSessionsWithActiveTasks(t *testing.T) {
 		t.Fatalf("expected queued and running task sessions protected, got %+v", history.lastCleanupOption.ProtectedSessionIDs)
 	}
 	if protected["old-success"] {
-		t.Fatalf("expected terminal task session unprotected, got %+v", history.lastCleanupOption.ProtectedSessionIDs)
+		t.Fatalf("expected chatRuntime task session unprotected, got %+v", history.lastCleanupOption.ProtectedSessionIDs)
 	}
 }
 

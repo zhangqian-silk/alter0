@@ -4,7 +4,6 @@
   "scripts": {
     "test:e2e": "playwright test -c playwright.config.js",
     "test:e2e:list": "playwright test -c playwright.config.js --list",
-    "test:e2e:terminal": "playwright test -c playwright.config.js e2e/terminal.spec.ts",
     "playwright:install": "playwright install chromium"
   },
   "devDependencies": {

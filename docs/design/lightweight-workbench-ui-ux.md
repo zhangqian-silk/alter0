@@ -5,11 +5,9 @@ This design pass keeps Alter0 as a thin, private wrapper around strong CLI runti
 Generated reference boards:
 
 - Chat: `docs/design/references/chat-reference.png`
-- Terminal: `docs/design/references/terminal-reference.png`
 - Settings: `docs/design/references/settings-reference.png`
 - Login: `docs/design/references/login-reference.png`
 - Workbench page states: `docs/design/references/workbench-pages-reference.png`
-- Terminal overlays: `docs/design/references/terminal-overlays-reference.png`
 - Settings page states: `docs/design/references/settings-pages-reference.png`
 - Settings detail states: `docs/design/references/settings-detail-reference.png`
 
@@ -17,8 +15,8 @@ Generated reference boards:
 
 - Product tone: private, lightweight, operational, high-trust.
 - Visual system: off-white page, white surfaces, ink text, thin slate borders, green/teal status accent, restrained shadows, maximum 8px radius for key surfaces.
-- Navigation: only Chat, Terminal, Settings are top-level routes. Running-session history lives in the navigation rail for runtime pages.
-- Desktop behavior: left rail stays persistent; runtime pages prioritize the active conversation or terminal; settings uses index plus detail/content.
+- Navigation: only Chat and Settings are top-level routes. Running-session history lives in the navigation rail for runtime pages.
+- Desktop behavior: left rail stays persistent; runtime pages prioritize the active conversation; settings uses index plus detail/content.
 - Mobile behavior: primary content first; navigation and sessions move into drawers; composer stays fixed near the bottom with safe-area padding.
 
 ## Chat
@@ -34,34 +32,6 @@ The message timeline and composer are first. Sessions are available from the men
 
 UX rules:
 Session selection should be scannable by title and recency. The model/skill controls should be discoverable but visually secondary to the composer. Empty state prompts should be concise and never feel like a landing page.
-
-## Terminal
-
-Product design:
-Terminal is a manual execution surface. It is for directly selected terminal/Codex style work, not for automatic routing from chat. The user should immediately understand which workspace and process status they are controlling.
-
-PC UI:
-The desktop page emphasizes the active terminal output with a high-contrast terminal-like reading surface, a stable composer, a session rail, and compact workspace/status metadata.
-
-Mobile UI:
-The terminal output takes almost the whole viewport. Sessions and details move to drawers. The composer remains large enough for prompts and commands without requiring precise taps.
-
-UX rules:
-Output must remain selectable and readable. Status should be visible but not decorative. Attach/send controls must be touch-safe. Failed, exited, and interrupted states should appear near the composer because that is where recovery happens.
-
-### Terminal Overlays
-
-Product design:
-The Terminal composer has two live overlays: skill selection and Codex slash commands. Both overlays should feel like command surfaces, not configuration pages.
-
-PC UI:
-The slash command list opens above the composer as a dense single-column command palette with command token, label, hover state, and scroll containment. The skill selector opens as a compact sheet above the composer with selected count implied through checked rows, short descriptions, and touch-safe toggles.
-
-Mobile UI:
-Both overlays are viewport-aware fixed panels above the composer and keyboard safe area. They must never cover the full screen unless content requires scrolling.
-
-UX rules:
-Typing `/` should immediately narrow commands. Tapping a command inserts it and returns focus to the composer. Skill toggles update the next run only, so the panel should be visually secondary to Send.
 
 ## Settings
 

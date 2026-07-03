@@ -92,7 +92,7 @@ var sessionTitleActionWords = []string{
 }
 
 var sessionTitleTechnicalWords = []string{
-	"terminal",
+	"chatRuntime",
 
 	"chat",
 	"session",
@@ -166,7 +166,7 @@ func inferAutoSessionTitleState(title string, fallback string) (bool, int) {
 	normalizedFallback := normalizeSessionTitleText(fallback)
 	if normalizedTitle == "" ||
 		strings.EqualFold(normalizedTitle, normalizedFallback) ||
-		strings.EqualFold(normalizedTitle, defaultTerminalSessionTitle) {
+		strings.EqualFold(normalizedTitle, defaultChatRuntimeSessionTitle) {
 		return true, 0
 	}
 	trimmed := trimSessionBootstrapPrefix(normalizedTitle)
@@ -187,7 +187,7 @@ func nextAutoSessionTitle(currentTitle string, currentManual bool, currentScore 
 	}
 	normalizedCurrent := normalizeSessionTitleText(currentTitle)
 	if (strings.EqualFold(normalizedCurrent, normalizeSessionTitleText(fallback)) ||
-		strings.EqualFold(normalizedCurrent, defaultTerminalSessionTitle)) && title != currentTitle {
+		strings.EqualFold(normalizedCurrent, defaultChatRuntimeSessionTitle)) && title != currentTitle {
 		return title, nextAuto, score, true
 	}
 	if currentScore > 0 && isSupplementalConstraintTitle(title) {

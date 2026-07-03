@@ -118,7 +118,7 @@ func (s TaskStatus) IsValid() bool {
 	}
 }
 
-func (s TaskStatus) IsTerminal() bool {
+func (s TaskStatus) IsChatRuntime() bool {
 	return s == TaskStatusSuccess || s == TaskStatusFailed || s == TaskStatusCanceled
 }
 

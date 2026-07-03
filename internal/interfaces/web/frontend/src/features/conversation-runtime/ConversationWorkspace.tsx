@@ -375,12 +375,12 @@ function useConversationWorkspaceController(
   const emptyStateDescription = language === "zh"
     ? "对话、过程和交付结果都在同一条时间线里推进。"
     : "Conversation, process, and delivery stay in a single timeline.";
-  const sessionPaneTitle = copy.terminalSessions;
-  const newSessionLabel = copy.terminalNewShort;
+  const sessionPaneTitle = copy.chatSessions;
+  const newSessionLabel = language === "zh" ? "新对话" : "New";
   const sessionCountLabel = language === "zh"
     ? `${runtime.sessionItems.length} 个会话`
     : `${runtime.sessionItems.length} sessions`;
-  const runtimeViewAlias = runtime.route === "terminal" ? "terminal" : "conversation";
+  const runtimeViewAlias = "conversation";
   const activeSessionBadgeLabel = language === "zh" ? "当前" : "Current";
   const idleSessionBadgeLabel = language === "zh" ? "会话" : "Session";
   const viewSessionDetailsLabel = language === "zh" ? "详情" : "Details";
@@ -939,7 +939,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   const composerSend = language === "zh" ? "发送" : "Send";
   const composerMetaLabel = composerAttachmentError || undefined;
   const composerBusy = composerRuntime.busy;
-  const runtimeComposerKind = composerRuntime.route === "terminal" ? "terminal" : "chat";
+  const runtimeComposerKind = "chat";
   const composerAddAttachmentLabel = language === "zh" ? "添加附件" : "Add attachment";
   const composerClosePreviewLabel = language === "zh" ? "关闭预览" : "Close preview";
   const composerPreviewPrefix = language === "zh" ? "预览" : "Preview";
@@ -1273,7 +1273,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
         void handleComposerAttachmentSelection(event.target.files);
       }}
       attachments={composerRuntime.draftAttachments}
-      attachmentStripProps={{ "data-runtime-attachments": runtimeComposerKind === "terminal" ? "terminal" : "conversation" }}
+      attachmentStripProps={{ "data-runtime-attachments": "conversation" }}
       attachmentPreviewLabel={(attachment) => `${composerPreviewPrefix} ${attachment.name}`}
       attachmentRemoveLabel={(attachment) => `${composerRemovePrefix} ${attachment.name}`}
       previewAttachment={previewAttachment}
@@ -1305,7 +1305,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
       panelContent={conversationComposerPanel}
       onPanelDismiss={() => composerRuntime.closeInspector()}
       panelProps={{
-        "data-runtime-config-surface": runtimeComposerKind === "terminal" ? "terminal" : "conversation",
+        "data-runtime-config-surface": "conversation",
       }}
       metaContent={composerMetaLabel}
       addAttachmentLabel={composerAddAttachmentLabel}

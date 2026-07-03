@@ -52,8 +52,8 @@ export function PrimaryNav({
 }: PrimaryNavProps) {
   const copy = getLegacyShellCopy(language);
   const navToggleLabel = navCollapsed ? copy.navExpandLabel : copy.navCollapseLabel;
-  const sessionRailTitle = copy.terminalSessions;
-  const sessionRailPrimaryActionLabel = copy.terminalNewShort;
+  const sessionRailTitle = copy.chatSessions;
+  const sessionRailPrimaryActionLabel = copy.chatNewShort;
   const collapseButtonRef = useRef<HTMLButtonElement | null>(null);
   const routeButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const tooltipRef = useRef<HTMLDivElement | null>(null);

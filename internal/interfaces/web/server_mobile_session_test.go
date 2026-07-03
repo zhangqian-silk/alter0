@@ -18,7 +18,7 @@ func TestMobileNewChatEntryReachable(t *testing.T) {
 	}
 }
 
-func TestConversationRuntimeCreatesAndDeletesTerminalBackedSessions(t *testing.T) {
+func TestConversationRuntimeCreatesAndDeletesChatRuntimeBackedSessions(t *testing.T) {
 	source := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx") +
 		readWorkspaceFile(t, "frontend/src/features/shell/components/runtimeSessionApi.ts") +
 		readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationWorkspace.tsx")
@@ -102,7 +102,7 @@ func TestConversationSessionListShowsTitleOnlyRowsWithBusyLoading(t *testing.T) 
 func TestConversationDesktopSessionPaneConstrainsHeightForScroll(t *testing.T) {
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	markers := []string{
-		"[data-runtime-view=\"conversation\"],\n[data-runtime-view=\"terminal\"] {\n  min-height: 100%;\n  height: 100%;",
+		"[data-runtime-view=\"conversation\"],\n[data-runtime-view=\"chatRuntime\"] {\n  min-height: 100%;\n  height: 100%;",
 		".runtime-workspace-session-pane {\n  background: transparent;\n  min-height: 0;\n  height: 100%;",
 		".runtime-workspace-session-pane-shell {\n  min-height: 0;\n  height: 100%;",
 		".runtime-workspace {\n  padding: 8px 0 18px;\n  min-width: 0;\n  max-width: 100%;",
@@ -192,7 +192,7 @@ func TestWorkbenchMobileLayoutUsesConversationDrawer(t *testing.T) {
 	markers := []string{
 		"@media (max-width: 1100px) {",
 		`[data-runtime-view="conversation"],`,
-		`[data-runtime-view="terminal"] {`,
+		`[data-runtime-view="chatRuntime"] {`,
 		"grid-template-columns: 1fr;",
 		".runtime-workspace-session-pane {",
 		"position: fixed;",
@@ -207,130 +207,13 @@ func TestWorkbenchMobileLayoutUsesConversationDrawer(t *testing.T) {
 	}
 }
 
-func TestMobileTerminalComposerConsumesViewportInsetVariables(t *testing.T) {
-	coreStyles := readEmbeddedAsset(t, "static/assets/chat-core.css")
-	coreMarkers := []string{
-		"--mobile-viewport-height: 100dvh;",
-		"--keyboard-offset: 0px;",
-	}
-	for _, marker := range coreMarkers {
-		if !strings.Contains(coreStyles, marker) {
-			t.Fatalf("expected core style marker %q", marker)
-		}
-	}
-
-	terminalStyles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
-	terminalMarkers := []string{
-		"height: min(100%, var(--mobile-viewport-height, 100dvh));",
-		"position: fixed;",
-		"bottom: var(--keyboard-offset);",
-		"padding: 0 10px calc(10px + env(safe-area-inset-bottom));",
-		"gap: 6px;",
-		"padding: var(--terminal-chat-screen-padding-top) var(--terminal-chat-screen-padding-x) 20px;",
-	}
-	for _, marker := range terminalMarkers {
-		if !strings.Contains(terminalStyles, marker) {
-			t.Fatalf("expected terminal style marker %q", marker)
-		}
-	}
-}
-
 func TestMobileRoutePagesConsumeViewportMetrics(t *testing.T) {
-	styles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
+	styles := readEmbeddedAsset(t, "static/assets/chat-runtime.css")
 	markers := []string{
 		".app-shell.info-mode {",
 		"height: calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset));",
 		".chat-pane.page-mode {",
 		"height: min(100%, calc(var(--mobile-viewport-height, 100dvh) + var(--keyboard-offset)));",
-	}
-	for _, marker := range markers {
-		if !strings.Contains(styles, marker) {
-			t.Fatalf("expected style marker %q", marker)
-		}
-	}
-}
-
-func TestNarrowPhoneTerminalWorkspaceAllowsActionWrap(t *testing.T) {
-	styles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
-	markers := []string{
-		"@media (max-width: 420px) {",
-		".terminal-workspace-row {",
-		"flex-wrap: wrap;",
-		".terminal-workspace-actions {",
-		"justify-content: flex-start;",
-		"-webkit-line-clamp: 2;",
-	}
-	for _, marker := range markers {
-		if !strings.Contains(styles, marker) {
-			t.Fatalf("expected style marker %q", marker)
-		}
-	}
-}
-
-func TestNarrowTerminalWorkspaceHidesDuplicateSessionToggle(t *testing.T) {
-	styles := readEmbeddedAsset(t, "static/assets/chat-terminal.css")
-	markers := []string{
-		"@media (max-width: 1100px) {",
-		".terminal-mobile-header {",
-		".terminal-mobile-header-actions {",
-		".terminal-workspace-actions [data-terminal-session-pane-toggle] {",
-		"display: none;",
-	}
-	for _, marker := range markers {
-		if !strings.Contains(styles, marker) {
-			t.Fatalf("expected style marker %q", marker)
-		}
-	}
-}
-
-func TestTerminalMobileActionsLinkWorkbenchNavAndSessionDrawer(t *testing.T) {
-	source := readWorkspaceFile(t, "frontend/src/features/shell/components/ReactManagedTerminalRouteBody.tsx")
-	markers := []string{
-		`const workbench = useWorkbenchContext();`,
-		`const shellCopy = getLegacyShellCopy(workbench.language);`,
-		`mobileHeaderProps: { "data-runtime-mobile-variant": "terminal" },`,
-		`mobileNavButtonClassName: "is-quiet conversation-mobile-nav-toggle",`,
-		`mobileNavButtonProps: { "aria-expanded": workbench.mobileNavOpen },`,
-		`onMobileNav: workbench.toggleMobileNav,`,
-		`mobilePrimaryButtonClassName: "is-primary conversation-mobile-new-session",`,
-		`mobilePrimaryButtonProps: {`,
-		`"data-runtime-create-session": "terminal",`,
-		`"data-runtime-mobile-primary": "terminal",`,
-		`mobileNavButtonLabel: shellCopy.chatMenu,`,
-		`mobilePrimaryButtonLabel: copy.newShort,`,
-	}
-	for _, marker := range markers {
-		if !strings.Contains(source, marker) {
-			t.Fatalf("expected source marker %q", marker)
-		}
-	}
-	forbiddenMarkers := []string{
-		`mobileSessionButtonClassName: "is-quiet conversation-mobile-session-toggle",`,
-		`mobileSessionButtonProps: { "aria-expanded": workbench.mobileSessionPaneOpen },`,
-		`const toggleMobileSessionPane = () => {`,
-		`onMobileSession: toggleMobileSessionPane,`,
-		`mobileSessionButtonLabel: copy.sessions,`,
-	}
-	for _, marker := range forbiddenMarkers {
-		if strings.Contains(source, marker) {
-			t.Fatalf("unexpected source marker %q", marker)
-		}
-	}
-}
-
-func TestTerminalRouteKeepsDedicatedScrollShell(t *testing.T) {
-	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css") +
-		readWorkspaceFile(t, "frontend/public/legacy/chat-terminal.css")
-	markers := []string{
-		".route-view.terminal-route {",
-		"flex-direction: column;",
-		".route-body.terminal-route-body {",
-		"display: flex;",
-		"overflow: hidden;",
-		".terminal-chat-screen {",
-		"overflow-y: auto;",
-		"-webkit-overflow-scrolling: touch;",
-		"touch-action: pan-y;",
 	}
 	for _, marker := range markers {
 		if !strings.Contains(styles, marker) {

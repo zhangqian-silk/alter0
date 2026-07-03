@@ -1,25 +1,22 @@
 import { expect, test, type Page } from "@playwright/test";
 import { waitForAppReady } from "./helpers/guards/app-ready";
 import { loginIfNeeded } from "./helpers/guards/login";
-import { openTerminalRoute } from "./helpers/flows/routes";
 import { installVisualViewportMock, setVisualViewport } from "./helpers/support/visual-viewport";
 
-async function openRuntimeRoute(page: Page, route: "chat" | "terminal"): Promise<void> {
-  await page.goto(`/${route}`);
+async function openRuntimeRoute(page: Page): Promise<void> {
+  await page.goto("/chat");
   await loginIfNeeded(page);
-  if (!new URL(page.url()).pathname.endsWith(`/${route}`)) {
-    await page.goto(`/${route}`);
+  if (!new URL(page.url()).pathname.endsWith("/chat")) {
+    await page.goto("/chat");
   }
   await waitForAppReady(page);
-  const runtimeView = route === "terminal" ? "terminal" : "conversation";
-  await expect(page.locator(`[data-runtime-view='${runtimeView}']`)).toHaveAttribute("data-runtime-route", route);
-  await page.waitForSelector(`[data-composer-form='${runtimeView}']`, { timeout: 20000 });
+  await expect(page.locator("[data-runtime-view='conversation']")).toHaveAttribute("data-runtime-route", "chat");
+  await page.waitForSelector("[data-composer-form='conversation']", { timeout: 20000 });
 }
 
 async function mockConversationRuntimeSessions(
   page: Page,
   options: {
-    route: "chat" | "terminal";
     sessions: Array<Record<string, unknown>>;
     activeSessionID?: string;
   },
@@ -37,10 +34,10 @@ async function mockConversationRuntimeSessions(
     throw new Error("mockConversationRuntimeSessions requires at least one session");
   }
 
-  await page.context().route(`**/api/${options.route}/sessions**`, async (route) => {
+  await page.context().route("**/api/chat/sessions**", async (route) => {
     const url = new URL(route.request().url());
 
-    if (url.pathname.endsWith(`/api/${options.route}/sessions`)) {
+    if (url.pathname.endsWith("/api/chat/sessions")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -68,10 +65,9 @@ async function mockConversationRuntimeSessions(
   await page.addInitScript((payload) => {
     window.sessionStorage.setItem(
       "alter0.web.session.active.v1",
-      JSON.stringify({ [payload.route]: payload.activeSessionID }),
+      JSON.stringify({ chat: payload.activeSessionID }),
     );
   }, {
-    route: options.route,
     activeSessionID,
   });
 }
@@ -79,23 +75,6 @@ async function mockConversationRuntimeSessions(
 async function readConversationViewportGap(page: Page) {
   return page.evaluate(() => {
     const screen = document.querySelector("[data-runtime-screen='conversation']");
-    const composer = document.querySelector(".runtime-composer-shell");
-    if (!(screen instanceof HTMLElement) || !(composer instanceof HTMLElement)) {
-      return null;
-    }
-    const screenRect = screen.getBoundingClientRect();
-    const composerRect = composer.getBoundingClientRect();
-    return {
-      screenBottom: screenRect.bottom,
-      composerTop: composerRect.top,
-      gap: composerRect.top - screenRect.bottom,
-    };
-  });
-}
-
-async function readTerminalViewportGap(page: Page) {
-  return page.evaluate(() => {
-    const screen = document.querySelector("[data-runtime-screen='terminal']");
     const composer = document.querySelector(".runtime-composer-shell");
     if (!(screen instanceof HTMLElement) || !(composer instanceof HTMLElement)) {
       return null;
@@ -132,22 +111,16 @@ async function readWorkspaceHeaderMetrics(page: Page) {
 }
 
 test.describe("Runtime workspace scaffold", () => {
-  test("keeps chat and terminal desktop workspace header dimensions aligned", async ({ page }) => {
+  test("keeps the chat desktop workspace header compact", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 960 });
 
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
     const chatMetrics = await readWorkspaceHeaderMetrics(page);
 
-    await openTerminalRoute(page);
-    const terminalMetrics = await readWorkspaceHeaderMetrics(page);
-
     expect(chatMetrics).not.toBeNull();
-    expect(terminalMetrics).not.toBeNull();
-    expect(terminalMetrics?.headerHeight).toBe(chatMetrics?.headerHeight);
-    expect(terminalMetrics?.detailsHeight).toBe(chatMetrics?.detailsHeight);
-    expect(terminalMetrics?.detailsTop).toBe(chatMetrics?.detailsTop);
-    expect(terminalMetrics?.titleHeight).toBe(chatMetrics?.titleHeight);
-    expect(terminalMetrics?.titleTop).toBe(chatMetrics?.titleTop);
+    expect(chatMetrics?.headerHeight).toBeGreaterThan(0);
+    expect(chatMetrics?.detailsHeight).toBeGreaterThan(0);
+    expect(chatMetrics?.titleHeight).toBeGreaterThan(0);
   });
 
   test("keeps the desktop chat session pane scrollable with a long session list", async ({ page }) => {
@@ -177,12 +150,11 @@ test.describe("Runtime workspace scaffold", () => {
     });
 
     await mockConversationRuntimeSessions(page, {
-      route: "chat",
       sessions,
       activeSessionID: sessions[0].id as string,
     });
     await page.setViewportSize({ width: 1440, height: 960 });
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
 
     const sessionList = page.locator(
       "[data-nav-session-rail='chat'] [data-runtime-session-list='conversation']",
@@ -211,7 +183,7 @@ test.describe("Runtime workspace scaffold", () => {
   });
 
   test("submits chat on the first click and keeps the chat viewport above the composer", async ({ page }) => {
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
 
     const input = page.locator("[data-composer-input='conversation']");
     const submit = page.locator("[data-composer-submit='conversation']");
@@ -227,11 +199,11 @@ test.describe("Runtime workspace scaffold", () => {
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
   });
 
-  test("submits chat and terminal directly from the mobile send button while the keyboard is open", async ({ page }) => {
+  test("submits chat directly from the mobile send button while the keyboard is open", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
 
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
     const chatInput = page.locator("[data-composer-input='conversation']");
     const chatSubmit = page.locator("[data-composer-submit='conversation']");
     await chatInput.click();
@@ -243,24 +215,12 @@ test.describe("Runtime workspace scaffold", () => {
     await chatSubmit.dispatchEvent("touchstart");
     await expect(page.locator(".msg.user .msg-bubble").last()).toContainText("tap send with keyboard open");
     await expect(chatInput).toHaveValue("");
-
-    await openTerminalRoute(page);
-    const terminalInput = page.locator("[data-composer-input='terminal']");
-    const terminalSubmit = page.locator("[data-runtime-submit='terminal']");
-    await terminalInput.click();
-    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
-    await expect.poll(async () => page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
-    )).toBe("312px");
-    await terminalInput.fill("pwd");
-    await terminalSubmit.dispatchEvent("touchstart");
-    await expect(terminalInput).toHaveValue("");
   });
 
   test("runs conversation mobile header actions from the first touch while the keyboard is open", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
 
     const chatInput = page.locator("[data-composer-input='conversation']");
     await chatInput.click();
@@ -279,45 +239,32 @@ test.describe("Runtime workspace scaffold", () => {
   });
 
   test("keeps the chat viewport above the composer", async ({ page }) => {
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
 
     const metrics = await readConversationViewportGap(page);
     expect(metrics).not.toBeNull();
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
   });
 
-  test("keeps the terminal viewport above the composer", async ({ page }) => {
-    await openTerminalRoute(page);
-
-    const metrics = await readTerminalViewportGap(page);
-    expect(metrics).not.toBeNull();
-    expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
-  });
-
-  test("keeps chat, chat, and terminal viewports above the composer on mobile", async ({ page }) => {
+  test("keeps chat viewports above the composer on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 932 });
 
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
     let metrics = await readConversationViewportGap(page);
     expect(metrics).not.toBeNull();
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
 
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
     metrics = await readConversationViewportGap(page);
     expect(metrics).not.toBeNull();
     expect(metrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
-
-    await openTerminalRoute(page);
-    const terminalMetrics = await readTerminalViewportGap(page);
-    expect(terminalMetrics).not.toBeNull();
-    expect(terminalMetrics?.gap ?? -1).toBeGreaterThanOrEqual(0);
   });
 
-  test("restores chat and terminal viewport height after the mobile keyboard closes", async ({ page }) => {
+  test("restores chat viewport height after the mobile keyboard closes", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
 
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
     const conversationInput = page.locator("[data-composer-input='conversation']");
     await conversationInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
@@ -336,62 +283,15 @@ test.describe("Runtime workspace scaffold", () => {
     )).toBe("0px");
     await expect.poll(async () => (await readConversationViewportGap(page))?.gap ?? Number.POSITIVE_INFINITY)
       .toBeLessThanOrEqual(20);
-
-    await openTerminalRoute(page);
-    const terminalInput = page.locator("[data-composer-input='terminal']");
-    await terminalInput.click();
-    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
-    await expect.poll(async () => page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
-    )).toBe("312px");
-
-    await page.evaluate(() => {
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
-    });
-    await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
-    await expect.poll(async () => page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
-    )).toBe("0px");
-    await expect.poll(async () => (await readTerminalViewportGap(page))?.gap ?? Number.POSITIVE_INFINITY)
-      .toBeLessThanOrEqual(20);
   });
 
-  test("holds keyboard offset until chat and terminal viewports actually recover after blur", async ({ page }) => {
+  test("holds keyboard offset until chat viewport actually recovers after blur", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
 
-    await openRuntimeRoute(page, "chat");
+    await openRuntimeRoute(page);
     const conversationInput = page.locator("[data-composer-input='conversation']");
     await conversationInput.click();
-    await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
-    await expect.poll(async () => page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
-    )).toBe("312px");
-
-    await page.evaluate(() => {
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
-    });
-    await expect.poll(async () => page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
-    )).toBe("312px");
-
-    await setVisualViewport(page, { width: 430, height: 760, offsetTop: 0 });
-    await expect.poll(async () => page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
-    )).toBe("172px");
-
-    await setVisualViewport(page, { width: 430, height: 932, offsetTop: 0 });
-    await expect.poll(async () => page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()
-    )).toBe("0px");
-
-    await openTerminalRoute(page);
-    const terminalInput = page.locator("[data-composer-input='terminal']");
-    await terminalInput.click();
     await setVisualViewport(page, { width: 430, height: 620, offsetTop: 0 });
     await expect.poll(async () => page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--keyboard-offset").trim()

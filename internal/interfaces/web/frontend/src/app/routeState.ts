@@ -3,7 +3,7 @@ import { TOP_LEVEL_WORKBENCH_ROUTES } from "../features/shell/legacyShellConfig"
 import { sessionRouteToken } from "../shared/session/sessionHash";
 
 export const DEFAULT_WORKBENCH_ROUTE = "chat";
-export type WorkbenchSessionRoute = "chat" | "terminal";
+export type WorkbenchSessionRoute = "chat";
 
 const KNOWN_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);
 const SESSION_QUERY_KEY = "session_id";

@@ -131,7 +131,7 @@ describe("ScrollJumpStrip", () => {
     });
   });
 
-  it("applies terminal-style visible-range targeting for conversation timelines", async () => {
+  it("applies chatRuntime-style visible-range targeting for conversation timelines", async () => {
     const containerRef = createRef<HTMLElement>();
     const { container } = render(
       <section ref={containerRef}>
@@ -326,26 +326,26 @@ describe("ScrollJumpStrip", () => {
     expect(assignedTargets.every(Boolean)).toBe(true);
   });
 
-  it("can render terminal jump controls with terminal-specific selectors", async () => {
+  it("can render chatRuntime jump controls with chatRuntime-specific selectors", async () => {
     const containerRef = createRef<HTMLElement>();
     const { container } = render(
       <section ref={containerRef}>
-        <article data-terminal-turn="turn-1">turn-1</article>
-        <article data-terminal-turn="turn-2">turn-2</article>
-        <article data-terminal-turn="turn-3">turn-3</article>
+        <article data-chat-runtime-turn="turn-1">turn-1</article>
+        <article data-chat-runtime-turn="turn-2">turn-2</article>
+        <article data-chat-runtime-turn="turn-3">turn-3</article>
         <ScrollJumpStrip
-          scope="terminal"
-          namespace="terminal"
+          scope="chatRuntime"
+          namespace="chatRuntime"
           language="en"
           containerRef={containerRef}
-          itemSelector="[data-terminal-turn]"
-          itemAttribute="data-terminal-turn"
+          itemSelector="[data-chat-runtime-turn]"
+          itemAttribute="data-chat-runtime-turn"
         />
       </section>,
     );
 
     const scrollContainer = container.firstElementChild as HTMLElement;
-    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-terminal-turn]")];
+    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-chat-runtime-turn]")];
     applyScrollableMetrics(scrollContainer, targets, [0, 300, 620], {
       clientHeight: 260,
       scrollHeight: 900,
@@ -355,10 +355,10 @@ describe("ScrollJumpStrip", () => {
     fireEvent.scroll(scrollContainer);
 
     await waitFor(() => {
-      expect(container.querySelector("[data-terminal-jump-top]")).toHaveClass("is-visible");
-      expect(container.querySelector("[data-terminal-jump-prev]")).toHaveAttribute("data-terminal-jump-target", "turn-2");
-      expect(container.querySelector("[data-terminal-jump-next]")).toHaveAttribute("data-terminal-jump-target", "turn-3");
-      expect(container.querySelector("[data-terminal-jump-bottom]")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-chat-runtime-jump-top]")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-chat-runtime-jump-prev]")).toHaveAttribute("data-chat-runtime-jump-target", "turn-2");
+      expect(container.querySelector("[data-chat-runtime-jump-next]")).toHaveAttribute("data-chat-runtime-jump-target", "turn-3");
+      expect(container.querySelector("[data-chat-runtime-jump-bottom]")).toHaveClass("is-visible");
     });
   });
 

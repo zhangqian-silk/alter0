@@ -158,6 +158,6 @@ describe("ReactManagedRouteBody", () => {
     expect(isReactManagedRouteBody("skill")).toBe(false);
     expect(isReactManagedRouteBody("memory")).toBe(false);
     expect(isReactManagedRouteBody("products")).toBe(false);
-    expect(isReactManagedRouteBody("terminal")).toBe(false);
+    expect(isReactManagedRouteBody("chatRuntime")).toBe(false);
   });
 });

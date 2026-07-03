@@ -113,16 +113,16 @@ type RuntimeBlock struct {
 	Message   string `json:"message,omitempty"`
 }
 
-func terminalRuntimeTraceEvent(sessionID string, turnID string, seq int, summary runtimeEventSummary) RuntimeTraceEvent {
+func chatRuntimeRuntimeTraceEvent(sessionID string, turnID string, seq int, summary runtimeEventSummary) RuntimeTraceEvent {
 	eventType := strings.ToLower(strings.TrimSpace(summary.Type))
-	kind := terminalRuntimeEventKind(eventType)
-	status := terminalRuntimeStatus(summary.Status)
+	kind := chatRuntimeRuntimeEventKind(eventType)
+	status := chatRuntimeRuntimeStatus(summary.Status)
 	title := strings.TrimSpace(summary.Title)
 	if title == "" {
 		title = strings.TrimSpace(summary.Preview)
 	}
 	if title == "" {
-		title = terminalDefaultEventTitle(kind)
+		title = chatRuntimeDefaultEventTitle(kind)
 	}
 	event := RuntimeTraceEvent{
 		ID:        strings.TrimSpace(summary.ID),
@@ -136,15 +136,15 @@ func terminalRuntimeTraceEvent(sessionID string, turnID string, seq int, summary
 			EventType: summary.Type,
 			ItemID:    summary.ID,
 		},
-		Role:        terminalRuntimeRole(kind),
+		Role:        chatRuntimeRuntimeRole(kind),
 		Kind:        kind,
-		Lifecycle:   terminalRuntimeLifecycle(summary.Status),
+		Lifecycle:   chatRuntimeRuntimeLifecycle(summary.Status),
 		Status:      status,
 		Title:       title,
 		Summary:     firstNonEmpty(summary.Preview, title),
-		Blocks:      terminalRuntimeBlocks(summary.Blocks, summary.Preview, kind, summary.HasDetail),
-		Action:      terminalRuntimeAction(kind),
-		Visibility:  terminalRuntimeVisibility(kind),
+		Blocks:      chatRuntimeRuntimeBlocks(summary.Blocks, summary.Preview, kind, summary.HasDetail),
+		Action:      chatRuntimeRuntimeAction(kind),
+		Visibility:  chatRuntimeRuntimeVisibility(kind),
 		StartedAt:   summary.StartedAt,
 		CompletedAt: summary.FinishedAt,
 		DurationMS:  summary.DurationMS,
@@ -160,7 +160,7 @@ func terminalRuntimeTraceEvent(sessionID string, turnID string, seq int, summary
 	return event
 }
 
-func terminalRuntimeEventKind(eventType string) string {
+func chatRuntimeRuntimeEventKind(eventType string) string {
 	switch eventType {
 	case "reasoning":
 		return "reasoning"
@@ -179,7 +179,7 @@ func terminalRuntimeEventKind(eventType string) string {
 	}
 }
 
-func terminalRuntimeStatus(status string) string {
+func chatRuntimeRuntimeStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "queued":
 		return "queued"
@@ -198,7 +198,7 @@ func terminalRuntimeStatus(status string) string {
 	}
 }
 
-func terminalRuntimeLifecycle(status string) string {
+func chatRuntimeRuntimeLifecycle(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "running", "queued", "busy", "starting":
 		return "started"
@@ -215,14 +215,14 @@ func terminalRuntimeLifecycle(status string) string {
 	}
 }
 
-func terminalRuntimeRole(kind string) string {
+func chatRuntimeRuntimeRole(kind string) string {
 	if kind == "tool_result" {
 		return "tool"
 	}
 	return "assistant"
 }
 
-func terminalRuntimeVisibility(kind string) string {
+func chatRuntimeRuntimeVisibility(kind string) string {
 	switch kind {
 	case "assistant_commentary", "plan", "reasoning", "shell_command":
 		return "collapsed"
@@ -231,23 +231,23 @@ func terminalRuntimeVisibility(kind string) string {
 	}
 }
 
-func terminalRuntimeAction(kind string) *RuntimeAction {
+func chatRuntimeRuntimeAction(kind string) *RuntimeAction {
 	if kind != "shell_command" {
 		return nil
 	}
 	return &RuntimeAction{Family: "shell", Name: "shell"}
 }
 
-func terminalRuntimeBlocks(blocks []RuntimeDetailBlock, preview string, kind string, hasDetail bool) []RuntimeBlock {
+func chatRuntimeRuntimeBlocks(blocks []RuntimeDetailBlock, preview string, kind string, hasDetail bool) []RuntimeBlock {
 	result := make([]RuntimeBlock, 0, len(blocks))
 	for _, block := range blocks {
 		blockType := strings.ToLower(strings.TrimSpace(block.Type))
 		content := block.Content
 		switch blockType {
-		case "terminal":
-			command, output := splitTerminalContent(content)
+		case "chatRuntime":
+			command, output := splitChatRuntimeContent(content)
 			result = append(result, RuntimeBlock{
-				Type:     "terminal",
+				Type:     "chatRuntime",
 				Title:    strings.TrimSpace(block.Title),
 				Command:  strings.TrimSpace(command),
 				Output:   strings.TrimSpace(output),
@@ -293,12 +293,12 @@ func terminalRuntimeBlocks(blocks []RuntimeDetailBlock, preview string, kind str
 		return []RuntimeBlock{}
 	}
 	if kind == "shell_command" {
-		return []RuntimeBlock{{Type: "terminal", Command: fallback, Language: "shell"}}
+		return []RuntimeBlock{{Type: "chatRuntime", Command: fallback, Language: "shell"}}
 	}
 	return []RuntimeBlock{{Type: "markdown", Text: fallback}}
 }
 
-func splitTerminalContent(content string) (string, string) {
+func splitChatRuntimeContent(content string) (string, string) {
 	parts := strings.SplitN(content, "\n\n", 2)
 	if len(parts) == 1 {
 		return parts[0], ""
@@ -306,7 +306,7 @@ func splitTerminalContent(content string) (string, string) {
 	return parts[0], parts[1]
 }
 
-func terminalDefaultEventTitle(kind string) string {
+func chatRuntimeDefaultEventTitle(kind string) string {
 	switch kind {
 	case "assistant_commentary":
 		return "Progress"
