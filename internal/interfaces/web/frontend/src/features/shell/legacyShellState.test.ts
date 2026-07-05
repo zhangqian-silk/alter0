@@ -33,7 +33,7 @@ describe("legacyShellState", () => {
     });
 
     expect(isLegacyShellMobileViewport()).toBe(true);
-    expect(LEGACY_SHELL_MOBILE_BREAKPOINT_PX).toBe(1100);
-    expect(matchMedia).toHaveBeenCalledWith("(max-width: 1100px)");
+    expect(LEGACY_SHELL_MOBILE_BREAKPOINT_PX).toBe(1280);
+    expect(matchMedia).toHaveBeenCalledWith("(max-width: 1280px)");
   });
 });

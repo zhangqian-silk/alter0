@@ -86,7 +86,7 @@ describe("ChatMessageRegion", () => {
     expect(nextItems[1]).not.toBe(firstItems[1]);
   });
 
-  it("hides completed chat assistant metadata and message timestamps", () => {
+  it("renders completed assistant role and time metadata at the bottom without legacy status chrome", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
@@ -110,11 +110,38 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".assistant-message-shell")).toBeInTheDocument();
     expect(article.querySelector(".runtime-message-bubble")).toBeInTheDocument();
     expect(article.querySelector(".runtime-message-assistant-shell")).toBeInTheDocument();
-    expect(article.querySelector(".msg-meta")).not.toBeInTheDocument();
+    const meta = article.querySelector(".msg-meta");
+    expect(meta).toBeInTheDocument();
+    expect(meta).toHaveTextContent("Alter0");
+    expect(meta?.textContent).toMatch(/\d{1,2}:\d{2}/);
     expect(article.textContent).not.toContain("CHAT");
     expect(article.textContent).not.toContain("MODEL");
     expect(article.textContent).not.toContain("Done");
-    expect(article.textContent).not.toContain("10:20");
+    expect(meta).toBe(article.lastElementChild);
+  });
+
+  it("renders user role and time metadata at the bottom of the user turn", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[buildAssistantMessage({
+          id: "message-user",
+          role: "user",
+          text: "Use the design draft for Chat.",
+          at: Date.parse("2026-04-21T07:38:00Z"),
+        })]}
+      />,
+    );
+
+    const article = document.querySelector("[data-message-id='message-user']") as HTMLElement;
+    const meta = article.querySelector(".msg-meta");
+
+    expect(article).toHaveClass("runtime-message-user");
+    expect(meta).toBeInTheDocument();
+    expect(meta).toHaveTextContent("You");
+    expect(meta?.textContent).toMatch(/\d{1,2}:\d{2}/);
+    expect(meta).toBe(article.lastElementChild);
   });
 
   it("does not render legacy assistant status chrome while a chat reply is still streaming", () => {
@@ -134,7 +161,7 @@ describe("ChatMessageRegion", () => {
     expect(screen.queryByText("MODEL")).not.toBeInTheDocument();
   });
 
-  it("hides user prompt timestamps in the shared conversation timeline", () => {
+  it("keeps user prompt timestamps out of the bubble while rendering bottom metadata", () => {
     render(
       <ChatMessageRegion
         sessionId="session-1"
@@ -156,7 +183,9 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".runtime-message-bubble")).toBeInTheDocument();
     expect(article.querySelector(".runtime-message-user-shell")).toBeInTheDocument();
     expect(article.querySelector(".chatRuntime-log-time")).not.toBeInTheDocument();
-    expect(article.textContent).not.toContain("10:20");
+    const meta = article.querySelector(".msg-meta");
+    expect(meta).toBeInTheDocument();
+    expect(meta).toBe(article.lastElementChild);
   });
 
   it("renders assistant markdown images as lazy-loaded message media", () => {

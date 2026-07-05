@@ -26,43 +26,65 @@ describe("ReactManagedRouteBody", () => {
 
   it("renders settings as the single settings route and switches compact sections without changing paths", async () => {
     const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [],
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [],
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [],
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          long_term: { exists: false },
-          daily: { items: [] },
-          mandatory: { exists: false },
-          specification: { exists: false },
-        }),
-      );
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/control/runtime/restart") {
+        return Promise.resolve(jsonResponse({ status: "idle" }));
+      }
+      if (url === "/api/memory/context") {
+        return Promise.resolve(
+          jsonResponse({
+            long_term: { exists: false },
+            daily: { items: [] },
+            mandatory: { exists: false },
+            specification: { exists: false },
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ items: [] }));
+    });
 
     expect(isReactManagedRouteBody("settings")).toBe(true);
     expect(isReactManagedRouteBody("overview")).toBe(false);
     expect(isReactManagedRouteBody("memory")).toBe(false);
 
     window.history.replaceState({}, "", "/settings");
-    const { container } = render(<ReactManagedRouteBody route="settings" language="en" />);
+    const onToggleLanguage = vi.fn();
+    const { container } = render(
+      <ReactManagedRouteBody route="settings" language="en" onToggleLanguage={onToggleLanguage} />,
+    );
 
     expect(container.querySelector(".settings-route-body")).toHaveAttribute("data-settings-route", "runtime");
     expect(container.querySelectorAll("[data-settings-route-group]")).toHaveLength(1);
+    const settingsTabs = screen.getAllByRole("button").filter((button) => button.classList.contains("settings-route-tab"));
+    expect(settingsTabs.map((button) => button.textContent?.trim())).toEqual([
+      "RuntimeRU",
+      "SkillsSK",
+      "MemoryME",
+      "SchedulesSC",
+      "GeneralGE",
+    ]);
     expect(screen.getByRole("button", { name: "Runtime" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "Runtime" }).querySelector(".settings-route-tab-icon")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Runtime" }).querySelector(".settings-route-tab-shortcut")).toHaveTextContent("RU");
+    expect(container.querySelector(".settings-section-frame")).toHaveAttribute("data-settings-section-frame", "runtime");
+    expect(screen.queryByRole("button", { name: "Language" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Restart service" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "General" }));
+
+    await waitFor(() => {
+      expect(container.querySelector(".settings-route-body")).toHaveAttribute("data-settings-route", "general");
+    });
+    expect(container.querySelector(".settings-section-frame")).toHaveAttribute("data-settings-section-frame", "general");
+    const languageButton = screen.getByRole("button", { name: "Language English" });
+    expect(languageButton).toBeInTheDocument();
+    expect(languageButton).toHaveClass("settings-language-control");
+    expect(languageButton.querySelector(".settings-language-label")).toHaveTextContent("Language");
+    expect(languageButton.querySelector(".settings-language-value")).toHaveTextContent("English");
+    expect(screen.getByRole("button", { name: "Restart service" })).toBeInTheDocument();
+    fireEvent.click(languageButton);
+    expect(onToggleLanguage).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Memory" }));
 
@@ -73,6 +95,7 @@ describe("ReactManagedRouteBody", () => {
     expect(container.querySelector(".settings-route-body")).toHaveAttribute("data-settings-route", "memory");
     expect(screen.getByRole("button", { name: "Memory" })).toHaveAttribute("aria-current", "page");
     expect(container.querySelector(".settings-route-content")).toHaveAttribute("data-settings-route-content", "memory");
+    expect(container.querySelector(".settings-section-frame")).toHaveAttribute("data-settings-section-frame", "memory");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/memory/context",
@@ -81,7 +104,7 @@ describe("ReactManagedRouteBody", () => {
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/memory/tasks"), expect.anything());
   });
 
-  it("keeps the service restart flow reachable from runtime settings", async () => {
+  it("keeps the service restart flow reachable from general settings", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/control/llm/providers") {
@@ -121,9 +144,17 @@ describe("ReactManagedRouteBody", () => {
     }));
 
     window.history.replaceState({}, "", "/settings");
-    render(<ReactManagedRouteBody route="settings" language="en" />);
+    render(<ReactManagedRouteBody route="settings" language="en" onToggleLanguage={vi.fn()} />);
 
     await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Runtime" })).toHaveAttribute("aria-current", "page");
+    });
+    expect(screen.queryByRole("button", { name: "Restart service" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "General" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "General" })).toHaveAttribute("aria-current", "page");
       expect(screen.getByRole("button", { name: "Restart service" })).toBeInTheDocument();
     });
 

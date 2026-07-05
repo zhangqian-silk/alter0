@@ -147,64 +147,54 @@ export type RuntimeWorkspacePageController = {
   composerNode?: ReactNode;
 };
 
-export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorkspacePageController }) {
+function RuntimeWorkspaceNavigationSessionList({
+  sessionList,
+}: {
+  sessionList: RuntimeWorkspacePageController["sessionList"];
+}) {
   const {
     route,
-    setRuntimeSessionRail,
+    navigate,
   } = useWorkbenchContext();
   const [openActionMenuID, setOpenActionMenuID] = useState("");
-  const detailsSummary = controller.header.detailsSummary || [];
-  const workspaceHeader = useMemo(() => controller.header.customHeaderContent ?? (
-    <RuntimeWorkspaceHeader
-      {...controller.header}
-      detailsContent={controller.header.detailsBody || detailsSummary.length > 0 ? (
-        <section className={controller.header.detailsClassName || "workspace-details-content"}>
-          {detailsSummary.length > 0 ? (
-            <div className="workspace-details-summary">
-              {detailsSummary.map((field) => (
-                <RouteFieldRow
-                  key={`${field.label}:${String(field.value)}`}
-                  label={field.label}
-                  value={field.value}
-                  copyLabel={field.copyLabel}
-                  copyable={field.copyable}
-                  mono={field.mono}
-                  multiline={field.multiline}
-                  markdown={field.markdown}
-                />
-              ))}
-            </div>
-          ) : null}
-          {controller.header.detailsBody ? (
-            <div className="workspace-details-body">
-              {controller.header.detailsBody}
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-    />
-  ), [controller.header, detailsSummary]);
-  const sessionPaneBody = useMemo(() => (
+  const routeOwnsSessionSelection = route === "chat" || route === "chatRuntime";
+
+  return (
     <RuntimeSessionList
-      groups={controller.sessionList.groups}
-      emptyState={controller.sessionList.emptyState}
-      listClassName={controller.sessionList.listClassName}
-      listProps={controller.sessionList.listProps}
+      groups={sessionList.groups}
+      emptyState={sessionList.emptyState}
+      listClassName={sessionList.listClassName}
+      listProps={sessionList.listProps}
       renderItem={(item) => {
         const busy = item.statusTone === "busy";
+        const itemActive = routeOwnsSessionSelection && item.active;
+        const shellClassName = itemActive
+          ? item.shellClassName
+          : (item.shellClassName || "runtime-session-card").replace(/\bis-active\b/g, "").trim() || "runtime-session-card";
+        const buttonClassName = itemActive
+          ? item.buttonClassName
+          : (item.buttonClassName || "runtime-session-select").replace(/\bactive\b/g, "").trim() || "runtime-session-select";
+        const shellProps = {
+          ...item.shellProps,
+          "data-runtime-session-state": itemActive ? "active" : "idle",
+        };
+
         return (
           <div
             key={item.id}
             role="listitem"
-            className={openActionMenuID === item.id ? `${item.shellClassName} is-menu-open` : item.shellClassName}
-            {...item.shellProps}
+            className={openActionMenuID === item.id ? `${shellClassName} is-menu-open` : shellClassName}
+            {...shellProps}
           >
             <button
-              className={item.buttonClassName}
+              className={buttonClassName}
               type="button"
-              aria-current={item.active ? "true" : undefined}
+              aria-current={itemActive ? "true" : undefined}
               onClick={() => {
                 setOpenActionMenuID("");
+                if (!routeOwnsSessionSelection) {
+                  navigate("chat");
+                }
                 item.onSelect();
               }}
               {...item.buttonProps}
@@ -212,7 +202,7 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
               <span className="runtime-session-main">
                 <span className="runtime-session-title-row">
                   <span className="sr-only">
-                    {item.active ? item.activeLabel : item.idleLabel}
+                    {itemActive ? item.activeLabel : item.idleLabel}
                     {busy && item.statusLabel ? `, ${item.statusLabel}` : ""}
                   </span>
                   <span className="runtime-session-title-copy">
@@ -340,9 +330,50 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
         );
       }}
     />
-  ), [controller.sessionList, openActionMenuID]);
-  const runtimeSessionRail = useMemo<WorkbenchSessionRail>(() => ({
+  );
+}
+
+export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorkspacePageController }) {
+  const {
     route,
+    setRuntimeSessionRail,
+  } = useWorkbenchContext();
+  const detailsSummary = controller.header.detailsSummary || [];
+  const workspaceHeader = useMemo(() => controller.header.customHeaderContent ?? (
+    <RuntimeWorkspaceHeader
+      {...controller.header}
+      detailsContent={controller.header.detailsBody || detailsSummary.length > 0 ? (
+        <section className={controller.header.detailsClassName || "workspace-details-content"}>
+          {detailsSummary.length > 0 ? (
+            <div className="workspace-details-summary">
+              {detailsSummary.map((field) => (
+                <RouteFieldRow
+                  key={`${field.label}:${String(field.value)}`}
+                  label={field.label}
+                  value={field.value}
+                  copyLabel={field.copyLabel}
+                  copyable={field.copyable}
+                  mono={field.mono}
+                  multiline={field.multiline}
+                  markdown={field.markdown}
+                />
+              ))}
+            </div>
+          ) : null}
+          {controller.header.detailsBody ? (
+            <div className="workspace-details-body">
+              {controller.header.detailsBody}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+    />
+  ), [controller.header, detailsSummary]);
+  const sessionPaneBody = useMemo(() => (
+    <RuntimeWorkspaceNavigationSessionList sessionList={controller.sessionList} />
+  ), [controller.sessionList]);
+  const runtimeSessionRail = useMemo<WorkbenchSessionRail>(() => ({
+    route: "chat",
     countLabel: controller.shell.sessionPaneCountLabel,
     onPrimaryAction: controller.shell.onSessionPanePrimaryAction,
     primaryActionClassName: controller.shell.sessionPanePrimaryActionClassName,
@@ -353,7 +384,6 @@ export function RuntimeWorkspacePage({ controller }: { controller: RuntimeWorksp
     controller.shell.sessionPaneCountLabel,
     controller.shell.sessionPanePrimaryActionClassName,
     controller.shell.sessionPanePrimaryActionProps,
-    route,
     sessionPaneBody,
   ]);
   useEffect(() => {

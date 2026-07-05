@@ -252,7 +252,7 @@ type RuntimeCopy = {
 const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
   en: {
     loading: "Loading...",
-    overview: "Codex Runtime",
+    overview: "Runtime",
     overviewSubtitle: "Identity, quota, and active runtime settings.",
     model: "Model",
     reasoningDepth: "Reasoning Depth",
@@ -342,7 +342,7 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
   },
   zh: {
     loading: "加载中...",
-    overview: "Codex 运行时",
+    overview: "运行时",
     overviewSubtitle: "展示身份、额度与当前运行时设置。",
     model: "Model",
     reasoningDepth: "思考深度",
@@ -434,11 +434,14 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
 
 export function ReactManagedCodexAccountsRouteBody({
   language,
+  mode = "runtime",
 }: {
   language: LegacyShellLanguage;
+  mode?: "runtime" | "serviceControls";
 }) {
   const copy = RUNTIME_COPY[language];
   const apiClient = createAPIClient();
+  const serviceControlsOnly = mode === "serviceControls";
   const [requestState, setRequestState] = useState<RequestState>({ status: "loading", error: "" });
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [providers, setProviders] = useState<LLMProviderRecord[]>([]);
@@ -464,6 +467,10 @@ export function ReactManagedCodexAccountsRouteBody({
   const [restartBusy, setRestartBusy] = useState(false);
 
   useEffect(() => {
+    if (serviceControlsOnly) {
+      void reloadServiceControls();
+      return;
+    }
     void reloadRuntime();
   }, []);
 
@@ -548,6 +555,21 @@ export function ReactManagedCodexAccountsRouteBody({
       setRestartStatus(normalizeRestartStatus(nextStatus));
     } catch {
       setRestartStatus(null);
+    }
+  }
+
+  async function reloadServiceControls() {
+    setRequestState({ status: "loading", error: "" });
+    try {
+      const nextRestartStatus = await apiClient.get<RuntimeRestartStatus>("/api/control/runtime/restart");
+      setRestartStatus(normalizeRestartStatus(nextRestartStatus));
+      setRequestState({ status: "ready", error: "" });
+    } catch (error: unknown) {
+      setRestartStatus(null);
+      setRequestState({
+        status: "error",
+        error: error instanceof Error ? error.message : "unknown_error",
+      });
     }
   }
 
@@ -869,6 +891,27 @@ export function ReactManagedCodexAccountsRouteBody({
         )
       : null;
 
+  if (serviceControlsOnly) {
+    return (
+      <section className="codex-runtime-view codex-runtime-service-view">
+        {statusMessage ? (
+          <p className={`codex-runtime-status ${statusKind === "error" ? "is-error" : "is-success"}`}>
+            {statusMessage}
+          </p>
+        ) : null}
+        <RuntimeServiceControls
+          copy={copy}
+          restartStatus={restartStatus}
+          restartStatusVisible={Boolean(restartStatusVisible)}
+          onOpenRestart={() => {
+            void openRestartDialog();
+          }}
+        />
+        {restartModal}
+      </section>
+    );
+  }
+
   return (
     <section className="codex-runtime-view">
       {statusMessage ? (
@@ -877,116 +920,93 @@ export function ReactManagedCodexAccountsRouteBody({
         </p>
       ) : null}
 
-      <section className="codex-runtime-service-controls route-surface">
-        <div className="codex-runtime-title-block">
-          <h4>{copy.serviceControls}</h4>
-          <p>{copy.serviceControlsSubtitle}</p>
-          {restartStatusVisible && restartStatus ? <RuntimeRestartStatusNote status={restartStatus} copy={copy} /> : null}
-        </div>
-        <div className="codex-runtime-service-actions">
-          <button
-            className="route-card-action codex-runtime-service-primary-action"
-            type="button"
-            onClick={() => {
-              void openRestartDialog();
-            }}
-          >
-            {copy.restartService}
-          </button>
-        </div>
-      </section>
-
-      <section className="codex-runtime-status-band route-surface">
-        <div className="codex-runtime-status-band-head">
-          <div className="codex-runtime-title-block">
-            <h4>{copy.overview}</h4>
-            <p>{copy.overviewSubtitle}</p>
-          </div>
-        </div>
-
-        <div className="codex-runtime-identity-card">
-          <div className="codex-runtime-account-pane">
-            <div className="codex-runtime-account-primary">
-              <span>{copy.identityName}</span>
+      <section className="codex-runtime-studio route-surface">
+        <div className="codex-runtime-control-grid">
+          <article className="codex-runtime-control-card codex-runtime-identity-card" aria-label={copy.identityName}>
+            <div className="codex-runtime-control-card-head">
+              <span className="codex-runtime-card-kicker">{copy.identityName}</span>
               <strong>{runtimeIdentity.name}</strong>
               <p>{runtimeIdentity.email}</p>
             </div>
-            <span className="codex-runtime-account-mark" aria-hidden="true" />
-          </div>
-          <div
-            className="codex-runtime-chip-row"
-            aria-label={`${copy.identityPlan} ${copy.identityAuthMode} ${copy.activeProfile}`}
-          >
-            <RuntimeMetaItem label={copy.identityPlan} value={runtimeIdentity.plan} />
-            <RuntimeMetaItem label={copy.identityAuthMode} value={runtimeIdentity.authMode} />
-            <RuntimeMetaItem label={copy.activeProfile} value={runtimeProfile} />
-          </div>
-        </div>
-
-        <section className="codex-runtime-device-login" aria-label={copy.deviceLoginTitle}>
-          <div className="codex-runtime-device-login-head">
-            <div className="codex-runtime-title-block">
-              <h4>{copy.deviceLoginTitle}</h4>
-              <p>{copy.deviceLoginSubtitle}</p>
+            <div
+              className="codex-runtime-chip-row"
+              aria-label={`${copy.identityPlan} ${copy.identityAuthMode} ${copy.activeProfile}`}
+            >
+              <RuntimeMetaItem label={copy.identityPlan} value={runtimeIdentity.plan} />
+              <RuntimeMetaItem label={copy.identityAuthMode} value={runtimeIdentity.authMode} />
+              <RuntimeMetaItem label={copy.activeProfile} value={runtimeProfile} />
             </div>
-            <button
-              className="route-card-action codex-runtime-device-login-action"
-              type="button"
-              disabled={loginBusy || isLoginSessionActive(loginSession)}
-              onClick={() => void startDeviceLogin()}
-            >
-              {loginBusy ? copy.startingDeviceLogin : copy.startDeviceLogin}
-            </button>
-          </div>
-          {loginSession ? <RuntimeDeviceLoginSession copy={copy} session={loginSession} /> : null}
-        </section>
+          </article>
 
-        <div className="codex-runtime-quick-form">
-          <div className="codex-runtime-ledger-grid is-editable">
-            <RuntimeSelectItem
-              label={copy.model}
-              value={selectedModel}
-              disabled={runtimeModels.length === 0}
-              onChange={onModelSelectionChange}
-            >
-              {runtimeModels.length === 0 ? (
-                <option value="">{copy.modelUnavailable}</option>
-              ) : (
-                runtimeModels.map((item) => {
-                  const value = runtimeModelKey(item);
-                  return (
-                    <option key={value} value={value}>
-                      {formatRuntimeModelSummary(item)}
-                    </option>
-                  );
-                })
-              )}
-            </RuntimeSelectItem>
-            <RuntimeSelectItem
-              label={copy.reasoningDepth}
-              value={selectedReasoning}
-              disabled={selectedReasoningOptions.length === 0}
-              onChange={onReasoningSelectionChange}
-            >
-              {selectedReasoningOptions.length === 0 ? (
-                <option value="">{copy.reasoningUnavailable}</option>
-              ) : (
-                selectedReasoningOptions.map((option) => {
-                  const value = normalizeText(option.reasoning_effort);
-                  return (
-                    <option key={value} value={value}>
-                      {formatReasoningOption(option)}
-                    </option>
-                  );
-                })
-              )}
-            </RuntimeSelectItem>
-          </div>
-        </div>
+          <article className="codex-runtime-control-card codex-runtime-usage-card" aria-label="Codex usage">
+            <div className="codex-runtime-control-card-head">
+              <span className="codex-runtime-card-kicker">CODEX USAGE</span>
+            </div>
+            <div className="codex-runtime-quota-grid is-compact">
+              <RuntimeQuotaItem label={copy.quotaHourly} copy={copy} window={runtime?.current?.quota?.hourly} />
+              <RuntimeQuotaItem label={copy.quotaWeekly} copy={copy} window={runtime?.current?.quota?.weekly} />
+            </div>
+            <div className="codex-runtime-quick-form">
+              <div className="codex-runtime-ledger-grid is-editable">
+                <RuntimeSelectItem
+                  label={copy.model}
+                  value={selectedModel}
+                  disabled={runtimeModels.length === 0}
+                  onChange={onModelSelectionChange}
+                >
+                  {runtimeModels.length === 0 ? (
+                    <option value="">{copy.modelUnavailable}</option>
+                  ) : (
+                    runtimeModels.map((item) => {
+                      const value = runtimeModelKey(item);
+                      return (
+                        <option key={value} value={value}>
+                          {formatRuntimeModelSummary(item)}
+                        </option>
+                      );
+                    })
+                  )}
+                </RuntimeSelectItem>
+                <RuntimeSelectItem
+                  label={copy.reasoningDepth}
+                  value={selectedReasoning}
+                  disabled={selectedReasoningOptions.length === 0}
+                  onChange={onReasoningSelectionChange}
+                >
+                  {selectedReasoningOptions.length === 0 ? (
+                    <option value="">{copy.reasoningUnavailable}</option>
+                  ) : (
+                    selectedReasoningOptions.map((option) => {
+                      const value = normalizeText(option.reasoning_effort);
+                      return (
+                        <option key={value} value={value}>
+                          {formatReasoningOption(option)}
+                        </option>
+                      );
+                    })
+                  )}
+                </RuntimeSelectItem>
+              </div>
+            </div>
+          </article>
 
-        <div className="codex-runtime-quota-grid is-compact">
-          <RuntimeQuotaItem label={copy.quotaHourly} copy={copy} window={runtime?.current?.quota?.hourly} />
-          <RuntimeQuotaItem label={copy.quotaWeekly} copy={copy} window={runtime?.current?.quota?.weekly} />
+          <section className="codex-runtime-device-login" aria-label={copy.deviceLoginTitle}>
+            <div className="codex-runtime-device-login-head">
+              <div className="codex-runtime-title-block">
+                <h4>{copy.deviceLoginTitle}</h4>
+                <p>{copy.deviceLoginSubtitle}</p>
+              </div>
+              <button
+                className="route-card-action codex-runtime-device-login-action"
+                type="button"
+                disabled={loginBusy || isLoginSessionActive(loginSession)}
+                onClick={() => void startDeviceLogin()}
+              >
+                {loginBusy ? copy.startingDeviceLogin : copy.startDeviceLogin}
+              </button>
+            </div>
+            {loginSession ? <RuntimeDeviceLoginSession copy={copy} session={loginSession} /> : null}
+          </section>
         </div>
 
         <RuntimeProviderConsole
@@ -1004,6 +1024,33 @@ export function ReactManagedCodexAccountsRouteBody({
         />
       </section>
       {restartModal}
+    </section>
+  );
+}
+
+function RuntimeServiceControls({
+  copy,
+  restartStatus,
+  restartStatusVisible,
+  onOpenRestart,
+}: {
+  copy: RuntimeCopy;
+  restartStatus: RuntimeRestartStatus | null;
+  restartStatusVisible: boolean;
+  onOpenRestart: () => void;
+}) {
+  return (
+    <section className="codex-runtime-console-actions codex-runtime-service-controls-panel route-surface" aria-label={copy.serviceControls}>
+      <span className="codex-runtime-service-label">{copy.serviceControls}</span>
+      <span className="codex-runtime-service-copy">{copy.serviceControlsSubtitle}</span>
+      {restartStatusVisible && restartStatus ? <RuntimeRestartStatusNote status={restartStatus} copy={copy} /> : null}
+      <button
+        className="route-card-action codex-runtime-service-primary-action"
+        type="button"
+        onClick={onOpenRestart}
+      >
+        {copy.restartService}
+      </button>
     </section>
   );
 }
@@ -1217,15 +1264,28 @@ function RuntimeProviderConsole({
   onNew: () => void;
   onSubmit: () => void;
 }) {
+  const currentProvider = providers[0] ?? null;
+  const currentProviderName = currentProvider ? normalizeText(currentProvider.name) || normalizeText(currentProvider.id) || "Provider" : "Codex Direct";
+  const currentProviderModels = currentProvider ? providerModelIDs(currentProvider) : [];
+  const currentProviderDefaultModel = currentProvider
+    ? normalizeText(currentProvider.default_model) || currentProviderModels[0] || ""
+    : "";
   return (
-    <section className="codex-runtime-provider-console" aria-label={copy.providerRegisterTitle}>
-      <header className="codex-runtime-provider-console-head">
-        <div className={providerCount > 0 ? "codex-runtime-provider-note is-ready" : "codex-runtime-provider-note is-empty"}>
-          <strong>{providerCount > 0 ? copy.providerRegistered(providerCount) : copy.providersMissing}</strong>
-          <span>{providerCount > 0 ? copy.providersReadyHint : copy.providersMissingHint}</span>
+    <section className="codex-runtime-provider-console codex-runtime-provider-station" aria-label={copy.providerRegisterTitle}>
+      <header className="codex-runtime-provider-console-head codex-runtime-provider-station-head">
+        <div className="codex-runtime-provider-station-title">
+          <span className="codex-runtime-card-kicker">{copy.providerRegisterTitle}</span>
+          <h3>{copy.providerRegisterTitle}</h3>
+          <p>{providerCount > 0 ? copy.providersReadyHint : copy.providersMissingHint}</p>
+        </div>
+        <div className="codex-runtime-provider-badges" aria-label="Provider status">
+          <span>{providerCount > 0 ? copy.providerRegistered(providerCount) : copy.providersMissing}</span>
+          {currentProvider ? <span>{currentProvider.is_default ? copy.providerDefault : currentProviderName}</span> : null}
+          {currentProviderDefaultModel ? <span>{currentProviderDefaultModel}</span> : null}
+          {currentProvider ? <span>{copy.providerModelCount(currentProviderModels.length)}</span> : null}
         </div>
       </header>
-      <div className={providerCount > 0 ? "codex-runtime-provider-console-grid" : "codex-runtime-provider-console-grid is-empty"}>
+      <div className={providerCount > 0 ? "codex-runtime-provider-console-grid codex-runtime-provider-station-body" : "codex-runtime-provider-console-grid codex-runtime-provider-station-body is-empty"}>
         {providerCount > 0 ? (
           <RuntimeProviderList
             copy={copy}

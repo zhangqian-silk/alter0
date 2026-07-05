@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import type { WorkbenchSessionRail } from "../../../app/WorkbenchContext";
-import { NAV_GROUPS, toI18nKey } from "../legacyShellConfig";
+import { NAV_GROUPS, SETTINGS_WORKBENCH_ROUTE, toI18nKey } from "../legacyShellConfig";
 import { getLegacyShellCopy, type LegacyShellLanguage } from "../legacyShellCopy";
 import { isLegacyShellMobileViewport } from "../legacyShellState";
 import { NavIcon } from "./NavIcon";
@@ -37,7 +37,6 @@ type PrimaryNavProps = {
   navCollapsed: boolean;
   sessionRail?: WorkbenchSessionRail | null;
   onNavigate: (route: string) => void;
-  onToggleLanguage: () => void;
   onToggleNavCollapsed: () => void;
 };
 
@@ -47,7 +46,6 @@ export function PrimaryNav({
   navCollapsed,
   sessionRail,
   onNavigate,
-  onToggleLanguage,
   onToggleNavCollapsed,
 }: PrimaryNavProps) {
   const copy = getLegacyShellCopy(language);
@@ -234,7 +232,10 @@ export function PrimaryNav({
   }, [tooltip]);
 
   return (
-    <aside className={sessionRail && !navCollapsed ? "primary-nav has-session-rail" : "primary-nav"}>
+    <aside
+      className={sessionRail && !navCollapsed ? "primary-nav has-session-rail" : "primary-nav"}
+      data-shell-design="light-tech"
+    >
       <div className="brand">
         <div className="brand-copy">
           <strong>Alter0</strong>
@@ -335,13 +336,22 @@ export function PrimaryNav({
 
       <div className="nav-locale">
         <button
-          className="locale nav-locale-button"
+          className={[
+            "locale",
+            "nav-locale-button",
+            "nav-settings-shortcut",
+            currentRoute === SETTINGS_WORKBENCH_ROUTE ? "active" : "",
+          ].filter(Boolean).join(" ")}
           type="button"
-          aria-label={copy.localeAriaLabel}
-          data-short-lang={copy.localeShort}
-          onClick={onToggleLanguage}
+          aria-label={copy.routes[SETTINGS_WORKBENCH_ROUTE] ?? "Settings"}
+          aria-current={currentRoute === SETTINGS_WORKBENCH_ROUTE ? "page" : undefined}
+          data-route={SETTINGS_WORKBENCH_ROUTE}
+          onClick={() => onNavigate(SETTINGS_WORKBENCH_ROUTE)}
         >
-          {copy.localeButton}
+          <span className="menu-icon" aria-hidden="true">
+            <NavIcon icon="settings" />
+          </span>
+          <span>{copy.routes[SETTINGS_WORKBENCH_ROUTE] ?? "Settings"}</span>
         </button>
       </div>
       {tooltip ? (

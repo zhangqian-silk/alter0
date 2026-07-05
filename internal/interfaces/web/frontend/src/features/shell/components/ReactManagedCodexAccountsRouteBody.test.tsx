@@ -94,7 +94,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
-    expect(screen.getByText("Codex Runtime")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Runtime" })).toBeInTheDocument();
     expect(screen.queryByText("Runtime Configuration")).not.toBeInTheDocument();
     expect(screen.queryByText("Readiness")).not.toBeInTheDocument();
     expect(screen.queryByText("Runtime Diagnostics")).not.toBeInTheDocument();
@@ -112,21 +112,23 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Codex Runtime")).toBeInTheDocument();
       expect(screen.getByText("No LLM providers registered. Codex Direct remains available.")).toBeInTheDocument();
     });
 
-    const statusBand = screen.getByText("Codex Runtime").closest(".codex-runtime-status-band");
-    expect(statusBand).not.toBeNull();
-    const statusQueries = within(statusBand as HTMLElement);
+    const runtimeStudio = document.querySelector(".codex-runtime-studio");
+    expect(runtimeStudio).not.toBeNull();
+    const statusQueries = within(runtimeStudio as HTMLElement);
     expect(statusQueries.queryByText("Status")).not.toBeInTheDocument();
     expect(statusQueries.queryByText("Ready")).not.toBeInTheDocument();
+    expect(statusQueries.queryByText("Connected")).not.toBeInTheDocument();
+    expect(statusQueries.getAllByText("Model").length).toBeGreaterThan(0);
+    expect(statusQueries.queryByText("Last restart")).not.toBeInTheDocument();
     expect(statusQueries.getByText("qian zhang")).toBeInTheDocument();
     expect(statusQueries.getByText("qian@example.com")).toBeInTheDocument();
     expect(statusQueries.getByText("prolite")).toBeInTheDocument();
     expect(statusQueries.getByText("oauth")).toBeInTheDocument();
-    expect(statusQueries.getByText("Profile")).toBeInTheDocument();
-    expect(statusQueries.getByText("auto-max")).toBeInTheDocument();
+    expect(statusQueries.getAllByText("Profile").length).toBeGreaterThan(0);
+    expect(statusQueries.getAllByText("auto-max").length).toBeGreaterThan(0);
     expect(statusQueries.getByText("78%")).toBeInTheDocument();
     expect(statusQueries.getByText("61%")).toBeInTheDocument();
     expect(statusQueries.getByText("2026-06-07 23:30")).toBeInTheDocument();
@@ -136,12 +138,40 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(statusQueries.getByRole("option", { name: "High" })).toBeInTheDocument();
     expect(statusQueries.queryByText("Balanced depth")).not.toBeInTheDocument();
     expect(statusQueries.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
-    expect(statusBand?.querySelector(".codex-runtime-identity-card")).not.toBeNull();
-    expect(statusBand?.querySelector(".codex-runtime-status-pane")).toBeNull();
-    expect(statusBand?.querySelector(".codex-runtime-account-pane")).not.toBeNull();
-    expect(statusBand?.querySelector(".codex-runtime-account-strip")).toBeNull();
-    expect(statusBand?.querySelector(".codex-runtime-summary-item")).toBeNull();
-    expect(statusBand?.querySelector(".codex-runtime-kv-select")).not.toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-studio-head")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-quick-facts")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-console-actions")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-control-grid")).not.toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-control-card.codex-runtime-identity-card")).not.toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-control-card.codex-runtime-usage-card")).not.toBeNull();
+    const identityCard = runtimeStudio?.querySelector(".codex-runtime-identity-card");
+    const usageCard = runtimeStudio?.querySelector(".codex-runtime-usage-card");
+    const deviceLogin = runtimeStudio?.querySelector(".codex-runtime-device-login");
+    expect(identityCard).not.toBeNull();
+    expect(usageCard).not.toBeNull();
+    expect(deviceLogin).not.toBeNull();
+    const usageQueries = within(usageCard as HTMLElement);
+    expect(usageQueries.getByText("CODEX USAGE")).toBeInTheDocument();
+    expect(usageQueries.queryByText("Remaining")).not.toBeInTheDocument();
+    expect(usageQueries.queryByText(/Plan:/)).not.toBeInTheDocument();
+    expect(usageQueries.getByText("Hourly")).toBeInTheDocument();
+    expect(usageQueries.getByText("Weekly")).toBeInTheDocument();
+    expect(Boolean((identityCard?.compareDocumentPosition(usageCard as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Boolean((usageCard?.compareDocumentPosition(deviceLogin as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(runtimeStudio?.querySelector(".codex-runtime-provider-station")).not.toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-provider-station-title")).not.toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-provider-badges")).not.toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-status-band")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-service-controls")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-console")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-core-grid")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-account-module")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-usage-module")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-provider-workbench")).toBeNull();
+    expect(screen.queryByText("Service controls")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Restart service" })).not.toBeInTheDocument();
+    expect(runtimeStudio?.querySelector(".codex-runtime-summary-item")).toBeNull();
+    expect(runtimeStudio?.querySelector(".codex-runtime-kv-select")).not.toBeNull();
     expect(screen.queryByText("Runtime Configuration")).not.toBeInTheDocument();
     expect(document.querySelector(".codex-runtime-inline-config")).toBeNull();
     expect(statusQueries.queryByText("Saved Name")).not.toBeInTheDocument();
@@ -224,15 +254,13 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
   it("defaults to updating from remote master and restarts immediately when no tracked changes require confirmation", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
-      .mockResolvedValueOnce(jsonResponse({ items: [] }))
       .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
       .mockResolvedValueOnce(jsonResponse({ items: [{ hash: "1111111111111111111111111111111111111111", short_hash: "1111111", message: "current runtime", current: true }] }))
       .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: false }, { status: 202 }))
       .mockResolvedValueOnce(jsonResponse({ items: [{ hash: "2222222222222222222222222222222222222222", short_hash: "2222222", message: "next runtime" }] }))
       .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: true }, { status: 202 }));
 
-    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+    render(<ReactManagedCodexAccountsRouteBody language="en" mode="serviceControls" />);
 
     await waitFor(() => {
       expect(screen.getByText("Service controls")).toBeInTheDocument();
@@ -250,7 +278,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        5,
+        3,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
@@ -269,7 +297,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        7,
+        5,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
@@ -283,8 +311,6 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
   it("loads master restart candidates and restarts with the selected commit", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
-      .mockResolvedValueOnce(jsonResponse({ items: [] }))
       .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
       .mockResolvedValueOnce(
         jsonResponse({
@@ -321,7 +347,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
         ),
       );
 
-    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+    render(<ReactManagedCodexAccountsRouteBody language="en" mode="serviceControls" />);
 
     await waitFor(() => {
       expect(screen.getByText("Service controls")).toBeInTheDocument();
@@ -331,7 +357,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        4,
+        2,
         "/api/control/runtime/restart-candidates",
         expect.objectContaining({ method: "GET" }),
       );
@@ -350,7 +376,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        5,
+        3,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
@@ -367,8 +393,6 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
   it("asks to discard tracked changes only after the restart API requires confirmation", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
-      .mockResolvedValueOnce(jsonResponse({ items: [] }))
       .mockResolvedValueOnce(jsonResponse({ status: "idle" }))
       .mockResolvedValueOnce(jsonResponse({ items: [{ hash: "2222222222222222222222222222222222222222", short_hash: "2222222", message: "next runtime" }] }))
       .mockResolvedValueOnce(
@@ -382,7 +406,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       )
       .mockResolvedValueOnce(jsonResponse({ accepted: true, status: "restarting", sync_remote_master: true }, { status: 202 }));
 
-    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+    render(<ReactManagedCodexAccountsRouteBody language="en" mode="serviceControls" />);
 
     await waitFor(() => {
       expect(screen.getByText("Service controls")).toBeInTheDocument();
@@ -397,7 +421,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        5,
+        3,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
@@ -411,7 +435,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard and restart" }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
-        6,
+        4,
         "/api/control/runtime/restart",
         expect.objectContaining({
           method: "POST",
@@ -424,8 +448,6 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
   it("shows the latest runtime restart failure reason", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(runtimeFixture()))
-      .mockResolvedValueOnce(jsonResponse({ items: [] }))
       .mockResolvedValueOnce(
         jsonResponse({
           status: "failed",
@@ -435,10 +457,10 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
         }),
       );
 
-    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+    render(<ReactManagedCodexAccountsRouteBody language="en" mode="serviceControls" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Last restart")).toBeInTheDocument();
+      expect(screen.getAllByText("Last restart").length).toBeGreaterThan(0);
     });
     expect(screen.getByText("Failed and rolled back")).toBeInTheDocument();
     expect(screen.getByText("Remote master sync requested")).toBeInTheDocument();
@@ -743,7 +765,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       expect(screen.getByText("Configured Providers")).toBeInTheDocument();
       expect(screen.getByText("https://gateway.example.com/v1")).toBeInTheDocument();
       expect(screen.getByText("Default: claude-sonnet-4")).toBeInTheDocument();
-      expect(screen.getByText("2 models")).toBeInTheDocument();
+      expect(screen.getAllByText("2 models").length).toBeGreaterThan(0);
       expect(screen.getByText("claude-sonnet-4, claude-opus-4")).toBeInTheDocument();
     });
     const consolePanel = container.querySelector(".codex-runtime-provider-console");
@@ -825,7 +847,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Provider updated for Claude Code.")).toBeInTheDocument();
-      expect(screen.getByText("3 models")).toBeInTheDocument();
+      expect(screen.getAllByText("3 models").length).toBeGreaterThan(0);
     });
     expect(updates).toHaveLength(1);
     expect(updates[0]).toEqual(expect.objectContaining({
@@ -1028,7 +1050,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     render(<ReactManagedCodexAccountsRouteBody language="en" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Codex Runtime")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Runtime" })).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Auth missing")).not.toBeInTheDocument();

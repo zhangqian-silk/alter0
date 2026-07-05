@@ -39,7 +39,64 @@ describe("RuntimeWorkspaceHeader", () => {
     expect(screen.queryByRole("button", { name: "Workspace Flow" })).not.toBeInTheDocument();
   });
 
-  it("opens details in a dialog layer and closes it from the backdrop", () => {
+  it("can render a static page title without a status signal or details action", () => {
+    const { container } = render(
+      <RuntimeWorkspaceHeader
+        title="Settings"
+        statusLabel="Ready"
+        statusTone="ready"
+        showStatusSignal={false}
+        detailsLabel="Details"
+        detailsOpen={false}
+        onToggleDetails={() => undefined}
+        detailsDisabled
+        showDetailsAction={false}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(container.querySelector("[data-runtime-header-signal]")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-runtime-header-signal-slot='empty']")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Details" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the title text in the same column when the status signal is hidden", () => {
+    const { container, rerender } = render(
+      <RuntimeWorkspaceHeader
+        title="New"
+        statusLabel="Ready"
+        statusTone="ready"
+        detailsLabel="Details"
+        detailsOpen={false}
+        onToggleDetails={() => undefined}
+      />,
+    );
+
+    const activeSlot = container.querySelector("[data-runtime-header-signal-slot='ready']");
+    const activeTitle = container.querySelector(".runtime-workspace-title-leading h4");
+    expect(activeSlot).toBeInTheDocument();
+    expect(activeTitle?.previousElementSibling).toBe(activeSlot);
+
+    rerender(
+      <RuntimeWorkspaceHeader
+        title="Settings"
+        statusLabel="Ready"
+        statusTone="ready"
+        detailsLabel="Details"
+        detailsOpen={false}
+        onToggleDetails={() => undefined}
+        showStatusSignal={false}
+        showDetailsAction={false}
+      />,
+    );
+
+    const emptySlot = container.querySelector("[data-runtime-header-signal-slot='empty']");
+    const staticTitle = container.querySelector(".runtime-workspace-title-leading h4");
+    expect(emptySlot).toBeInTheDocument();
+    expect(staticTitle?.previousElementSibling).toBe(emptySlot);
+  });
+
+  it("opens details from the title and does not render a separate details button", () => {
     render(<RuntimeWorkspaceHeaderHarness />);
 
     const statusIndicator = screen.getByLabelText("Ready");
@@ -47,9 +104,12 @@ describe("RuntimeWorkspaceHeader", () => {
     expect(statusIndicator).toHaveAttribute("data-runtime-header-signal-container", "ready");
     expect(statusIndicator.querySelector("[data-runtime-header-signal='ready']")).toBeInTheDocument();
     const titleLeading = document.querySelector(".runtime-workspace-title-leading") as HTMLElement;
-    expect(titleLeading.firstElementChild).toBe(statusIndicator);
+    expect(titleLeading.firstElementChild).toHaveAttribute("data-runtime-header-signal-slot", "ready");
+    expect(titleLeading.firstElementChild?.firstElementChild).toBe(statusIndicator);
 
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.queryByRole("button", { name: "Details" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Runtime session" }));
 
     expect(screen.getByRole("dialog", { name: "Details" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismiss Details" })).toBeInTheDocument();
