@@ -1900,8 +1900,7 @@
   .nav-toggle,
   .panel-toggle,
   .mobile-new-chat,
-  .pane-action,
-  .nav-collapse {
+  .pane-action {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1980,7 +1979,6 @@
   .chat-pane,
   .chatRuntime-jump-cluster,
   .chatRuntime-composer-shell,
-  .nav-collapse svg,
   .nav-tooltip {
     transition: none !important;
   }

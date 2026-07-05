@@ -141,7 +141,7 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /Mobile runtime keyboard isolation:[\s\S]*?\.app-shell,\s*\.app-shell\.info-mode,[\s\S]*?\.app-shell\.nav-collapsed\.info-mode\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?top:\s*var\(--mobile-viewport-offset-top, 0px\);[\s\S]*?height:\s*max\(0px, calc\(var\(--mobile-viewport-height, 100dvh\) - var\(--mobile-viewport-offset-top, 0px\)\)\);[\s\S]*?transform:\s*none !important;/,
+      /Mobile runtime keyboard isolation:[\s\S]*?\.app-shell,\s*\.app-shell\.info-mode\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?top:\s*var\(--mobile-viewport-offset-top, 0px\);[\s\S]*?height:\s*max\(0px, calc\(var\(--mobile-viewport-height, 100dvh\) - var\(--mobile-viewport-offset-top, 0px\)\)\);[\s\S]*?transform:\s*none !important;/,
     );
     expect(stylesheet).toMatch(
       /\[data-runtime-view="conversation"\] \.runtime-workspace-body,\s*\[data-runtime-view="chatRuntime"\] \.runtime-workspace-body,[\s\S]*?\[data-runtime-view="chatRuntime"\] \.runtime-workspace-body > \.runtime-workspace-panel\s*\{[\s\S]*?transform:\s*none !important;[\s\S]*?transition:\s*none;/,
@@ -242,7 +242,7 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /Mobile runtime keyboard isolation:[\s\S]*?\.app-shell,\s*\.app-shell\.info-mode,[\s\S]*?\.app-shell\.nav-collapsed\.info-mode\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?top:\s*var\(--mobile-viewport-offset-top, 0px\);[\s\S]*?height:\s*max\(0px, calc\(var\(--mobile-viewport-height, 100dvh\) - var\(--mobile-viewport-offset-top, 0px\)\)\);/,
+      /Mobile runtime keyboard isolation:[\s\S]*?\.app-shell,\s*\.app-shell\.info-mode\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?top:\s*var\(--mobile-viewport-offset-top, 0px\);[\s\S]*?height:\s*max\(0px, calc\(var\(--mobile-viewport-height, 100dvh\) - var\(--mobile-viewport-offset-top, 0px\)\)\);/,
     );
     expect(stylesheet).toMatch(
       /Mobile runtime keyboard isolation:[\s\S]*?\.chat-pane\.page-mode,[\s\S]*?\.runtime-workspace-body\s*\{[\s\S]*?height:\s*100%;[\s\S]*?overflow:\s*hidden;[\s\S]*?transform:\s*none;/,
@@ -587,7 +587,8 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain(".panel-toggle,");
     expect(stylesheet).toContain(".mobile-new-chat,");
     expect(stylesheet).toContain(".pane-action,");
-    expect(stylesheet).toContain(".nav-collapse {");
+    expect(stylesheet).not.toContain(".nav-collapse");
+    expect(stylesheet).not.toContain(".app-shell.nav-collapsed");
     expect(stylesheet).toContain(".app-shell.info-mode .panel-toggle {");
     expect(stylesheet).toContain(".chat-pane[data-route=\"chatRuntime\"].page-mode .panel-toggle,");
     expect(stylesheet).toContain("@media (max-width: 760px)");
@@ -960,9 +961,9 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    expect(stylesheet).toContain("/* Approved Chat/Settings shell alignment */");
+    expect(stylesheet).toContain("/* Workbench shell system */");
     expect(stylesheet).toMatch(
-      /\.app-shell\s*\{[\s\S]*?--shell-nav-width:\s*264px;[\s\S]*?--shell-nav-collapsed-width:\s*72px;[\s\S]*?--shell-bg:\s*#f7fbff;[\s\S]*?--shell-accent:\s*#2563eb;/,
+      /\.app-shell\s*\{[\s\S]*?--shell-nav-width:\s*264px;[\s\S]*?--shell-bg:\s*#f7fbff;[\s\S]*?--shell-accent:\s*#2563eb;/,
     );
     expect(stylesheet).toMatch(
       /\.primary-nav\s*\{[\s\S]*?background:\s*color-mix\(in oklab, #ffffff, #f7fbff 18%\);[\s\S]*?box-shadow:\s*inset -1px 0 0 #edf4fb;[\s\S]*?border-right:\s*0;/,
@@ -988,6 +989,26 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toMatch(
       /\.route-head\.workbench-title-head\.is-compact,\s*\.runtime-workspace-head\s*\{[\s\S]*?border-bottom:\s*1px solid #edf4fb;[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.78\);/,
     );
+  });
+
+  it("does not define a desktop collapsed sidebar stage in the workbench shell system", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const shellLayer = stylesheet.slice(stylesheet.lastIndexOf("/* Workbench shell system */"));
+
+    expect(shellLayer).not.toContain(".app-shell.nav-collapsed");
+    expect(shellLayer).not.toContain("--shell-nav-collapsed-width");
+  });
+
+  it("keeps the legacy public stylesheet from reintroducing the removed collapsed sidebar stage", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const legacyCoreStylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-core.css"), "utf8");
+    const legacyRuntimeStylesheet = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat-runtime.css"), "utf8");
+
+    expect(legacyCoreStylesheet).not.toContain(".app-shell.nav-collapsed");
+    expect(legacyCoreStylesheet).not.toContain(".nav-collapse");
+    expect(legacyCoreStylesheet).not.toContain("--nav-collapsed-width");
+    expect(legacyRuntimeStylesheet).not.toContain(".nav-collapse");
   });
 
   it("keeps long navigation session titles from changing sidebar geometry", () => {
@@ -1305,7 +1326,7 @@ describe("shell layout stylesheet", () => {
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
     expect(stylesheet).toMatch(
-      /\/\* Legacy main-repo layout baseline \*\/[\s\S]*?@media \(max-width: 1100px\) \{[\s\S]*?\.nav-toggle,\s*\.panel-toggle,\s*\.mobile-new-chat,\s*\.pane-action,\s*\.nav-collapse\s*\{[\s\S]*?display:\s*inline-flex;/,
+      /\/\* Legacy main-repo layout baseline \*\/[\s\S]*?@media \(max-width: 1100px\) \{[\s\S]*?\.nav-toggle,\s*\.panel-toggle,\s*\.mobile-new-chat,\s*\.pane-action\s*\{[\s\S]*?display:\s*inline-flex;/,
     );
     expect(stylesheet).toMatch(
       /\/\* Legacy main-repo layout baseline \*\/[\s\S]*?@media \(max-width: 1100px\) \{[\s\S]*?\.app-shell,\s*\.app-shell\.info-mode\s*\{[\s\S]*?display:\s*block;/,
@@ -1416,11 +1437,17 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("transform: none;");
   });
 
-  it("uses the shared mobile shell at tablet transition widths so navigation remains reachable", () => {
+  it("uses one shared transition shell below the wide desktop breakpoint so navigation remains reachable", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+    const responsiveStateMachineMarker = "/* Workbench responsive state machine */";
+    const responsiveStateMachineLayer = stylesheet.slice(stylesheet.lastIndexOf(responsiveStateMachineMarker));
 
     expect(stylesheet).toContain("@media (max-width: 1280px)");
+    expect(stylesheet.match(/@media \(max-width: 1280px\)/g)).toHaveLength(1);
+    expect(responsiveStateMachineLayer).toContain("@media (max-width: 1280px)");
+    expect(responsiveStateMachineLayer).not.toContain("@media (max-width: 1919px)");
+    expect(responsiveStateMachineLayer).not.toContain(".app-shell.nav-collapsed");
     expect(stylesheet).toMatch(
       /@media \(max-width: 1280px\) \{[\s\S]*?\.app-shell,\s*\.app-shell\.info-mode\s*\{[\s\S]*?display:\s*block;/,
     );
@@ -1428,13 +1455,19 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="settings"\],\s*\.runtime-workspace-body\[data-runtime-view="conversation"\],\s*\.runtime-workspace-body\[data-runtime-view="chatRuntime"\]\s*\{[\s\S]*?grid-template-rows:\s*56px minmax\(0, 1fr\) auto;[\s\S]*?overflow:\s*hidden;/,
     );
     expect(stylesheet).toMatch(
+      /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-shell\[data-runtime-view="settings"\] \.runtime-workspace-body,\s*\.runtime-workspace-shell\[data-runtime-view="conversation"\] \.runtime-workspace-body,\s*\.runtime-workspace-shell\[data-runtime-view="chatRuntime"\] \.runtime-workspace-body[\s\S]*?\{[\s\S]*?grid-template-rows:\s*56px minmax\(0, 1fr\) auto;[\s\S]*?overflow:\s*hidden;/,
+    );
+    expect(stylesheet).toMatch(
       /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="settings"\] > \.runtime-workspace-mobile-header,\s*\.runtime-workspace-body\[data-runtime-view="conversation"\] > \.runtime-workspace-mobile-header,\s*\.runtime-workspace-body\[data-runtime-view="chatRuntime"\] > \.runtime-workspace-mobile-header\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-row:\s*1;/,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-shell\[data-runtime-view="settings"\] \.runtime-workspace-body > \.runtime-workspace-mobile-header,\s*\.runtime-workspace-shell\[data-runtime-view="conversation"\] \.runtime-workspace-body > \.runtime-workspace-mobile-header,\s*\.runtime-workspace-shell\[data-runtime-view="chatRuntime"\] \.runtime-workspace-body > \.runtime-workspace-mobile-header[\s\S]*?\{[\s\S]*?display:\s*grid;[\s\S]*?grid-row:\s*1;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="settings"\] > \.settings-route-body,\s*\.runtime-workspace-body\[data-runtime-view="conversation"\] > \.runtime-workspace-panel,\s*\.runtime-workspace-body\[data-runtime-view="chatRuntime"\] > \.runtime-workspace-panel\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*auto;[\s\S]*?-webkit-overflow-scrolling:\s*touch;/,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="settings"\] > \.settings-route-body\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\);[\s\S]*?align-content:\s*start;/,
+      /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-shell\[data-runtime-view="settings"\] \.runtime-workspace-body > \.settings-route-body,\s*\.runtime-workspace-shell\[data-runtime-view="conversation"\] \.runtime-workspace-body > \.runtime-workspace-panel,\s*\.runtime-workspace-shell\[data-runtime-view="chatRuntime"\] \.runtime-workspace-body > \.runtime-workspace-panel[\s\S]*?\{[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*auto;[\s\S]*?-webkit-overflow-scrolling:\s*touch;/,
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="settings"\] > \.settings-route-body\s*\{[\s\S]*?grid-template-columns:\s*200px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*minmax\(0, 1fr\);[\s\S]*?align-content:\s*stretch;/,
@@ -1447,9 +1480,6 @@ describe("shell layout stylesheet", () => {
     );
     expect(stylesheet).toMatch(
       /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-body\[data-runtime-view="settings"\] \.settings-route-tab\s*\{[\s\S]*?min-height:\s*40px;[\s\S]*?grid-template-columns:\s*20px minmax\(0, 1fr\);/,
-    );
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 1280px\) \{[\s\S]*?\.runtime-workspace-shell\[data-runtime-view="conversation"\] \.runtime-workspace-body > \.runtime-workspace-panel,\s*\.runtime-workspace-shell\[data-runtime-view="chatRuntime"\] \.runtime-workspace-body > \.runtime-workspace-panel\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?-webkit-overflow-scrolling:\s*touch;/,
     );
   });
 
@@ -1492,7 +1522,7 @@ describe("shell layout stylesheet", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
 
-    const alignmentLayer = stylesheet.slice(stylesheet.lastIndexOf("/* Approved Chat/Settings shell alignment */"));
+    const alignmentLayer = stylesheet.slice(stylesheet.lastIndexOf("/* Workbench shell system */"));
 
     expect(alignmentLayer).toMatch(
       /\.settings-route-content\s*\{[\s\S]*?width:\s*min\(100%, 1180px\);[\s\S]*?max-width:\s*1180px;[\s\S]*?justify-self:\s*start;/,
@@ -1526,7 +1556,7 @@ describe("shell layout stylesheet", () => {
   it("keeps shared workspace titles on one text column and removes the Settings header divider", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
-    const alignmentLayer = stylesheet.slice(stylesheet.lastIndexOf("/* Approved Chat/Settings shell alignment */"));
+    const alignmentLayer = stylesheet.slice(stylesheet.lastIndexOf("/* Workbench shell system */"));
 
     expect(alignmentLayer).toMatch(
       /\.runtime-workspace-title-leading\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*18px minmax\(0, auto\);[\s\S]*?column-gap:\s*8px;/,
@@ -1771,11 +1801,8 @@ describe("shell layout stylesheet", () => {
     expect(shellLayer).toMatch(
       /\.settings-language-value\s*\{[\s\S]*?border-radius:\s*999px;[\s\S]*?background:\s*rgba\(37, 99, 235, 0\.08\);/,
     );
-    expect(shellLayer).toMatch(
-      /@media \(max-width: 1280px\) \{[\s\S]*?\.settings-language-control\s*\{[\s\S]*?min-height:\s*40px;[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) auto;/,
-    );
-    expect(shellLayer).toMatch(
-      /@media \(max-width: 1280px\) \{[\s\S]*?\.settings-language-value\s*\{[\s\S]*?padding:\s*4px 8px;[\s\S]*?border-radius:\s*999px;[\s\S]*?background:\s*rgba\(37, 99, 235, 0\.08\);/,
+    expect(shellLayer).not.toMatch(
+      /@media \(max-width: 1280px\) \{[\s\S]*?\.settings-language-control/,
     );
   });
 
@@ -1857,10 +1884,10 @@ describe("shell layout stylesheet", () => {
 
     expect(interactionLayer).toContain("/* Interaction polish baseline */");
     expect(interactionLayer).toMatch(
-      /\.menu-item,\s*\.nav-collapse,\s*\.nav-locale-button,\s*\.nav-session-rail-action,\s*\.runtime-workspace-button,\s*\.runtime-workspace-mobile-action,\s*\.route-mobile-head \.conversation-mobile-action,\s*\.runtime-composer-utility,\s*\.runtime-composer-upload,\s*\.runtime-composer-submit,\s*\.route-card-action,\s*\.modal-footer button\s*\{[\s\S]*?transition:[\s\S]*?var\(--ease-out-expo\);/,
+      /\.menu-item,\s*\.nav-locale-button,\s*\.nav-session-rail-action,\s*\.runtime-workspace-button,\s*\.runtime-workspace-mobile-action,\s*\.route-mobile-head \.conversation-mobile-action,\s*\.runtime-composer-utility,\s*\.runtime-composer-upload,\s*\.runtime-composer-submit,\s*\.route-card-action,\s*\.modal-footer button\s*\{[\s\S]*?transition:[\s\S]*?var\(--ease-out-expo\);/,
     );
     expect(interactionLayer).toMatch(
-      /\.menu-item:active,\s*\.nav-collapse:active,\s*\.nav-locale-button:active,\s*\.nav-session-rail-action:active,\s*\.runtime-workspace-button:active,\s*\.runtime-workspace-mobile-action:active,\s*\.route-mobile-head \.conversation-mobile-action:active,\s*\.runtime-composer-utility:active,\s*\.runtime-composer-upload:active,\s*\.runtime-composer-submit:active,\s*\.route-card-action:active,\s*\.modal-footer button:active\s*\{[\s\S]*?transform:\s*scale\(0\.96\);/,
+      /\.menu-item:active,\s*\.nav-locale-button:active,\s*\.nav-session-rail-action:active,\s*\.runtime-workspace-button:active,\s*\.runtime-workspace-mobile-action:active,\s*\.route-mobile-head \.conversation-mobile-action:active,\s*\.runtime-composer-utility:active,\s*\.runtime-composer-upload:active,\s*\.runtime-composer-submit:active,\s*\.route-card-action:active,\s*\.modal-footer button:active\s*\{[\s\S]*?transform:\s*scale\(0\.96\);/,
     );
     expect(interactionLayer).toMatch(
       /\.runtime-session-card,\s*\.session-card,\s*\.welcome-target-card,\s*\.prompt,\s*\.settings-route-content \.skill-route-card,\s*\.settings-route-content \.codex-account-card\s*\{[\s\S]*?box-shadow:\s*var\(--surface-shadow-rest\);[\s\S]*?transition:[\s\S]*?var\(--ease-out-expo\);/,

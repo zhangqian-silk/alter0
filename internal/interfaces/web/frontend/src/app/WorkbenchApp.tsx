@@ -58,7 +58,6 @@ export function WorkbenchApp() {
     normalizeLegacyShellLanguage(document.documentElement.lang),
   );
   const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());
-  const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);
   const [runtimeSessionRail, setRuntimeSessionRailState] = useState<WorkbenchSessionRail | null>(null);
   const setRuntimeSessionRail = useCallback((rail: WorkbenchSessionRail | null) => {
@@ -157,16 +156,13 @@ export function WorkbenchApp() {
 
   const shellClassName = useMemo(() => {
     const classNames = ["app-shell", "info-mode"];
-    if (navCollapsed) {
-      classNames.push("nav-collapsed");
-    }
     if (navOpen) {
       classNames.push("nav-open", "overlay-open");
     } else if (sessionPaneOpen) {
       classNames.push("overlay-open");
     }
     return classNames.join(" ");
-  }, [navCollapsed, navOpen, sessionPaneOpen]);
+  }, [navOpen, sessionPaneOpen]);
 
   const contextValue = useMemo(() => ({
     route,
@@ -202,7 +198,6 @@ export function WorkbenchApp() {
     <PrimaryNav
       currentRoute={route}
       language={language}
-      navCollapsed={navCollapsed}
       sessionRail={visibleSessionRail}
       onNavigate={(nextRoute) => {
         navigate(nextRoute);
@@ -210,13 +205,7 @@ export function WorkbenchApp() {
           setMobilePanel(null);
         }
       }}
-      onToggleNavCollapsed={() => {
-        if (isMobileViewport) {
-          toggleMobileNav();
-          return;
-        }
-        setNavCollapsed((current) => !current);
-      }}
+      onDismiss={isMobileViewport ? () => setMobilePanel(null) : undefined}
     />
   );
   const mobileBackdrop = (

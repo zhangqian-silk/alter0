@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act } from "react";
 
 const mockIsLegacyShellMobileViewport = vi.fn(() => false);
 const mockViewportSyncDestroy = vi.fn();
@@ -75,17 +76,15 @@ vi.mock("../features/shell/components/PrimaryNav", () => ({
   PrimaryNav: ({
     currentRoute,
     language,
+    onDismiss,
     onNavigate,
-    onToggleLanguage,
-    onToggleNavCollapsed,
     sessionRail,
   }: {
     currentRoute: string;
     language: string;
+    onDismiss?: () => void;
     sessionRail?: { route: string } | null;
     onNavigate: (route: string) => void;
-    onToggleLanguage: () => void;
-    onToggleNavCollapsed: () => void;
   }) => (
     <div
       data-testid="primary-nav"
@@ -108,9 +107,11 @@ vi.mock("../features/shell/components/PrimaryNav", () => ({
       <button type="button" onClick={() => onNavigate("chatRuntime")}>
         go removed chatRuntime
       </button>
-      <button type="button" onClick={() => onToggleNavCollapsed()}>
-        toggle nav
-      </button>
+      {onDismiss ? (
+        <button type="button" onClick={() => onDismiss()}>
+          close nav
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -186,6 +187,25 @@ describe("WorkbenchApp", () => {
     expect(shell).not.toHaveClass("nav-open");
     expect(shell).not.toHaveClass("overlay-open");
     expect(screen.queryByRole("button", { name: "Close panels" })).not.toBeInTheDocument();
+  });
+
+  it("uses the drawer dismiss action only in the shared mobile shell", async () => {
+    mockIsLegacyShellMobileViewport.mockReturnValue(false);
+    const { container } = render(<WorkbenchApp />);
+    const shell = container.querySelector(".app-shell");
+
+    expect(screen.queryByRole("button", { name: "close nav" })).not.toBeInTheDocument();
+    expect(shell).not.toHaveClass("nav-collapsed");
+
+    mockIsLegacyShellMobileViewport.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    await waitFor(() => {
+      expect(shell).not.toHaveClass("nav-collapsed");
+    });
+    expect(screen.getByRole("button", { name: "open sessions" })).toBeInTheDocument();
   });
 
   it("falls back to Chat without confirming when navigating to the removed ChatRuntime route", async () => {

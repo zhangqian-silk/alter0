@@ -15,7 +15,7 @@ describe("legacyShellState", () => {
     expect(parseLegacyShellPathRoute("/tasks")).toBe("chat");
   });
 
-  it("keeps the mobile shell breakpoint aligned with the shared viewport threshold", () => {
+  it("keeps regular desktop widths on the desktop sidebar before switching to the shared top bar shell", () => {
     const matchMedia = vi.fn((query: string) => ({
       matches: query === `(max-width: ${LEGACY_SHELL_MOBILE_BREAKPOINT_PX}px)`,
       media: query,
