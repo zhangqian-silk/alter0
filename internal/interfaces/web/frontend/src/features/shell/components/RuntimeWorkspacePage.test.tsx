@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { WorkbenchContext, type WorkbenchContextValue } from "../../../app/WorkbenchContext";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "./RuntimeWorkspacePage";
 
@@ -95,6 +96,30 @@ function renderRuntimeWorkspacePage(
   return { ...view, setRuntimeSessionRail };
 }
 
+function renderRailBody(body: ReactNode, contextOverrides: Partial<WorkbenchContextValue> = {}) {
+  const contextValue: WorkbenchContextValue = {
+    route: "chat",
+    language: "en",
+    navigate: vi.fn(),
+    isMobileViewport: false,
+    mobileNavOpen: false,
+    mobileSessionPaneOpen: false,
+    toggleMobileNav: vi.fn(),
+    toggleMobileSessionPane: vi.fn(),
+    openMobileSessionPane: vi.fn(),
+    closeMobileNav: vi.fn(),
+    closeMobileSessionPane: vi.fn(),
+    setRuntimeSessionRail: vi.fn(),
+    ...contextOverrides,
+  };
+
+  return render(
+    <WorkbenchContext.Provider value={contextValue}>
+      {body}
+    </WorkbenchContext.Provider>,
+  );
+}
+
 describe("RuntimeWorkspacePage", () => {
   it("registers the runtime session list for the primary navigation rail", async () => {
     const { container, setRuntimeSessionRail } = renderRuntimeWorkspacePage();
@@ -106,7 +131,7 @@ describe("RuntimeWorkspacePage", () => {
       }));
     });
     const rail = setRuntimeSessionRail.mock.calls.at(-1)?.[0];
-    const railView = render(<>{rail.body}</>);
+    const railView = renderRailBody(rail.body);
 
     expect(within(railView.container).getByText("Design Review")).toBeInTheDocument();
     expect(within(railView.container).getByText("Ready Notes")).toBeInTheDocument();
@@ -121,6 +146,38 @@ describe("RuntimeWorkspacePage", () => {
       "data-session-pane-placement",
       "navigation",
     );
+  });
+
+  it("shows the navigation rail as idle on Settings and switches back to Chat when a session is selected", async () => {
+    const controller = buildController();
+    const onSelect = vi.fn();
+    controller.sessionList.groups[0].items[0].onSelect = onSelect;
+    const navigate = vi.fn();
+    const { setRuntimeSessionRail } = renderRuntimeWorkspacePage(vi.fn(), controller, {
+      route: "settings",
+      navigate,
+    });
+
+    await waitFor(() => {
+      expect(setRuntimeSessionRail).toHaveBeenCalledWith(expect.objectContaining({
+        route: "chat",
+        countLabel: "1 sessions",
+      }));
+    });
+    const rail = setRuntimeSessionRail.mock.calls.at(-1)?.[0];
+    const railView = renderRailBody(rail.body, { route: "settings", navigate });
+    const activeButton = within(railView.container).getByRole("button", { name: /Design Review/i });
+    const activeCard = activeButton.closest("[role='listitem']");
+
+    expect(activeCard).not.toHaveClass("is-active");
+    expect(activeCard).toHaveAttribute("data-runtime-session-state", "idle");
+    expect(activeButton).not.toHaveAttribute("aria-current");
+    expect(activeButton).not.toHaveClass("active");
+
+    fireEvent.click(activeButton);
+
+    expect(navigate).toHaveBeenCalledWith("chat");
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
   it("clears the registered primary navigation session list on unmount", async () => {

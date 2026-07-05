@@ -2,61 +2,73 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { PrimaryNav } from "./PrimaryNav";
 
 describe("PrimaryNav", () => {
-  it("renders text-only brand chrome and locale controls in the expanded sidebar", () => {
+  it("renders text-only brand chrome and opens Settings from the lower-left shortcut", () => {
+    const onNavigate = vi.fn();
     const { container } = render(
       <PrimaryNav
         currentRoute="chat"
         language="en"
-        navCollapsed={false}
-        onNavigate={vi.fn()}
-        onToggleLanguage={vi.fn()}
-        onToggleNavCollapsed={vi.fn()}
+        onNavigate={onNavigate}
       />,
     );
 
+    expect(container.querySelector(".primary-nav")).toHaveAttribute("data-shell-design", "light-tech");
     expect(container.querySelector(".brand-mark")).not.toBeInTheDocument();
     expect(screen.getByText("Alter0")).toBeInTheDocument();
     expect(container.querySelector(".nav-profile")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Workspace" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Language" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(onNavigate).toHaveBeenCalledWith("settings");
+    expect(screen.queryByRole("button", { name: "Language" })).not.toBeInTheDocument();
   });
 
-  it("keeps route navigation and the collapse control interactive", () => {
+  it("keeps route navigation interactive and exposes an explicit drawer dismiss action", () => {
     const onNavigate = vi.fn();
-    const onToggleNavCollapsed = vi.fn();
+    const onDismiss = vi.fn();
 
     render(
       <PrimaryNav
         currentRoute="chat"
         language="en"
-        navCollapsed={false}
+        onDismiss={onDismiss}
         onNavigate={onNavigate}
-        onToggleLanguage={vi.fn()}
-        onToggleNavCollapsed={onToggleNavCollapsed}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    fireEvent.click(screen.getByRole("button", { name: "Collapse navigation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close navigation" }));
 
     expect(onNavigate).toHaveBeenCalledWith("settings");
-    expect(onToggleNavCollapsed).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it("limits the primary route surface to chat and settings", () => {
+  it("does not render a collapse rail control in the persistent desktop navigation", () => {
     render(
       <PrimaryNav
         currentRoute="chat"
         language="en"
-        navCollapsed={false}
         onNavigate={vi.fn()}
-        onToggleLanguage={vi.fn()}
-        onToggleNavCollapsed={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Collapse navigation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Expand navigation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close navigation" })).not.toBeInTheDocument();
+  });
+
+  it("keeps Settings out of the primary route surface", () => {
+    render(
+      <PrimaryNav
+        currentRoute="chat"
+        language="en"
+        onNavigate={vi.fn()}
       />,
     );
 
     expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveClass("nav-settings-shortcut");
+    expect(screen.queryByRole("button", { name: "Language" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "ChatRuntime" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Skill" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Memory" })).not.toBeInTheDocument();
@@ -64,17 +76,19 @@ describe("PrimaryNav", () => {
     expect(screen.queryByRole("button", { name: "Codex Accounts" })).not.toBeInTheDocument();
   });
 
-  it("keeps settings visible as the single settings entry", () => {
+  it("opens settings from the lower-left shortcut without replacing the Chat session rail", () => {
     const onNavigate = vi.fn();
-
-    render(
+    const { container } = render(
       <PrimaryNav
         currentRoute="settings"
         language="en"
-        navCollapsed={false}
         onNavigate={onNavigate}
-        onToggleLanguage={vi.fn()}
-        onToggleNavCollapsed={vi.fn()}
+        sessionRail={{
+          route: "chat",
+          countLabel: "2 sessions",
+          onPrimaryAction: vi.fn(),
+          body: <div role="list"><div role="listitem">Design Review</div></div>,
+        }}
       />,
     );
 
@@ -82,6 +96,10 @@ describe("PrimaryNav", () => {
 
     expect(settings).toBeInTheDocument();
     expect(settings).toHaveClass("active");
+    expect(settings).toHaveClass("nav-settings-shortcut");
+    expect(screen.queryByRole("button", { name: "Language" })).not.toBeInTheDocument();
+    expect(container.querySelector("[data-nav-session-rail='chat']")).toBeInTheDocument();
+    expect(screen.getByText("Design Review")).toBeInTheDocument();
 
     fireEvent.click(settings);
 
@@ -95,10 +113,7 @@ describe("PrimaryNav", () => {
       <PrimaryNav
         currentRoute="chat"
         language="en"
-        navCollapsed={false}
         onNavigate={vi.fn()}
-        onToggleLanguage={vi.fn()}
-        onToggleNavCollapsed={vi.fn()}
         sessionRail={{
           route: "chat",
           countLabel: "2 sessions",
@@ -116,6 +131,7 @@ describe("PrimaryNav", () => {
     const rail = container.querySelector("[data-nav-session-rail='chat']") as HTMLElement;
 
     expect(rail).toBeInTheDocument();
+    expect(rail.closest(".primary-nav")).toHaveAttribute("data-shell-design", "light-tech");
     expect(rail).toHaveTextContent("Sessions");
     expect(rail).toHaveTextContent("2 sessions");
     expect(screen.getByText("Design Review")).toBeInTheDocument();
@@ -133,10 +149,7 @@ describe("PrimaryNav", () => {
       <PrimaryNav
         currentRoute="chat"
         language="zh"
-        navCollapsed={false}
         onNavigate={vi.fn()}
-        onToggleLanguage={vi.fn()}
-        onToggleNavCollapsed={vi.fn()}
         sessionRail={{
           route: "chat",
           countLabel: "2 个会话",
@@ -152,15 +165,12 @@ describe("PrimaryNav", () => {
     expect(onCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("hides the runtime conversation list when the sidebar is collapsed", () => {
+  it("keeps the runtime conversation list in the persistent navigation", () => {
     const { container } = render(
       <PrimaryNav
         currentRoute="chat"
         language="en"
-        navCollapsed={true}
         onNavigate={vi.fn()}
-        onToggleLanguage={vi.fn()}
-        onToggleNavCollapsed={vi.fn()}
         sessionRail={{
           route: "chat",
           countLabel: "2 sessions",
@@ -170,6 +180,6 @@ describe("PrimaryNav", () => {
       />,
     );
 
-    expect(container.querySelector("[data-nav-session-rail='chat']")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-nav-session-rail='chat']")).toBeInTheDocument();
   });
 });

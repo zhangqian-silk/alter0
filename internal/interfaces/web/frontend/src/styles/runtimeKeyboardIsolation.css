@@ -1,9 +1,7 @@
 /* Mobile runtime keyboard isolation: dynamic viewport owns keyboard resizing; only inner screens scroll. */
 @media (max-width: 1100px) {
   .app-shell,
-  .app-shell.info-mode,
-  .app-shell.nav-collapsed,
-  .app-shell.nav-collapsed.info-mode {
+  .app-shell.info-mode {
     position: fixed;
     top: var(--mobile-viewport-offset-top, 0px);
     right: 0;

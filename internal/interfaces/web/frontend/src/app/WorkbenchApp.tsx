@@ -11,18 +11,10 @@ import {
 import { isLegacyShellMobileViewport } from "../features/shell/legacyShellState";
 import { PrimaryNav } from "../features/shell/components/PrimaryNav";
 import { ReactManagedRouteBody } from "../features/shell/components/ReactManagedRouteBody";
+import { RuntimeWorkspaceHeader } from "../features/shell/components/RuntimeWorkspaceHeader";
+import { RuntimeWorkspaceShell } from "../features/shell/components/RuntimeWorkspaceShell";
 import { RuntimeRouteHost } from "../features/shell/components/RuntimeRouteHost";
 import { createMobileViewportSyncController } from "../shared/viewport/mobileViewportSync";
-
-function RouteMobileMenuIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" focusable="false" aria-hidden="true" data-route-mobile-icon="menu">
-      <path d="M4.5 6.25h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      <path d="M4.5 10h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      <path d="M4.5 13.75h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 function blurActiveRuntimeInput() {
   const active = document.activeElement;
@@ -66,7 +58,6 @@ export function WorkbenchApp() {
     normalizeLegacyShellLanguage(document.documentElement.lang),
   );
   const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());
-  const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);
   const [runtimeSessionRail, setRuntimeSessionRailState] = useState<WorkbenchSessionRail | null>(null);
   const setRuntimeSessionRail = useCallback((rail: WorkbenchSessionRail | null) => {
@@ -82,12 +73,10 @@ export function WorkbenchApp() {
   }, []);
   const runtimeRouteActive = isConversationRoute(route);
   const fallbackSessionRail = useMemo<WorkbenchSessionRail | null>(() => {
-    if (!runtimeRouteActive) {
-      return null;
-    }
+    const fallbackSelected = runtimeRouteActive;
     const newLabel = language === "zh" ? "新对话" : "New";
     return {
-      route,
+      route: "chat",
       countLabel: language === "zh" ? "1 个会话" : "1 session",
       onPrimaryAction: () => undefined,
       primaryActionProps: {
@@ -98,8 +87,8 @@ export function WorkbenchApp() {
         <div className="runtime-session-list" data-runtime-session-list-placeholder="true">
           <section className="runtime-session-group menu-group">
             <div className="runtime-session-group-items" role="list">
-              <div role="listitem" className="runtime-session-card is-active">
-                <button className="runtime-session-select active" type="button" disabled>
+              <div role="listitem" className={fallbackSelected ? "runtime-session-card is-active" : "runtime-session-card"}>
+                <button className={fallbackSelected ? "runtime-session-select active" : "runtime-session-select"} type="button" disabled>
                   <span className="runtime-session-main">
                     <span className="runtime-session-title-row">
                       <span className="runtime-session-title-copy">
@@ -114,8 +103,8 @@ export function WorkbenchApp() {
         </div>
       ),
     };
-  }, [language, route, runtimeRouteActive]);
-  const visibleSessionRail = runtimeRouteActive ? (runtimeSessionRail ?? fallbackSessionRail) : null;
+  }, [language, runtimeRouteActive]);
+  const visibleSessionRail = route === "settings" || runtimeRouteActive ? (runtimeSessionRail ?? fallbackSessionRail) : null;
   const runtimeSessionsUseNav = Boolean(visibleSessionRail);
   const navOpen = mobilePanel === "nav";
   const sessionPaneOpen = !runtimeSessionsUseNav && mobilePanel === "sessions";
@@ -167,16 +156,13 @@ export function WorkbenchApp() {
 
   const shellClassName = useMemo(() => {
     const classNames = ["app-shell", "info-mode"];
-    if (navCollapsed) {
-      classNames.push("nav-collapsed");
-    }
     if (navOpen) {
       classNames.push("nav-open", "overlay-open");
     } else if (sessionPaneOpen) {
       classNames.push("overlay-open");
     }
     return classNames.join(" ");
-  }, [navCollapsed, navOpen, sessionPaneOpen]);
+  }, [navOpen, sessionPaneOpen]);
 
   const contextValue = useMemo(() => ({
     route,
@@ -212,7 +198,6 @@ export function WorkbenchApp() {
     <PrimaryNav
       currentRoute={route}
       language={language}
-      navCollapsed={navCollapsed}
       sessionRail={visibleSessionRail}
       onNavigate={(nextRoute) => {
         navigate(nextRoute);
@@ -220,14 +205,7 @@ export function WorkbenchApp() {
           setMobilePanel(null);
         }
       }}
-      onToggleLanguage={() => setLanguage((current) => current === "zh" ? "en" : "zh")}
-      onToggleNavCollapsed={() => {
-        if (isMobileViewport) {
-          toggleMobileNav();
-          return;
-        }
-        setNavCollapsed((current) => !current);
-      }}
+      onDismiss={isMobileViewport ? () => setMobilePanel(null) : undefined}
     />
   );
   const mobileBackdrop = (
@@ -254,6 +232,7 @@ export function WorkbenchApp() {
                 isMobileViewport={isMobileViewport}
                 mobileNavOpen={navOpen}
                 onToggleMobileNav={toggleMobileNav}
+                onToggleLanguage={() => setLanguage((current) => current === "zh" ? "en" : "zh")}
               />
             )}
           </div>
@@ -276,56 +255,75 @@ function RoutePageFrame({
   isMobileViewport,
   mobileNavOpen,
   onToggleMobileNav,
+  onToggleLanguage,
 }: {
   route: string;
   language: LegacyShellLanguage;
   isMobileViewport: boolean;
   mobileNavOpen: boolean;
   onToggleMobileNav: () => void;
+  onToggleLanguage: () => void;
 }) {
   const isSettingsRoute = route === "settings";
   const routeHeadingCopy = getLegacyRouteHeadingCopy(language, isSettingsRoute ? "settings" : route);
   const shellCopy = getLegacyShellCopy(language);
 
   return (
-    <section
-      className={isSettingsRoute ? "route-view workbench-route-frame" : "route-view"}
-      data-route={route}
-      data-route-family={isSettingsRoute ? "settings" : undefined}
-    >
-      {isMobileViewport ? (
-        <header className="route-mobile-head" data-route-mobile-head>
-          <button
-            className="nav-toggle conversation-mobile-action is-quiet"
-            type="button"
-            aria-expanded={mobileNavOpen}
-            onClick={onToggleMobileNav}
-          >
-            <RouteMobileMenuIcon />
-            <span className="route-mobile-action-label sr-only">{shellCopy.chatMenu}</span>
-          </button>
-          <div className="route-mobile-title workbench-title-leading">
-            <span className="route-title-marker" aria-hidden="true"></span>
-            <h3>{routeHeadingCopy.title}</h3>
-          </div>
-          <span className="route-mobile-head-spacer" aria-hidden="true"></span>
-        </header>
-      ) : null}
-      <header
-        className="route-head workbench-title-head is-compact"
-        data-workbench-title-head="route"
-      >
-        <div className="route-copy workbench-title-copy is-compact">
-          <div className="route-title-leading workbench-title-leading">
-            <span className="route-title-marker" aria-hidden="true"></span>
-            <h3>{routeHeadingCopy.title}</h3>
-          </div>
-          <p id="routeSubtitle">{routeHeadingCopy.subtitle}</p>
-        </div>
-      </header>
-      <div className="route-body" data-route={route}>
-        <ReactManagedRouteBody route={route} language={language} />
-      </div>
-    </section>
+    <RuntimeWorkspaceShell
+      rootClassName="runtime-workspace-view"
+      rootProps={{
+        "data-route": route,
+        "data-route-family": isSettingsRoute ? "settings" : undefined,
+        "data-runtime-view": isSettingsRoute ? "settings" : route,
+        "data-runtime-workspace-page": isSettingsRoute ? "settings" : undefined,
+      }}
+      sessionPanePlacement="navigation"
+      sessionPaneProps={{
+        "data-runtime-session-pane": route,
+      }}
+      sessionPaneBackdrop={{
+        ariaLabel: "Close panels",
+        onClick: () => undefined,
+      }}
+      sessionPaneTitle={routeHeadingCopy.title}
+      sessionPaneCountLabel=""
+      sessionPanePrimaryActionLabel={routeHeadingCopy.title}
+      onSessionPanePrimaryAction={() => undefined}
+      workspaceProps={{
+        "data-route": route,
+      }}
+      workspaceBodyProps={{
+        "data-route": route,
+        "data-runtime-view": isSettingsRoute ? "settings" : route,
+      }}
+      mobileHeaderPlacement={isMobileViewport ? "body" : undefined}
+      mobileNavButtonLabel={shellCopy.chatMenu}
+      mobileNavButtonProps={{
+        "aria-expanded": mobileNavOpen,
+      }}
+      onMobileNav={onToggleMobileNav}
+      mobileTitleButtonLabel={routeHeadingCopy.title}
+      mobileTitleButtonProps={{
+        disabled: true,
+      }}
+      workspaceHeader={(
+        <RuntimeWorkspaceHeader
+          title={routeHeadingCopy.title}
+          statusLabel={routeHeadingCopy.title}
+          statusTone="ready"
+          detailsLabel={routeHeadingCopy.title}
+          detailsOpen={false}
+          onToggleDetails={() => undefined}
+          detailsDisabled
+          showStatusSignal={false}
+          showDetailsAction={false}
+          headerProps={{
+            className: "route-head",
+            "data-workbench-title-head": "route",
+          }}
+        />
+      )}
+      workspaceContent={<ReactManagedRouteBody route={route} language={language} onToggleLanguage={onToggleLanguage} />}
+    />
   );
 }

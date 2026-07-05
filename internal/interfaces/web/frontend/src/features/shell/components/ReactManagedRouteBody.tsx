@@ -27,15 +27,17 @@ export {
 export function ReactManagedRouteBody({
   route,
   language,
+  onToggleLanguage,
 }: {
   route: string;
   language: LegacyShellLanguage;
+  onToggleLanguage: () => void;
 }) {
   if (!isReactManagedRouteBody(route)) {
     return null;
   }
 
-  return <SettingsRouteBody language={language} />;
+  return <SettingsRouteBody language={language} onToggleLanguage={onToggleLanguage} />;
 }
 
 function RuntimeSettingsSection({ language }: { language: LegacyShellLanguage }) {
@@ -46,22 +48,57 @@ function RuntimeSettingsSection({ language }: { language: LegacyShellLanguage })
   );
 }
 
-function SettingsRouteBody({
+function GeneralSettingsSection({
   language,
+  onToggleLanguage,
 }: {
   language: LegacyShellLanguage;
+  onToggleLanguage: () => void;
+}) {
+  const copy = getLegacyShellCopy(language);
+
+  return (
+    <section className="settings-general-section" data-settings-section="general" aria-label={copy.routes.general}>
+      <div className="settings-general-panel">
+        <div className="settings-general-heading">
+          <h4>{copy.routes.general}</h4>
+          <p>{copy.routeSubtitles.general}</p>
+        </div>
+        <button
+          className="settings-language-control"
+          type="button"
+          aria-label={`${copy.localeAriaLabel} ${copy.localeButton}`}
+          data-short-lang={copy.localeShort}
+          onClick={onToggleLanguage}
+        >
+          <span className="settings-language-label">{copy.localeAriaLabel}</span>
+          <span className="settings-language-value">{copy.localeButton}</span>
+        </button>
+        <ReactManagedCodexAccountsRouteBody language={language} mode="serviceControls" />
+      </div>
+    </section>
+  );
+}
+
+function SettingsRouteBody({
+  language,
+  onToggleLanguage,
+}: {
+  language: LegacyShellLanguage;
+  onToggleLanguage: () => void;
 }) {
   const copy = getLegacyShellCopy(language);
   const [selectedRoute, setSelectedRoute] = useState(SETTINGS_DEFAULT_SECTION_ROUTE);
   const renderSelectedRouteBody = SETTINGS_ROUTE_BODY_RENDERERS[selectedRoute] ?? SETTINGS_ROUTE_BODY_RENDERERS[SETTINGS_DEFAULT_SECTION_ROUTE];
-  const children: ReactNode = renderSelectedRouteBody({ language });
+  const children: ReactNode = selectedRoute === "general"
+    ? <GeneralSettingsSection language={language} onToggleLanguage={onToggleLanguage} />
+    : renderSelectedRouteBody({ language });
 
   return (
     <section className="settings-route-body" data-settings-route={selectedRoute}>
       <nav className="settings-route-nav" aria-label={copy.settingsSectionsLabel}>
         {SETTINGS_ROUTE_GROUPS.map((group) => (
           <section className="settings-route-nav-group" key={group.heading} data-settings-route-group={toI18nKey(group.heading)}>
-            <h4 data-i18n={`nav.${toI18nKey(group.heading)}`}>{copy.headings[group.heading] ?? group.heading}</h4>
             <div className="settings-route-nav-items">
               {group.items.map((item) => (
                 <button
@@ -83,7 +120,9 @@ function SettingsRouteBody({
         ))}
       </nav>
       <div className="settings-route-content" data-settings-route-content={selectedRoute}>
-        {children}
+        <div className="settings-section-frame" data-settings-section-frame={selectedRoute}>
+          {children}
+        </div>
       </div>
     </section>
   );

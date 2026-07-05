@@ -113,7 +113,7 @@ describe("shared viewport mobileViewportSync", () => {
     visualViewport.dispatchEvent(new Event("resize"));
     expect(document.documentElement.style.getPropertyValue("--keyboard-offset")).toBe("0px");
 
-    setWindowSize(1280, 900);
+    setWindowSize(1281, 900);
     window.dispatchEvent(new Event("resize"));
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-height")).toBe("100dvh");
     expect(document.documentElement.style.getPropertyValue("--mobile-viewport-offset-top")).toBe("0px");

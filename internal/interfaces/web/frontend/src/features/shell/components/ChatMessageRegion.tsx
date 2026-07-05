@@ -231,6 +231,7 @@ function buildChatTimelineItemSignature(message: ChatMessageSnapshot) {
     source: message.source,
     error: message.error,
     status: message.status,
+    at: message.at,
     processEvents: message.processEvents,
     processCollapsed: message.processCollapsed,
   });
@@ -279,13 +280,7 @@ function buildChatTimelineItem(
   runtimeEventFilter: RuntimeEventFilterID[] = DEFAULT_RUNTIME_EVENT_FILTER,
   renderProcessEventDetail?: (messageID: string, event: RuntimeTraceEvent) => ReactNode,
 ): RuntimeTimelineItem {
-  const footer = message.role === "assistant" && shouldShowAssistantStatus(message) ? (
-    <div className="msg-meta">
-        <span className={`status-pill ${message.status || "done"}`}>
-          {assistantStatusLabel(message.status, language)}
-        </span>
-    </div>
-  ) : undefined;
+  const footer = buildMessageFooter(message, language);
 
   if (message.role === "user") {
     const blocks: RuntimeTimelineItem["blocks"] = [
@@ -315,6 +310,7 @@ function buildChatTimelineItem(
       articleProps: { "data-message-id": message.id },
       bubbleClassName: "msg-bubble runtime-message-bubble runtime-message-user-shell user-message-shell",
       blocks,
+      footer,
     };
   }
 
@@ -452,6 +448,46 @@ function buildChatTimelineItem(
     ],
     footer,
   };
+}
+
+function buildMessageFooter(message: ChatMessageSnapshot, language: LegacyShellLanguage) {
+  if (message.status === "streaming") {
+    return undefined;
+  }
+
+  const actor = message.role === "user"
+    ? (language === "zh" ? "你" : "You")
+    : "Alter0";
+  const time = message.at > 0 ? formatMessageTime(message.at, language) : "";
+  const showStatus = message.role === "assistant" && shouldShowAssistantStatus(message);
+
+  if (!actor && !time && !showStatus) {
+    return undefined;
+  }
+
+  return (
+    <div className="msg-meta">
+      <span className="msg-meta-source">{actor}</span>
+      {time ? <span className="msg-meta-time">{time}</span> : null}
+      {showStatus ? (
+        <span className={`status-pill ${message.status || "done"}`}>
+          {assistantStatusLabel(message.status, language)}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function formatMessageTime(timestamp: number, language: LegacyShellLanguage) {
+  try {
+    return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(timestamp));
+  } catch {
+    return "";
+  }
 }
 
 function runtimeSessionTimelineTurnID(messageID: string): string {

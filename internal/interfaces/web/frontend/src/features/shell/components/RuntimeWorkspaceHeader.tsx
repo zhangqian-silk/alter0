@@ -27,6 +27,8 @@ type RuntimeWorkspaceHeaderProps = {
   statusButtonProps?: Omit<ComponentPropsWithoutRef<"span">, "children">;
   detailsButtonProps?: Omit<ComponentPropsWithoutRef<"button">, "type" | "children" | "aria-expanded" | "aria-controls" | "disabled" | "onClick">;
   detailsPanelProps?: ComponentPropsWithoutRef<"section">;
+  showStatusSignal?: boolean;
+  showDetailsAction?: boolean;
 };
 
 function joinClassNames(...values: Array<string | undefined>) {
@@ -57,6 +59,8 @@ export function RuntimeWorkspaceHeader({
   statusButtonProps,
   detailsButtonProps,
   detailsPanelProps,
+  showStatusSignal = true,
+  showDetailsAction = false,
 }: RuntimeWorkspaceHeaderProps) {
   const detailsID = useId();
   const detailsTitleID = useId();
@@ -226,24 +230,52 @@ export function RuntimeWorkspaceHeader({
         >
           <div className="runtime-workspace-title-leading">
             <span
-              className={joinClassNames(
-                "workspace-header-status",
-                `is-${statusTone}`,
-                statusButtonClassName,
-              )}
-              role="img"
-              aria-label={statusLabel}
-              title={statusLabel}
-              data-runtime-header-signal-container={statusTone}
-              {...statusButtonRestProps}
+              className="runtime-workspace-title-signal-slot"
+              data-runtime-header-signal-slot={showStatusSignal ? statusTone : "empty"}
+              aria-hidden={showStatusSignal ? undefined : "true"}
             >
+              {showStatusSignal ? (
               <span
-                className={`runtime-session-signal is-${statusTone}`}
-                data-runtime-header-signal={statusTone}
-                aria-hidden="true"
-              ></span>
+                className={joinClassNames(
+                  "workspace-header-status",
+                  `is-${statusTone}`,
+                  statusButtonClassName,
+                )}
+                role="img"
+                aria-label={statusLabel}
+                title={statusLabel}
+                data-runtime-header-signal-container={statusTone}
+                {...statusButtonRestProps}
+              >
+                <span
+                  className={`runtime-session-signal is-${statusTone}`}
+                  data-runtime-header-signal={statusTone}
+                  aria-hidden="true"
+                ></span>
+              </span>
+              ) : null}
             </span>
-            <h4 title={title}>{title}</h4>
+            <h4 title={title} data-runtime-header-title-text="true">
+              {detailsContent && !detailsDisabled ? (
+                <button
+                  className={joinClassNames(
+                    "runtime-workspace-title-button",
+                    detailsOpen ? "is-active" : undefined,
+                    detailsButtonClassName,
+                  )}
+                  type="button"
+                  aria-expanded={detailsOpen}
+                  aria-controls={detailsID}
+                  onClick={onToggleDetails}
+                  data-runtime-header-title-button="true"
+                  {...detailsButtonRestProps}
+                >
+                  {title}
+                </button>
+              ) : (
+                title
+              )}
+            </h4>
           </div>
         </div>
         <div
@@ -252,22 +284,6 @@ export function RuntimeWorkspaceHeader({
             mobileEmpty ? "is-mobile-empty" : undefined,
           )}
         >
-          <button
-            className={joinClassNames(
-              "runtime-workspace-button",
-              "workspace-header-details",
-              detailsOpen ? "is-active" : undefined,
-              detailsButtonClassName,
-            )}
-            type="button"
-            aria-expanded={detailsOpen}
-            aria-controls={detailsID}
-            disabled={detailsDisabled}
-            onClick={onToggleDetails}
-            {...detailsButtonRestProps}
-          >
-            {detailsLabel}
-          </button>
         </div>
       </div>
       {detailsPanel}

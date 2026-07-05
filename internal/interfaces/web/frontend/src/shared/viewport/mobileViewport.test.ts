@@ -12,7 +12,7 @@ import {
 
 describe("shared viewport mobileViewport", () => {
   it("keeps viewport breakpoints aligned with the legacy shell", () => {
-    expect(MOBILE_VIEWPORT_BREAKPOINT_PX).toBe(1100);
+    expect(MOBILE_VIEWPORT_BREAKPOINT_PX).toBe(1280);
     expect(CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX).toBe(760);
     expect(MOBILE_VIEWPORT_SYNC_THRESHOLD_PX).toBe(8);
     expect(MOBILE_KEYBOARD_MIN_OFFSET_PX).toBe(120);
@@ -20,8 +20,8 @@ describe("shared viewport mobileViewport", () => {
   });
 
   it("matches the legacy mobile breakpoint helpers", () => {
-    expect(isMobileViewportWidth(1100)).toBe(true);
-    expect(isMobileViewportWidth(1101)).toBe(false);
+    expect(isMobileViewportWidth(1280)).toBe(true);
+    expect(isMobileViewportWidth(1281)).toBe(false);
     expect(isChatRuntimeSessionSheetViewportWidth(760)).toBe(true);
     expect(isChatRuntimeSessionSheetViewportWidth(761)).toBe(false);
   });

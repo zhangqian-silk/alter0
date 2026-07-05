@@ -40,8 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     heading: "Workspace",
     items: [
-      { label: "Chat", route: "chat", abbr: "C", icon: "chat", active: true },
-      { label: "Settings", route: SETTINGS_WORKBENCH_ROUTE, abbr: "SE", icon: "settings" }
+      { label: "Chat", route: "chat", abbr: "C", icon: "chat", active: true }
     ]
   }
 ];
@@ -53,7 +52,8 @@ export const SETTINGS_ROUTE_GROUPS: NavGroup[] = [
       { label: "Runtime", route: "runtime", abbr: "RU", icon: "models" },
       { label: "Skills", route: "skills", abbr: "SK", icon: "skills" },
       { label: "Memory", route: "memory", abbr: "ME", icon: "memory" },
-      { label: "Schedules", route: "schedules", abbr: "SC", icon: "cron" }
+      { label: "Schedules", route: "schedules", abbr: "SC", icon: "cron" },
+      { label: "General", route: "general", abbr: "GE", icon: "settings" }
     ]
   }
 ];
@@ -63,18 +63,7 @@ export const ALL_WORKBENCH_ROUTE_GROUPS: NavGroup[] = [
   ...SETTINGS_ROUTE_GROUPS,
 ];
 
-export const PROMPTS: PromptItem[] = [
-  {
-    i18n: "prompt.journey",
-    prompt: "Let's start a new journey!",
-    label: "Let's start a new journey!"
-  },
-  {
-    i18n: "prompt.skills",
-    prompt: "Can you tell me what skills you have?",
-    label: "Can you tell me what skills you have?"
-  }
-];
+export const PROMPTS: PromptItem[] = [];
 
 export function toI18nKey(value: string) {
   return value.toLowerCase().replace(/[\s-]+/g, "_");

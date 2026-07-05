@@ -1063,7 +1063,8 @@ describe("ConversationWorkspace", () => {
     runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
     renderWorkspace({ isMobileViewport: false });
 
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.queryByRole("button", { name: "Details" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
     const detailsPanel = document.querySelector("[data-runtime-details-panel='conversation']") as HTMLElement;
     expect(detailsPanel).toBeInTheDocument();
     expect(within(detailsPanel).getByText("Session")).toBeInTheDocument();

@@ -15,7 +15,7 @@ describe("legacyShellState", () => {
     expect(parseLegacyShellPathRoute("/tasks")).toBe("chat");
   });
 
-  it("keeps the mobile shell breakpoint aligned with the shared viewport threshold", () => {
+  it("keeps regular desktop widths on the desktop sidebar before switching to the shared top bar shell", () => {
     const matchMedia = vi.fn((query: string) => ({
       matches: query === `(max-width: ${LEGACY_SHELL_MOBILE_BREAKPOINT_PX}px)`,
       media: query,
@@ -33,7 +33,7 @@ describe("legacyShellState", () => {
     });
 
     expect(isLegacyShellMobileViewport()).toBe(true);
-    expect(LEGACY_SHELL_MOBILE_BREAKPOINT_PX).toBe(1100);
-    expect(matchMedia).toHaveBeenCalledWith("(max-width: 1100px)");
+    expect(LEGACY_SHELL_MOBILE_BREAKPOINT_PX).toBe(1280);
+    expect(matchMedia).toHaveBeenCalledWith("(max-width: 1280px)");
   });
 });

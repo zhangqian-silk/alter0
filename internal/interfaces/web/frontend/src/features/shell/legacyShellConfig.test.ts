@@ -21,12 +21,13 @@ describe("legacyShellConfig", () => {
     expect(uniqueRoutes.size).toBe(routes.length);
   });
 
-  it("keeps only chat and settings as primary navigation routes", () => {
+  it("keeps only chat in the primary navigation route list", () => {
     const workspaceRoutes = NAV_GROUPS[0].items.map((item) => item.route);
     const allRoutes = NAV_GROUPS.flatMap((group) => group.items.map((item) => item.route));
 
-    expect(workspaceRoutes).toEqual(["chat", "settings"]);
-    expect(allRoutes).toEqual(["chat", "settings"]);
+    expect(workspaceRoutes).toEqual(["chat"]);
+    expect(allRoutes).toEqual(["chat"]);
+    expect(allRoutes).not.toContain("settings");
     expect(allRoutes).not.toContain("chatRuntime");
     expect(allRoutes).not.toContain("memory");
     expect(allRoutes).not.toContain("tasks");
@@ -39,21 +40,11 @@ describe("legacyShellConfig", () => {
       "skills",
       "memory",
       "schedules",
+      "general",
     ]);
   });
 
-  it("keeps welcome prompts available for the empty state", () => {
-    expect(PROMPTS).toEqual([
-      {
-        i18n: "prompt.journey",
-        prompt: "Let's start a new journey!",
-        label: "Let's start a new journey!"
-      },
-      {
-        i18n: "prompt.skills",
-        prompt: "Can you tell me what skills you have?",
-        label: "Can you tell me what skills you have?"
-      }
-    ]);
+  it("does not configure bottom quick suggestions for the Chat empty state", () => {
+    expect(PROMPTS).toEqual([]);
   });
 });
