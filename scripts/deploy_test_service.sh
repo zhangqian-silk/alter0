@@ -81,6 +81,8 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DEFAULT_HOME="${HOME:-$(getent passwd "$(id -un)" | cut -d: -f6)}"
+RUNTIME_ROOT="${ALTER0_RUNTIME_ROOT:-${DEFAULT_HOME}/.alter0}"
 REPO_PATH_EXPLICIT=0
 SERVICE_TYPE=""
 UPSTREAM_URL=""
@@ -139,7 +141,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "${SERVICE_NAME}" == "travel" && "${REPO_PATH_EXPLICIT}" != "1" ]]; then
-  REPO_PATH="${SCRIPT_DIR}/../.alter0/workspaces/sessions/${SESSION_ID}"
+  REPO_PATH="${RUNTIME_ROOT}/workspaces/sessions/${SESSION_ID}"
 fi
 
 REPO_PATH="$(cd "${REPO_PATH}" && pwd)"

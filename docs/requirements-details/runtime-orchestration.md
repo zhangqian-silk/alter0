@@ -90,7 +90,8 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 
 ### 本地存储
 
-- 默认存储后端为 `.alter0` 本地文件。
+- 默认存储后端为 `ALTER0_RUNTIME_ROOT` 派生的本地文件；业务 JSON 存储位于 `<runtime_root>/storage/`，执行工作区、Chat state、日志和运行输出从同一 runtime root 派生。
+- `ALTER0_STORAGE_DIR` 仅作为旧部署兼容入口保留；当它与 `ALTER0_RUNTIME_ROOT` 同时存在时，必须等于 `<runtime_root>/storage`。
 - Control 配置与 Scheduler 状态优先使用 JSON。
 - Memory 主存使用 Markdown，派生索引可按 Memory 领域策略重建。
 

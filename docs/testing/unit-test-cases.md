@@ -347,5 +347,5 @@
 
 - Go 单测默认执行：`GOCACHE=/tmp/alter0-go-build-cache go test ./...`。
 - 覆盖率概览执行：`GOCACHE=/tmp/alter0-go-build-cache go test ./... -cover`。
-- 当前受限运行环境中，Go 默认缓存目录 `/var/lib/alter0/.cache/go-build` 可能不可写；测试命令使用 `/tmp/alter0-go-build-cache` 作为临时构建缓存，不改变项目配置。
+- 当前受限运行环境中，服务运行账户的默认 Go 缓存目录可能不可写；测试命令使用 `/tmp/alter0-go-build-cache` 作为临时构建缓存，不改变项目配置。
 - Web E2E 执行口径见 `docs/testing/playwright.md`。

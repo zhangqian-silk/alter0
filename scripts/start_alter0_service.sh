@@ -35,7 +35,7 @@ fi
 if [[ -z "${HOME_DIR}" ]]; then
   HOME_DIR="${DEFAULT_HOME}"
 fi
-LOG_FILE="${ALTER0_LOG_FILE:-${HOME_DIR}/alter0/logs/alter0.log}"
+LOG_FILE="${ALTER0_LOG_FILE:-${RUNTIME_ROOT}/logs/alter0.log}"
 LOCK_FILE="${RUNTIME_ROOT}/run.lock"
 ALTER0_RUNTIME_MANAGER="${ALTER0_RUNTIME_MANAGER:-systemd}"
 ALTER0_SYSTEMD_UNIT="${ALTER0_SYSTEMD_UNIT:-alter0.service}"
@@ -45,9 +45,8 @@ if [[ -z "${CODEX_COMMAND}" && -x /usr/local/bin/codex ]]; then
   CODEX_COMMAND="/usr/local/bin/codex"
 fi
 
-mkdir -p "${RUNTIME_ROOT}" "${HOME_DIR}" "$(dirname "${LOG_FILE}")" "${REPO_DIR}/.alter0" "$(dirname "${BUILD_OUTPUT}")"
+mkdir -p "${RUNTIME_ROOT}" "${HOME_DIR}" "$(dirname "${LOG_FILE}")" "$(dirname "${BUILD_OUTPUT}")"
 chmod 750 "${RUNTIME_ROOT}" "${HOME_DIR}" || true
-chmod 700 "${REPO_DIR}/.alter0" || true
 touch "${LOG_FILE}"
 chmod 640 "${LOG_FILE}" || true
 export HOME="${HOME_DIR}"
@@ -69,6 +68,7 @@ CMD="env \
 GOSUMDB='${GOSUMDB:-sum.golang.org}' \
 GOTOOLCHAIN='${GOTOOLCHAIN:-auto}' \
 HOME='${HOME_DIR}' \
+ALTER0_RUNTIME_ROOT='${RUNTIME_ROOT}' \
 ALTER0_RUNTIME_MANAGER='${ALTER0_RUNTIME_MANAGER}' \
 ALTER0_SYSTEMD_UNIT='${ALTER0_SYSTEMD_UNIT}' \
 ALTER0_BUILD_OUTPUT='${BUILD_OUTPUT}' \

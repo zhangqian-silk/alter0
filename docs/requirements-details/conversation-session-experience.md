@@ -60,7 +60,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - Chat 消息接口接受请求后，服务端先把本轮 `user` 消息写入 Session history，再进入同步执行；assistant 回复在执行完成、失败或任务收口后追加写入。同一轮请求的浏览器关闭、刷新、请求断开或前端取消不会让用户已发送内容只留在浏览器缓存中。
 - Session history 维护会话级 `last_active_at` 与 `pinned`。`last_active_at` 在用户发送消息、assistant 完成或失败、结果收口、打开会话详情、Chat 输入/详情读取和任务结果写回时刷新；没有显式活跃时间的历史会话回退使用最后消息时间。
 - Chat 会话列表把置顶会话汇入独立 `Pinned / 置顶` 分组并固定在 `Today / 今天` 上方；非置顶会话继续按最近活跃时间排序并进入时间分组。Settings 的 Sessions 页面展示最后活跃时间并提供置顶/取消置顶操作。置顶状态持久化在 Chat session store 中，不改变消息内容；尚未产生消息、只存在于当前浏览器的空白 `Chat` 会话，也必须在前端快照可用范围内保留置顶反馈。
-- 系统维护任务默认每日清理超过 7 天不活跃的未置顶会话。清理会删除该会话的 Session history、运行时 registry、关联任务引用和 `.alter0/workspaces/sessions/<session_id>` 下的附件/工作区数据；置顶会话始终跳过自动清理，仍有关联 queued/running 任务的会话在任务进入终态前跳过清理。
+- 系统维护任务默认每日清理超过 7 天不活跃的未置顶会话。清理会删除该会话的 Session history、运行时 registry、关联任务引用和 `<runtime_root>/workspaces/sessions/<session_id>` 下的附件/工作区数据；置顶会话始终跳过自动清理，仍有关联 queued/running 任务的会话在任务进入终态前跳过清理。
 - 会话清理不提供复杂配置项。`Settings > Schedules` 的内置会话清理任务只提供当前状态、上次/下次运行、手动触发、失败重试，以及删除数量、置顶跳过数量、任务保护数量和扫描数量。清理后续资源删除失败时，本次维护状态必须记录为 `failed` 并暴露失败原因。
 - 具备独立前端入口的 Skill 不进入通用 Settings 页面历史。
 - `Sessions` 系统页面可展示跨来源会话数据，但不作为 Chat 分栏依据。

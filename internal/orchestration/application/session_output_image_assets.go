@@ -186,7 +186,7 @@ func buildAssistantAttachmentID(rawURL string) string {
 }
 
 func sessionAttachmentDir(baseDir string, sessionID string, attachmentID string) string {
-	return filepath.Join(baseDir, ".alter0", "workspaces", "sessions", sanitizeAttachmentSegment(sessionID), sessionAttachmentDirName, sanitizeAttachmentSegment(attachmentID))
+	return filepath.Join(baseDir, "workspaces", "sessions", sanitizeAttachmentSegment(sessionID), sessionAttachmentDirName, sanitizeAttachmentSegment(attachmentID))
 }
 
 func sessionAttachmentURL(sessionID string, attachmentID string, variant string) string {

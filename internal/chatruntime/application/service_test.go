@@ -230,7 +230,7 @@ func TestCreateAssignsSessionWorkspaceDir(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	expected := filepath.Join(baseDir, ".alter0", "workspaces", "chat", "sessions", session.ID)
+	expected := filepath.Join(baseDir, "workspaces", "chat", "sessions", session.ID)
 	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
 		t.Fatalf("expected workspace %q, got %q", expected, session.WorkingDir)
 	}
@@ -271,7 +271,7 @@ func TestRecoverAssignsDeterministicWorkspaceDir(t *testing.T) {
 		t.Fatalf("recover session: %v", err)
 	}
 
-	expected := filepath.Join(baseDir, ".alter0", "workspaces", "chat", "sessions", "chat-recover")
+	expected := filepath.Join(baseDir, "workspaces", "chat", "sessions", "chat-recover")
 	if filepath.Clean(session.WorkingDir) != filepath.Clean(expected) {
 		t.Fatalf("expected recovered workspace %q, got %q", expected, session.WorkingDir)
 	}

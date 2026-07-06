@@ -165,7 +165,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
   - `http` 把全部请求反向代理到注册的本地或远端 upstream。
 - 根短哈希 `web` 服务允许直接注册为 `http`，使 `https://<session_short_hash>.alter0.cn` 整体反向代理到当前会话后端实例，包括 `/`、`/api/*`、登录页和Chat 接口。
 - `frontend_dist` 仅覆盖静态前端构建；选择该模式时，`/api/*`、登录态、健康检查和共享后端能力仍由主运行时提供。
-- workspace service 注册表需持久化到 `.alter0/workspace-services.json`，以便运行时重启后继续保持域名绑定。
+- workspace service 注册表需持久化到 `<runtime_root>/storage/workspace-services.json`，以便运行时重启后继续保持域名绑定。
 
 ## Runtime Restart
 
@@ -200,9 +200,9 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 ### 运行目录
 
-- systemd 部署基线将服务 `HOME` 收敛到 `/var/lib/alter0`。
-- 历史 `HOME=/var/lib/alter0/codex-home` 启动时归一到 `/var/lib/alter0`。
-- `.alter0` 运行态、Codex 认证与服务账户工具链共享同一运行根目录。
+- systemd 部署基线显式配置 `ALTER0_RUNTIME_ROOT`，并从该根目录派生业务存储、工作区、Chat state、日志和运行输出。
+- 历史 `HOME=<runtime_root>/codex-home` 启动时归一到 `<runtime_root>`。
+- Codex 认证与服务账户工具链继续归属服务运行账户 HOME；alter0 自身运行态不得散落到源码仓库或历史 `/srv` 路径。
 
 ### 交付凭据
 
@@ -213,9 +213,9 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ### Node / Playwright 工具链
 
 - 服务内需要执行 Node/Playwright 测试时，运行账户必须具备 `node`、`npm`、`npx` 与 Playwright Chromium。
-- 初始化脚本 `scripts/setup_alter0_runtime_node.sh` 默认将工具链安装到 `/var/lib/alter0/.local`。
+- 初始化脚本 `scripts/setup_alter0_runtime_node.sh` 默认将工具链安装到服务运行账户的 `.local` 目录。
 - 初始化脚本默认在 `internal/interfaces/web` 与 `internal/interfaces/web/frontend` 预装 `npm ci`，确保 E2E、前端构建与前端单测共用同一运行账户工具链。
-- 服务启动时补齐 `/var/lib/alter0/.local/bin` 到 PATH，使 Codex CLI、Web 子进程和手工切换到账户后的执行环境一致。
+- 服务启动时补齐运行账户 `.local/bin` 到 PATH，使 Codex CLI、Web 子进程和手工切换到账户后的执行环境一致。
 - 服务启动、服务重启、Runtime supervisor 候选二进制构建与维护者手工构建二进制统一使用 `scripts/build_alter0_service.sh`：该入口先重建 `internal/interfaces/web/static/dist`，校验入口 HTML 引用了哈希 JS/CSS 资产，再构建 Go 服务二进制，确保 `go:embed` 使用的前端产物与当前分支源码一致。
 - Web Shell 入口 HTML 与 `frontend_dist` workspace preview HTML 在服务端输出前必须按实际 `/assets/index-*.js|css` 内容注入 `?v=<content-hash>`；`static/dist/assets` 可继续使用长期 immutable 缓存，但服务重启、代码快进或预览刷新后，资产内容变化必须产生新的浏览器 URL，避免旧 bundle 因客户端缓存继续生效。
 - Session 级测试服务的标准部署入口为 `scripts/deploy_test_service.sh`，它负责构建或注册工作区服务，并调用共享运行时的 workspace service 注册接口。默认 `scripts/deploy_test_service.sh <session_id>` 会先构建前端，再把当前分支 Web 后端的启动命令、工作目录、端口与健康检查路径注册给共享运行时托管，并把默认 `web` 短哈希域名绑定成 `http` 反代；如需纯静态 UI 预览，显式传 `--service-type frontend_dist`。

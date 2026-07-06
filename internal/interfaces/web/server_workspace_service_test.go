@@ -12,6 +12,56 @@ import (
 	"testing"
 )
 
+func TestNewServerStoresWorkspaceServiceRegistryUnderRuntimeStorage(t *testing.T) {
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	storageDir := filepath.Join(runtimeRoot, "storage")
+
+	server := NewServer(
+		"127.0.0.1:0",
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		MemoryContextOptions{},
+		WebSecurityOptions{
+			RuntimeRoot: runtimeRoot,
+			StorageDir:  storageDir,
+		},
+		nil,
+		nil,
+	)
+
+	if filepath.Clean(server.workspaceRoot) != filepath.Clean(runtimeRoot) {
+		t.Fatalf("workspace root = %q, want %q", server.workspaceRoot, runtimeRoot)
+	}
+	if server.workspaceService == nil {
+		t.Fatal("expected workspace service registry")
+	}
+	expectedPath := filepath.Join(storageDir, workspaceServiceRegistryFilename)
+	if filepath.Clean(server.workspaceService.path) != filepath.Clean(expectedPath) {
+		t.Fatalf("registry path = %q, want %q", server.workspaceService.path, expectedPath)
+	}
+}
+
+func TestWorkspaceServiceRuntimeDirUsesRuntimeRoot(t *testing.T) {
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	entry := workspaceServiceRegistration{
+		SessionID: "session-runtime-dir",
+		ServiceID: "web",
+		Workdir:   filepath.Join(t.TempDir(), "repo"),
+	}
+
+	got := workspaceServiceRuntimeDir(runtimeRoot, entry)
+	expected := filepath.Join(runtimeRoot, "output", "test-services", "session-runtime-dir", "web")
+	if filepath.Clean(got) != filepath.Clean(expected) {
+		t.Fatalf("runtime dir = %q, want %q", got, expected)
+	}
+}
+
 func TestWorkspaceServiceGatewayProxiesRegisteredHTTPService(t *testing.T) {
 	upstreamCalled := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

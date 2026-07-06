@@ -13,6 +13,7 @@ func TestServiceBuildScriptsUseUnifiedFrontendAwareBuild(t *testing.T) {
 	buildScript := readRepositoryFile(t, repoRoot, "scripts/build_alter0_service.sh")
 	startScript := readRepositoryFile(t, repoRoot, "scripts/start_alter0_service.sh")
 	relaunchScript := readRepositoryFile(t, repoRoot, "scripts/relaunch_service.sh")
+	deployScript := readRepositoryFile(t, repoRoot, "scripts/deploy_test_service.sh")
 	authSetupScript := readRepositoryFile(t, repoRoot, "scripts/setup_alter0_runtime_auth.sh")
 	nodeSetupScript := readRepositoryFile(t, repoRoot, "scripts/setup_alter0_runtime_node.sh")
 	makefile := readRepositoryFile(t, repoRoot, "Makefile")
@@ -38,9 +39,15 @@ func TestServiceBuildScriptsUseUnifiedFrontendAwareBuild(t *testing.T) {
 	assertNotContains(t, startScript, "-long-term-memory-path")
 	assertNotContains(t, startScript, "-mandatory-context-file")
 	assertNotContains(t, startScript, "ALTER0_STORAGE_DIR")
+	assertContains(t, startScript, "ALTER0_RUNTIME_ROOT='${RUNTIME_ROOT}'")
+	assertContains(t, startScript, "LOG_FILE=\"${ALTER0_LOG_FILE:-${RUNTIME_ROOT}/logs/alter0.log}\"")
+	assertNotContains(t, startScript, "${REPO_DIR}/.alter0")
+	assertContains(t, deployScript, "RUNTIME_ROOT=\"${ALTER0_RUNTIME_ROOT:-${DEFAULT_HOME}/.alter0}\"")
+	assertNotContains(t, deployScript, "../.alter0/workspaces")
 	for _, script := range map[string]string{
 		"start_alter0_service.sh":      startScript,
 		"relaunch_service.sh":          relaunchScript,
+		"deploy_test_service.sh":       deployScript,
 		"setup_alter0_runtime_auth.sh": authSetupScript,
 		"setup_alter0_runtime_node.sh": nodeSetupScript,
 	} {

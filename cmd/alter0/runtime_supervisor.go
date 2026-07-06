@@ -46,7 +46,7 @@ type supervisorClientRestarter struct {
 	client *http.Client
 }
 
-func newRuntimeRestarter(cancel context.CancelFunc, logger *slog.Logger, args []string) (runtimeRestartClient, error) {
+func newRuntimeRestarter(cancel context.CancelFunc, logger *slog.Logger, args []string, runtimeRoot string) (runtimeRestartClient, error) {
 	addr := strings.TrimSpace(os.Getenv(supervisorAddrEnv))
 	token := strings.TrimSpace(os.Getenv(supervisorTokenEnv))
 	if addr != "" && token != "" {
@@ -58,7 +58,7 @@ func newRuntimeRestarter(cancel context.CancelFunc, logger *slog.Logger, args []
 			},
 		}, nil
 	}
-	return newServiceRestarter(cancel, logger, args)
+	return newServiceRestarter(cancel, logger, args, runtimeRoot)
 }
 
 func (r *supervisorClientRestarter) RequestRestart(options web.RuntimeRestartOptions) (bool, error) {
@@ -194,6 +194,7 @@ type runtimeSupervisor struct {
 	logger             *slog.Logger
 	executable         string
 	workingDir         string
+	runtimeRoot        string
 	appArgs            []string
 	rawWebAddr         string
 	rawBindLocalhost   bool
@@ -211,7 +212,7 @@ type runtimeSupervisor struct {
 	restartStatus web.RuntimeRestartStatus
 }
 
-func newRuntimeSupervisor(logger *slog.Logger, appArgs []string, rawWebAddr string, rawBindLocalhost bool) (*runtimeSupervisor, error) {
+func newRuntimeSupervisor(logger *slog.Logger, appArgs []string, rawWebAddr string, rawBindLocalhost bool, runtimeRoot string) (*runtimeSupervisor, error) {
 	executable, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("resolve supervisor executable: %w", err)
@@ -234,6 +235,7 @@ func newRuntimeSupervisor(logger *slog.Logger, appArgs []string, rawWebAddr stri
 		logger:             logger,
 		executable:         executable,
 		workingDir:         workingDir,
+		runtimeRoot:        cleanConfiguredPath(runtimeRoot),
 		appArgs:            append([]string{}, appArgs...),
 		rawWebAddr:         strings.TrimSpace(rawWebAddr),
 		rawBindLocalhost:   rawBindLocalhost,
@@ -385,7 +387,7 @@ func (s *runtimeSupervisor) prepareCandidate(options web.RuntimeRestartOptions) 
 			return "", err
 		}
 	}
-	candidate, err := buildRelaunchBinary(s.workingDir)
+	candidate, err := buildRelaunchBinary(s.workingDir, s.runtimeRoot)
 	if err != nil {
 		return "", err
 	}

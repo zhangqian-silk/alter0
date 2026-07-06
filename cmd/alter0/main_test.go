@@ -54,6 +54,76 @@ func TestRuntimePathSeenKeyFollowsPlatformCaseRules(t *testing.T) {
 	}
 }
 
+func TestResolveRuntimePathsDerivesStorageFromRuntimeRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "runtime")
+
+	paths, err := resolveRuntimePaths(root, "")
+	if err != nil {
+		t.Fatalf("resolve runtime paths: %v", err)
+	}
+
+	if paths.Root != filepath.Clean(root) {
+		t.Fatalf("runtime root = %q, want %q", paths.Root, filepath.Clean(root))
+	}
+	expectedStorage := filepath.Join(filepath.Clean(root), "storage")
+	if paths.StorageDir != expectedStorage {
+		t.Fatalf("storage dir = %q, want %q", paths.StorageDir, expectedStorage)
+	}
+}
+
+func TestResolveRuntimePathsRejectsSplitRuntimeAndStorage(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "runtime")
+	otherStorage := filepath.Join(t.TempDir(), "storage")
+
+	_, err := resolveRuntimePaths(root, otherStorage)
+	if err == nil {
+		t.Fatal("expected split runtime/storage paths to be rejected")
+	}
+	if !strings.Contains(err.Error(), runtimeRootEnvKey) || !strings.Contains(err.Error(), storageDirEnvKey) {
+		t.Fatalf("error should name conflicting env keys, got %v", err)
+	}
+}
+
+func TestResolveRuntimePathsAllowsLegacyStorageDirOnly(t *testing.T) {
+	legacyStorage := filepath.Join(t.TempDir(), "legacy-storage")
+
+	paths, err := resolveRuntimePaths("", legacyStorage)
+	if err != nil {
+		t.Fatalf("resolve runtime paths: %v", err)
+	}
+
+	if paths.Root != filepath.Clean(legacyStorage) {
+		t.Fatalf("legacy runtime root = %q, want %q", paths.Root, filepath.Clean(legacyStorage))
+	}
+	if paths.StorageDir != filepath.Clean(legacyStorage) {
+		t.Fatalf("legacy storage dir = %q, want %q", paths.StorageDir, filepath.Clean(legacyStorage))
+	}
+}
+
+func TestShouldExportRuntimeRootEnvForAlignedStorage(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "runtime")
+	paths := runtimePaths{
+		Root:       root,
+		StorageDir: filepath.Join(root, "storage"),
+	}
+
+	if !shouldExportRuntimeRootEnv(paths) {
+		t.Fatal("expected aligned runtime storage layout to export runtime root")
+	}
+}
+
+func TestShouldExportRuntimeRootEnvSkipsUnalignedLegacyStorage(t *testing.T) {
+	legacyStorage := filepath.Join(t.TempDir(), "legacy-storage")
+	paths := runtimePaths{
+		Root:       legacyStorage,
+		StorageDir: legacyStorage,
+	}
+
+	if shouldExportRuntimeRootEnv(paths) {
+		t.Fatal("expected legacy storage-only layout to avoid exporting conflicting runtime root")
+	}
+}
+
 func countPathEntry(raw string, entry string) int {
 	count := 0
 	expected := filepath.Clean(entry)

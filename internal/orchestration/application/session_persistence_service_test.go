@@ -445,7 +445,7 @@ func TestSessionPersistenceServiceLocalizesAssistantMarkdownImagesIntoSessionWor
 		t.Fatalf("expected persisted assistant record to contain localized image URL, got %+v", recorder.records)
 	}
 
-	attachmentRoot := filepath.Join(workspaceRoot, ".alter0", "workspaces", "sessions", "s-image", "attachments")
+	attachmentRoot := filepath.Join(workspaceRoot, "workspaces", "sessions", "s-image", "attachments")
 	entries, readErr := os.ReadDir(attachmentRoot)
 	if readErr != nil {
 		t.Fatalf("read attachment workspace: %v", readErr)
