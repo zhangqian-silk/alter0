@@ -40,6 +40,7 @@ type managedWorkspaceServiceProcess struct {
 
 type workspaceServiceProcessManager struct {
 	logger        *slog.Logger
+	runtimeRoot   string
 	client        *http.Client
 	commandRunner func(name string, args ...string) *exec.Cmd
 
@@ -47,9 +48,10 @@ type workspaceServiceProcessManager struct {
 	processes map[string]*managedWorkspaceServiceProcess
 }
 
-func newWorkspaceServiceRuntime(logger *slog.Logger) workspaceServiceRuntime {
+func newWorkspaceServiceRuntime(logger *slog.Logger, runtimeRoot string) workspaceServiceRuntime {
 	return &workspaceServiceProcessManager{
-		logger: logger,
+		logger:      logger,
+		runtimeRoot: filepath.Clean(strings.TrimSpace(runtimeRoot)),
 		client: &http.Client{
 			Timeout: 2 * time.Second,
 		},
@@ -105,7 +107,7 @@ func (m *workspaceServiceProcessManager) Stop(entry workspaceServiceRegistration
 }
 
 func (m *workspaceServiceProcessManager) startProcessLocked(key string, entry workspaceServiceRegistration) (*managedWorkspaceServiceProcess, error) {
-	runtimeDir := workspaceServiceRuntimeDir(entry)
+	runtimeDir := workspaceServiceRuntimeDir(m.runtimeRoot, entry)
 	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
 		return nil, fmt.Errorf("mkdir workspace service runtime dir: %w", err)
 	}
@@ -227,10 +229,14 @@ func sameManagedWorkspaceServiceConfig(left workspaceServiceRegistration, right 
 		left.Port == right.Port
 }
 
-func workspaceServiceRuntimeDir(entry workspaceServiceRegistration) string {
+func workspaceServiceRuntimeDir(runtimeRoot string, entry workspaceServiceRegistration) string {
+	root := strings.TrimSpace(runtimeRoot)
+	if root == "" {
+		root = "."
+	}
 	return filepath.Join(
-		filepath.FromSlash(entry.Workdir),
-		".alter0",
+		root,
+		"output",
 		"test-services",
 		entry.SessionID,
 		entry.ServiceID,

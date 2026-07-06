@@ -50,7 +50,7 @@ type storageProfile struct {
 
 var defaultStorageProfile = storageProfile{
 	Backend:         "local",
-	Dir:             ".alter0",
+	Dir:             filepath.Join(defaultRuntimeRoot, runtimeStorageDirName),
 	ControlFormat:   localstorage.FormatJSON,
 	SchedulerFormat: localstorage.FormatJSON,
 	SessionFormat:   localstorage.FormatJSON,
@@ -61,8 +61,17 @@ const defaultWebAddr = "127.0.0.1:18088"
 
 const defaultPublicCodexCommand = "/usr/local/bin/codex"
 const defaultCodexWorkspaceModeEnvKey = "ALTER0_CODEX_WORKSPACE_MODE"
+const codexWorkspaceRootEnvKey = "ALTER0_CODEX_WORKSPACE_ROOT"
 const defaultCodexWorkspaceMode = "session"
+const runtimeRootEnvKey = "ALTER0_RUNTIME_ROOT"
 const storageDirEnvKey = "ALTER0_STORAGE_DIR"
+const defaultRuntimeRoot = ".alter0"
+const runtimeStorageDirName = "storage"
+
+type runtimePaths struct {
+	Root       string
+	StorageDir string
+}
 
 func main() {
 	ensureDefaultRuntimePath()
@@ -79,11 +88,8 @@ func main() {
 	webLoginPasswordDefault := strings.TrimSpace(os.Getenv("ALTER0_WEB_LOGIN_PASSWORD"))
 	webLoginPassword := flag.String("web-login-password", webLoginPasswordDefault, "required web login password for the shared gateway")
 	codexCommand := flag.String("codex-command", strings.TrimSpace(os.Getenv("ALTER0_CODEX_COMMAND")), "Codex CLI executable path or command name")
-	storageDirDefault := strings.TrimSpace(os.Getenv(storageDirEnvKey))
-	if storageDirDefault == "" {
-		storageDirDefault = defaultStorageProfile.Dir
-	}
-	storageDir := flag.String("storage-dir", storageDirDefault, "local storage directory for control, sessions, tasks, scheduler, model config, and runtime memory")
+	runtimeRoot := flag.String("runtime-root", strings.TrimSpace(os.Getenv(runtimeRootEnvKey)), "runtime root for alter0 storage, workspaces, state, logs, and runtime output")
+	storageDir := flag.String("storage-dir", strings.TrimSpace(os.Getenv(storageDirEnvKey)), "deprecated local storage directory; must equal runtime-root/storage when runtime-root is set")
 	flag.Parse()
 	if *relaunchHelper {
 		if err := runRelaunchHelper(*relaunchParentPID, *relaunchExecPath, *relaunchWorkingDir, *relaunchArgs); err != nil {
@@ -93,9 +99,18 @@ func main() {
 		return
 	}
 
+	logger := observability.NewLogger(slog.LevelInfo)
+	resolvedRuntimePaths, err := resolveRuntimePaths(*runtimeRoot, *storageDir)
+	if err != nil {
+		logger.Error("invalid runtime storage configuration", slog.String("error", err.Error()))
+		os.Exit(2)
+	}
+	if shouldExportRuntimeRootEnv(resolvedRuntimePaths) {
+		_ = os.Setenv(runtimeRootEnvKey, resolvedRuntimePaths.Root)
+	}
+
 	if !*runtimeChild {
-		logger := observability.NewLogger(slog.LevelInfo)
-		supervisor, err := newRuntimeSupervisor(logger, filterInternalRuntimeArgs(os.Args[1:]), strings.TrimSpace(*webAddr), *webBindLocalhostOnly)
+		supervisor, err := newRuntimeSupervisor(logger, filterInternalRuntimeArgs(os.Args[1:]), strings.TrimSpace(*webAddr), *webBindLocalhostOnly, resolvedRuntimePaths.Root)
 		if err != nil {
 			logger.Error("failed to initialize runtime supervisor", slog.String("error", err.Error()))
 			os.Exit(2)
@@ -118,16 +133,17 @@ func main() {
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	logger := observability.NewLogger(slog.LevelInfo)
 	runtimeInfo := newRuntimeInfoProvider(time.Now().UTC(), mustGetwd())
 	telemetry := observability.NewTelemetry()
 	idGen := sharedinfra.NewRandomIDGenerator()
 
-	storageProfile := defaultStorageProfile
-	storageProfile.Dir = strings.TrimSpace(*storageDir)
-	if storageProfile.Dir == "" {
-		storageProfile.Dir = defaultStorageProfile.Dir
+	if err := ensureDefaultCodexWorkspaceRoot(resolvedRuntimePaths.Root); err != nil {
+		logger.Error("invalid codex workspace root configuration", slog.String("error", err.Error()))
+		os.Exit(2)
 	}
+
+	storageProfile := defaultStorageProfile
+	storageProfile.Dir = resolvedRuntimePaths.StorageDir
 
 	controlStore, schedulerStore, sessionStore, taskStore, err := buildStorage(storageProfile)
 	if err != nil {
@@ -233,7 +249,7 @@ func main() {
 		}),
 		orchapp.WithTaskSummaryMemory(taskSummaryMemory),
 	)
-	persistentOrchestrator := orchapp.NewSessionPersistenceService(baseOrchestrator, sessionHistory, idGen, logger, mustGetwd())
+	persistentOrchestrator := orchapp.NewSessionPersistenceService(baseOrchestrator, sessionHistory, idGen, logger, resolvedRuntimePaths.Root)
 	orchestrator := persistentOrchestrator
 	taskService, err := newTaskService(rootCtx, taskStore, taskapp.Options{
 		SummaryMemory: taskSummaryRecorder,
@@ -243,6 +259,7 @@ func main() {
 		os.Exit(2)
 	}
 	chatRuntimeService := chatruntimeapp.NewService(rootCtx, idGen, logger, chatruntimeapp.Options{
+		WorkingDir:    resolvedRuntimePaths.Root,
 		Shell:         resolvedTaskChatRuntimeShell,
 		ShellArgsLine: "",
 	})
@@ -275,13 +292,15 @@ func main() {
 		web.WebSecurityOptions{
 			LoginPassword: resolvedWebLoginPassword,
 			BindLocalhost: resolvedWebBindLocalhostOnly,
+			RuntimeRoot:   resolvedRuntimePaths.Root,
+			StorageDir:    resolvedRuntimePaths.StorageDir,
 		},
 		llmService,
 		logger,
 	)
 	server.SetCodexAccountService(codexAccounts)
 	server.SetRuntimeInfoProvider(runtimeInfo)
-	restarter, err := newRuntimeRestarter(cancel, logger, filterInternalRuntimeArgs(os.Args[1:]))
+	restarter, err := newRuntimeRestarter(cancel, logger, filterInternalRuntimeArgs(os.Args[1:]), resolvedRuntimePaths.Root)
 	if err != nil {
 		logger.Error("failed to initialize service restarter", slog.String("error", err.Error()))
 		os.Exit(2)
@@ -324,11 +343,85 @@ func mustGetwd() string {
 	return dir
 }
 
+func resolveRuntimePaths(rawRuntimeRoot string, rawStorageDir string) (runtimePaths, error) {
+	runtimeRoot := cleanConfiguredPath(rawRuntimeRoot)
+	storageDir := cleanConfiguredPath(rawStorageDir)
+	if runtimeRoot == "" {
+		if storageDir != "" {
+			return runtimePaths{
+				Root:       inferRuntimeRootFromLegacyStorageDir(storageDir),
+				StorageDir: storageDir,
+			}, nil
+		}
+		runtimeRoot = defaultRuntimeRoot
+	}
+
+	expectedStorageDir := filepath.Join(runtimeRoot, runtimeStorageDirName)
+	if storageDir == "" {
+		storageDir = expectedStorageDir
+	} else if !sameConfiguredPath(storageDir, expectedStorageDir) {
+		return runtimePaths{}, fmt.Errorf("%s=%q conflicts with %s=%q; storage must resolve to %q", storageDirEnvKey, storageDir, runtimeRootEnvKey, runtimeRoot, expectedStorageDir)
+	}
+
+	return runtimePaths{
+		Root:       runtimeRoot,
+		StorageDir: storageDir,
+	}, nil
+}
+
+func cleanConfiguredPath(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	return filepath.Clean(trimmed)
+}
+
+func inferRuntimeRootFromLegacyStorageDir(storageDir string) string {
+	if filepath.Base(storageDir) == runtimeStorageDirName {
+		parent := filepath.Dir(storageDir)
+		if parent != "" && parent != "." {
+			return parent
+		}
+	}
+	return storageDir
+}
+
+func sameConfiguredPath(left string, right string) bool {
+	left = filepath.Clean(strings.TrimSpace(left))
+	right = filepath.Clean(strings.TrimSpace(right))
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
+}
+
+func shouldExportRuntimeRootEnv(paths runtimePaths) bool {
+	runtimeRoot := cleanConfiguredPath(paths.Root)
+	if runtimeRoot == "" {
+		return false
+	}
+	expectedStorageDir := filepath.Join(runtimeRoot, runtimeStorageDirName)
+	return sameConfiguredPath(paths.StorageDir, expectedStorageDir)
+}
+
 func ensureDefaultCodexWorkspaceMode() {
 	if strings.TrimSpace(os.Getenv(defaultCodexWorkspaceModeEnvKey)) != "" {
 		return
 	}
 	_ = os.Setenv(defaultCodexWorkspaceModeEnvKey, defaultCodexWorkspaceMode)
+}
+
+func ensureDefaultCodexWorkspaceRoot(runtimeRoot string) error {
+	runtimeRoot = cleanConfiguredPath(runtimeRoot)
+	if runtimeRoot == "" {
+		runtimeRoot = defaultRuntimeRoot
+	}
+	existing := cleanConfiguredPath(os.Getenv(codexWorkspaceRootEnvKey))
+	if existing != "" && !sameConfiguredPath(existing, runtimeRoot) {
+		return fmt.Errorf("%s=%q conflicts with %s=%q", codexWorkspaceRootEnvKey, existing, runtimeRootEnvKey, runtimeRoot)
+	}
+	return os.Setenv(codexWorkspaceRootEnvKey, runtimeRoot)
 }
 
 func ensureDefaultRuntimePath() {
@@ -549,7 +642,7 @@ func buildStorage(profile storageProfile) (controlapp.Store, schedulerapp.Store,
 	case "", "local":
 		dir := strings.TrimSpace(profile.Dir)
 		if dir == "" {
-			dir = ".alter0"
+			dir = defaultStorageProfile.Dir
 		}
 		return localstorage.NewControlStore(dir, profile.ControlFormat), localstorage.NewSchedulerStore(dir, profile.SchedulerFormat), localstorage.NewSessionStore(dir, profile.SessionFormat), localstorage.NewTaskStore(dir, profile.TaskFormat), nil
 	default:

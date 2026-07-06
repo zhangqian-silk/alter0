@@ -129,14 +129,15 @@ chmod +x "$ALTER0_BUILD_OUTPUT"
 		t.Fatalf("write fake build script: %v", err)
 	}
 
-	candidate, err := buildRelaunchBinary(repoDir)
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime-root")
+	candidate, err := buildRelaunchBinary(repoDir, runtimeRoot)
 	if err != nil {
 		t.Fatalf("build relaunch binary: %v", err)
 	}
 	if _, err := os.Stat(candidate); err != nil {
 		t.Fatalf("expected candidate binary to exist: %v", err)
 	}
-	expectedDir := filepath.Join(repoDir, "output", "runtime")
+	expectedDir := filepath.Join(runtimeRoot, "output", "runtime")
 	if filepath.Dir(candidate) != expectedDir {
 		t.Fatalf("candidate written to %q, want %q", filepath.Dir(candidate), expectedDir)
 	}
