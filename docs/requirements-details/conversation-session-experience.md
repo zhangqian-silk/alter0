@@ -319,6 +319,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 - 页面隐藏时停止高频扫描，恢复前台后补一次刷新。
 - `Chat` 优先通过 owner 级增量轮询接收进行中会话变更；轮询响应受 `limit / byte_limit` 控制，默认只合并最新 bounded turn 页，不维持固定周期完整详情轮询。忙碌会话的周期恢复先请求 `/api/chat/sessions/updates`；当 updates 连续返回空事件、返回的事件连续未命中本地仍判定为 `busy / recoverable` 的会话，或当前待恢复会话的 revision/activity/messages/process steps 均未推进时，前端把这些结果视为 LLM 长耗时期间的正常无进展窗口，只在连续无进展达到第 10、20、50 次以及之后每 50 次时按对应 `session_id` 补拉一次 bounded detail，用服务端详情校准最终状态、assistant 正文和失败/中断事实。当前会话收到新的 busy revision、activity、消息或过程步骤时重置退避计数；详情仍未收敛时不重置退避计数。该兜底只读取最新详情页，不自动请求更早 `turn_before` 历史。
+- 当本地缓存仍残留 running/queued assistant 占位，但服务端列表摘要已经给出非 busy 状态，且 `last_output_at` 晚于该占位消息时，运行页以服务端状态恢复 Composer 可输入；该会话仍按 `recoverable` 纳入轮询或详情回源，直到最终正文、失败/中断事实和 `runtime_trace_events` 完成校准。
 - 页面隐藏、移动端软键盘输入、滚动活跃或系统低功耗场景下，非必要轮询与重绘必须暂停或降频。
 - 增量窗口过期、服务重启后返回 `resync_required`、页面激活补偿、显式手动刷新、详情打开、历史分页或本地缓存不完整时，可直接补拉当前活动会话与仍处于 `busy / recoverable` 的会话详情；常规 updates 未对本地 `busy / recoverable` 会话产生相关进展时，仅按第 10、20、50 次以及之后每 50 次的连续无进展退避阈值补拉；新的 busy revision、activity、消息或过程步骤属于有效进展，会重置连续无进展计数。详情补偿仅限最新 bounded 页，不替代用户显式加载更早历史。
 
