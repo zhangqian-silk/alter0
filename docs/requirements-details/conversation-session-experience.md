@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-07-03
+> Last update: 2026-07-06
 
 ## 领域边界
 
@@ -243,7 +243,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - Session 历史区的会话条目不展示 ready、failed、exited 或 interrupted 状态灯；只有处理中条目显示 loading，并为读屏输出当前忙碌状态文案。
 - Conversation workspace 头部的标题、状态按钮、会话详情入口和新会话入口需按当前路由与语言即时切换文案；状态按钮同时反映当前活动会话派生状态，但可见层只显示信号，不再展示固定 `Ready` 或其他状态文案；该信号固定排在当前会话标题左侧，会话详情入口并入当前标题按钮，不再额外渲染独立右侧详情按钮；这些壳层文案更新不得覆盖当前会话标题或消息内容。
 - `Chat` 的会话列表、工作区外壳、聊天滚动区和输入区需输出 `runtime-*` 主契约并保留必要的 `chat-* + conversation-*` 兼容 class，确保 `/chat` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
-- `Chat` 首页 Composer 采用单一胶囊式助手输入面板：主 textarea 透明无内边框，工具栏与输入区处在同一白色 surface 内；工具栏不再显示 `Session` 会话设置按钮，只保留附件与发送等直接对话动作。附件入口使用回形针图标，文字 label 仅保留给可访问语义；桌面端输入面板按主阅读宽度居中，移动端压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，除 Composer 胶囊外不使用额外胶囊按钮、卡片边框或厚圆角表达层级；会话列表项与 `Details` 面板保持同一浅色 runtime 质感。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
+- `Chat` 首页 Composer 采用外层 form 适度圆角、内部 textarea 直角的助手输入面板：主 textarea 透明无内边框，工具栏与输入区处在同一白色 surface 内；工具栏不再显示 `Session` 会话设置按钮，只保留附件与发送等直接对话动作。附件入口使用回形针图标，文字 label 仅保留给可访问语义；桌面端输入面板按主阅读宽度居中，移动端压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；移动端输入面边框必须落在屏幕安全内边距内，textarea 与底部工具行采用紧凑高度，底部白色留白不得额外撑高 footer；PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，Composer 外层 form 不使用胶囊按钮、卡片边框或厚圆角表达层级；会话列表项与 `Details` 面板保持同一浅色 runtime 质感。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
 - `Chat` 在页面重新变为前台可见或浏览器重新把当前页激活时，必须复用运行页共享的 page-activation 补偿刷新链路：刷新会话列表、按 owner cursor 读取增量，并在 `resync_required` 或缓存不完整时补拉当前活动会话详情。页面隐藏时暂停高频轮询；恢复前台后立即做一次增量检查，避免后台标签页持续发起会话详情请求。
 - `Chat` 在 bfcache 恢复或网络恢复在线时也必须复用 page-activation 补偿刷新链路；Chat owner 的 session 详情默认按最新 `20` 个 turns 与约 `256KiB` turns 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果。页面恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息，也不得在恢复阶段自动请求 `turn_before`、扩展当前可见窗口、强制滚动到底部或重建 Composer 输入状态与配置面板。
 - `Chat` 时间线到顶交互先展开本地已加载的隐藏消息批次；本地窗口已完全展开且服务端仍有更早历史时，才由 `ConversationRuntimeProvider.loadEarlierHistory()` 按 `turn_before` 显式请求下一页。分页结果按消息 id 与时间顺序合并进时间线，并在保持阅读锚点后展开下一批。
@@ -269,11 +269,12 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 ### 输入与键盘
 
 - Chat 输入区基于 `--mobile-viewport-height` 动态视口高度适配软键盘。
-- 移动端 root 不做 fixed 页面锁，也不对 `html / body / #frontend-root` 使用 `overflow: hidden` 根层锁；App Shell 使用 `height: var(--mobile-viewport-height, 100dvh)` 承接键盘后的可见高度。键盘占位不再用于拉伸 App Shell、workspace header 或正文 panel，也不通过 transform 反向移动后方运行层，避免浏览器工具栏状态切换、输入聚焦或键盘动画造成底部留白、内容裁切或整页位移。
+- 移动端 root 不做 fixed 页面锁，也不对 `html / body / #frontend-root` 使用 `overflow: hidden` 根层锁；App Shell 使用 `height: var(--mobile-viewport-height, 100dvh)` 承接键盘后的可见高度，同时 root、workspace、timeline 与 Composer 容器必须裁切横向溢出并禁止页面级横向 scroll offset。键盘占位不再用于拉伸 App Shell、workspace header 或正文 panel，也不通过 transform 反向移动后方运行层，避免浏览器工具栏状态切换、输入聚焦或键盘动画造成底部留白、内容裁切或整页位移。
 - `Chat` 的移动端会话列表共用左侧主导航抽屉：运行页顶部只保留 `Menu` 抽屉入口，并在抽屉中直接展示主工作流入口与当前Chat 会话列表；点击遮罩、切换路由、切换会话或新建会话后，不保留旧的抽屉展开态。
-- `Chat` 的移动端左侧抽屉在真机上优先保证稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不再叠加多层位移、条目级顺序动画或生硬的整板平推过渡。
+- `Chat` 的移动端左侧抽屉在真机上优先保证稳定性：遮罩保留淡入淡出，抽屉本体仅保留一层轻量侧滑，不再叠加多层位移、条目级顺序动画或生硬的整板平推过渡；抽屉和遮罩按动态可视高度裁剪，内部会话 rail/list 自行滚动，不得超出屏幕底部或带动页面级纵向拖拽。
 - 输入区在软键盘弹起、收起、浏览器工具栏伸缩时持续贴住动态视口底部；Composer 作为 workspace grid footer 随 `--mobile-viewport-height` 变化，不使用 fixed bottom、transform 或 spacer 驱动主布局，正文滚动区、空态、命令候选和配置面板不消费键盘高度。
 - 运行页后置样式不得重新对共享 `.runtime-composer-shell` 设置 `bottom: 0`、键盘 offset 或 fixed 定位；移动端 Composer 的唯一布局锚点是 `.runtime-workspace-body` 的真实 grid footer。该约束同时覆盖 Chat 和后续复用 Conversation runtime 的运行页，避免输入区覆盖最新用户消息或助手正文。
+- 移动端 Composer footer 必须以安全区内边距包住输入面，form 边框不得贴住或越过屏幕边缘；外层 form 保留适度圆角，内部 textarea 保持直角，输入面高度、textarea 高度、工具行间距和工具按钮尺寸需维持紧凑稳定，不能用空白区撑开底部 footer。
 - 仅在输入框实际聚焦或 visual viewport 明确报告键盘收缩时发布键盘诊断偏移；主布局不消费该偏移追加底部位移。
 - 键盘收起或视口回弹后不保留额外底部空白。
 - `Chat` 在页面恢复前台可见、浏览器重新激活当前标签页或系统恢复当前 WebView 时，必须立刻重算共享视口诊断变量；第一帧不得沿用后台前遗留的旧可视高度或旧底部空白。
@@ -281,8 +282,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 首次触摸主输入框时需保留浏览器原生软键盘手势，不在 `pointerdown / touchstart` 捕获阶段取消默认行为，不主动 focus，不锁定 `window` page scroll，也不通过 `scrollTo` 干预真实焦点或回放页面级滚动锚点。键盘开合过渡期内，`--mobile-viewport-height` 驱动 App Shell 可见高度，Composer 作为 workspace grid footer 跟随容器底边；输入框后方的 `workspaceBody / runtime-workspace-screen` 等滚动容器不短时锁定，移动 workbar 不消费 `VisualViewport.offsetTop` 做 transform，workspace header 与正文 panel 不单独消费 `VisualViewport` 变量。正文滚动区、空态、命令候选、配置面板和公共操作行由 App Shell 动态视口高度与静态 workspace inset 保持原位，不再做页面级滚动锚回，避免背景滚动与 iOS Safari 原生键盘动画互相竞争。首次弹出软键盘时公共操作行不得消失，也不得出现整页尺寸跳变。
 - 主输入框首触后的键盘动画稳定窗口不得回放页面级滚动锚点，也不得通过 `window.scrollTo` 修正背景位置；Chat 在输入框聚焦且消息区原本贴近底部时可保持 `.runtime-workspace-screen` 的底部阅读距离。消息区一旦产生 `touchmove / pointermove / wheel / scroll` 意图，当前滚动容器必须继续即时响应。
 - 主输入框保持聚焦时，消息区单指纵向拖动必须继续走浏览器原生滚动分派；前端不得通过 touch-scroll bridge、`touchmove.preventDefault()` 或脚本写入 `.runtime-workspace-screen.scrollTop` 来模拟滚动，避免破坏 iOS Safari 的惯性滚动与触摸响应。
+- 消息区只有在实际内容高度超过视口高度时才开启纵向滚动与 iOS 惯性滚动；短消息、短回复、折叠 `Thinking / 已思考`、少量状态标签或加载中内容不足一屏时，`.runtime-workspace-screen` 必须关闭竖向触摸滚动和 overscroll 回弹，避免空滚动手势引发页面抖动。
 - 软键盘打开时，真手机宽度下消息区实际高度必须由 App Shell 的 `--mobile-viewport-height` 和 workspace grid 共同收敛到当前可见阅读窗口，避免内部滚动容器仍以键盘未弹起时的过大高度参与触摸滚动。软键盘以 overlay 方式覆盖 layout viewport 时，也只能更新 App Shell 可见高度；`.runtime-workspace-panel` 只作为 grid 中间行，`.runtime-workspace-screen` 只保留固定阅读留白，不得通过额外底部 inset、手写 panel 高度、workspace grid 行高或 `runtime-composer-spacer` 扩展可滚范围，也不得改变顶部 workbar、workspace header 或空态的布局高度。
-- Composer 的外层 footer、渐变背景、form surface 空白和外层留白不得制造独立滚动层或吞掉正文滚动手势；只有输入胶囊内部真实控件接收事件，确保视觉上露出的后方消息区仍能直接拖动滚动。
+- Composer 的外层 footer、渐变背景、form surface 空白和外层留白不得制造独立滚动层或吞掉正文滚动手势；只有输入区内部真实控件接收事件，确保视觉上露出的后方消息区仍能直接拖动滚动。
 - `Chat` 在移动端触摸发送按钮时，必须先 blur 当前主输入框，再继续原有发送链路；键盘收起期间 composer 继续随 `--mobile-viewport-height` 的真实回弹贴底，不能在发送后继续维持聚焦态或把输入区悬停在空白带上。
 - `Chat` 的移动端顶部 workbar 必须作为 fixed 顶层固定在 `top: var(--mobile-viewport-offset-top, 0px)`，不通过 CSS transform 跟随浏览器栏滚动；workspace body 只保留对应高度的 header footprint。底部 Composer 是 `.runtime-workspace-body` 的真实 grid footer，随动态视口底边移动，不通过顶层 portal、fixed bottom 或 spacer 贴底；`.conversation-chat-screen` 与空态欢迎区在软键盘弹起期间只在内部滚动，不能因键盘高度变化带动顶部 header 或正文出现额外位移动画。
 - `Chat` 在键盘收起和 composer 回弹到底边时，工作区滚动面保持原位；最后一屏消息、空态说明和阅读定位控件都不能在底边留下额外空白或残留占位。
@@ -317,6 +319,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 - 页面隐藏时停止高频扫描，恢复前台后补一次刷新。
 - `Chat` 优先通过 owner 级增量轮询接收进行中会话变更；轮询响应受 `limit / byte_limit` 控制，默认只合并最新 bounded turn 页，不维持固定周期完整详情轮询。忙碌会话的周期恢复先请求 `/api/chat/sessions/updates`；当 updates 连续返回空事件、返回的事件连续未命中本地仍判定为 `busy / recoverable` 的会话，或当前待恢复会话的 revision/activity/messages/process steps 均未推进时，前端把这些结果视为 LLM 长耗时期间的正常无进展窗口，只在连续无进展达到第 10、20、50 次以及之后每 50 次时按对应 `session_id` 补拉一次 bounded detail，用服务端详情校准最终状态、assistant 正文和失败/中断事实。当前会话收到新的 busy revision、activity、消息或过程步骤时重置退避计数；详情仍未收敛时不重置退避计数。该兜底只读取最新详情页，不自动请求更早 `turn_before` 历史。
+- 当本地缓存仍残留 running/queued assistant 占位，但服务端列表摘要已经给出非 busy 状态，且 `last_output_at` 晚于该占位消息时，运行页以服务端状态恢复 Composer 可输入；该会话仍按 `recoverable` 纳入轮询或详情回源，直到最终正文、失败/中断事实和 `runtime_trace_events` 完成校准。
 - 页面隐藏、移动端软键盘输入、滚动活跃或系统低功耗场景下，非必要轮询与重绘必须暂停或降频。
 - 增量窗口过期、服务重启后返回 `resync_required`、页面激活补偿、显式手动刷新、详情打开、历史分页或本地缓存不完整时，可直接补拉当前活动会话与仍处于 `busy / recoverable` 的会话详情；常规 updates 未对本地 `busy / recoverable` 会话产生相关进展时，仅按第 10、20、50 次以及之后每 50 次的连续无进展退避阈值补拉；新的 busy revision、activity、消息或过程步骤属于有效进展，会重置连续无进展计数。详情补偿仅限最新 bounded 页，不替代用户显式加载更早历史。
 

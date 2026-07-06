@@ -582,6 +582,56 @@ describe("ConversationWorkspace", () => {
     }));
   });
 
+  it("marks short mobile Chat timelines as non-scrollable until content overflows", async () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Short session",
+      messages: [
+        { id: "msg-1", role: "user", text: "One", at: Date.now(), status: "done" },
+        { id: "msg-2", role: "assistant", text: "Two", at: Date.now(), status: "done" },
+      ],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    renderWorkspace({ isMobileViewport: true });
+
+    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+    expect(screenNode).toBeInTheDocument();
+    expect(screenNode).toHaveAttribute("data-runtime-scrollable", "false");
+
+    Object.defineProperty(screenNode, "clientHeight", {
+      configurable: true,
+      value: 360,
+    });
+    Object.defineProperty(screenNode, "scrollHeight", {
+      configurable: true,
+      value: 720,
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    await waitFor(() => {
+      expect(screenNode).toHaveAttribute("data-runtime-scrollable", "true");
+    });
+
+    Object.defineProperty(screenNode, "scrollHeight", {
+      configurable: true,
+      value: 361,
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    await waitFor(() => {
+      expect(screenNode).toHaveAttribute("data-runtime-scrollable", "false");
+    });
+  });
+
   it("uses user messages as the Chat jump targets in both directions", async () => {
     const messages = [
       { id: "msg-1-user", role: "user", text: "One", at: Date.now(), status: "done" },

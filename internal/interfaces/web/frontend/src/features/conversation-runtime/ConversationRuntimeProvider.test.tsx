@@ -275,6 +275,7 @@ function ProcessToggleHarness() {
       <button type="button" onClick={() => void runtime.refreshActiveSession()}>
         refresh active
       </button>
+      <output data-testid="assistant-process-message-id">{assistantMessage?.id || ""}</output>
       <output data-testid="assistant-process-collapsed">{String(assistantMessage?.processCollapsed)}</output>
     </div>
   );
@@ -517,6 +518,163 @@ describe("ConversationRuntimeProvider", () => {
     expect(merged[0]?.messages.map((message) => message.text)).toEqual(["new prompt"]);
   });
 
+  it("unblocks input when a newer ready summary overtakes a cached running placeholder", async () => {
+    const detailRead = deferred<{
+      session: {
+        id: string;
+        title: string;
+        status: string;
+        created_at: string;
+        updated_at: string;
+        last_output_at: string;
+        revision: number;
+        turns: Array<{
+          id: string;
+          prompt: string;
+          status: string;
+          started_at: string;
+          finished_at: string;
+          final_output: string;
+        }>;
+      };
+    }>();
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "finished-chat" }));
+    window.localStorage.setItem(
+      LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        activeSessionByRoute: { chat: "finished-chat" },
+        sessionsByRoute: {
+          chat: [{
+            id: "finished-chat",
+            status: "busy",
+            title: "Cached running chat",
+            createdAt: Date.parse("2026-04-23T03:30:00Z"),
+            updatedAt: Date.parse("2026-04-23T03:31:00Z"),
+            activityAt: Date.parse("2026-04-23T03:31:01Z"),
+            revision: Date.parse("2026-04-23T03:31:01Z"),
+            detailRevision: Date.parse("2026-04-23T03:31:01Z"),
+            pinned: false,
+            targetID: "codex",
+            targetName: "Codex",
+            messages: [
+              {
+                id: "turn-running:user",
+                role: "user",
+                text: "cached prompt",
+                attachments: [],
+                route: "chat",
+                source: "runtime",
+                error: false,
+                status: "queued",
+                at: Date.parse("2026-04-23T03:31:00Z"),
+                processEvents: [],
+              },
+              {
+                id: "turn-running:assistant",
+                role: "assistant",
+                text: "",
+                attachments: [],
+                route: "chat",
+                source: "runtime",
+                error: false,
+                status: "running",
+                at: Date.parse("2026-04-23T03:31:01Z"),
+                processEvents: [],
+              },
+            ],
+            messagesLoaded: true,
+            serverBacked: true,
+          }],
+        },
+      }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return {
+            items: [{
+              id: "finished-chat",
+              title: "Cached running chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              updated_at: "2026-04-23T03:35:00Z",
+              last_output_at: "2026-04-23T03:35:00Z",
+              activity_at: "2026-04-23T03:35:00Z",
+              revision: Date.parse("2026-04-23T03:35:00Z"),
+            }],
+          };
+        case "/api/chat/sessions/finished-chat":
+          return detailRead.promise;
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+      if (path === "/api/chat/sessions/finished-chat/input") {
+        return {
+          session: {
+            id: "finished-chat",
+            title: "Cached running chat",
+            status: "busy",
+            created_at: "2026-04-23T03:30:00Z",
+            updated_at: "2026-04-23T03:36:00Z",
+            turns: [{
+              id: "turn-next",
+              prompt: typeof body?.input === "string" ? body.input : "new prompt",
+              status: "running",
+              started_at: "2026-04-23T03:36:00Z",
+            }],
+          },
+        };
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      "/api/chat/sessions/finished-chat/input",
+      expect.objectContaining({ input: "Inspect this image" }),
+    ));
+    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy"));
+    await act(async () => {
+      detailRead.resolve({
+        session: {
+          id: "finished-chat",
+          title: "Cached running chat",
+          status: "ready",
+          created_at: "2026-04-23T03:30:00Z",
+          updated_at: "2026-04-23T03:35:00Z",
+          last_output_at: "2026-04-23T03:35:00Z",
+          revision: Date.parse("2026-04-23T03:35:00Z"),
+          turns: [{
+            id: "turn-running",
+            prompt: "cached prompt",
+            status: "success",
+            started_at: "2026-04-23T03:31:00Z",
+            finished_at: "2026-04-23T03:35:00Z",
+            final_output: "cached final output",
+          }],
+        },
+      });
+      await detailRead.promise;
+    });
+  });
+
   it("backs off detail fallback for consecutive empty update polls", () => {
     expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(0)).toBe(false);
     expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(1)).toBe(false);
@@ -585,6 +743,86 @@ describe("ConversationRuntimeProvider", () => {
     expect(merged[0]?.messages.map((message) => message.text)).toEqual([
       "new prompt",
       "restored answer remains visible",
+    ]);
+  });
+
+  it("unblocks a restored ready detail when a cached placeholder assistant has no turn id", () => {
+    const restoredDetail = chatSessionFixture({
+      status: "ready",
+      revision: Date.parse("2026-04-23T03:33:00Z"),
+      detailRevision: Date.parse("2026-04-23T03:33:00Z"),
+      updatedAt: Date.parse("2026-04-23T03:33:00Z"),
+      lastOutputAt: Date.parse("2026-04-23T03:33:00Z"),
+      activityAt: Date.parse("2026-04-23T03:33:00Z"),
+      messagesLoaded: true,
+      messages: [
+        {
+          id: "turn-1:user",
+          role: "user",
+          text: "直接进入设置页时，侧边栏中的会话列表之类的是虚假的，排查修复下",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "completed",
+          at: Date.parse("2026-04-23T03:32:00Z"),
+          processEvents: [],
+        },
+        {
+          id: "turn-1:assistant",
+          role: "assistant",
+          text: "已修复。",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "completed",
+          at: Date.parse("2026-04-23T03:33:00Z"),
+          processEvents: [],
+        },
+      ],
+    });
+    const cachedPlaceholder = chatSessionFixture({
+      status: "busy",
+      revision: Date.parse("2026-04-23T03:32:00Z"),
+      detailRevision: Date.parse("2026-04-23T03:32:00Z"),
+      updatedAt: Date.parse("2026-04-23T03:32:00Z"),
+      activityAt: Date.parse("2026-04-23T03:32:00Z"),
+      messagesLoaded: true,
+      messages: [
+        {
+          id: "local-user",
+          role: "user",
+          text: "直接进入设置页时，侧边栏中的会话列表之类的是虚假的，排查修复下",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "queued",
+          at: Date.parse("2026-04-23T03:32:00Z"),
+          processEvents: [],
+        },
+        {
+          id: "local-assistant",
+          role: "assistant",
+          text: "",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "running",
+          at: Date.parse("2026-04-23T03:32:01Z"),
+          processEvents: [],
+        },
+      ],
+    });
+
+    const merged = mergeRuntimeSessions([restoredDetail], [cachedPlaceholder]);
+
+    expect(merged[0]?.status).toBe("ready");
+    expect(merged[0]?.messages.map((message) => message.text)).toEqual([
+      "直接进入设置页时，侧边栏中的会话列表之类的是虚假的，排查修复下",
+      "已修复。",
     ]);
   });
 
@@ -954,19 +1192,17 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => {
-      expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("undefined");
-    });
+    await waitFor(() => expect(screen.getByTestId("assistant-process-message-id")).toHaveTextContent("turn-1:assistant"));
 
     fireEvent.click(screen.getByRole("button", { name: "toggle process" }));
-    expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("false");
+    await waitFor(() => expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("false"));
 
     fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat"));
     expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("false");
 
     fireEvent.click(screen.getByRole("button", { name: "toggle process" }));
-    expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("true");
+    await waitFor(() => expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("true"));
   });
 
   it("hydrates a fresh Chat runtime cache immediately and refreshes after the API returns", async () => {
@@ -4945,6 +5181,8 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat"));
     expect(screen.getByTestId("assistant-process-blocks")).toHaveTextContent("full thinking detail");
-    expect(window.localStorage.getItem("alter0.web.session.long_term_snapshot.v1")).toContain("full thinking detail");
+    await waitFor(() =>
+      expect(window.localStorage.getItem("alter0.web.session.long_term_snapshot.v1")).toContain("full thinking detail"),
+    );
   });
 });
