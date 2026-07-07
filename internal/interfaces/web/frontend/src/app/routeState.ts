@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { TOP_LEVEL_WORKBENCH_ROUTES } from "../features/shell/legacyShellConfig";
-import { sessionRouteToken } from "../shared/session/sessionHash";
 
 export const DEFAULT_WORKBENCH_ROUTE = "chat";
 export type WorkbenchSessionRoute = "chat";
 
 const KNOWN_ROUTES = new Set<string>(TOP_LEVEL_WORKBENCH_ROUTES);
 const SESSION_QUERY_KEY = "session_id";
+const CHAT_SESSION_ID_PATTERN = /^c_[a-z0-9]{16}$/;
 
 export function parseWorkbenchRoute(
   pathname: string = window.location.pathname,
@@ -64,7 +64,7 @@ export function writeWorkbenchRouteSessionID(
   route: WorkbenchSessionRoute,
   sessionID: string,
 ): void {
-  const normalized = sessionRouteToken(normalizeSessionQueryValue(sessionID));
+  const normalized = normalizeSessionQueryValue(sessionID);
   const url = new URL(window.location.href);
   const current = normalizeSessionQueryValue(url.searchParams.get(SESSION_QUERY_KEY));
   url.pathname = `/${route}`;
@@ -82,8 +82,16 @@ export function writeWorkbenchRouteSessionID(
   window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
+export function isCanonicalChatSessionID(value: unknown): value is string {
+  return typeof value === "string" && CHAT_SESSION_ID_PATTERN.test(value.trim());
+}
+
+export function normalizeChatSessionID(value: unknown): string {
+  return isCanonicalChatSessionID(value) ? value.trim() : "";
+}
+
 function normalizeSessionQueryValue(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  return normalizeChatSessionID(value);
 }
 
 function normalizePathname(value: string): string {

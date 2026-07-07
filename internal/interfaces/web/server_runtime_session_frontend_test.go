@@ -51,21 +51,23 @@ func TestChatUsesRuntimeSessionController(t *testing.T) {
 	}
 }
 
-func TestConversationRuntimeMigratesLegacySnapshotsToRuntimeCache(t *testing.T) {
+func TestConversationRuntimeClearsLegacySnapshotsWithoutMigration(t *testing.T) {
 	chat := readWorkspaceFile(t, "frontend/src/features/conversation-runtime/ConversationRuntimeProvider.tsx")
 
 	for _, marker := range []string{
-		"loadLegacySessionSnapshots",
 		"clearLegacySessionSnapshots",
-		"writeConversationRuntimeCaches(activeSessionByRoute, snapshotLoad.sessionsByRoute)",
+		"clearLegacySessionSnapshots();",
 		"writeLongTermConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route)",
 		"writeSessionInfoConversationRuntimeCache(activeSessionByRoute, sessionsByRoute, route)",
 	} {
 		if !strings.Contains(chat, marker) {
-			t.Fatalf("expected legacy snapshot migration marker %q", marker)
+			t.Fatalf("expected legacy snapshot cleanup marker %q", marker)
 		}
 	}
 	for _, forbidden := range []string{
+		"loadLegacySessionSnapshots",
+		"LegacySessionSnapshotLoad",
+		"snapshotLoad.sessionsByRoute",
 		"persistActiveSessionSnapshots",
 		"writeJSONStorage(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY",
 		"writeJSONStorage(RECENT_SESSION_SNAPSHOT_STORAGE_KEY",

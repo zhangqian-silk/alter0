@@ -65,6 +65,11 @@ type chatRuntimeTurnPagingEnvelope struct {
 	NextBeforeTurnID string `json:"next_before_turn_id,omitempty"`
 }
 
+type chatRuntimeEventDetailEnvelope struct {
+	Event  map[string]any                `json:"event"`
+	Blocks []chatruntimeapp.RuntimeBlock `json:"blocks,omitempty"`
+}
+
 func (s *Server) chatRuntimeSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
 	if s.chatRuntimes == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatRuntime service unavailable"})
@@ -101,7 +106,7 @@ func (s *Server) chatRuntimeSessionCollectionHandler(w http.ResponseWriter, r *h
 			s.writeChatRuntimeError(w, err)
 			return
 		}
-		s.publishChatRuntimeSessionEvent(ownerID, session.ID, "session.created", session)
+		s.publishChatRuntimeSessionSummaryEvent(ownerID, session.ID, "session.created", session)
 		writeJSON(w, http.StatusCreated, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -147,7 +152,7 @@ func (s *Server) chatRuntimeSessionRecoverHandler(w http.ResponseWriter, r *http
 		s.writeChatRuntimeError(w, err)
 		return
 	}
-	s.publishChatRuntimeSessionEvent(ownerID, session.ID, "session.updated", session)
+	s.publishChatRuntimeSessionSummaryEvent(ownerID, session.ID, "session.updated", session)
 	writeJSON(w, http.StatusOK, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 }
 
@@ -199,7 +204,7 @@ func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Re
 				s.writeChatRuntimeError(w, err)
 				return
 			}
-			s.publishChatRuntimeSessionEvent(ownerID, sessionID, "session.deleted", session)
+			s.publishChatRuntimeSessionSummaryEvent(ownerID, sessionID, "session.deleted", session)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -245,7 +250,7 @@ func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Re
 			s.writeChatRuntimeError(w, err)
 			return
 		}
-		s.publishChatRuntimeSessionEvent(ownerID, session.ID, "session.updated", session)
+		s.publishChatRuntimeSessionSummaryEvent(ownerID, session.ID, "session.updated", session)
 		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 	case "turns":
 		if len(parts) == 2 {
@@ -258,7 +263,7 @@ func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Re
 				s.writeChatRuntimeError(w, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+			writeJSON(w, http.StatusOK, map[string]any{"items": buildChatRuntimeTurnDTOs(items)})
 			return
 		}
 		if len(parts) == 5 && parts[3] == "events" {
@@ -271,7 +276,7 @@ func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Re
 				s.writeChatRuntimeError(w, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"event": detail})
+			writeJSON(w, http.StatusOK, buildChatRuntimeEventDetailDTO(detail))
 			return
 		}
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})
@@ -329,7 +334,6 @@ func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 		s.touchSessionActivity(sessionID)
-		s.publishChatRuntimeSessionEvent(ownerID, session.ID, "session.updated", session)
 		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})
@@ -344,7 +348,7 @@ func (s *Server) buildChatRuntimeSessionDetail(ownerID string, session any, r *h
 	if !ok {
 		return session
 	}
-	applyChatRuntimeSessionComparableFields(sessionMap)
+	applyChatRuntimeSessionAPIFields(sessionMap)
 	sessionID := strings.TrimSpace(fmt.Sprintf("%v", sessionMap["id"]))
 	if sessionID == "" {
 		return session
@@ -352,7 +356,7 @@ func (s *Server) buildChatRuntimeSessionDetail(ownerID string, session any, r *h
 	turns, err := s.chatRuntimes.ListTurns(ownerID, sessionID)
 	if err == nil {
 		items, paging := pageChatRuntimeTurns(turns, r)
-		sessionMap["turns"] = items
+		sessionMap["turns"] = buildChatRuntimeTurnDTOs(items)
 		sessionMap["turns_paging"] = paging
 	}
 	return sessionMap
@@ -363,7 +367,7 @@ func buildChatRuntimeSessionSummary(session any) any {
 	if !ok {
 		return session
 	}
-	applyChatRuntimeSessionComparableFields(sessionMap)
+	applyChatRuntimeSessionAPIFields(sessionMap)
 	delete(sessionMap, "turns")
 	delete(sessionMap, "turns_paging")
 	return sessionMap
@@ -381,7 +385,7 @@ func chatRuntimeSessionMap(session any) (map[string]any, bool) {
 	return sessionMap, true
 }
 
-func applyChatRuntimeSessionComparableFields(sessionMap map[string]any) {
+func applyChatRuntimeSessionAPIFields(sessionMap map[string]any) {
 	if sessionMap == nil {
 		return
 	}
@@ -390,15 +394,23 @@ func applyChatRuntimeSessionComparableFields(sessionMap map[string]any) {
 		parseChatRuntimeSessionPayloadTime(sessionMap["updated_at"]),
 		parseChatRuntimeSessionPayloadTime(sessionMap["created_at"]),
 	)
-	revisionAt := latestNonZeroTime(
-		activityAt,
-		parseChatRuntimeSessionPayloadTime(sessionMap["finished_at"]),
-	)
 	if !activityAt.IsZero() {
-		sessionMap["activity_at"] = activityAt.UTC().Format(time.RFC3339Nano)
+		sessionMap["activity_at"] = unixMillis(activityAt)
 	}
-	if !revisionAt.IsZero() {
-		sessionMap["revision"] = revisionAt.UnixMicro()
+	for _, key := range []string{"created_at", "last_output_at", "updated_at"} {
+		if parsed := parseChatRuntimeSessionPayloadTime(sessionMap[key]); !parsed.IsZero() {
+			sessionMap[key] = unixMillis(parsed)
+		} else {
+			delete(sessionMap, key)
+		}
+	}
+	if parsed := parseChatRuntimeSessionPayloadTime(sessionMap["finished_at"]); !parsed.IsZero() {
+		sessionMap["finished_at"] = unixMillis(parsed)
+	} else {
+		sessionMap["finished_at"] = nil
+	}
+	for _, key := range []string{"owner_id", "shell", "working_dir", "runtime_session_id", "revision", "version"} {
+		delete(sessionMap, key)
 	}
 }
 
@@ -421,6 +433,144 @@ func parseChatRuntimeSessionPayloadTime(value any) time.Time {
 		return parsed.UTC()
 	default:
 		return time.Time{}
+	}
+}
+
+func unixMillis(value time.Time) int64 {
+	if value.IsZero() {
+		return 0
+	}
+	return value.UTC().UnixNano() / int64(time.Millisecond)
+}
+
+func buildChatRuntimeTurnDTOs(turns []chatruntimeapp.TurnSummary) []map[string]any {
+	items := make([]map[string]any, 0, len(turns))
+	for index, turn := range turns {
+		items = append(items, buildChatRuntimeTurnDTO(turn, index+1))
+	}
+	return items
+}
+
+func buildChatRuntimeTurnDTO(turn chatruntimeapp.TurnSummary, fallbackID int) map[string]any {
+	item := map[string]any{
+		"id":          numericChatRuntimeID(turn.ID, "turn", fallbackID),
+		"prompt":      turn.Prompt,
+		"attachments": turn.Attachments,
+		"status":      turn.Status,
+	}
+	if !turn.StartedAt.IsZero() {
+		item["started_at"] = unixMillis(turn.StartedAt)
+	}
+	if !turn.FinishedAt.IsZero() {
+		item["finished_at"] = unixMillis(turn.FinishedAt)
+	} else {
+		item["finished_at"] = nil
+	}
+	if turn.DurationMS > 0 {
+		item["duration_ms"] = turn.DurationMS
+	}
+	if strings.TrimSpace(turn.FinalOutput) != "" {
+		item["final_output"] = turn.FinalOutput
+	}
+	if len(turn.RuntimeTraceEvents) > 0 {
+		item["runtime_trace_events"] = buildChatRuntimeEventDTOs(turn.RuntimeTraceEvents)
+	}
+	return item
+}
+
+func buildChatRuntimeEventDTOs(events []chatruntimeapp.RuntimeTraceEvent) []map[string]any {
+	items := make([]map[string]any, 0, len(events))
+	for index, event := range events {
+		items = append(items, buildChatRuntimeEventDTO(event, index+1))
+	}
+	return items
+}
+
+func buildChatRuntimeEventDTO(event chatruntimeapp.RuntimeTraceEvent, fallbackID int) map[string]any {
+	id := event.Seq
+	if id <= 0 {
+		id = numericChatRuntimeID(event.ID, "event", fallbackID)
+	}
+	text := strings.TrimSpace(event.Summary)
+	if text == "" {
+		text = strings.TrimSpace(event.Title)
+	}
+	item := map[string]any{
+		"id":     id,
+		"kind":   chatRuntimeAPIEventKind(event.Kind),
+		"status": strings.TrimSpace(event.Status),
+	}
+	if text != "" {
+		item["text"] = text
+	}
+	if event.Raw.HasDetail || len(event.Blocks) > 0 {
+		item["detail_available"] = true
+	}
+	if !event.StartedAt.IsZero() {
+		item["created_at"] = unixMillis(event.StartedAt)
+	}
+	if !event.CompletedAt.IsZero() {
+		item["completed_at"] = unixMillis(event.CompletedAt)
+	}
+	if event.DurationMS > 0 {
+		item["duration_ms"] = event.DurationMS
+	}
+	return item
+}
+
+func buildChatRuntimeEventDetailDTO(detail chatruntimeapp.RuntimeTraceEventDetail) chatRuntimeEventDetailEnvelope {
+	return chatRuntimeEventDetailEnvelope{
+		Event:  buildChatRuntimeEventDTO(detail.Event, numericChatRuntimeID(detail.Event.ID, "event", 1)),
+		Blocks: append([]chatruntimeapp.RuntimeBlock{}, detail.Blocks...),
+	}
+}
+
+func numericChatRuntimeID(value string, prefix string, fallback int) int {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return fallback
+	}
+	if parsed, err := strconv.Atoi(normalized); err == nil && parsed > 0 {
+		return parsed
+	}
+	for _, marker := range []string{prefix + "-", prefix + "_", prefix + ":"} {
+		if strings.HasPrefix(normalized, marker) {
+			if parsed, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(normalized, marker))); err == nil && parsed > 0 {
+				return parsed
+			}
+		}
+	}
+	lastDigits := ""
+	for index := len(normalized) - 1; index >= 0; index-- {
+		if normalized[index] < '0' || normalized[index] > '9' {
+			break
+		}
+		lastDigits = string(normalized[index]) + lastDigits
+	}
+	if lastDigits != "" {
+		if parsed, err := strconv.Atoi(lastDigits); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func chatRuntimeAPIEventKind(kind string) string {
+	switch strings.TrimSpace(strings.ToLower(kind)) {
+	case "assistant_commentary", "important_text", "message":
+		return "important_text"
+	case "reasoning":
+		return "reasoning"
+	case "plan":
+		return "plan"
+	case "shell_command", "command", "command_execution", "commands":
+		return "commands"
+	case "tool", "tools", "tool_call", "tool_result", "file_edit":
+		return "tools"
+	case "system", "system_event", "unknown_provider_event", "":
+		return "system"
+	default:
+		return "system"
 	}
 }
 

@@ -181,12 +181,6 @@ func (s *Service) persistSession(item *runtimeSession) {
 		s.logger.Warn("commit chatRuntime session record failed", "path", path, "error", err.Error())
 		return
 	}
-	s.hookMu.RLock()
-	hook := s.updateHook
-	s.hookMu.RUnlock()
-	if hook != nil {
-		hook(record.Summary.OwnerID, record.Summary.ID, record.Summary)
-	}
 }
 
 func (s *Service) restorePersistedOwnedSession(ownerID string, sessionID string) (*runtimeSession, error) {
@@ -317,6 +311,9 @@ func isRuntimeSessionDeleted(item *runtimeSession) bool {
 func restorePersistedSession(record persistedSessionRecord, now time.Time, baseDir string) *runtimeSession {
 	sessionID := strings.TrimSpace(record.Summary.ID)
 	if sessionID == "" {
+		return nil
+	}
+	if !isCompactChatRuntimeSessionID(sessionID) {
 		return nil
 	}
 	summary := record.Summary

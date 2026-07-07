@@ -4,43 +4,50 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	chatruntimedomain "alter0/internal/chatruntime/domain"
+	chatruntimeapp "alter0/internal/chatruntime/application"
 )
 
 const defaultSessionUpdatePollLimit = 50
 const maxSessionUpdatePollLimit = 200
-const defaultSessionUpdatePollBytes = 64 * 1024
-const maxSessionUpdatePollBytes = 256 * 1024
+const defaultSessionUpdatePollBytes = 1024 * 1024
+const maxSessionUpdatePollBytes = 1024 * 1024
 
 type sessionUpdateEvent struct {
-	EventID   int64          `json:"event_id"`
-	OwnerID   string         `json:"owner_id"`
+	EventID   int64          `json:"update_id"`
+	OwnerID   string         `json:"-"`
 	SessionID string         `json:"session_id,omitempty"`
-	EventType string         `json:"event_type"`
-	Revision  int64          `json:"revision,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
+	TurnID    string         `json:"turn_id,omitempty"`
+	EventType string         `json:"type"`
+	CreatedAt time.Time      `json:"-"`
 	Payload   map[string]any `json:"payload,omitempty"`
 }
 
 type sessionUpdatePollEnvelope struct {
-	OwnerID        string               `json:"owner_id"`
-	Cursor         int64                `json:"cursor"`
-	ResyncRequired bool                 `json:"resync_required"`
-	HasMore        bool                 `json:"has_more,omitempty"`
-	Events         []sessionUpdateEvent `json:"events"`
+	LatestUpdateID int64                    `json:"latest_update_id"`
+	ResyncRequired bool                     `json:"resync_required"`
+	HasMore        bool                     `json:"has_more,omitempty"`
+	Updates        []sessionUpdateAPIUpdate `json:"updates"`
+}
+
+type sessionUpdateAPIUpdate struct {
+	UpdateID  int64          `json:"update_id"`
+	Type      string         `json:"type"`
+	SessionID string         `json:"session_id,omitempty"`
+	TurnID    int            `json:"turn_id,omitempty"`
+	Payload   map[string]any `json:"payload,omitempty"`
 }
 
 type sessionUpdatePollBody struct {
-	SinceEventID any                         `json:"since_event_id,omitempty"`
-	Limit        int                         `json:"limit,omitempty"`
-	ByteLimit    int                         `json:"byte_limit,omitempty"`
-	Sessions     []sessionUpdateKnownSession `json:"sessions,omitempty"`
+	AfterUpdateID     any                         `json:"after_update_id,omitempty"`
+	Limit             int                         `json:"limit,omitempty"`
+	ByteLimit         int                         `json:"byte_limit,omitempty"`
+	Sessions          []sessionUpdateKnownSession `json:"sessions,omitempty"`
+	VisibleEventKinds []string                    `json:"visible_event_kinds,omitempty"`
 }
 
 type sessionUpdateKnownSession struct {
@@ -49,9 +56,8 @@ type sessionUpdateKnownSession struct {
 }
 
 type sessionUpdateKnownTurn struct {
-	ID             string   `json:"id"`
-	EventIDs       []string `json:"event_ids,omitempty"`
-	EventSeqRanges [][]int  `json:"event_seq_ranges,omitempty"`
+	ID       any   `json:"id"`
+	EventIDs []int `json:"event_ids,omitempty"`
 }
 
 type sessionUpdateAckManifest struct {
@@ -75,6 +81,10 @@ func newSessionUpdateBroker(windowSize int) *sessionUpdateBroker {
 }
 
 func (b *sessionUpdateBroker) publish(ownerID string, sessionID string, eventType string, payload map[string]any) sessionUpdateEvent {
+	return b.publishWithTurnID(ownerID, sessionID, "", eventType, payload)
+}
+
+func (b *sessionUpdateBroker) publishWithTurnID(ownerID string, sessionID string, turnID string, eventType string, payload map[string]any) sessionUpdateEvent {
 	if b == nil {
 		return sessionUpdateEvent{}
 	}
@@ -89,8 +99,8 @@ func (b *sessionUpdateBroker) publish(ownerID string, sessionID string, eventTyp
 		EventID:   b.nextEventID,
 		OwnerID:   ownerID,
 		SessionID: strings.TrimSpace(sessionID),
+		TurnID:    strings.TrimSpace(turnID),
 		EventType: eventType,
-		Revision:  b.nextEventID,
 		CreatedAt: time.Now().UTC(),
 		Payload:   payload,
 	}
@@ -184,39 +194,82 @@ func (s *Server) sessionUpdateBroker() *sessionUpdateBroker {
 	return s.sessionEvents
 }
 
-func (s *Server) registerChatRuntimeSessionUpdateHook() {
+func (s *Server) registerChatRuntimeSessionEventHook() {
 	if s == nil {
 		return
 	}
-	setter, ok := s.chatRuntimes.(chatRuntimeSessionUpdateHookSetter)
-	if !ok {
-		return
-	}
-	setter.SetSessionUpdateHook(func(ownerID string, sessionID string, session chatruntimedomain.Session) {
-		s.sessionUpdateBroker().publish(ownerID, sessionID, "session.updated", map[string]any{
-			"session": s.buildChatRuntimeSessionEventDetail(ownerID, session),
+	if setter, ok := s.chatRuntimes.(chatRuntimeSessionEventHookSetter); ok {
+		setter.SetSessionEventHook(func(event chatruntimeapp.SessionEvent) {
+			s.publishChatRuntimeSessionTypedEvent(event)
 		})
-	})
+	}
 }
 
-func (s *Server) buildChatRuntimeSessionEventDetail(ownerID string, session chatruntimedomain.Session) any {
-	return s.buildChatRuntimeSessionDetail(ownerID, session, &http.Request{
-		URL: &url.URL{RawQuery: "turn_limit=1"},
-	})
-}
-
-func (s *Server) chatRuntimeServicePublishesSessionEvents() bool {
-	_, ok := s.chatRuntimes.(chatRuntimeSessionUpdateHookSetter)
-	return ok
-}
-
-func (s *Server) publishChatRuntimeSessionEvent(ownerID string, sessionID string, eventType string, session any) {
-	if eventType == "session.updated" && s.chatRuntimeServicePublishesSessionEvents() {
+func (s *Server) publishChatRuntimeSessionTypedEvent(event chatruntimeapp.SessionEvent) {
+	ownerID := strings.TrimSpace(event.OwnerID)
+	sessionID := strings.TrimSpace(event.SessionID)
+	eventType := strings.TrimSpace(event.EventType)
+	if ownerID == "" || sessionID == "" || eventType == "" {
 		return
 	}
+	turnID := ""
+	if event.Turn != nil {
+		turnID = strings.TrimSpace(event.Turn.ID)
+	}
+	if turnID == "" && event.RuntimeEvent != nil {
+		turnID = strings.TrimSpace(event.RuntimeEvent.TurnID)
+	}
+	s.sessionUpdateBroker().publishWithTurnID(ownerID, sessionID, turnID, eventType, buildChatRuntimeSessionTypedEventPayload(event))
+}
+
+func buildChatRuntimeSessionTypedEventPayload(event chatruntimeapp.SessionEvent) map[string]any {
+	session := buildChatRuntimeSessionUpdateSummary(event.Session)
+	if session == nil {
+		return nil
+	}
+	payload := map[string]any{"session": session}
+	if event.Turn != nil {
+		turn := buildChatRuntimeTurnUpdatePatch(*event.Turn)
+		payload["turn"] = turn
+	}
+	if event.RuntimeEvent != nil {
+		payload["runtime_event"] = buildChatRuntimeEventDTO(*event.RuntimeEvent, 1)
+	}
+	return payload
+}
+
+func buildChatRuntimeSessionUpdateSummary(session any) map[string]any {
+	sessionMap, ok := chatRuntimeSessionMap(session)
+	if !ok {
+		return nil
+	}
+	applyChatRuntimeSessionAPIFields(sessionMap)
+	trimChatRuntimeSessionUpdateMetadata(sessionMap)
+	delete(sessionMap, "turns")
+	delete(sessionMap, "turns_paging")
+	return sessionMap
+}
+
+func buildChatRuntimeTurnUpdatePatch(turn chatruntimeapp.TurnSummary) map[string]any {
+	patch := buildChatRuntimeTurnDTO(turn, numericChatRuntimeID(turn.ID, "turn", 1))
+	delete(patch, "runtime_trace_events")
+	return patch
+}
+
+func trimChatRuntimeSessionUpdateMetadata(sessionMap map[string]any) {
+	delete(sessionMap, "owner_id")
+	delete(sessionMap, "shell")
+	delete(sessionMap, "working_dir")
+	delete(sessionMap, "runtime_session_id")
+	delete(sessionMap, "finished_at")
+}
+
+func (s *Server) publishChatRuntimeSessionSummaryEvent(ownerID string, sessionID string, eventType string, session any) {
 	payload := map[string]any{}
 	if session != nil {
-		payload["session"] = session
+		if summary := buildChatRuntimeSessionUpdateSummary(session); summary != nil {
+			payload["session"] = summary
+		}
 	}
 	s.sessionUpdateBroker().publish(ownerID, sessionID, eventType, payload)
 }
@@ -245,21 +298,40 @@ func (s *Server) chatRuntimeSessionUpdatesHandler(w http.ResponseWriter, r *http
 		return
 	}
 	var since int64
-	if parsedSince, ok := flexibleInt64(body.SinceEventID); ok {
+	if parsedSince, ok := flexibleInt64(body.AfterUpdateID); ok {
 		since = parsedSince
 	}
 	limit := body.Limit
 	byteLimit := body.ByteLimit
 	manifest := newSessionUpdateAckManifest(body.Sessions)
 	events, cursor, resyncRequired, hasMore := s.sessionUpdateBroker().poll(ownerID, since, limit, byteLimit)
-	events = pruneSessionUpdateEvents(events, manifest)
+	events = pruneSessionUpdateEvents(events, manifest, visibleRuntimeEventCategories(body.VisibleEventKinds))
 	writeJSON(w, http.StatusOK, sessionUpdatePollEnvelope{
-		OwnerID:        ownerID,
-		Cursor:         cursor,
+		LatestUpdateID: cursor,
 		ResyncRequired: resyncRequired,
 		HasMore:        hasMore,
-		Events:         events,
+		Updates:        buildSessionUpdateAPIUpdates(events),
 	})
+}
+
+func buildSessionUpdateAPIUpdates(events []sessionUpdateEvent) []sessionUpdateAPIUpdate {
+	if len(events) == 0 {
+		return []sessionUpdateAPIUpdate{}
+	}
+	updates := make([]sessionUpdateAPIUpdate, 0, len(events))
+	for _, event := range events {
+		update := sessionUpdateAPIUpdate{
+			UpdateID:  event.EventID,
+			Type:      event.EventType,
+			SessionID: event.SessionID,
+			Payload:   event.Payload,
+		}
+		if turnID := numericChatRuntimeID(event.TurnID, "turn", 0); turnID > 0 {
+			update.TurnID = turnID
+		}
+		updates = append(updates, update)
+	}
+	return updates
 }
 
 func flexibleInt64(value any) (int64, bool) {
@@ -296,66 +368,55 @@ func newSessionUpdateAckManifest(items []sessionUpdateKnownSession) sessionUpdat
 			manifest.sessions[sessionID] = turns
 		}
 		for _, turn := range session.Turns {
-			turnID := strings.TrimSpace(turn.ID)
+			turnID := strings.TrimSpace(fmtAny(turn.ID))
 			if turnID == "" {
 				continue
 			}
 			turn.ID = turnID
-			turn.EventIDs = compactStringSet(turn.EventIDs)
-			turn.EventSeqRanges = normalizeSeqRanges(turn.EventSeqRanges)
+			turn.EventIDs = compactIntSet(turn.EventIDs)
 			turns[turnID] = turn
 		}
 	}
 	return manifest
 }
 
-func compactStringSet(values []string) []string {
+func compactIntSet(values []int) []int {
 	seen := map[string]struct{}{}
-	out := make([]string, 0, len(values))
+	out := make([]int, 0, len(values))
 	for _, value := range values {
-		normalized := strings.TrimSpace(value)
-		if normalized == "" {
+		if value <= 0 {
 			continue
 		}
+		normalized := strconv.Itoa(value)
 		if _, ok := seen[normalized]; ok {
 			continue
 		}
 		seen[normalized] = struct{}{}
-		out = append(out, normalized)
+		out = append(out, value)
 	}
 	return out
 }
 
-func normalizeSeqRanges(ranges [][]int) [][]int {
-	out := make([][]int, 0, len(ranges))
-	for _, item := range ranges {
-		if len(item) < 2 {
-			continue
-		}
-		start := item[0]
-		end := item[1]
-		if start <= 0 || end <= 0 {
-			continue
-		}
-		if end < start {
-			start, end = end, start
-		}
-		out = append(out, []int{start, end})
-	}
-	return out
-}
-
-func pruneSessionUpdateEvents(events []sessionUpdateEvent, manifest sessionUpdateAckManifest) []sessionUpdateEvent {
-	if len(events) == 0 || len(manifest.sessions) == 0 {
+func pruneSessionUpdateEvents(
+	events []sessionUpdateEvent,
+	manifest sessionUpdateAckManifest,
+	visibleCategories map[string]struct{},
+) []sessionUpdateEvent {
+	if len(events) == 0 {
 		return events
 	}
 	out := make([]sessionUpdateEvent, 0, len(events))
 	for _, event := range events {
 		payload := cloneSessionUpdatePayload(event.Payload)
 		if len(payload) > 0 {
-			if session, ok := mapFromAny(payload["session"]); ok {
-				pruneSessionPayloadRuntimeTraceEvents(session, manifest)
-				payload["session"] = session
+			if runtimeEvent, ok := mapFromAny(payload["runtime_event"]); ok {
+				if len(visibleCategories) > 0 && !runtimeTraceEventVisible(runtimeEvent, visibleCategories) {
+					continue
+				}
+				if typedRuntimeTraceEventKnown(event, payload, runtimeEvent, manifest) {
+					continue
+				}
+				payload["runtime_event"] = runtimeEvent
 			}
 			event.Payload = payload
 		}
@@ -397,75 +458,108 @@ func mapFromAny(value any) (map[string]any, bool) {
 	return mapped, true
 }
 
-func pruneSessionPayloadRuntimeTraceEvents(session map[string]any, manifest sessionUpdateAckManifest) {
-	sessionID := strings.TrimSpace(fmtAny(session["id"]))
-	turnsByID := manifest.sessions[sessionID]
-	if len(turnsByID) == 0 {
-		return
-	}
-	turns, ok := session["turns"].([]any)
-	if !ok {
-		return
-	}
-	for _, item := range turns {
-		turn, ok := mapFromAny(item)
-		if !ok {
-			continue
+func typedRuntimeTraceEventKnown(
+	update sessionUpdateEvent,
+	payload map[string]any,
+	runtimeEvent map[string]any,
+	manifest sessionUpdateAckManifest,
+) bool {
+	sessionID := strings.TrimSpace(update.SessionID)
+	if sessionID == "" {
+		if session, ok := mapFromAny(payload["session"]); ok {
+			sessionID = strings.TrimSpace(fmtAny(session["id"]))
 		}
-		turnID := strings.TrimSpace(fmtAny(turn["id"]))
-		known, ok := turnsByID[turnID]
-		if !ok {
-			continue
+	}
+	turnID := strings.TrimSpace(update.TurnID)
+	if turnID == "" {
+		if turn, ok := mapFromAny(payload["turn"]); ok {
+			turnID = strings.TrimSpace(fmtAny(turn["id"]))
 		}
-		pruneTurnRuntimeTraceEvents(turn, known)
 	}
-}
-
-func pruneTurnRuntimeTraceEvents(turn map[string]any, known sessionUpdateKnownTurn) {
-	events, ok := turn["runtime_trace_events"].([]any)
-	if !ok || len(events) == 0 {
-		return
+	if turnID == "" {
+		turnID = strings.TrimSpace(fmtAny(runtimeEvent["turn_id"]))
 	}
+	known := knownManifestTurn(manifest, sessionID, turnID)
 	idSet := knownRuntimeTraceEventIDSet(known.EventIDs)
-	filtered := make([]any, 0, len(events))
-	for _, item := range events {
-		event, ok := mapFromAny(item)
-		if !ok {
-			filtered = append(filtered, item)
-			continue
-		}
-		if runtimeTraceEventKnown(event, idSet, known.EventSeqRanges) {
-			continue
-		}
-		filtered = append(filtered, event)
+	return runtimeTraceEventKnown(runtimeEvent, idSet)
+}
+
+func knownManifestTurn(manifest sessionUpdateAckManifest, sessionID string, turnID string) sessionUpdateKnownTurn {
+	turns := manifest.sessions[strings.TrimSpace(sessionID)]
+	if len(turns) == 0 {
+		return sessionUpdateKnownTurn{}
 	}
-	turn["runtime_trace_events"] = filtered
-	if len(filtered) != len(events) {
-		turn["runtime_trace_events_partial"] = true
+	normalized := strings.TrimSpace(turnID)
+	if known, ok := turns[normalized]; ok {
+		return known
+	}
+	if numeric := numericChatRuntimeID(normalized, "turn", 0); numeric > 0 {
+		if known, ok := turns[strconv.Itoa(numeric)]; ok {
+			return known
+		}
+	}
+	return sessionUpdateKnownTurn{}
+}
+
+func visibleRuntimeEventCategories(values []string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, value := range values {
+		category := strings.TrimSpace(strings.ToLower(value))
+		if category == "" {
+			continue
+		}
+		out[category] = struct{}{}
+	}
+	return out
+}
+
+func runtimeTraceEventVisible(event map[string]any, visibleCategories map[string]struct{}) bool {
+	category := runtimeTraceEventCategory(event)
+	if category == "" {
+		return true
+	}
+	_, ok := visibleCategories[category]
+	return ok
+}
+
+func runtimeTraceEventCategory(event map[string]any) string {
+	kind := strings.TrimSpace(strings.ToLower(fmtAny(event["kind"])))
+	switch kind {
+	case "assistant_commentary", "analysis", "commentary", "important_text", "message", "text":
+		return "important_text"
+	case "plan":
+		return "plan"
+	case "reasoning", "thinking":
+		return "reasoning"
+	case "shell_command", "command", "command_execution":
+		return "commands"
+	case "tool_call", "tool_result", "file_read", "file_write", "file_edit", "web_search", "web_fetch", "mcp_call", "skill_context", "skill_use", "hook_event", "approval_request", "subagent_start", "subagent_progress", "subagent_result":
+		return "tools"
+	case "system_event", "log", "error", "rate_limit", "unknown_provider_event":
+		return "system"
+	default:
+		return "system"
 	}
 }
 
-func knownRuntimeTraceEventIDSet(ids []string) map[string]struct{} {
-	idSet := make(map[string]struct{}, len(ids))
+func knownRuntimeTraceEventIDSet(ids []int) map[int]struct{} {
+	idSet := make(map[int]struct{}, len(ids))
 	for _, id := range ids {
-		normalized := strings.TrimSpace(id)
-		if normalized == "" {
+		if id <= 0 {
 			continue
 		}
-		idSet[normalized] = struct{}{}
+		idSet[id] = struct{}{}
 	}
 	return idSet
 }
 
-func runtimeTraceEventKnown(event map[string]any, idSet map[string]struct{}, ranges [][]int) bool {
-	eventID := strings.TrimSpace(fmtAny(event["id"]))
-	if eventID != "" {
-		if _, ok := idSet[eventID]; ok {
-			return true
-		}
+func runtimeTraceEventKnown(event map[string]any, idSet map[int]struct{}) bool {
+	eventID, ok := flexibleInt(event["id"])
+	if !ok || eventID <= 0 {
+		return false
 	}
-	eventSeq, hasSeq := flexibleInt(event["seq"])
-	return hasSeq && seqInRanges(eventSeq, ranges)
+	_, known := idSet[eventID]
+	return known
 }
 
 func flexibleInt(value any) (int, bool) {
@@ -485,15 +579,6 @@ func flexibleInt(value any) (int, bool) {
 	default:
 		return 0, false
 	}
-}
-
-func seqInRanges(seq int, ranges [][]int) bool {
-	for _, item := range ranges {
-		if len(item) >= 2 && seq >= item[0] && seq <= item[1] {
-			return true
-		}
-	}
-	return false
 }
 
 func fmtAny(value any) string {

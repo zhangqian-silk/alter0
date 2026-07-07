@@ -9,13 +9,16 @@ export type RuntimeRole =
   | "subagent";
 
 export type RuntimeEventKind =
+  | "important_text"
   | "user_message"
   | "assistant_final"
   | "assistant_commentary"
   | "reasoning"
   | "plan"
+  | "tools"
   | "tool_call"
   | "tool_result"
+  | "commands"
   | "shell_command"
   | "file_read"
   | "file_write"
@@ -32,6 +35,7 @@ export type RuntimeEventKind =
   | "approval_request"
   | "rate_limit"
   | "system_event"
+  | "system"
   | "error"
   | "unknown_provider_event";
 
@@ -141,6 +145,7 @@ export type RuntimeTraceEvent = {
   blocks: RuntimeBlock[];
   action?: RuntimeAction;
   visibility: RuntimeVisibility;
+  created_at?: string;
   started_at?: string;
   completed_at?: string;
   duration_ms?: number;
@@ -222,7 +227,110 @@ type RuntimeTraceEventNormalizeContext = {
 };
 
 function normalizeText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return "";
+}
+
+function normalizeRuntimeEventStatus(value: unknown): RuntimeStatus {
+  const normalized = normalizeText(value).toLowerCase();
+  switch (normalized) {
+    case "queued":
+    case "running":
+    case "completed":
+    case "failed":
+    case "interrupted":
+    case "canceled":
+    case "requires_approval":
+      return normalized;
+    case "success":
+    case "ready":
+    case "done":
+      return "completed";
+    case "cancelled":
+      return "canceled";
+    default:
+      return "unknown";
+  }
+}
+
+function normalizeRuntimeEventLifecycle(status: RuntimeStatus, value: unknown): RuntimeLifecycle {
+  const normalized = normalizeText(value).toLowerCase();
+  switch (normalized) {
+    case "created":
+    case "started":
+    case "delta":
+    case "updated":
+    case "completed":
+    case "failed":
+    case "interrupted":
+    case "canceled":
+      return normalized;
+    case "cancelled":
+      return "canceled";
+    default:
+      switch (status) {
+        case "running":
+        case "queued":
+        case "requires_approval":
+          return "started";
+        case "failed":
+          return "failed";
+        case "interrupted":
+          return "interrupted";
+        case "canceled":
+          return "canceled";
+        default:
+          return "completed";
+      }
+  }
+}
+
+function normalizeRuntimeEventSource(value: unknown): RuntimeEventSource {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized === "provider" || normalized === "adapter" || normalized === "alter0"
+    ? normalized
+    : "alter0";
+}
+
+function normalizeRuntimeEventRole(value: unknown): RuntimeRole {
+  const normalized = normalizeText(value).toLowerCase();
+  switch (normalized) {
+    case "user":
+    case "assistant":
+    case "runtime":
+    case "tool":
+    case "system":
+    case "subagent":
+      return normalized;
+    default:
+      return "assistant";
+  }
+}
+
+function normalizeRuntimeEventProvider(value: unknown): RuntimeProviderRef {
+  if (value && typeof value === "object") {
+    const record = value as Partial<RuntimeProviderRef>;
+    return {
+      engine: record.engine || "alter0",
+      adapter: record.adapter || "alter0",
+      model: record.model,
+      event_type: record.event_type,
+      item_type: record.item_type,
+      channel: record.channel,
+      message_id: record.message_id,
+      item_id: record.item_id,
+    };
+  }
+  return { engine: "alter0", adapter: "alter0" };
+}
+
+function normalizeRuntimeEventBlocks(value: unknown): RuntimeBlock[] {
+  return Array.isArray(value) ? value as RuntimeBlock[] : [];
 }
 
 export function normalizeRuntimeTraceEvents(
@@ -237,28 +345,55 @@ export function normalizeRuntimeTraceEvents(
       if (!item || typeof item !== "object") {
         return null;
       }
-      const record = item as RuntimeTraceEvent;
-      if (!normalizeText(record.id) || !normalizeText(record.kind) || !Array.isArray(record.blocks)) {
+      const record = item as RuntimeTraceEvent & {
+        text?: unknown;
+        detail_available?: unknown;
+        created_at?: unknown;
+      };
+      const id = normalizeText(record.id);
+      const kind = normalizeText(record.kind) as RuntimeEventKind;
+      if (!id || !kind) {
         return null;
       }
       const seq = Number(record.seq);
+      const status = normalizeRuntimeEventStatus(record.status);
+      const title = normalizeText(record.title) || normalizeText(record.summary) || normalizeText(record.text);
+      const raw = record.raw
+        ? { ...record.raw }
+        : typeof record.detail_available === "boolean"
+          ? { has_detail: record.detail_available }
+          : undefined;
       return {
         ...record,
-        session_id: record.session_id || context.sessionID,
-        turn_id: record.turn_id || context.turnID || "",
-        seq: Number.isFinite(seq) ? seq : index + 1,
+        id,
+        session_id: normalizeText(record.session_id) || context.sessionID,
+        turn_id: normalizeText(record.turn_id) || normalizeText(context.turnID) || "",
+        seq: Number.isFinite(seq) ? seq : Number.isFinite(Number(id)) ? Number(id) : index + 1,
+        source: normalizeRuntimeEventSource(record.source),
+        provider: normalizeRuntimeEventProvider(record.provider),
+        role: normalizeRuntimeEventRole(record.role),
+        kind,
+        lifecycle: normalizeRuntimeEventLifecycle(status, record.lifecycle),
+        status,
+        title: title || undefined,
+        summary: normalizeText(record.summary) || title || undefined,
+        blocks: normalizeRuntimeEventBlocks(record.blocks),
+        visibility: record.visibility || "collapsed",
+        created_at: normalizeText(record.created_at) || undefined,
+        started_at: record.started_at || normalizeText(record.created_at) || undefined,
+        raw,
       };
     })
     .filter((item): item is RuntimeTraceEvent => item !== null);
 }
 
 export function runtimeTraceEventDetailID(event: RuntimeTraceEvent): string {
-  const rawRef = typeof event.raw?.ref === "string" ? event.raw.ref.trim() : "";
-  if (rawRef) {
-    return rawRef;
-  }
   const id = typeof event.id === "string" ? event.id.trim() : "";
-  return id || `${event.turn_id}:event:${event.seq}`;
+  if (id) {
+    return id;
+  }
+  const rawRef = typeof event.raw?.ref === "string" ? event.raw.ref.trim() : "";
+  return rawRef || `${event.turn_id}:event:${event.seq}`;
 }
 
 export function runtimeTraceEventVisibleByFilter(
@@ -283,6 +418,7 @@ export function runtimeTraceEventDisclosureCategory(event: RuntimeTraceEventKind
       return "reasoning";
     case "tool_call":
     case "tool_result":
+    case "tools":
     case "mcp_call":
     case "skill_use":
     case "skill_context":
@@ -298,8 +434,10 @@ export function runtimeTraceEventDisclosureCategory(event: RuntimeTraceEventKind
     case "subagent_result":
       return "tools";
     case "shell_command":
+    case "commands":
       return "commands";
     case "system_event":
+    case "system":
     case "rate_limit":
     case "unknown_provider_event":
     case "error":

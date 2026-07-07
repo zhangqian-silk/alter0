@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -254,8 +255,14 @@ func TestCreateUsesNewAsDefaultSessionTitle(t *testing.T) {
 	if session.Title != "New" {
 		t.Fatalf("expected default chatRuntime session title %q, got %q", "New", session.Title)
 	}
-	if !strings.HasPrefix(session.ID, "chat-") {
-		t.Fatalf("expected generated chatRuntime session id, got %q", session.ID)
+	if !regexp.MustCompile(`^c_[a-z0-9]{16}$`).MatchString(session.ID) {
+		t.Fatalf("expected generated compact chatRuntime session id, got %q", session.ID)
+	}
+	if strings.HasPrefix(session.ID, "chat-") || strings.Contains(session.ID, "T") {
+		t.Fatalf("expected session id without legacy chat timestamp shape, got %q", session.ID)
+	}
+	if session.RuntimeSessionID != session.ID {
+		t.Fatalf("expected runtime session id to use canonical session id, got %q", session.RuntimeSessionID)
 	}
 }
 
@@ -764,7 +771,7 @@ func TestServiceListLoadsPersistedSessionsCreatedAfterServiceStart(t *testing.T)
 
 	session, err := writer.Recover(RecoverRequest{
 		OwnerID:   "owner-late-list",
-		SessionID: "chat-late-list",
+		SessionID: "c_latelist00000000",
 		Title:     "late persisted session",
 	})
 	if err != nil {
@@ -780,9 +787,39 @@ func TestServiceListLoadsPersistedSessionsCreatedAfterServiceStart(t *testing.T)
 	}
 }
 
+func TestServiceIgnoresLegacyPersistedChatSessionIDs(t *testing.T) {
+	baseDir := t.TempDir()
+	writer := newTestServiceWithBaseDir("success", baseDir)
+
+	if _, err := writer.Recover(RecoverRequest{
+		OwnerID:   "owner-legacy",
+		SessionID: "chat-20260707T051709.110973500-f01ec2b780bbdb0d",
+		Title:     "legacy session",
+	}); err != nil {
+		t.Fatalf("write legacy persisted session: %v", err)
+	}
+	if _, err := writer.Recover(RecoverRequest{
+		OwnerID:   "owner-legacy",
+		SessionID: "c_visible000000000",
+		Title:     "visible session",
+	}); err != nil {
+		t.Fatalf("write compact persisted session: %v", err)
+	}
+
+	reloaded := newTestServiceWithBaseDir("success", baseDir)
+	items := reloaded.List("owner-legacy")
+	if len(items) != 1 {
+		t.Fatalf("expected only compact persisted session, got %+v", items)
+	}
+	if items[0].ID != "c_visible000000000" {
+		t.Fatalf("expected compact session id, got %+v", items)
+	}
+}
+
 func TestServiceLoadPersistedSessionRepairsSupplementalConstraintAutoTitle(t *testing.T) {
 	baseDir := t.TempDir()
-	statePath, err := resolveChatRuntimeSessionStateFilePath(baseDir, "persisted-supplemental-title")
+	sessionID := "c_titlefix00000000"
+	statePath, err := resolveChatRuntimeSessionStateFilePath(baseDir, sessionID)
 	if err != nil {
 		t.Fatalf("resolve state path: %v", err)
 	}
@@ -791,7 +828,7 @@ func TestServiceLoadPersistedSessionRepairsSupplementalConstraintAutoTitle(t *te
 	}
 	record := `{
   "summary": {
-    "id": "persisted-supplemental-title",
+    "id": "c_titlefix00000000",
     "owner_id": "owner-title-repair",
     "title": "图片要用模型生成的，而不是代码绘制的",
     "status": "ready"
@@ -818,7 +855,7 @@ func TestServiceLoadPersistedSessionRepairsSupplementalConstraintAutoTitle(t *te
 	}
 
 	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
-	restored, ok := service.Get("owner-title-repair", "persisted-supplemental-title")
+	restored, ok := service.Get("owner-title-repair", sessionID)
 	if !ok {
 		t.Fatalf("expected restored session")
 	}
@@ -1004,107 +1041,172 @@ func TestServiceInputReturnsBusySnapshotWhileTurnRuns(t *testing.T) {
 	}
 }
 
-func TestServiceSessionUpdateHookPublishesBusyAndFinalSnapshots(t *testing.T) {
-	service := newTestService("success")
-	statuses := make(chan string, 8)
-	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session chatruntimedomain.Session) {
-		if ownerID == "owner-hook" && sessionID == session.ID {
-			statuses <- string(session.Status)
+func TestServiceSessionEventHookPublishesTypedTurnLifecycle(t *testing.T) {
+	service := newTestService("command")
+	events := make(chan SessionEvent, 16)
+	service.SetSessionEventHook(func(event SessionEvent) {
+		if event.OwnerID == "owner-event" {
+			events <- event
 		}
 	})
 
-	session, err := service.Create(CreateRequest{OwnerID: "owner-hook"})
+	session, err := service.Create(CreateRequest{OwnerID: "owner-event"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if _, err := service.Input("owner-hook", session.ID, "first prompt"); err != nil {
+	if _, err := service.Input("owner-event", session.ID, "first prompt"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 
 	deadline := time.After(5 * time.Second)
-	seenBusy := false
-	seenReady := false
-	for !seenBusy || !seenReady {
+	seenStarted := false
+	seenCommandAppend := false
+	seenCommandUpdate := false
+	seenCompleted := false
+	for !seenStarted || !seenCommandAppend || !seenCommandUpdate || !seenCompleted {
 		select {
-		case status := <-statuses:
-			if status == string(chatruntimedomain.SessionStatusBusy) {
-				seenBusy = true
+		case event := <-events:
+			if event.SessionID != session.ID {
+				t.Fatalf("expected session id %q, got %+v", session.ID, event)
 			}
-			if status == string(chatruntimedomain.SessionStatusReady) {
-				seenReady = true
+			switch event.EventType {
+			case SessionEventTurnStarted:
+				if event.Turn == nil || event.Turn.ID == "" || event.Turn.Prompt != "first prompt" || event.Turn.Status != "running" {
+					t.Fatalf("expected running turn summary on turn.started, got %+v", event.Turn)
+				}
+				if event.RuntimeEvent != nil {
+					t.Fatalf("turn.started must not carry a runtime event patch: %+v", event.RuntimeEvent)
+				}
+				seenStarted = true
+			case SessionEventTurnEventAppended:
+				if event.RuntimeEvent == nil {
+					t.Fatalf("turn.event.appended must carry one runtime event patch: %+v", event)
+				}
+				if event.RuntimeEvent.Kind == "shell_command" && event.RuntimeEvent.Status == "running" {
+					if event.Turn != nil && len(event.Turn.RuntimeTraceEvents) != 0 {
+						t.Fatalf("runtime event patch must not carry a full turn event list: %+v", event.Turn)
+					}
+					seenCommandAppend = true
+				}
+			case SessionEventTurnEventUpdated:
+				if event.RuntimeEvent == nil {
+					t.Fatalf("turn.event.updated must carry one runtime event patch: %+v", event)
+				}
+				if event.RuntimeEvent.Kind == "shell_command" && event.RuntimeEvent.Status == "completed" {
+					seenCommandUpdate = true
+				}
+			case SessionEventTurnCompleted:
+				if event.RuntimeEvent != nil {
+					t.Fatalf("turn.completed must not carry a runtime event patch: %+v", event.RuntimeEvent)
+				}
+				if event.Turn == nil || event.Turn.Status != "completed" || event.Turn.FinalOutput != "mock:first prompt" {
+					t.Fatalf("expected completed turn with final output, got %+v", event.Turn)
+				}
+				if event.Session.Status != chatruntimedomain.SessionStatusReady {
+					t.Fatalf("expected ready session on turn.completed, got %+v", event.Session)
+				}
+				seenCompleted = true
 			}
 		case <-deadline:
-			t.Fatalf("timed out waiting for busy and ready hook snapshots; busy=%v ready=%v", seenBusy, seenReady)
+			t.Fatalf("timed out waiting for typed session events; started=%v append=%v update=%v completed=%v", seenStarted, seenCommandAppend, seenCommandUpdate, seenCompleted)
 		}
 	}
 }
 
-func TestServiceCreateReleasesGlobalLockBeforeSessionUpdateHook(t *testing.T) {
+func TestServiceSessionEventHookPublishesCommentaryAsIncrementalRuntimeEvent(t *testing.T) {
+	service := newTestService("commentary")
+	events := make(chan SessionEvent, 16)
+	service.SetSessionEventHook(func(event SessionEvent) {
+		if event.OwnerID == "owner-commentary" {
+			events <- event
+		}
+	})
+
+	session, err := service.Create(CreateRequest{OwnerID: "owner-commentary"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := service.Input("owner-commentary", session.ID, "first prompt"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+
+	deadline := time.After(5 * time.Second)
+	seenCommentaryAppend := false
+	seenCompleted := false
+	for !seenCommentaryAppend || !seenCompleted {
+		select {
+		case event := <-events:
+			if event.SessionID != session.ID {
+				t.Fatalf("expected session id %q, got %+v", session.ID, event)
+			}
+			switch event.EventType {
+			case SessionEventTurnEventAppended:
+				if event.RuntimeEvent == nil {
+					t.Fatalf("turn.event.appended must carry a runtime event patch: %+v", event)
+				}
+				if got := firstRuntimeTextBlockContent(event.RuntimeEvent); got == "final:first prompt" {
+					t.Fatalf("final agent message must not be published as a runtime event patch: %+v", event.RuntimeEvent)
+				}
+				if event.RuntimeEvent.Kind == "assistant_commentary" {
+					if event.RuntimeEvent.Status != "completed" {
+						t.Fatalf("expected completed commentary runtime event, got %+v", event.RuntimeEvent)
+					}
+					if got := firstRuntimeTextBlockContent(event.RuntimeEvent); got != "working on first prompt" {
+						t.Fatalf("commentary runtime event text = %q, want %q", got, "working on first prompt")
+					}
+					seenCommentaryAppend = true
+				}
+			case SessionEventTurnCompleted:
+				if event.RuntimeEvent != nil {
+					t.Fatalf("turn.completed must not carry a runtime event patch: %+v", event.RuntimeEvent)
+				}
+				if event.Turn == nil || event.Turn.Status != "completed" || event.Turn.FinalOutput != "final:first prompt" {
+					t.Fatalf("expected completed turn with final output only, got %+v", event.Turn)
+				}
+				seenCompleted = true
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for commentary runtime update; commentary=%v completed=%v", seenCommentaryAppend, seenCompleted)
+		}
+	}
+}
+
+func firstRuntimeTextBlockContent(event *RuntimeTraceEvent) string {
+	if event == nil || len(event.Blocks) == 0 {
+		return ""
+	}
+	if event.Blocks[0].Text != "" {
+		return event.Blocks[0].Text
+	}
+	return event.Blocks[0].Content
+}
+
+func TestServiceSessionEventHookReleasesSessionLockBeforePublishing(t *testing.T) {
 	service := newTestService("success")
 	hookCanReadSession := make(chan bool, 1)
-	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session chatruntimedomain.Session) {
-		_, ok := service.Get(ownerID, sessionID)
+	service.SetSessionEventHook(func(event SessionEvent) {
+		if event.EventType != SessionEventTurnStarted {
+			return
+		}
+		_, ok := service.Get(event.OwnerID, event.SessionID)
 		hookCanReadSession <- ok
 	})
 
-	done := make(chan error, 1)
-	go func() {
-		_, err := service.Create(CreateRequest{OwnerID: "owner-create-hook"})
-		done <- err
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("create session: %v", err)
-		}
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("create session deadlocked while publishing session update hook")
+	session, err := service.Create(CreateRequest{OwnerID: "owner-event-lock"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := service.Input("owner-event-lock", session.ID, "first prompt"); err != nil {
+		t.Fatalf("input: %v", err)
 	}
 
 	select {
 	case ok := <-hookCanReadSession:
 		if !ok {
-			t.Fatal("expected update hook to read the newly created session")
+			t.Fatal("expected event hook to read the session")
 		}
 	case <-time.After(500 * time.Millisecond):
-		t.Fatal("timed out waiting for session update hook")
-	}
-}
-
-func TestServiceRecoverReleasesGlobalLockBeforeSessionUpdateHook(t *testing.T) {
-	service := newTestService("success")
-	hookCanReadSession := make(chan bool, 1)
-	service.SetSessionUpdateHook(func(ownerID string, sessionID string, session chatruntimedomain.Session) {
-		_, ok := service.Get(ownerID, sessionID)
-		hookCanReadSession <- ok
-	})
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := service.Recover(RecoverRequest{
-			OwnerID:   "owner-recover-hook",
-			SessionID: "chat-recovered-hook",
-		})
-		done <- err
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("recover session: %v", err)
-		}
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("recover session deadlocked while publishing session update hook")
-	}
-
-	select {
-	case ok := <-hookCanReadSession:
-		if !ok {
-			t.Fatal("expected update hook to read the recovered session")
-		}
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("timed out waiting for session update hook")
+		t.Fatal("timed out waiting for session event hook")
 	}
 }
 
@@ -1332,7 +1434,7 @@ func TestServiceListSeparatesChatSessionsFromOtherOwners(t *testing.T) {
 func TestServiceListReconcilesOrphanedBusySession(t *testing.T) {
 	service := newTestService("success")
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
-	sessionID := "chat-orphan-list"
+	sessionID := "c_orphanlist000000"
 	insertOrphanedBusyRuntimeSession(t, service, "owner-orphan-list", sessionID, now)
 
 	items := service.List("owner-orphan-list")
@@ -1453,7 +1555,7 @@ func TestServiceSetPinnedPersistsAndSortsPinnedSessionsFirst(t *testing.T) {
 	service := NewService(context.Background(), nil, nil, Options{WorkingDir: t.TempDir()})
 	older, err := service.Recover(RecoverRequest{
 		OwnerID:   "owner-pin",
-		SessionID: "chat-older",
+		SessionID: "c_pinolder00000000",
 		CreatedAt: now.Add(-20 * time.Minute),
 		UpdatedAt: now.Add(-20 * time.Minute),
 	})
@@ -1462,7 +1564,7 @@ func TestServiceSetPinnedPersistsAndSortsPinnedSessionsFirst(t *testing.T) {
 	}
 	if _, err := service.Recover(RecoverRequest{
 		OwnerID:   "owner-pin",
-		SessionID: "chat-newer",
+		SessionID: "c_pinnewer00000000",
 		CreatedAt: now.Add(-5 * time.Minute),
 		UpdatedAt: now.Add(-5 * time.Minute),
 	}); err != nil {
@@ -1501,7 +1603,7 @@ func TestServiceSetPinnedFalsePersistsAcrossRestore(t *testing.T) {
 	service := NewService(context.Background(), nil, nil, Options{WorkingDir: workingDir})
 	session, err := service.Recover(RecoverRequest{
 		OwnerID:   "owner-unpin",
-		SessionID: "chat-unpin",
+		SessionID: "c_unpin00000000000",
 		CreatedAt: now.Add(-20 * time.Minute),
 		UpdatedAt: now.Add(-20 * time.Minute),
 	})
@@ -1804,7 +1906,16 @@ func TestChatRuntimeServiceHelperProcess(t *testing.T) {
 		fmt.Fprintln(os.Stderr, "2026-04-14T05:19:09.786118Z ERROR codex_core::codex: Failed to run pre-sampling compact")
 		os.Exit(23)
 	}
-	fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":%q}}\n", "mock:"+prompt)
+	if mode == "command" {
+		fmt.Fprintln(os.Stdout, `{"type":"item.started","item":{"id":"item_cmd","type":"command_execution","command":"echo typed-event"}}`)
+		fmt.Fprintln(os.Stdout, `{"type":"item.completed","item":{"id":"item_cmd","type":"command_execution","command":"echo typed-event","aggregated_output":"typed-event","status":"completed","exit_code":0}}`)
+	}
+	if mode == "commentary" {
+		fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_commentary\",\"type\":\"agent_message\",\"channel\":\"commentary\",\"text\":%q}}\n", "working on "+prompt)
+		fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_final\",\"type\":\"agent_message\",\"channel\":\"final\",\"text\":%q}}\n", "final:"+prompt)
+	} else {
+		fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":%q}}\n", "mock:"+prompt)
+	}
 	fmt.Fprintln(os.Stdout, `{"type":"turn.completed"}`)
 	os.Exit(0)
 }

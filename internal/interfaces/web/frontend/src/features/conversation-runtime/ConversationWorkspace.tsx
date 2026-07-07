@@ -464,7 +464,6 @@ function useConversationWorkspaceController(
           title: item.title,
           contextLabel: item.contextLabel,
           meta: item.meta,
-          shortHash: item.shortHash,
           activeLabel: activeSessionBadgeLabel,
           idleLabel: idleSessionBadgeLabel,
           onSelect: () => handleFocusSession(item.id),
@@ -522,7 +521,6 @@ function useConversationWorkspaceController(
     { label: language === "zh" ? "会话" : "Session", value: runtime.activeSession.id, copyLabel: language === "zh" ? "会话" : "Session", mono: true },
     { label: language === "zh" ? "路由" : "Route", value: routeLabel, copyLabel: language === "zh" ? "路由" : "Route" },
     { label: language === "zh" ? "状态" : "Status", value: activeSessionStatus.label, copyLabel: language === "zh" ? "状态" : "Status" },
-    { label: language === "zh" ? "短标识" : "Short hash", value: activeSessionItem?.shortHash || "-", copyLabel: language === "zh" ? "短标识" : "Short hash", mono: true },
     { label: language === "zh" ? "消息数" : "Messages", value: String(timelineMessages.length), copyLabel: language === "zh" ? "消息数" : "Messages" },
     { label: language === "zh" ? "创建时间" : "Created", value: activeSessionItem ? formatDateTime(activeSessionItem.createdAt) : "-", copyLabel: language === "zh" ? "创建时间" : "Created" },
   ] : [];

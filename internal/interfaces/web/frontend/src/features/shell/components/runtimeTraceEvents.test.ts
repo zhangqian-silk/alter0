@@ -27,33 +27,35 @@ function event(overrides: Partial<RuntimeTraceEvent>): RuntimeTraceEvent {
 }
 
 describe("runtime trace events", () => {
-  it("normalizes server runtime events and keeps raw references as the detail id", () => {
+  it("normalizes lightweight server runtime events and uses event ids as detail ids", () => {
     const events = normalizeRuntimeTraceEvents([{
-      id: "event-1",
-      turn_id: "",
-      seq: "not-a-number",
-      source: "adapter",
-      provider: { engine: "codex", adapter: "codex_cli_json" },
-      role: "assistant",
+      id: 41,
       kind: "plan",
       lifecycle: "completed",
       status: "completed",
-      blocks: [],
-      visibility: "collapsed",
-      raw: { ref: "event-detail-1", type: "plan", has_detail: true },
+      text: "Review the change surface.",
+      detail_available: true,
+      created_at: "2026-04-23T03:31:00Z",
     }], { sessionID: "session-1", turnID: "turn-1" });
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
+      id: "41",
       session_id: "session-1",
       turn_id: "turn-1",
-      seq: 1,
+      seq: 41,
+      kind: "plan",
+      title: "Review the change surface.",
+      summary: "Review the change surface.",
+      blocks: [],
+      raw: { has_detail: true },
     });
-    expect(runtimeTraceEventDetailID(events[0])).toBe("event-detail-1");
+    expect(runtimeTraceEventDetailID(events[0])).toBe("41");
   });
 
   it("uses event ids as detail ids when raw references are absent", () => {
-    expect(runtimeTraceEventDetailID(event({ id: "event-direct" }))).toBe("event-direct");
+    expect(runtimeTraceEventDetailID(event({ id: "event-direct", raw: { ref: "legacy-ref" } }))).toBe("event-direct");
+    expect(runtimeTraceEventDetailID(event({ id: "", seq: 3, raw: { ref: "legacy-ref" } }))).toBe("legacy-ref");
     expect(runtimeTraceEventDetailID(event({ id: "", seq: 3 }))).toBe("turn-1:event:3");
   });
 

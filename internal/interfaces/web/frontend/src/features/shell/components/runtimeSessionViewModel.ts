@@ -14,7 +14,7 @@ export type RuntimeSessionAttachment = {
 };
 
 export type RuntimeSessionTurn = {
-  id: string;
+  id: string | number;
   prompt: string;
   attachments?: RuntimeSessionAttachment[];
   status: string;
@@ -74,7 +74,13 @@ export type RuntimeSessionViewSession = {
 };
 
 export function normalizeRuntimeSessionText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return "";
 }
 
 export function parseRuntimeSessionTimestamp(value: unknown): number {
@@ -258,7 +264,7 @@ export function runtimeSessionTurnEvents(
   }
   return normalizeRuntimeTraceEvents(turn.runtime_trace_events, {
     sessionID: sessionID || "",
-    turnID: turn.id,
+    turnID: normalizeRuntimeSessionText(turn.id),
   });
 }
 
@@ -276,6 +282,10 @@ export function runtimeSessionTurnsToTimelineMessages({
   source: string;
 }): RuntimeSessionTimelineMessage[] {
   return turns.flatMap((turn) => {
+    const turnID = normalizeRuntimeSessionText(turn.id);
+    if (!turnID) {
+      return [];
+    }
     const runtimeEvents = runtimeSessionTurnEvents(sessionID, turn);
     const attachments = Array.isArray(turn.attachments) ? turn.attachments : [];
     const status = normalizeRuntimeSessionText(turn.status || "");
@@ -285,7 +295,7 @@ export function runtimeSessionTurnsToTimelineMessages({
       Boolean(normalizeRuntimeSessionText(finalOutput))
       || runtimeEvents.length > 0;
     const promptAttachments = attachments.map((attachment) => ({
-      id: `${turn.id}:${attachment.id || attachment.name}`,
+      id: `${turnID}:${attachment.id || attachment.name}`,
       kind: attachment.content_type.startsWith("image/") ? "image" as const : "file" as const,
       name: attachment.name,
       contentType: attachment.content_type,
@@ -297,7 +307,7 @@ export function runtimeSessionTurnsToTimelineMessages({
     const messages: RuntimeSessionTimelineMessage[] = [];
     if (normalizeRuntimeSessionText(promptText) || promptAttachments.length > 0) {
       messages.push({
-        id: `${turn.id}:user`,
+        id: `${turnID}:user`,
         role: "user",
         text: promptText,
         attachments: promptAttachments,
@@ -313,7 +323,7 @@ export function runtimeSessionTurnsToTimelineMessages({
       return messages;
     }
     messages.push({
-      id: `${turn.id}:assistant`,
+      id: `${turnID}:assistant`,
       role: "assistant",
       text: finalOutput,
       attachments: [],
@@ -326,7 +336,7 @@ export function runtimeSessionTurnsToTimelineMessages({
       status,
       at: parseRuntimeSessionTimestamp(turn.finished_at || turn.started_at),
       processEvents: runtimeEvents,
-      processCollapsed: !(expandedTurns?.[turn.id] ?? false),
+      processCollapsed: !(expandedTurns?.[turnID] ?? false),
     });
     return messages;
   });

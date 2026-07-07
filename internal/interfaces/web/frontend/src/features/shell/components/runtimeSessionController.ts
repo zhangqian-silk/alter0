@@ -9,7 +9,6 @@ import {
   type SetStateAction,
 } from "react";
 import { createAPIClient } from "../../../shared/api/client";
-import { resolveSessionIDReference } from "../../../shared/session/sessionHash";
 import {
   RUNTIME_SESSION_HISTORY_PAGE_TURN_LIMIT,
   runtimeSessionAttachmentsEndpoint,
@@ -42,7 +41,6 @@ export type RuntimeSessionPayload = {
   updated_at?: string | number;
   last_output_at?: string | number;
   activity_at?: string | number;
-  revision?: string | number;
   model_provider_id?: string;
   model_id?: string;
   tool_ids?: string[];
@@ -118,6 +116,7 @@ export type RuntimeSessionControllerOptions<TSession extends { id: string }> = {
   getProgressiveHistoryPaging?: (session: TSession) => RuntimeSessionTurnPaging | undefined;
   canLoadProgressiveHistory?: (session: TSession) => boolean;
   enableProgressiveHistory?: boolean;
+  preserveMissingSessionsOnRefresh?: boolean;
   manageState?: boolean;
   onSessionsChange?: (sessions: TSession[]) => void;
   onActiveSessionIDChange?: (sessionID: string) => void;
@@ -149,6 +148,24 @@ function normalizeRuntimeSessionText(value: unknown): string {
 function normalizeRuntimePollStatus(status: string): string {
   const normalized = normalizeRuntimeSessionText(status).toLowerCase();
   return normalized || "busy";
+}
+
+function mergeRefreshSessions<TSession extends { id: string }>(
+  current: TSession[],
+  incoming: TSession[],
+  options: Pick<RuntimeSessionControllerOptions<TSession>, "mergeSession" | "sortSessions" | "preserveMissingSessionsOnRefresh">,
+): TSession[] {
+  const currentMap = new Map(current.map((session) => [session.id, session]));
+  const incomingIDs = new Set(incoming.map((session) => session.id));
+  const merged = incoming.map((session) => options.mergeSession(currentMap.get(session.id), session));
+  return options.sortSessions(
+    options.preserveMissingSessionsOnRefresh === true
+      ? [
+          ...merged,
+          ...current.filter((session) => !incomingIDs.has(session.id)),
+        ]
+      : merged,
+  );
 }
 
 export function resolveRuntimeSessionPollPlan(options: RuntimeSessionPollPlanOptions): RuntimeSessionPollPlan {
@@ -238,17 +255,6 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
     [activeSessionID, sessions],
   );
 
-  const mergeIncomingSessions = useCallback((incoming: TSession[]) => {
-    setSessions(() => {
-      const current = sessionsRef.current;
-      const currentMap = new Map(current.map((session) => [session.id, session]));
-      const merged = incoming.map((session) => options.mergeSession(currentMap.get(session.id), session));
-      const next = options.sortSessions(merged);
-      sessionsRef.current = next;
-      return next;
-    });
-  }, [options, setSessions]);
-
   const refreshList = useCallback(async () => {
     const payload = await apiClient.get<RuntimeSessionsResponse>(runtimeSessionCollectionEndpoint(options.route));
     const currentMap = new Map(sessionsRef.current.map((session) => [session.id, session]));
@@ -257,17 +263,20 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
       .map((item) => options.normalizeSession(item, currentMap.get(normalizeRuntimeSessionText(item.id)) || null, { source: "summary" }))
       .filter((session): session is TSession => session !== null);
     if (manageState) {
-      mergeIncomingSessions(nextSessions);
+      const nextVisibleSessions = mergeRefreshSessions(sessionsRef.current, nextSessions, options);
+      sessionsRef.current = nextVisibleSessions;
+      setSessions(() => nextVisibleSessions);
       setActiveSessionID((current) => {
-        const resolvedCurrent = resolveSessionIDReference(nextSessions, current);
-        if (resolvedCurrent) {
-          return resolvedCurrent;
+        const normalizedCurrent = normalizeRuntimeSessionText(current);
+        if (normalizedCurrent && nextVisibleSessions.some((session) => session.id === normalizedCurrent)) {
+          return normalizedCurrent;
         }
-        return nextSessions[0]?.id || "";
+        return nextVisibleSessions[0]?.id || "";
       });
+      return nextVisibleSessions;
     }
     return nextSessions;
-  }, [apiClient, manageState, mergeIncomingSessions, options, setActiveSessionID]);
+  }, [apiClient, manageState, options, setActiveSessionID, setSessions]);
 
   const refreshActiveSession = useCallback(async (
     sessionID: string,
