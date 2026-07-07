@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { memo } from "react";
 import {
   CHAT_RUNTIME_CACHE_SESSION_TTL_MS,
@@ -13,7 +13,6 @@ import {
   useConversationRuntimeComposer,
   useConversationRuntimeWorkspace,
 } from "./ConversationRuntimeProvider";
-import { hashSessionIDShort } from "../../shared/session/sessionHash";
 
 const ACTIVE_SESSION_STORAGE_KEY = "alter0.web.session.active.v1";
 const ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.snapshot.v1";
@@ -248,17 +247,17 @@ function SessionListHarness() {
       <button type="button" onClick={runtime.createSession}>
         new session
       </button>
-      <button type="button" onClick={() => void runtime.setSessionPinned("alter0-chat", false)}>
+      <button type="button" onClick={() => void runtime.setSessionPinned("c_51jttwiv4yggqagk", false)}>
         unpin active
       </button>
       <button type="button" onClick={() => void runtime.setSessionPinned(runtime.activeSession?.id || "", true)}>
         pin active
       </button>
-      <button type="button" onClick={() => void runtime.setSessionPinned("older-chat", true)}>
+      <button type="button" onClick={() => void runtime.setSessionPinned("c_olderchat0000000", true)}>
         pin older
       </button>
       <output data-testid="sessions">
-        {runtime.sessionItems.map((session) => `${session.title}:${session.shortHash}:${session.pinned ? "pinned" : "unpinned"}`).join("|")}
+        {runtime.sessionItems.map((session) => `${session.title}:${session.pinned ? "pinned" : "unpinned"}`).join("|")}
       </output>
     </div>
   );
@@ -275,6 +274,7 @@ function ProcessToggleHarness() {
       <button type="button" onClick={() => void runtime.refreshActiveSession()}>
         refresh active
       </button>
+      <output data-testid="assistant-process-ready">{assistantMessage?.processEvents.length || 0}</output>
       <output data-testid="assistant-process-collapsed">{String(assistantMessage?.processCollapsed)}</output>
     </div>
   );
@@ -287,7 +287,7 @@ function setupDefaultAPI() {
         return {
           items: [
             {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Image session",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -295,10 +295,10 @@ function setupDefaultAPI() {
             },
           ],
         };
-      case "/api/chat/sessions/alter0-chat":
+      case "/api/chat/sessions/c_51jttwiv4yggqagk":
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Image session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -329,7 +329,7 @@ function deferred<T>() {
 
 function chatSessionFixture(overrides: Partial<ChatSession> = {}): ChatSession {
   return {
-    id: "alter0-chat",
+    id: "c_51jttwiv4yggqagk",
     sourceRoute: "chat",
     status: "ready",
     title: "Image session",
@@ -339,8 +339,8 @@ function chatSessionFixture(overrides: Partial<ChatSession> = {}): ChatSession {
     updatedAt: Date.parse("2026-04-23T03:30:00Z"),
     lastOutputAt: 0,
     activityAt: Date.parse("2026-04-23T03:30:00Z"),
-    revision: Date.parse("2026-04-23T03:30:00Z"),
-    detailRevision: Date.parse("2026-04-23T03:30:00Z"),
+    freshnessAt: Date.parse("2026-04-23T03:30:00Z"),
+    detailFreshnessAt: Date.parse("2026-04-23T03:30:00Z"),
     pinned: false,
     target: { type: "model", id: "raw-model", name: "Raw Model" },
     modelProviderID: "",
@@ -372,10 +372,10 @@ function chatTurnFixtures(count: number, outputPrefix = "cached answer") {
 
 function mockMessageDone(output = "Done") {
   apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-    if (path === "/api/chat/sessions/alter0-chat/input") {
+    if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
       return {
         session: {
-          id: "alter0-chat",
+          id: "c_51jttwiv4yggqagk",
           title: "Image session",
           status: "ready",
           created_at: "2026-04-23T03:30:00Z",
@@ -406,14 +406,14 @@ describe("ConversationRuntimeProvider", () => {
     window.history.replaceState({}, "", "/chat");
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
-      JSON.stringify({ chat: "alter0-chat" }),
+      JSON.stringify({ chat: "c_51jttwiv4yggqagk" }),
     );
     setupDefaultAPI();
     apiClientMock.post.mockImplementation(async (path: string) => {
       if (path === "/api/chat/sessions") {
         return {
           session: {
-            id: "new-chatRuntime-chat",
+            id: "c_newchat000000000",
             title: "New",
             status: "ready",
             created_at: "2026-04-23T04:00:00Z",
@@ -429,8 +429,8 @@ describe("ConversationRuntimeProvider", () => {
               name: "trace.png",
               content_type: "image/png",
               size: 12,
-              asset_url: "/api/chat/sessions/alter0-chat/attachments/uploaded-image-1/original",
-              preview_url: "/api/chat/sessions/alter0-chat/attachments/uploaded-image-1/preview",
+              asset_url: "/api/chat/sessions/c_51jttwiv4yggqagk/attachments/uploaded-image-1/original",
+              preview_url: "/api/chat/sessions/c_51jttwiv4yggqagk/attachments/uploaded-image-1/preview",
             },
           ],
         };
@@ -440,6 +440,8 @@ describe("ConversationRuntimeProvider", () => {
   });
 
   afterEach(() => {
+    cleanup();
+    vi.clearAllTimers();
     vi.useRealTimers();
     resetConversationRuntimeCache();
     vi.unstubAllGlobals();
@@ -455,15 +457,31 @@ describe("ConversationRuntimeProvider", () => {
     });
     expect(resolveChatSessionPollPlan({ sessionCount: 1, pageHidden: false })).toEqual({
       enabled: true,
-      interval: 1000,
+      interval: 2000,
     });
     expect(resolveChatSessionPollPlan({
       sessionCount: 1,
       pageHidden: false,
-      fallbackAttempt: 8,
+      fallbackAttempt: 1,
+    })).toEqual({
+      enabled: true,
+      interval: 3000,
+    });
+    expect(resolveChatSessionPollPlan({
+      sessionCount: 1,
+      pageHidden: false,
+      fallbackAttempt: 3,
     })).toEqual({
       enabled: true,
       interval: 5000,
+    });
+    expect(resolveChatSessionPollPlan({
+      sessionCount: 1,
+      pageHidden: false,
+      fallbackAttempt: 6,
+    })).toEqual({
+      enabled: true,
+      interval: 8000,
     });
     expect(resolveChatSessionPollPlan({ sessionCount: 1, pageHidden: true })).toEqual({
       enabled: false,
@@ -520,21 +538,19 @@ describe("ConversationRuntimeProvider", () => {
   it("backs off detail fallback for consecutive empty update polls", () => {
     expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(0)).toBe(false);
     expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(1)).toBe(false);
-    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(9)).toBe(false);
-    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(10)).toBe(true);
-    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(19)).toBe(false);
-    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(20)).toBe(true);
-    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(49)).toBe(false);
-    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(50)).toBe(true);
-    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(75)).toBe(false);
-    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(100)).toBe(true);
+    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(5)).toBe(false);
+    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(6)).toBe(true);
+    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(13)).toBe(false);
+    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(14)).toBe(true);
+    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(21)).toBe(false);
+    expect(shouldRefreshChatSessionDetailAfterEmptyUpdates(22)).toBe(true);
   });
 
   it("keeps restored ready detail authoritative when a stale busy summary arrives later", () => {
     const restoredDetail = chatSessionFixture({
       status: "ready",
-      revision: Date.parse("2026-04-23T03:33:00Z"),
-      detailRevision: Date.parse("2026-04-23T03:33:00Z"),
+      freshnessAt: Date.parse("2026-04-23T03:33:00Z"),
+      detailFreshnessAt: Date.parse("2026-04-23T03:33:00Z"),
       updatedAt: Date.parse("2026-04-23T03:33:00Z"),
       lastOutputAt: Date.parse("2026-04-23T03:33:00Z"),
       activityAt: Date.parse("2026-04-23T03:33:00Z"),
@@ -568,8 +584,8 @@ describe("ConversationRuntimeProvider", () => {
     });
     const staleBusySummary = chatSessionFixture({
       status: "busy",
-      revision: Date.parse("2026-04-23T03:33:00Z"),
-      detailRevision: 0,
+      freshnessAt: Date.parse("2026-04-23T03:33:00Z"),
+      detailFreshnessAt: 0,
       updatedAt: Date.parse("2026-04-23T03:31:00Z"),
       lastOutputAt: 0,
       activityAt: Date.parse("2026-04-23T03:31:00Z"),
@@ -581,7 +597,7 @@ describe("ConversationRuntimeProvider", () => {
 
     expect(merged[0]?.status).toBe("ready");
     expect(merged[0]?.messagesLoaded).toBe(true);
-    expect(merged[0]?.detailRevision).toBe(restoredDetail.detailRevision);
+    expect(merged[0]?.detailFreshnessAt).toBe(restoredDetail.detailFreshnessAt);
     expect(merged[0]?.messages.map((message) => message.text)).toEqual([
       "new prompt",
       "restored answer remains visible",
@@ -591,8 +607,8 @@ describe("ConversationRuntimeProvider", () => {
   it("promotes a completed session back to busy when a newer bounded busy turn arrives", () => {
     const completedDetail = chatSessionFixture({
       status: "ready",
-      revision: Date.parse("2026-04-23T03:33:00Z"),
-      detailRevision: Date.parse("2026-04-23T03:33:00Z"),
+      freshnessAt: Date.parse("2026-04-23T03:33:00Z"),
+      detailFreshnessAt: Date.parse("2026-04-23T03:33:00Z"),
       updatedAt: Date.parse("2026-04-23T03:33:00Z"),
       lastOutputAt: Date.parse("2026-04-23T03:33:00Z"),
       activityAt: Date.parse("2026-04-23T03:33:00Z"),
@@ -626,8 +642,8 @@ describe("ConversationRuntimeProvider", () => {
     });
     const newerBusyBoundedTurn = chatSessionFixture({
       status: "busy",
-      revision: Date.parse("2026-04-23T03:34:00Z"),
-      detailRevision: Date.parse("2026-04-23T03:34:00Z"),
+      freshnessAt: Date.parse("2026-04-23T03:34:00Z"),
+      detailFreshnessAt: Date.parse("2026-04-23T03:34:00Z"),
       updatedAt: Date.parse("2026-04-23T03:34:00Z"),
       lastOutputAt: 0,
       activityAt: Date.parse("2026-04-23T03:34:00Z"),
@@ -662,7 +678,99 @@ describe("ConversationRuntimeProvider", () => {
       "old answer",
       "new prompt",
     ]);
-    expect(merged[0]?.detailRevision).toBe(newerBusyBoundedTurn.detailRevision);
+    expect(merged[0]?.detailFreshnessAt).toBe(newerBusyBoundedTurn.detailFreshnessAt);
+  });
+
+  it("keeps exhausted Chat history paging closed when a latest bounded update adds a new turn", () => {
+    const previous = chatSessionFixture({
+      status: "ready",
+      messagesLoaded: true,
+      messages: [
+        {
+          id: "turn-1:user",
+          role: "user",
+          text: "old prompt",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "done",
+          at: Date.parse("2026-04-23T03:31:00Z"),
+          processEvents: [],
+        },
+        {
+          id: "turn-1:assistant",
+          role: "assistant",
+          text: "old answer",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "done",
+          at: Date.parse("2026-04-23T03:31:01Z"),
+          processEvents: [],
+        },
+      ],
+      turnsPaging: {
+        has_more_before: false,
+        oldest_turn_id: "turn-1",
+        newest_turn_id: "turn-1",
+      },
+    });
+    const latestBoundedUpdate = chatSessionFixture({
+      status: "ready",
+      freshnessAt: Date.parse("2026-04-23T03:32:02Z"),
+      detailFreshnessAt: Date.parse("2026-04-23T03:32:02Z"),
+      updatedAt: Date.parse("2026-04-23T03:32:02Z"),
+      lastOutputAt: Date.parse("2026-04-23T03:32:02Z"),
+      activityAt: Date.parse("2026-04-23T03:32:02Z"),
+      messagesLoaded: true,
+      messages: [
+        {
+          id: "turn-2:user",
+          role: "user",
+          text: "new prompt",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "done",
+          at: Date.parse("2026-04-23T03:32:00Z"),
+          processEvents: [],
+        },
+        {
+          id: "turn-2:assistant",
+          role: "assistant",
+          text: "new answer",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "done",
+          at: Date.parse("2026-04-23T03:32:01Z"),
+          processEvents: [],
+        },
+      ],
+      turnsPaging: {
+        total: 2,
+        limit: 1,
+        has_more_before: true,
+        oldest_turn_id: "turn-2",
+        newest_turn_id: "turn-2",
+        next_before_turn_id: "turn-2",
+      },
+    });
+
+    const merged = mergeRuntimeSessions([latestBoundedUpdate], [previous]);
+
+    expect(merged[0]?.messages.map((message) => message.text)).toEqual([
+      "old prompt",
+      "old answer",
+      "new prompt",
+      "new answer",
+    ]);
+    expect(merged[0]?.turnsPaging?.has_more_before).toBe(false);
+    expect(merged[0]?.turnsPaging?.next_before_turn_id).toBeUndefined();
   });
 
   it("keeps newer session detail authoritative when an older detail response arrives later", () => {
@@ -672,8 +780,8 @@ describe("ConversationRuntimeProvider", () => {
       updatedAt: Date.parse("2026-04-23T03:33:00Z"),
       lastOutputAt: Date.parse("2026-04-23T03:33:00Z"),
       activityAt: Date.parse("2026-04-23T03:33:00Z"),
-      revision: Date.parse("2026-04-23T03:33:00Z"),
-      detailRevision: Date.parse("2026-04-23T03:33:00Z"),
+      freshnessAt: Date.parse("2026-04-23T03:33:00Z"),
+      detailFreshnessAt: Date.parse("2026-04-23T03:33:00Z"),
       messagesLoaded: true,
       messages: [{
         id: "turn-new:assistant",
@@ -694,8 +802,8 @@ describe("ConversationRuntimeProvider", () => {
       updatedAt: Date.parse("2026-04-23T03:31:00Z"),
       lastOutputAt: Date.parse("2026-04-23T03:31:00Z"),
       activityAt: Date.parse("2026-04-23T03:31:00Z"),
-      revision: Date.parse("2026-04-23T03:31:00Z"),
-      detailRevision: Date.parse("2026-04-23T03:31:00Z"),
+      freshnessAt: Date.parse("2026-04-23T03:31:00Z"),
+      detailFreshnessAt: Date.parse("2026-04-23T03:31:00Z"),
       messagesLoaded: true,
       messages: [{
         id: "turn-old:assistant",
@@ -715,15 +823,55 @@ describe("ConversationRuntimeProvider", () => {
 
     expect(merged[0]?.title).toBe("New detail");
     expect(merged[0]?.status).toBe("ready");
-    expect(merged[0]?.revision).toBe(Date.parse("2026-04-23T03:33:00Z"));
-    expect(merged[0]?.detailRevision).toBe(Date.parse("2026-04-23T03:33:00Z"));
+    expect(merged[0]?.freshnessAt).toBe(Date.parse("2026-04-23T03:33:00Z"));
+    expect(merged[0]?.detailFreshnessAt).toBe(Date.parse("2026-04-23T03:33:00Z"));
     expect(merged[0]?.messages.map((message) => message.text)).toContain("new answer remains visible");
+  });
+
+  it("uses updatedAt rather than legacy freshnessAt when merging newer Chat session detail", () => {
+    const previous = chatSessionFixture({
+      status: "ready",
+      title: "Old freshnessAt-heavy detail",
+      updatedAt: Date.parse("2026-04-23T03:31:00Z"),
+      activityAt: Date.parse("2026-04-23T03:31:00Z"),
+      freshnessAt: Date.parse("2026-04-23T03:40:00Z"),
+      detailFreshnessAt: Date.parse("2026-04-23T03:40:00Z"),
+      messagesLoaded: true,
+      messages: [],
+    });
+    const incoming = chatSessionFixture({
+      status: "ready",
+      title: "New updatedAt detail",
+      updatedAt: Date.parse("2026-04-23T03:33:00Z"),
+      activityAt: Date.parse("2026-04-23T03:33:00Z"),
+      freshnessAt: Date.parse("2026-04-23T03:20:00Z"),
+      detailFreshnessAt: Date.parse("2026-04-23T03:20:00Z"),
+      messagesLoaded: true,
+      messages: [{
+        id: "turn-updated-at:assistant",
+        role: "assistant",
+        text: "new answer selected by updatedAt",
+        attachments: [],
+        route: "chat",
+        source: "runtime",
+        error: false,
+        status: "done",
+        at: Date.parse("2026-04-23T03:33:01Z"),
+        processEvents: [],
+      }],
+    });
+
+    const merged = mergeRuntimeSessions([incoming], [previous]);
+
+    expect(merged[0]?.title).toBe("New updatedAt detail");
+    expect(merged[0]?.updatedAt).toBe(Date.parse("2026-04-23T03:33:00Z"));
+    expect(merged[0]?.messages.map((message) => message.text)).toContain("new answer selected by updatedAt");
   });
 
   it("orders sessions by the latest runtime activity instead of creation time", () => {
     const recentlyActiveOlderSession = {
       ...chatSessionFixture({
-        id: "older-active-chat",
+        id: "c_olderactivechat0",
         title: "Older but active",
         createdAt: Date.parse("2026-04-21T03:30:00Z"),
       }),
@@ -733,7 +881,7 @@ describe("ConversationRuntimeProvider", () => {
     } as ChatSession & { lastOutputAt: number; updatedAt: number; activityAt: number };
     const newlyCreatedIdleSession = {
       ...chatSessionFixture({
-        id: "new-idle-chat",
+        id: "c_newidlechat00000",
         title: "New but idle",
         createdAt: Date.parse("2026-04-23T03:30:00Z"),
       }),
@@ -748,8 +896,8 @@ describe("ConversationRuntimeProvider", () => {
     ]);
 
     expect(merged.map((session) => session.id)).toEqual([
-      "older-active-chat",
-      "new-idle-chat",
+      "c_olderactivechat0",
+      "c_newidlechat00000",
     ]);
   });
 
@@ -787,7 +935,7 @@ describe("ConversationRuntimeProvider", () => {
           at: Date.parse("2026-04-23T03:31:00Z"),
           processEvents: [{
             id: "event-1",
-            session_id: "alter0-chat",
+            session_id: "c_51jttwiv4yggqagk",
             turn_id: "turn-1",
             seq: 1,
             source: "adapter",
@@ -828,7 +976,7 @@ describe("ConversationRuntimeProvider", () => {
           at: Date.parse("2026-04-23T03:31:00Z"),
           processEvents: [{
             id: "event-1",
-            session_id: "alter0-chat",
+            session_id: "c_51jttwiv4yggqagk",
             turn_id: "turn-1",
             seq: 1,
             source: "adapter",
@@ -869,17 +1017,29 @@ describe("ConversationRuntimeProvider", () => {
     ]);
   });
 
-  it("selects only recoverable runtime sessions for owner-level polling resync", () => {
+  it("selects only local sync intent sessions for owner-level polling resync", () => {
     expect(resolveRuntimeResyncSessionIDs([
       chatSessionFixture({
-        id: "busy-chat",
+        id: "c_busychat00000000",
         status: "busy",
         messagesLoaded: true,
         serverBacked: true,
       }),
       chatSessionFixture({
-        id: "ready-chat",
+        id: "c_readychat0000000",
         status: "ready",
+        messagesLoaded: true,
+        serverBacked: true,
+      }),
+      chatSessionFixture({
+        id: "c_localrunningchat",
+        status: "local_running",
+        messagesLoaded: true,
+        serverBacked: true,
+      }),
+      chatSessionFixture({
+        id: "c_recoveringchat00",
+        status: "recovering",
         messagesLoaded: true,
         serverBacked: true,
       }),
@@ -889,7 +1049,84 @@ describe("ConversationRuntimeProvider", () => {
         messagesLoaded: true,
         serverBacked: false,
       }),
-    ])).toEqual(["busy-chat"]);
+    ])).toEqual(["c_localrunningchat", "c_recoveringchat00"]);
+  });
+
+  it("does not poll updates for restored sessions without local sync intent", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    apiClientMock.post.mockImplementation(async () => ({}));
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return {
+            items: [
+              {
+                id: "c_readychat0000000",
+                title: "Ready restored session",
+                status: "ready",
+                created_at: "2026-04-23T03:30:00Z",
+                updated_at: "2026-04-23T03:35:00Z",
+                turns: [],
+              },
+              {
+                id: "c_emptystatuschat0",
+                title: "Empty status restored session",
+                created_at: "2026-04-23T03:20:00Z",
+                updated_at: "2026-04-23T03:25:00Z",
+                turns: [],
+              },
+              {
+                id: "c_serverbusychat00",
+                title: "Server busy from another device",
+                status: "busy",
+                created_at: "2026-04-23T03:10:00Z",
+                updated_at: "2026-04-23T03:15:00Z",
+                turns: [],
+              },
+            ],
+          };
+        case "/api/chat/sessions/c_readychat0000000":
+        case "/api/chat/sessions/c_emptystatuschat0":
+        case "/api/chat/sessions/c_serverbusychat00":
+          return {
+            session: {
+              id: path.split("/").pop(),
+              title: "Restored session",
+              status: path.endsWith("c_serverbusychat00") ? "busy" : "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              updated_at: "2026-04-23T03:35:00Z",
+              turns: [],
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    const view = render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    vi.useFakeTimers();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15000);
+      await Promise.resolve();
+    });
+
+    expect(apiClientMock.post).not.toHaveBeenCalledWith(
+      "/api/chat/sessions/updates",
+      expect.anything(),
+    );
+    view.unmount();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   it("opens a default-collapsed completed process on the first toggle", async () => {
@@ -922,17 +1159,17 @@ describe("ConversationRuntimeProvider", () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
         case "/api/chat/sessions":
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Process session",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
               turns: [completedTurn],
             },
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Process session",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -955,14 +1192,15 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("undefined");
+      expect(screen.getByTestId("assistant-process-ready")).toHaveTextContent("1");
+      expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("true");
     });
 
     fireEvent.click(screen.getByRole("button", { name: "toggle process" }));
     expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("false");
 
     fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/c_51jttwiv4yggqagk"));
     expect(screen.getByTestId("assistant-process-collapsed")).toHaveTextContent("false");
 
     fireEvent.click(screen.getByRole("button", { name: "toggle process" }));
@@ -977,7 +1215,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Cached chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -1033,7 +1271,7 @@ describe("ConversationRuntimeProvider", () => {
 
     listRequest.resolve({
       items: [{
-        id: "alter0-chat",
+        id: "c_51jttwiv4yggqagk",
         title: "Server chat",
         status: "ready",
         created_at: "2026-04-23T03:30:00Z",
@@ -1047,23 +1285,23 @@ describe("ConversationRuntimeProvider", () => {
 
   it("hydrates all Chat messages from the long-lived browser cache before calibrating active detail", async () => {
     const cachedTurnCount = 18;
-    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "alter0-chat" }));
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_51jttwiv4yggqagk" }));
     window.localStorage.setItem(
       LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "alter0-chat" },
+        activeSessionByRoute: { chat: "c_51jttwiv4yggqagk" },
         sessionsByRoute: {
           chat: [{
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             status: "ready",
             title: "Durable cached chat",
             createdAt: Date.parse("2026-04-23T03:30:00Z"),
             updatedAt: Date.parse("2026-04-23T03:48:00Z"),
             lastOutputAt: Date.parse("2026-04-23T03:48:00Z"),
             activityAt: Date.parse("2026-04-23T03:48:00Z"),
-            revision: Date.parse("2026-04-23T03:48:00Z"),
-            detailRevision: Date.parse("2026-04-23T03:48:00Z"),
+            freshnessAt: Date.parse("2026-04-23T03:48:00Z"),
+            detailFreshnessAt: Date.parse("2026-04-23T03:48:00Z"),
             pinned: false,
             targetID: "codex",
             targetName: "Codex",
@@ -1107,11 +1345,11 @@ describe("ConversationRuntimeProvider", () => {
       switch (path) {
         case "/api/chat/sessions":
           return listRequest.promise;
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           detailReads += 1;
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Durable cached chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -1166,7 +1404,7 @@ describe("ConversationRuntimeProvider", () => {
 
     listRequest.resolve({
       items: [{
-        id: "alter0-chat",
+        id: "c_51jttwiv4yggqagk",
         title: "Durable cached chat",
         status: "ready",
         created_at: "2026-04-23T03:30:00Z",
@@ -1177,11 +1415,148 @@ describe("ConversationRuntimeProvider", () => {
       }],
     });
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/c_51jttwiv4yggqagk"));
     expect(detailReads).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByTestId("process-event-count")).toHaveTextContent("1"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("durable answer 1");
     expect(screen.getByTestId("message-texts")).toHaveTextContent(`durable answer ${cachedTurnCount}`);
+  });
+
+  it("drops legacy cached Chat session ids before requesting session detail", async () => {
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "alter0-chat" }));
+    window.localStorage.setItem(
+      LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        activeSessionByRoute: { chat: "alter0-chat" },
+        sessionsByRoute: {
+          chat: [chatSessionFixture({ id: "alter0-chat", title: "Legacy cached chat" })],
+        },
+      }),
+    );
+
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return {
+            items: [{
+              id: "c_51jttwiv4yggqagk",
+              title: "Canonical chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [],
+            }],
+          };
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
+          return {
+            session: {
+              id: "c_51jttwiv4yggqagk",
+              title: "Canonical chat",
+              status: "ready",
+              created_at: "2026-04-23T03:30:00Z",
+              turns: [],
+            },
+          };
+        case "/api/chat/sessions/alter0-chat":
+          throw new Error("legacy detail should not be requested");
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Canonical chat"));
+    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions/alter0-chat");
+  });
+
+  it("keeps cached Chat messages visible when the session list briefly returns empty after refresh", async () => {
+    const cachedTurnCount = 3;
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_51jttwiv4yggqagk" }));
+    window.localStorage.setItem(
+      LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        activeSessionByRoute: { chat: "c_51jttwiv4yggqagk" },
+        sessionsByRoute: {
+          chat: [chatSessionFixture({
+            id: "c_51jttwiv4yggqagk",
+            title: "Cached resilient chat",
+            messages: chatTurnFixtures(cachedTurnCount, "resilient answer").flatMap((turn) => ([{
+              id: `${turn.id}:user`,
+              role: "user",
+              text: turn.prompt,
+              attachments: [],
+              route: "chat",
+              source: "runtime",
+              error: false,
+              status: "",
+              at: Date.parse(turn.started_at),
+              processEvents: [],
+            }, {
+              id: `${turn.id}:assistant`,
+              role: "assistant",
+              text: turn.final_output,
+              attachments: [],
+              route: "chat",
+              source: "runtime",
+              error: false,
+              status: "done",
+              at: Date.parse(turn.finished_at),
+              processEvents: [],
+            }])),
+            messagesLoaded: true,
+            turnsPaging: { has_more_before: false },
+          })],
+        },
+      }),
+    );
+
+    const listRequest = deferred<{ items?: unknown[] }>();
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return listRequest.promise;
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    expect(screen.getByTestId("active-session-title")).toHaveTextContent("Cached resilient chat");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("resilient answer 1");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent(`resilient answer ${cachedTurnCount}`);
+
+    await act(async () => {
+      listRequest.resolve({ items: [] });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("active-session-title")).toHaveTextContent("Cached resilient chat");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("resilient answer 1");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent(`resilient answer ${cachedTurnCount}`);
   });
 
   it("keeps runtime trace events when detail refresh fills a cached assistant message", () => {
@@ -1288,16 +1663,16 @@ describe("ConversationRuntimeProvider", () => {
     expect(merged[0]?.messages[0]?.processEvents).toHaveLength(1);
   });
 
-  it("calibrates a full cached Chat session on page activation without reloading earlier history", async () => {
-    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "cached-chat" }));
+  it("does not refresh a full stable Chat session on page activation", async () => {
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_cachedchat000000" }));
     window.localStorage.setItem(
       LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "cached-chat" },
+        activeSessionByRoute: { chat: "c_cachedchat000000" },
         sessionsByRoute: {
           chat: [{
-            id: "cached-chat",
+            id: "c_cachedchat000000",
             status: "ready",
             title: "Fully cached chat",
             createdAt: Date.parse("2026-04-23T03:30:00Z"),
@@ -1342,7 +1717,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "cached-chat",
+              id: "c_cachedchat000000",
               title: "Fully cached chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -1350,10 +1725,10 @@ describe("ConversationRuntimeProvider", () => {
               turns_paging: { has_more_before: false },
             }],
           };
-        case "/api/chat/sessions/cached-chat":
+        case "/api/chat/sessions/c_cachedchat000000":
           return {
             session: {
-              id: "cached-chat",
+              id: "c_cachedchat000000",
               title: "Fully cached chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -1388,26 +1763,30 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
     apiClientMock.get.mockClear();
 
-    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    await act(async () => {
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/cached-chat"));
+    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions");
+    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions/c_cachedchat000000");
     expect(apiClientMock.get).not.toHaveBeenCalledWith(
-      "/api/chat/sessions/cached-chat?turn_before=cached-turn&turn_limit=20",
+      "/api/chat/sessions/c_cachedchat000000?turn_before=cached-turn&turn_limit=20",
     );
     expect(screen.getByTestId("message-texts")).toHaveTextContent("cached answer");
   });
 
-  it("calibrates a stable latest Chat page cache on page activation without reloading incomplete history", async () => {
-    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "long-chat" }));
+  it("does not refresh a stable latest Chat page cache on page activation", async () => {
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_longchat00000000" }));
     window.localStorage.setItem(
       LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "long-chat" },
+        activeSessionByRoute: { chat: "c_longchat00000000" },
         sessionsByRoute: {
           chat: [{
-            id: "long-chat",
+            id: "c_longchat00000000",
             status: "ready",
             title: "Long stable chat",
             createdAt: Date.parse("2026-04-23T03:30:00Z"),
@@ -1460,7 +1839,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "long-chat",
+              id: "c_longchat00000000",
               title: "Long stable chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -1475,10 +1854,10 @@ describe("ConversationRuntimeProvider", () => {
               turns: [],
             }],
           };
-        case "/api/chat/sessions/long-chat":
+        case "/api/chat/sessions/c_longchat00000000":
           return {
             session: {
-              id: "long-chat",
+              id: "c_longchat00000000",
               title: "Long stable chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -1519,34 +1898,38 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
     apiClientMock.get.mockClear();
 
-    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    await act(async () => {
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/long-chat"));
+    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions");
+    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions/c_longchat00000000");
     expect(apiClientMock.get).not.toHaveBeenCalledWith(
-      "/api/chat/sessions/long-chat?turn_before=turn-latest&turn_limit=20",
+      "/api/chat/sessions/c_longchat00000000?turn_before=turn-latest&turn_limit=20",
     );
     expect(screen.getByTestId("message-texts")).toHaveTextContent("latest stable answer");
   });
 
   it("reloads Chat detail when a newer list summary accidentally includes empty turns", async () => {
-    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "stale-chat" }));
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_stalechat0000000" }));
     window.localStorage.setItem(
       LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "stale-chat" },
+        activeSessionByRoute: { chat: "c_stalechat0000000" },
         sessionsByRoute: {
           chat: [{
-            id: "stale-chat",
+            id: "c_stalechat0000000",
             status: "ready",
             title: "Stale chat",
             createdAt: Date.parse("2026-04-23T03:30:00Z"),
             updatedAt: Date.parse("2026-04-23T03:31:00Z"),
             lastOutputAt: Date.parse("2026-04-23T03:31:00Z"),
             activityAt: Date.parse("2026-04-23T03:31:00Z"),
-            revision: Date.parse("2026-04-23T03:31:00Z"),
-            detailRevision: Date.parse("2026-04-23T03:31:00Z"),
+            freshnessAt: Date.parse("2026-04-23T03:31:00Z"),
+            detailFreshnessAt: Date.parse("2026-04-23T03:31:00Z"),
             pinned: false,
             targetID: "codex",
             targetName: "Codex",
@@ -1588,28 +1971,28 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "stale-chat",
+              id: "c_stalechat0000000",
               title: "Stale chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
               updated_at: "2026-04-23T03:32:00Z",
               last_output_at: "2026-04-23T03:32:00Z",
               activity_at: "2026-04-23T03:32:00Z",
-              revision: Date.parse("2026-04-23T03:32:00Z"),
+              freshnessAt: Date.parse("2026-04-23T03:32:00Z"),
               turns: [],
             }],
           };
-        case "/api/chat/sessions/stale-chat":
+        case "/api/chat/sessions/c_stalechat0000000":
           return {
             session: {
-              id: "stale-chat",
+              id: "c_stalechat0000000",
               title: "Stale chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
               updated_at: "2026-04-23T03:32:00Z",
               last_output_at: "2026-04-23T03:32:00Z",
               activity_at: "2026-04-23T03:32:00Z",
-              revision: Date.parse("2026-04-23T03:32:00Z"),
+              freshnessAt: Date.parse("2026-04-23T03:32:00Z"),
               turns_paging: { has_more_before: false },
               turns: [{
                 id: "turn-new",
@@ -1636,28 +2019,28 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/stale-chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/c_stalechat0000000"));
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("new answer"));
   });
 
-  it("reloads Chat detail when a list summary omits revision for an existing cached session", async () => {
-    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "stale-chat" }));
+  it("reloads Chat detail when a list summary omits freshnessAt for an existing cached session", async () => {
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_stalechat0000000" }));
     window.localStorage.setItem(
       LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "stale-chat" },
+        activeSessionByRoute: { chat: "c_stalechat0000000" },
         sessionsByRoute: {
           chat: [{
-            id: "stale-chat",
+            id: "c_stalechat0000000",
             status: "ready",
             title: "Stale chat",
             createdAt: Date.parse("2026-04-23T03:30:00Z"),
             updatedAt: Date.parse("2026-04-23T03:31:00Z"),
             lastOutputAt: Date.parse("2026-04-23T03:31:00Z"),
             activityAt: Date.parse("2026-04-23T03:31:00Z"),
-            revision: Date.parse("2026-04-23T03:31:00Z"),
-            detailRevision: Date.parse("2026-04-23T03:31:00Z"),
+            freshnessAt: Date.parse("2026-04-23T03:31:00Z"),
+            detailFreshnessAt: Date.parse("2026-04-23T03:31:00Z"),
             pinned: false,
             targetID: "codex",
             targetName: "Codex",
@@ -1699,7 +2082,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "stale-chat",
+              id: "c_stalechat0000000",
               title: "Stale chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -1708,10 +2091,10 @@ describe("ConversationRuntimeProvider", () => {
               activity_at: "2026-04-23T03:32:00Z",
             }],
           };
-        case "/api/chat/sessions/stale-chat":
+        case "/api/chat/sessions/c_stalechat0000000":
           return {
             session: {
-              id: "stale-chat",
+              id: "c_stalechat0000000",
               title: "Stale chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -1725,7 +2108,7 @@ describe("ConversationRuntimeProvider", () => {
                 status: "success",
                 started_at: "2026-04-23T03:32:00Z",
                 finished_at: "2026-04-23T03:32:01Z",
-                final_output: "new answer without summary revision",
+                final_output: "new answer without summary freshnessAt",
               }],
             },
           };
@@ -1744,8 +2127,8 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/stale-chat"));
-    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("new answer without summary revision"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/c_stalechat0000000"));
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("new answer without summary freshnessAt"));
   });
 
   it("does not hydrate expired Chat browser caches", async () => {
@@ -1755,7 +2138,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Expired chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -1809,7 +2192,7 @@ describe("ConversationRuntimeProvider", () => {
 
     listRequest.resolve({
       items: [{
-        id: "alter0-chat",
+        id: "c_51jttwiv4yggqagk",
         title: "Server chat after expiry",
         status: "ready",
         created_at: "2026-04-23T04:00:00Z",
@@ -1876,7 +2259,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Pinned session",
                 created_at: "2026-04-23T03:30:00Z",
                 target_type: "model",
@@ -1894,7 +2277,7 @@ describe("ConversationRuntimeProvider", () => {
           return { items: [] };
       }
     });
-    apiClientMock.post.mockResolvedValueOnce({ session_id: "alter0-chat", pinned: false });
+    apiClientMock.post.mockResolvedValueOnce({ session_id: "c_51jttwiv4yggqagk", pinned: false });
 
     render(
       <ConversationRuntimeProvider route="chat" language="en">
@@ -1909,7 +2292,7 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => {
       expect(apiClientMock.post).toHaveBeenCalledWith(
-        "/api/chat/sessions/alter0-chat/pin",
+        "/api/chat/sessions/c_51jttwiv4yggqagk/pin",
         { pinned: false },
       );
     });
@@ -1923,7 +2306,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "newer-chat",
+                id: "c_newerchat0000000",
                 title: "Newer session",
                 created_at: "2026-04-23T04:30:00Z",
                 target_type: "model",
@@ -1932,7 +2315,7 @@ describe("ConversationRuntimeProvider", () => {
                 pinned: false,
               },
               {
-                id: "older-chat",
+                id: "c_olderchat0000000",
                 title: "Older session",
                 created_at: "2026-04-23T03:30:00Z",
                 target_type: "model",
@@ -1950,7 +2333,7 @@ describe("ConversationRuntimeProvider", () => {
           return { items: [] };
       }
     });
-    apiClientMock.post.mockResolvedValueOnce({ session_id: "older-chat", pinned: true });
+    apiClientMock.post.mockResolvedValueOnce({ session_id: "c_olderchat0000000", pinned: true });
 
     render(
       <ConversationRuntimeProvider route="chat" language="en">
@@ -1964,11 +2347,11 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => {
       expect(apiClientMock.post).toHaveBeenCalledWith(
-        "/api/chat/sessions/older-chat/pin",
+        "/api/chat/sessions/c_olderchat0000000/pin",
         { pinned: true },
       );
     });
-    expect(screen.getByTestId("sessions")).toHaveTextContent(/^Older session:[^|]*:pinned\|Newer session:[^|]*:unpinned$/);
+    expect(screen.getByTestId("sessions")).toHaveTextContent(/^Older session:pinned\|Newer session:unpinned$/);
   });
 
   it("pins a newly created ChatRuntime-backed Chat session", async () => {
@@ -1997,10 +2380,10 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "pin active" }));
 
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
-      "/api/chat/sessions/new-chatRuntime-chat/pin",
+      "/api/chat/sessions/c_newchat000000000/pin",
       { pinned: true },
     ));
-    expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:[^|]*:pinned$/);
+    expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:pinned$/);
   });
 
   it("selects all public skills by default for a new blank Chat session", async () => {
@@ -2059,11 +2442,11 @@ describe("ConversationRuntimeProvider", () => {
   it("selects all public skills by default when a ChatRuntime-backed Chat session has no skill_ids field", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         requestBody = body || null;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Image session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -2079,7 +2462,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Image session",
                 status: "ready",
                 created_at: "2026-04-23T03:30:00Z",
@@ -2087,10 +2470,10 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Image session",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -2139,7 +2522,7 @@ describe("ConversationRuntimeProvider", () => {
   it("loads Chat sessions from the Chat route and hydrates them as Chat sessions", async () => {
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
-      JSON.stringify({ chat: hashSessionIDShort("skill-session-2") }),
+      JSON.stringify({ chat: "c_skillsession0000" }),
     );
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -2147,7 +2530,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "skill-session-2",
+                id: "c_skillsession0000",
                 title: "Travel Plan",
                 created_at: "2026-04-23T09:00:00Z",
                 target_type: "skill",
@@ -2158,10 +2541,10 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/skill-session-2":
+        case "/api/chat/sessions/c_skillsession0000":
           return {
             session: {
-              id: "skill-session-2",
+              id: "c_skillsession0000",
               title: "Travel Plan",
               created_at: "2026-04-23T09:00:00Z",
               target_type: "skill",
@@ -2192,11 +2575,10 @@ describe("ConversationRuntimeProvider", () => {
     expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions");
   });
 
-  it("opens the latest ChatRuntime-backed Chat session when the route has no explicit session query", async () => {
-    window.history.replaceState({}, "", "/chat");
+  it("hydrates Chat detail turns whose ids arrive as numbers", async () => {
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
-      JSON.stringify({ chat: "older-chat-session" }),
+      JSON.stringify({ chat: "c_51jttwiv4yggqagk" }),
     );
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -2204,7 +2586,76 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "latest-chat-session",
+                id: "c_51jttwiv4yggqagk",
+                title: "Smoke compact id",
+                status: "running",
+                created_at: 1783435585330,
+                updated_at: 1783437647729,
+                turns: [],
+              },
+            ],
+          };
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
+          return {
+            session: {
+              id: "c_51jttwiv4yggqagk",
+              title: "Smoke compact id",
+              status: "running",
+              created_at: 1783435585330,
+              updated_at: 1783437647729,
+              turns: [
+                {
+                  id: 1,
+                  prompt: "成都旅游攻略",
+                  status: "running",
+                  started_at: 1783437617847,
+                  runtime_trace_events: [
+                    {
+                      id: 1,
+                      kind: "important_text",
+                      status: "completed",
+                      text: "我先确认你的出行环境要求。",
+                      created_at: 1783437627484,
+                    },
+                  ],
+                },
+              ],
+              turns_paging: { has_more_before: false },
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("user-text")).toHaveTextContent("成都旅游攻略"));
+    expect(screen.getByTestId("assistant-process-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("assistant-process-ids")).toHaveTextContent("1");
+  });
+
+  it("opens the latest ChatRuntime-backed Chat session when the route has no explicit session query", async () => {
+    window.history.replaceState({}, "", "/chat");
+    window.sessionStorage.setItem(
+      ACTIVE_SESSION_STORAGE_KEY,
+      JSON.stringify({ chat: "c_olderchatsession" }),
+    );
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return {
+            items: [
+              {
+                id: "c_latestchat000000",
                 title: "Latest chat",
                 created_at: "2026-06-11T05:40:00Z",
                 target_type: "model",
@@ -2213,7 +2664,7 @@ describe("ConversationRuntimeProvider", () => {
                 messages: [],
               },
               {
-                id: "older-chat-session",
+                id: "c_olderchatsession",
                 title: "Older chat",
                 created_at: "2026-06-10T05:40:00Z",
                 target_type: "model",
@@ -2223,10 +2674,10 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/latest-chat-session":
+        case "/api/chat/sessions/c_latestchat000000":
           return {
             session: {
-              id: "latest-chat-session",
+              id: "c_latestchat000000",
               title: "Latest chat",
               created_at: "2026-06-11T05:40:00Z",
               target_type: "model",
@@ -2258,21 +2709,21 @@ describe("ConversationRuntimeProvider", () => {
     window.history.replaceState({}, "", "/chat");
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
-      JSON.stringify({ chat: "older-chat-session" }),
+      JSON.stringify({ chat: "c_olderchatsession" }),
     );
     window.localStorage.setItem(
       LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "older-chat-session" },
+        activeSessionByRoute: { chat: "c_olderchatsession" },
         sessionsByRoute: {
           chat: [chatSessionFixture({
-            id: "older-chat-session",
+            id: "c_olderchatsession",
             title: "Older chat",
             createdAt: Date.parse("2026-06-10T05:40:00Z"),
             activityAt: Date.parse("2026-06-10T05:40:00Z"),
-            revision: Date.parse("2026-06-10T05:40:00Z"),
-            detailRevision: Date.parse("2026-06-10T05:40:00Z"),
+            freshnessAt: Date.parse("2026-06-10T05:40:00Z"),
+            detailFreshnessAt: Date.parse("2026-06-10T05:40:00Z"),
             messagesLoaded: true,
             messages: [{
               id: "turn-old:assistant",
@@ -2294,10 +2745,10 @@ describe("ConversationRuntimeProvider", () => {
       switch (path) {
         case "/api/chat/sessions":
           return { items: [] };
-        case "/api/chat/sessions/older-chat-session":
+        case "/api/chat/sessions/c_olderchatsession":
           return {
             session: {
-              id: "older-chat-session",
+              id: "c_olderchatsession",
               title: "Older chat",
               created_at: "2026-06-10T05:40:00Z",
               target_type: "model",
@@ -2332,13 +2783,13 @@ describe("ConversationRuntimeProvider", () => {
     expect(window.location.search).toBe("");
   });
 
-  it("merges legacy local chat snapshots into the Chat session bucket", async () => {
+  it("clears legacy local chat snapshots without restoring them as Chat sessions", async () => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem(
       ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         "chat": {
-          id: "legacy-skill-local-1",
+          id: "c_legacy0000000000",
           title: "Legacy local chat",
           createdAt: Date.parse("2026-04-23T09:00:00Z"),
           target: { type: "skill", id: "travel", name: "Travel Skill" },
@@ -2351,7 +2802,7 @@ describe("ConversationRuntimeProvider", () => {
       JSON.stringify({
         "chat": [
           {
-            id: "legacy-skill-recent-1",
+            id: "c_recent0000000000",
             title: "Recent local chat",
             createdAt: Date.parse("2026-04-22T09:00:00Z"),
             target: { type: "skill", id: "writing", name: "Writing Skill" },
@@ -2373,12 +2824,13 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent("Legacy local chat"));
-    expect(screen.getByTestId("sessions")).toHaveTextContent("Recent local chat");
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    expect(screen.getByTestId("sessions")).not.toHaveTextContent("Legacy local chat");
+    expect(screen.getByTestId("sessions")).not.toHaveTextContent("Recent local chat");
     expect(window.sessionStorage.getItem(ACTIVE_SESSION_SNAPSHOT_STORAGE_KEY)).toBeNull();
     expect(window.sessionStorage.getItem(RECENT_SESSION_SNAPSHOT_STORAGE_KEY)).toBeNull();
-    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY)).toContain("Legacy local chat");
-    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY)).toContain("Recent local chat");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY)).not.toContain("Legacy local chat");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY)).not.toContain("Recent local chat");
   });
 
   it("uploads draft images into the active Chat session workspace", async () => {
@@ -2392,7 +2844,7 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "attach" }));
 
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
-      "/api/chat/sessions/alter0-chat/attachments",
+      "/api/chat/sessions/c_51jttwiv4yggqagk/attachments",
       {
         attachments: [
           {
@@ -2406,10 +2858,10 @@ describe("ConversationRuntimeProvider", () => {
     ));
   });
 
-  it("marks the chat session busy without creating local stream process events after sending a prompt", async () => {
+  it("marks the chat session local-running without creating local stream process events after sending a prompt", async () => {
     vi.stubGlobal("fetch", vi.fn());
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         return new Promise(() => undefined);
       }
       return {};
@@ -2424,18 +2876,18 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy"));
+    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running"));
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
     expect(screen.getByTestId("assistant-process-count")).toHaveTextContent("0");
     expect(screen.getByTestId("assistant-process-status")).toHaveTextContent("");
-    expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat/input", expect.any(Object));
+    expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions/c_51jttwiv4yggqagk/input", expect.any(Object));
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("caches and appends the optimistic Chat user message before the input response completes", async () => {
     const inputResponse = deferred<unknown>();
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         return inputResponse.promise;
       }
       return {};
@@ -2451,12 +2903,12 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
     await waitFor(() => expect(screen.getByTestId("user-text")).toHaveTextContent("Inspect this image"));
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
     expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").toContain("Inspect this image");
 
     inputResponse.resolve({
       session: {
-        id: "alter0-chat",
+        id: "c_51jttwiv4yggqagk",
         title: "Inspect this image",
         status: "ready",
         created_at: "2026-04-23T03:30:00Z",
@@ -2477,10 +2929,10 @@ describe("ConversationRuntimeProvider", () => {
 
   it("compacts the queued optimistic Chat user message when the input response only confirms a busy turn", async () => {
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "New prompt",
             status: "busy",
             created_at: "2026-04-23T03:30:00Z",
@@ -2533,7 +2985,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "History session",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -2549,10 +3001,10 @@ describe("ConversationRuntimeProvider", () => {
       }
     });
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "History session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -2591,7 +3043,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Progressive history",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -2605,10 +3057,10 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Progressive history",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -2688,7 +3140,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Progressive history",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -2708,7 +3160,7 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk?turn_before=turn-3&turn_limit=20":
           return earlierPage.promise;
         case "/api/control/llm/providers":
         case "/api/control/skills":
@@ -2732,12 +3184,12 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "load earlier history" }));
 
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
-      "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20",
+      "/api/chat/sessions/c_51jttwiv4yggqagk?turn_before=turn-3&turn_limit=20",
     ));
     await act(async () => {
       earlierPage.resolve({
         session: {
-          id: "alter0-chat",
+          id: "c_51jttwiv4yggqagk",
           title: "Progressive history",
           status: "ready",
           created_at: "2026-04-23T03:30:00Z",
@@ -2783,7 +3235,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "History session",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -2799,10 +3251,10 @@ describe("ConversationRuntimeProvider", () => {
       }
     });
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "History session",
             status: "busy",
             created_at: "2026-04-23T03:30:00Z",
@@ -2849,72 +3301,72 @@ describe("ConversationRuntimeProvider", () => {
         if (inputAccepted) {
           updateCallsAfterInput += 1;
         }
-        const session = inputAccepted && updateCallsAfterInput > 0
-          ? {
-              id: "alter0-chat",
-              title: "Image session",
-              status: "ready",
-              created_at: "2026-04-23T03:30:00Z",
-              turns: [
-                {
+        return {
+          latest_update_id: updateCallsAfterInput * 2,
+          resync_required: false,
+          updates: inputAccepted ? [
+            {
+              update_id: updateCallsAfterInput * 2 - 1,
+              session_id: "c_51jttwiv4yggqagk",
+              turn_id: "turn-running",
+              type: "turn.event.appended",
+              created_at: "2026-04-23T03:31:01Z",
+              runtime_event: {
+                id: updateCallsAfterInput * 2 + 100,
+                kind: "reasoning",
+                status: "completed",
+                text: "Validated update protocol.",
+                detail_available: true,
+                created_at: "2026-04-23T03:31:01Z",
+              },
+              payload: {
+                session: {
+                  id: "c_51jttwiv4yggqagk",
+                  title: "Image session",
+                  status: "local_running",
+                  created_at: "2026-04-23T03:30:00Z",
+                },
+                turn: {
+                  id: "turn-running",
+                  prompt: "Inspect this image",
+                  status: "running",
+                  started_at: "2026-04-23T03:31:00Z",
+                },
+              },
+            },
+            {
+              update_id: updateCallsAfterInput * 2,
+              session_id: "c_51jttwiv4yggqagk",
+              turn_id: "turn-running",
+              type: "turn.completed",
+              created_at: "2026-04-23T03:31:03Z",
+              payload: {
+                session: {
+                  id: "c_51jttwiv4yggqagk",
+                  title: "Image session",
+                  status: "ready",
+                  created_at: "2026-04-23T03:30:00Z",
+                },
+                turn: {
                   id: "turn-running",
                   prompt: "Inspect this image",
                   status: "success",
                   started_at: "2026-04-23T03:31:00Z",
                   finished_at: "2026-04-23T03:31:03Z",
                   final_output: "Restored final output",
-                  runtime_trace_events_partial: true,
-                  runtime_trace_events: [
-                    {
-                      id: "step-3",
-                      seq: 3,
-                      turn_id: "turn-running",
-                      kind: "reasoning",
-                      status: "completed",
-                      blocks: [],
-                    },
-                  ],
                 },
-              ],
-            }
-          : {
-              id: "alter0-chat",
-              title: "Image session",
-              status: inputAccepted ? "busy" : "ready",
-              created_at: "2026-04-23T03:30:00Z",
-              turns: inputAccepted
-                ? [
-                    {
-                      id: "turn-running",
-                      prompt: "Inspect this image",
-                      status: "running",
-                      started_at: "2026-04-23T03:31:00Z",
-                    },
-                  ]
-                : [],
-            };
-        return {
-          owner_id: "chat",
-          cursor: updateCallsAfterInput,
-          resync_required: false,
-          events: inputAccepted ? [{
-            event_id: updateCallsAfterInput,
-            owner_id: "chat",
-            session_id: "alter0-chat",
-            event_type: "session.updated",
-            revision: updateCallsAfterInput,
-            created_at: "2026-04-23T03:31:00Z",
-            payload: { session },
-          }] : [],
+              },
+            },
+          ] : [],
         };
       }
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         inputAccepted = true;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Image session",
-            status: "busy",
+            status: "local_running",
             created_at: "2026-04-23T03:30:00Z",
             turns: [
               {
@@ -2924,17 +3376,13 @@ describe("ConversationRuntimeProvider", () => {
                 started_at: "2026-04-23T03:31:00Z",
                 runtime_trace_events: [
                   {
-                    id: "step-1",
-                    seq: 1,
-                    turn_id: "turn-running",
+                    id: 1,
                     kind: "reasoning",
                     status: "completed",
                     blocks: [],
                   },
                   {
-                    id: "step-2",
-                    seq: 2,
-                    turn_id: "turn-running",
+                    id: 2,
                     kind: "reasoning",
                     status: "completed",
                     blocks: [],
@@ -2953,7 +3401,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Image session",
                 status: inputAccepted ? "busy" : "ready",
                 created_at: "2026-04-23T03:30:00Z",
@@ -2961,12 +3409,12 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: inputAccepted
               ? updateCallsAfterInput > 0
                 ? {
-                  id: "alter0-chat",
+                  id: "c_51jttwiv4yggqagk",
                   title: "Image session",
                   status: "ready",
                   created_at: "2026-04-23T03:30:00Z",
@@ -2982,7 +3430,7 @@ describe("ConversationRuntimeProvider", () => {
                   ],
                 }
                 : {
-                    id: "alter0-chat",
+                    id: "c_51jttwiv4yggqagk",
                     title: "Image session",
                     status: "busy",
                     created_at: "2026-04-23T03:30:00Z",
@@ -2996,7 +3444,7 @@ describe("ConversationRuntimeProvider", () => {
                     ],
                   }
               : {
-                  id: "alter0-chat",
+                  id: "c_51jttwiv4yggqagk",
                   title: "Image session",
                   status: "ready",
                   created_at: "2026-04-23T03:30:00Z",
@@ -3025,7 +3473,7 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
@@ -3036,26 +3484,23 @@ describe("ConversationRuntimeProvider", () => {
     expect(apiClientMock.post).toHaveBeenCalledWith(
       "/api/chat/sessions/updates",
       expect.objectContaining({
+        after_update_id: "0",
         limit: 50,
-        byte_limit: 65536,
+        byte_limit: 1048576,
+        visible_event_kinds: ["important_text", "reasoning"],
       }),
     );
+    expect(updateRequestBodies[0]).not.toHaveProperty("since_event_id");
     expect(updateRequestBodies).toContainEqual(expect.objectContaining({
       sessions: expect.arrayContaining([
         expect.objectContaining({
-          id: "alter0-chat",
-          turns: expect.arrayContaining([
-            expect.objectContaining({
-              id: "turn-running",
-              event_seq_ranges: [[1, 2]],
-            }),
-          ]),
+          id: "c_51jttwiv4yggqagk",
         }),
       ]),
     }));
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("Restored final output");
     expect(screen.getByTestId("assistant-process-count")).toHaveTextContent("3");
-    expect(screen.getByTestId("assistant-process-ids")).toHaveTextContent("step-1|step-2|step-3");
+    expect(screen.getByTestId("assistant-process-ids")).toHaveTextContent("1|2|102");
     expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
     vi.useRealTimers();
   });
@@ -3071,17 +3516,16 @@ describe("ConversationRuntimeProvider", () => {
           updateCallsAfterInput += 1;
         }
         return {
-          owner_id: "chat",
-          cursor: updateCallsAfterInput,
+          latest_update_id: updateCallsAfterInput,
           resync_required: false,
-          events: [],
+          updates: [],
         };
       }
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         inputAccepted = true;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Fallback session",
             status: "busy",
             created_at: "2026-04-23T03:30:00Z",
@@ -3104,7 +3548,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Fallback session",
                 status: inputAccepted ? "busy" : "ready",
                 created_at: "2026-04-23T03:30:00Z",
@@ -3112,14 +3556,14 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           if (inputAccepted) {
             detailReadsAfterInput += 1;
           }
           return {
             session: inputAccepted
               ? {
-                  id: "alter0-chat",
+                  id: "c_51jttwiv4yggqagk",
                   title: "Fallback session",
                   status: "ready",
                   created_at: "2026-04-23T03:30:00Z",
@@ -3135,7 +3579,7 @@ describe("ConversationRuntimeProvider", () => {
                   ],
                 }
               : {
-                  id: "alter0-chat",
+                  id: "c_51jttwiv4yggqagk",
                   title: "Fallback session",
                   status: "ready",
                   created_at: "2026-04-23T03:30:00Z",
@@ -3164,16 +3608,11 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
 
     await advanceRuntimePollTimers(9);
 
-    expect(updateCallsAfterInput).toBeGreaterThanOrEqual(8);
-    expect(detailReadsAfterInput).toBe(0);
-
-    await advanceRuntimePollTimers(2);
-
-    expect(updateCallsAfterInput).toBeGreaterThanOrEqual(10);
+    expect(updateCallsAfterInput).toBeGreaterThanOrEqual(6);
     expect(detailReadsAfterInput).toBeGreaterThan(0);
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("Recovered through detail fallback");
     expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
@@ -3193,44 +3632,38 @@ describe("ConversationRuntimeProvider", () => {
           updateCallsAfterInput += 1;
         }
         return {
-          owner_id: "chat",
-          cursor: updateCallsAfterInput,
+          latest_update_id: updateCallsAfterInput,
           resync_required: false,
-          events: inputAccepted
+          updates: inputAccepted
             ? [{
-                event_id: updateCallsAfterInput,
-                owner_id: "chat",
-                session_id: "alter0-chat",
-                event_type: "session.updated",
-                revision: Date.parse("2026-04-23T03:31:00Z") + updateCallsAfterInput,
-                created_at: "2026-04-23T03:31:00Z",
+                update_id: updateCallsAfterInput,
+                session_id: "c_51jttwiv4yggqagk",
+                turn_id: "turn-running",
+                type: "turn.started",
                 payload: {
                   session: {
-                    id: "alter0-chat",
+                    id: "c_51jttwiv4yggqagk",
                     title: "Long running session",
                     status: "busy",
                     created_at: "2026-04-23T03:30:00Z",
-                    updated_at: `2026-04-23T03:31:${String(updateCallsAfterInput).padStart(2, "0")}Z`,
-                    revision: Date.parse("2026-04-23T03:31:00Z") + updateCallsAfterInput,
-                    turns: [
-                      {
-                        id: "turn-running",
-                        prompt: typeof body?.input === "string" ? body.input : "Still running",
-                        status: "running",
-                        started_at: "2026-04-23T03:31:00Z",
-                      },
-                    ],
+                    updated_at: Date.now() + updateCallsAfterInput,
+                  },
+                  turn: {
+                    id: "turn-running",
+                    prompt: typeof body?.input === "string" ? body.input : "Still running",
+                    status: "running",
+                    started_at: "2026-04-23T03:31:00Z",
                   },
                 },
               }]
             : [],
         };
       }
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         inputAccepted = true;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Long running session",
             status: "busy",
             created_at: "2026-04-23T03:30:00Z",
@@ -3253,7 +3686,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Long running session",
                 status: inputAccepted ? "busy" : "ready",
                 created_at: "2026-04-23T03:30:00Z",
@@ -3261,13 +3694,13 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           if (inputAccepted) {
             detailReadsAfterInput += 1;
           }
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Long running session",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -3303,13 +3736,13 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
 
     await advanceRuntimePollTimers(12);
 
     expect(updateCallsAfterInput).toBeGreaterThanOrEqual(10);
     expect(detailReadsAfterInput).toBe(0);
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
     view.unmount();
     vi.clearAllTimers();
     vi.useRealTimers();
@@ -3326,41 +3759,31 @@ describe("ConversationRuntimeProvider", () => {
           updateCallsAfterInput += 1;
         }
         return {
-          owner_id: "chat",
-          cursor: updateCallsAfterInput,
+          latest_update_id: updateCallsAfterInput,
           resync_required: false,
           has_more: true,
-          events: inputAccepted
+          updates: inputAccepted
             ? [{
-                event_id: updateCallsAfterInput,
-                owner_id: "chat",
-                session_id: "stale-chat",
-                event_type: "session.updated",
-                revision: updateCallsAfterInput,
-                created_at: "2026-04-23T03:29:00Z",
+                update_id: updateCallsAfterInput,
+                session_id: "c_stalechat0000000",
+                type: "session.updated",
                 payload: {
                   session: {
-                    id: "stale-chat",
+                    id: "c_stalechat0000000",
                     title: "Stale backlog",
                     status: "ready",
                     created_at: "2026-04-23T03:00:00Z",
-                    turns: [{
-                      id: "turn-stale",
-                      prompt: "old prompt",
-                      status: "success",
-                      final_output: "old answer",
-                    }],
                   },
                 },
               }]
             : [],
         };
       }
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         inputAccepted = true;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Backlog fallback session",
             status: "busy",
             created_at: "2026-04-23T03:30:00Z",
@@ -3383,7 +3806,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Backlog fallback session",
                 status: inputAccepted ? "busy" : "ready",
                 created_at: "2026-04-23T03:30:00Z",
@@ -3391,14 +3814,14 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           if (inputAccepted) {
             detailReadsAfterInput += 1;
           }
           return {
             session: inputAccepted
               ? {
-                  id: "alter0-chat",
+                  id: "c_51jttwiv4yggqagk",
                   title: "Backlog fallback session",
                   status: "ready",
                   created_at: "2026-04-23T03:30:00Z",
@@ -3414,7 +3837,7 @@ describe("ConversationRuntimeProvider", () => {
                   ],
                 }
               : {
-                  id: "alter0-chat",
+                  id: "c_51jttwiv4yggqagk",
                   title: "Backlog fallback session",
                   status: "ready",
                   created_at: "2026-04-23T03:30:00Z",
@@ -3443,16 +3866,11 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
 
     await advanceRuntimePollTimers(9);
 
-    expect(updateCallsAfterInput).toBeGreaterThanOrEqual(8);
-    expect(detailReadsAfterInput).toBe(0);
-
-    await advanceRuntimePollTimers(2);
-
-    expect(updateCallsAfterInput).toBeGreaterThanOrEqual(10);
+    expect(updateCallsAfterInput).toBeGreaterThanOrEqual(6);
     expect(detailReadsAfterInput).toBeGreaterThan(0);
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("Recovered despite unrelated backlog");
     expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
@@ -3472,43 +3890,38 @@ describe("ConversationRuntimeProvider", () => {
           updateCallsAfterInput += 1;
         }
         return {
-          owner_id: "chat",
-          cursor: updateCallsAfterInput,
+          latest_update_id: updateCallsAfterInput,
           resync_required: false,
           has_more: true,
-          events: inputAccepted
+          updates: inputAccepted
             ? [{
-                event_id: updateCallsAfterInput,
-                owner_id: "chat",
-                session_id: "alter0-chat",
-                event_type: "session.updated",
-                revision: updateCallsAfterInput,
-                created_at: "2026-04-23T03:31:00Z",
+                update_id: updateCallsAfterInput,
+                session_id: "c_51jttwiv4yggqagk",
+                turn_id: "turn-running",
+                type: "turn.started",
                 payload: {
                   session: {
-                    id: "alter0-chat",
+                    id: "c_51jttwiv4yggqagk",
                     title: "Repeated busy backlog",
                     status: "busy",
                     created_at: "2026-04-23T03:30:00Z",
-                    turns: [
-                      {
-                        id: "turn-running",
-                        prompt: typeof body?.input === "string" ? body.input : "Recover from repeated busy",
-                        status: "running",
-                        started_at: "2026-04-23T03:31:00Z",
-                      },
-                    ],
+                  },
+                  turn: {
+                    id: "turn-running",
+                    prompt: typeof body?.input === "string" ? body.input : "Recover from repeated busy",
+                    status: "running",
+                    started_at: "2026-04-23T03:31:00Z",
                   },
                 },
               }]
             : [],
         };
       }
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         inputAccepted = true;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Repeated busy backlog",
             status: "busy",
             created_at: "2026-04-23T03:30:00Z",
@@ -3531,7 +3944,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Repeated busy backlog",
                 status: inputAccepted ? "ready" : "ready",
                 created_at: "2026-04-23T03:30:00Z",
@@ -3541,14 +3954,14 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           if (inputAccepted) {
             detailReadsAfterInput += 1;
           }
           return {
             session: inputAccepted
               ? {
-                  id: "alter0-chat",
+                  id: "c_51jttwiv4yggqagk",
                   title: "Repeated busy backlog",
                   status: "ready",
                   created_at: "2026-04-23T03:30:00Z",
@@ -3566,7 +3979,7 @@ describe("ConversationRuntimeProvider", () => {
                   ],
                 }
               : {
-                  id: "alter0-chat",
+                  id: "c_51jttwiv4yggqagk",
                   title: "Repeated busy backlog",
                   status: "ready",
                   created_at: "2026-04-23T03:30:00Z",
@@ -3595,16 +4008,11 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
 
     await advanceRuntimePollTimers(9);
 
-    expect(updateCallsAfterInput).toBeGreaterThanOrEqual(8);
-    expect(detailReadsAfterInput).toBe(0);
-
-    await advanceRuntimePollTimers(2);
-
-    expect(updateCallsAfterInput).toBeGreaterThanOrEqual(10);
+    expect(updateCallsAfterInput).toBeGreaterThanOrEqual(6);
     expect(detailReadsAfterInput).toBeGreaterThan(0);
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("Recovered despite repeated busy backlog");
     expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
@@ -3618,11 +4026,11 @@ describe("ConversationRuntimeProvider", () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
         case "/api/chat/sessions":
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Image session",
                 status: "busy",
                 created_at: "2026-04-23T03:30:00Z",
@@ -3637,7 +4045,7 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Image session",
               status: "busy",
               created_at: "2026-04-23T03:30:00Z",
@@ -3672,7 +4080,7 @@ describe("ConversationRuntimeProvider", () => {
 
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
-    expect(apiClientMock.post).not.toHaveBeenCalledWith("/api/chat/sessions/alter0-chat/input", expect.any(Object));
+    expect(apiClientMock.post).not.toHaveBeenCalledWith("/api/chat/sessions/c_51jttwiv4yggqagk/input", expect.any(Object));
     expect(screen.getByTestId("user-text")).toHaveTextContent("成都旅游攻略");
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
   });
@@ -3682,11 +4090,11 @@ describe("ConversationRuntimeProvider", () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
         case "/api/chat/sessions":
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Failed session",
                 status: "failed",
                 created_at: "2026-04-23T03:30:00Z",
@@ -3702,7 +4110,7 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Failed session",
               status: "failed",
               created_at: "2026-04-23T03:30:00Z",
@@ -3726,10 +4134,10 @@ describe("ConversationRuntimeProvider", () => {
       }
     });
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Failed session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -3760,7 +4168,7 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
-      "/api/chat/sessions/alter0-chat/input",
+      "/api/chat/sessions/c_51jttwiv4yggqagk/input",
       expect.objectContaining({ input: "Inspect this image" }),
     ));
     await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Recovered reply"));
@@ -3789,11 +4197,11 @@ describe("ConversationRuntimeProvider", () => {
     vi.stubGlobal("fetch", vi.fn());
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         requestBody = body || null;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Image session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -3827,18 +4235,18 @@ describe("ConversationRuntimeProvider", () => {
     expect(requestBody).not.toHaveProperty("metadata");
     expect(requestBody?.execution_engine).toBe("codex");
     expect(requestBody).not.toHaveProperty("model_provider_id");
-    expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat/input", expect.any(Object));
+    expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions/c_51jttwiv4yggqagk/input", expect.any(Object));
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("defaults the executor selection to Codex and restores changed runtime config from browser storage", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         requestBody = body || null;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Stored config session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -3854,7 +4262,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Stored config session",
                 status: "ready",
                 created_at: "2026-04-23T03:30:00Z",
@@ -3862,10 +4270,10 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Stored config session",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -3947,11 +4355,11 @@ describe("ConversationRuntimeProvider", () => {
   it("persists Chat skill selections to the runtime session before the next message is sent", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         requestBody = body || null;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Configurable session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -3968,7 +4376,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Configurable session",
                 created_at: "2026-04-23T03:30:00Z",
                 target_type: "model",
@@ -3978,10 +4386,10 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Configurable session",
               created_at: "2026-04-23T03:30:00Z",
               target_type: "model",
@@ -4011,7 +4419,7 @@ describe("ConversationRuntimeProvider", () => {
     });
     apiClientMock.patch.mockResolvedValue({
       session: {
-        id: "alter0-chat",
+        id: "c_51jttwiv4yggqagk",
         title: "Configurable session",
         created_at: "2026-04-23T03:30:00Z",
         target_type: "model",
@@ -4045,10 +4453,10 @@ describe("ConversationRuntimeProvider", () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
         case "/api/chat/sessions":
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Configurable session",
               created_at: "2026-04-23T03:30:00Z",
               target_type: "model",
@@ -4059,7 +4467,7 @@ describe("ConversationRuntimeProvider", () => {
             },
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Configurable session",
                 created_at: "2026-04-23T03:30:00Z",
                 target_type: "model",
@@ -4105,11 +4513,11 @@ describe("ConversationRuntimeProvider", () => {
   it("drops unavailable skills from historical Chat sessions before the next message is sent", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         requestBody = body || null;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Historical session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -4126,7 +4534,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Historical session",
                 created_at: "2026-04-23T03:30:00Z",
                 target_type: "model",
@@ -4136,10 +4544,10 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Historical session",
               created_at: "2026-04-23T03:30:00Z",
               target_type: "model",
@@ -4185,11 +4593,11 @@ describe("ConversationRuntimeProvider", () => {
   it("sends newly checked skills from historical Chat sessions without a reload", async () => {
     let requestBody: Record<string, unknown> | null = null;
     apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         requestBody = body || null;
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Historical session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -4206,7 +4614,7 @@ describe("ConversationRuntimeProvider", () => {
           return {
             items: [
               {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Historical session",
                 created_at: "2026-04-23T03:30:00Z",
                 target_type: "model",
@@ -4216,10 +4624,10 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Historical session",
               created_at: "2026-04-23T03:30:00Z",
               target_type: "model",
@@ -4286,7 +4694,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Paged send",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -4310,10 +4718,10 @@ describe("ConversationRuntimeProvider", () => {
       }
     });
     apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === "/api/chat/sessions/alter0-chat/input") {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
         return {
           session: {
-            id: "alter0-chat",
+            id: "c_51jttwiv4yggqagk",
             title: "Paged send",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
@@ -4356,30 +4764,30 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Paged chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
               updated_at: "2026-04-23T03:32:03Z",
               last_output_at: "2026-04-23T03:32:03Z",
               activity_at: "2026-04-23T03:32:03Z",
-              revision: Date.parse("2026-04-23T03:32:03Z"),
+              freshnessAt: Date.parse("2026-04-23T03:32:03Z"),
               turns_paging: { has_more_before: true },
             }],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           detailReads += 1;
           if (detailReads === 1) {
             return {
               session: {
-                id: "alter0-chat",
+                id: "c_51jttwiv4yggqagk",
                 title: "Paged chat",
                 status: "ready",
                 created_at: "2026-04-23T03:30:00Z",
                 updated_at: "2026-04-23T03:32:01Z",
                 last_output_at: "2026-04-23T03:32:01Z",
                 activity_at: "2026-04-23T03:32:01Z",
-                revision: Date.parse("2026-04-23T03:32:01Z"),
+                freshnessAt: Date.parse("2026-04-23T03:32:01Z"),
                 turns_paging: { has_more_before: true },
                 turns: [
                   {
@@ -4404,14 +4812,14 @@ describe("ConversationRuntimeProvider", () => {
           }
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Paged chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
               updated_at: "2026-04-23T03:32:03Z",
               last_output_at: "2026-04-23T03:32:03Z",
               activity_at: "2026-04-23T03:32:03Z",
-              revision: Date.parse("2026-04-23T03:32:03Z"),
+              freshnessAt: Date.parse("2026-04-23T03:32:03Z"),
               turns_paging: { has_more_before: true },
               turns: [{
                 id: "turn-2",
@@ -4441,7 +4849,7 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer"));
 
-    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
 
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer refreshed"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer");
@@ -4453,7 +4861,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Paged chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -4468,10 +4876,10 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Paged chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -4514,7 +4922,7 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer"));
     fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
 
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/c_51jttwiv4yggqagk"));
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer");
   });
@@ -4525,7 +4933,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Progressive chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -4546,10 +4954,10 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk?turn_before=turn-3&turn_limit=20":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Progressive chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -4602,14 +5010,14 @@ describe("ConversationRuntimeProvider", () => {
     });
 
     expect(apiClientMock.get).not.toHaveBeenCalledWith(
-      "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20",
+      "/api/chat/sessions/c_51jttwiv4yggqagk?turn_before=turn-3&turn_limit=20",
     );
     expect(screen.getByTestId("message-texts")).not.toHaveTextContent("oldest answer");
 
     fireEvent.click(screen.getByRole("button", { name: "load earlier history" }));
 
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
-      "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20",
+      "/api/chat/sessions/c_51jttwiv4yggqagk?turn_before=turn-3&turn_limit=20",
     ));
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("oldest answer"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("middle answer");
@@ -4623,7 +5031,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Loop guard",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -4644,14 +5052,14 @@ describe("ConversationRuntimeProvider", () => {
               }],
             }],
           };
-        case "/api/chat/sessions/alter0-chat?turn_before=turn-3&turn_limit=20":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk?turn_before=turn-3&turn_limit=20":
           backgroundPageLoads += 1;
           if (backgroundPageLoads > 1) {
             throw new Error("reloaded the same Chat history page");
           }
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Loop guard",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -4685,15 +5093,15 @@ describe("ConversationRuntimeProvider", () => {
   });
 
   it("restores cached Chat session info when the full long-term message cache is unavailable", async () => {
-    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "cached-chat" }));
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_cachedchat000000" }));
     window.localStorage.setItem(
       SESSION_INFO_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "cached-chat" },
+        activeSessionByRoute: { chat: "c_cachedchat000000" },
         sessionsByRoute: {
           chat: [{
-            id: "cached-chat",
+            id: "c_cachedchat000000",
             status: "ready",
             title: "Cached session info",
             createdAt: Date.parse("2026-04-23T03:30:00Z"),
@@ -4718,15 +5126,15 @@ describe("ConversationRuntimeProvider", () => {
   });
 
   it("merges cached Chat session info with full long-term message caches", async () => {
-    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "full-chat" }));
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_fullchat00000000" }));
     window.localStorage.setItem(
       LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "full-chat" },
+        activeSessionByRoute: { chat: "c_fullchat00000000" },
         sessionsByRoute: {
           chat: [{
-            id: "full-chat",
+            id: "c_fullchat00000000",
             status: "ready",
             title: "Full cached chat",
             createdAt: Date.parse("2026-04-23T03:30:00Z"),
@@ -4770,11 +5178,11 @@ describe("ConversationRuntimeProvider", () => {
       SESSION_INFO_SNAPSHOT_STORAGE_KEY,
       JSON.stringify({
         cachedAt: Date.now(),
-        activeSessionByRoute: { chat: "full-chat" },
+        activeSessionByRoute: { chat: "c_fullchat00000000" },
         sessionsByRoute: {
           chat: [
             {
-              id: "full-chat",
+              id: "c_fullchat00000000",
               status: "ready",
               title: "Full cached chat",
               createdAt: Date.parse("2026-04-23T03:30:00Z"),
@@ -4786,7 +5194,7 @@ describe("ConversationRuntimeProvider", () => {
               serverBacked: true,
             },
             {
-              id: "info-chat",
+              id: "c_infochat00000000",
               status: "ready",
               title: "Info cached chat",
               createdAt: Date.parse("2026-04-23T04:30:00Z"),
@@ -4834,7 +5242,7 @@ describe("ConversationRuntimeProvider", () => {
         case "/api/chat/sessions":
           return {
             items: [{
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Detail chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -4846,27 +5254,20 @@ describe("ConversationRuntimeProvider", () => {
                 finished_at: "2026-04-23T03:31:01Z",
                 final_output: "done",
                 runtime_trace_events: [{
-                  id: "step-1",
-                  turn_id: "turn-1",
-                  seq: 1,
-                  source: "adapter",
-                  provider: { engine: "codex", adapter: "codex_cli_json" },
-                  role: "assistant",
+                  id: 101,
                   kind: "reasoning",
-                  lifecycle: "completed",
                   status: "completed",
-                  title: "Thinking",
-                  blocks: [],
-                  visibility: "collapsed",
-                  raw: { ref: "event-ref-1", has_detail: true },
+                  text: "Thinking",
+                  detail_available: true,
+                  created_at: "2026-04-23T03:31:01Z",
                 }],
               }],
             }],
           };
-        case "/api/chat/sessions/alter0-chat":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk":
           return {
             session: {
-              id: "alter0-chat",
+              id: "c_51jttwiv4yggqagk",
               title: "Detail chat",
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
@@ -4878,43 +5279,29 @@ describe("ConversationRuntimeProvider", () => {
                 finished_at: "2026-04-23T03:31:01Z",
                 final_output: "done",
                 runtime_trace_events: [{
-                  id: "step-1",
-                  turn_id: "turn-1",
-                  seq: 1,
-                  source: "adapter",
-                  provider: { engine: "codex", adapter: "codex_cli_json" },
-                  role: "assistant",
+                  id: 101,
                   kind: "reasoning",
-                  lifecycle: "completed",
                   status: "completed",
-                  title: "Thinking",
-                  blocks: [],
-                  visibility: "collapsed",
-                  raw: { ref: "event-ref-1", has_detail: true },
+                  text: "Thinking",
+                  detail_available: true,
+                  created_at: "2026-04-23T03:31:01Z",
                 }],
               }],
               turns_paging: { has_more_before: false },
             },
           };
-        case "/api/chat/sessions/alter0-chat/turns/turn-1/events/event-ref-1":
+        case "/api/chat/sessions/c_51jttwiv4yggqagk/turns/turn-1/events/101":
           return {
             event: {
               turn_id: "turn-1",
               event: {
-                id: "step-1",
-                turn_id: "turn-1",
-                seq: 1,
-                source: "adapter",
-                provider: { engine: "codex", adapter: "codex_cli_json" },
-                role: "assistant",
+                id: 101,
                 kind: "reasoning",
-                lifecycle: "completed",
                 status: "completed",
-                title: "Thinking",
-                blocks: [{ type: "thinking", text: "full thinking detail" }],
-                visibility: "collapsed",
-                raw: { ref: "event-ref-1", has_detail: true },
+                text: "Thinking",
+                detail_available: false,
               },
+              blocks: [{ type: "thinking", text: "full thinking detail" }],
             },
           };
         case "/api/control/llm/providers":
@@ -4938,13 +5325,16 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "load process detail" }));
 
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
-      "/api/chat/sessions/alter0-chat/turns/turn-1/events/event-ref-1",
+      "/api/chat/sessions/c_51jttwiv4yggqagk/turns/turn-1/events/101",
     ));
     await waitFor(() => expect(screen.getByTestId("assistant-process-blocks")).toHaveTextContent("full thinking detail"));
 
+    apiClientMock.get.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/alter0-chat"));
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/c_51jttwiv4yggqagk"));
     expect(screen.getByTestId("assistant-process-blocks")).toHaveTextContent("full thinking detail");
-    expect(window.localStorage.getItem("alter0.web.session.long_term_snapshot.v1")).toContain("full thinking detail");
+    await waitFor(() =>
+      expect(window.localStorage.getItem("alter0.web.session.long_term_snapshot.v1")).toContain("full thinking detail"),
+    );
   });
 });

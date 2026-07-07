@@ -3,6 +3,7 @@ package application
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +40,9 @@ const (
 	maxEntryPageLimit                    = 200
 	chatRuntimeHostUnavailableMessage    = "chatRuntime host unavailable"
 	chatRuntimeCompactionRecoveryMessage = "codex context compaction failed; next input will continue the previous runtime thread in the same workspace"
+	chatRuntimeSessionIDPrefix           = "c_"
+	chatRuntimeSessionIDLength           = 16
+	chatRuntimeSessionIDAlphabet         = "abcdefghijklmnopqrstuvwxyz0123456789"
 )
 
 var (
@@ -91,7 +96,28 @@ type EntryPage struct {
 }
 
 type commandRunner func(ctx context.Context, name string, args ...string) *exec.Cmd
-type SessionUpdateHook func(ownerID string, sessionID string, session chatruntimedomain.Session)
+type SessionEventHook func(event SessionEvent)
+
+const (
+	SessionEventSessionCreated    = "session.created"
+	SessionEventSessionUpdated    = "session.updated"
+	SessionEventSessionDeleted    = "session.deleted"
+	SessionEventTurnStarted       = "turn.started"
+	SessionEventTurnEventAppended = "turn.event.appended"
+	SessionEventTurnEventUpdated  = "turn.event.updated"
+	SessionEventTurnCompleted     = "turn.completed"
+	SessionEventTurnFailed        = "turn.failed"
+	SessionEventTurnInterrupted   = "turn.interrupted"
+)
+
+type SessionEvent struct {
+	OwnerID      string
+	SessionID    string
+	EventType    string
+	Session      chatruntimedomain.Session
+	Turn         *TurnSummary
+	RuntimeEvent *RuntimeTraceEvent
+}
 
 type Service struct {
 	rootCtx     context.Context
@@ -100,7 +126,7 @@ type Service struct {
 	options     Options
 	runner      commandRunner
 	hookMu      sync.RWMutex
-	updateHook  SessionUpdateHook
+	eventHook   SessionEventHook
 
 	mu       sync.RWMutex
 	sessions map[string]*runtimeSession
@@ -122,6 +148,7 @@ type codexExecEvent struct {
 type codexExecItem struct {
 	ID               string `json:"id,omitempty"`
 	Type             string `json:"type,omitempty"`
+	Channel          string `json:"channel,omitempty"`
 	Text             string `json:"text,omitempty"`
 	Delta            string `json:"delta,omitempty"`
 	Command          string `json:"command,omitempty"`
@@ -205,13 +232,75 @@ func NewService(ctx context.Context, idGenerator sharedapp.IDGenerator, logger *
 	return service
 }
 
-func (s *Service) SetSessionUpdateHook(hook SessionUpdateHook) {
+func (s *Service) SetSessionEventHook(hook SessionEventHook) {
 	if s == nil {
 		return
 	}
 	s.hookMu.Lock()
 	defer s.hookMu.Unlock()
-	s.updateHook = hook
+	s.eventHook = hook
+}
+
+func (s *Service) currentSessionEventHook() SessionEventHook {
+	if s == nil {
+		return nil
+	}
+	s.hookMu.RLock()
+	defer s.hookMu.RUnlock()
+	return s.eventHook
+}
+
+func (s *Service) publishTurnSessionEvent(item *runtimeSession, eventType string, turnID string, runtimeEventID string) {
+	hook := s.currentSessionEventHook()
+	if hook == nil || item == nil || strings.TrimSpace(eventType) == "" {
+		return
+	}
+
+	item.mu.RLock()
+	session := item.summary
+	var turnSummary *TurnSummary
+	var runtimeEvent *RuntimeTraceEvent
+	if turn := item.turnByIDLocked(turnID); turn != nil {
+		summary := turn.summary(session.ID)
+		if strings.TrimSpace(runtimeEventID) != "" {
+			if event, seq := turn.runtimeEventByID(runtimeEventID); event != nil {
+				detail := chatRuntimeRuntimeTraceEvent(session.ID, turn.ID, seq, event.summary())
+				runtimeEvent = &detail
+			}
+			summary.RuntimeTraceEvents = nil
+		}
+		turnSummary = &summary
+	}
+	item.mu.RUnlock()
+
+	if strings.TrimSpace(session.OwnerID) == "" || strings.TrimSpace(session.ID) == "" {
+		return
+	}
+	if (eventType == SessionEventTurnEventAppended || eventType == SessionEventTurnEventUpdated) && runtimeEvent == nil {
+		return
+	}
+	hook(SessionEvent{
+		OwnerID:      session.OwnerID,
+		SessionID:    session.ID,
+		EventType:    eventType,
+		Session:      session,
+		Turn:         turnSummary,
+		RuntimeEvent: runtimeEvent,
+	})
+}
+
+func sessionEventTypeForTurn(turn *runtimeTurn) string {
+	if turn == nil {
+		return ""
+	}
+	switch normalizeFallbackStatus(turn.Status) {
+	case "failed":
+		return SessionEventTurnFailed
+	case "interrupted", "canceled":
+		return SessionEventTurnInterrupted
+	default:
+		return SessionEventTurnCompleted
+	}
 }
 
 func (s *Service) Create(req CreateRequest) (chatruntimedomain.Session, error) {
@@ -220,7 +309,7 @@ func (s *Service) Create(req CreateRequest) (chatruntimedomain.Session, error) {
 	s.mu.Lock()
 
 	command := resolveCodexCommand(s.options)
-	sessionID := "chat-" + s.newID()
+	sessionID := s.newSessionIDLocked()
 	workspaceDir, err := resolveSessionWorkspaceDir(s.options.WorkingDir, sessionID)
 	if err != nil {
 		s.mu.Unlock()
@@ -564,6 +653,7 @@ func (s *Service) InputWithAttachments(req InputRequest) (chatruntimedomain.Sess
 	snapshot := item.summary
 	item.mu.Unlock()
 	s.persistSession(item)
+	s.publishTurnSessionEvent(item, SessionEventTurnStarted, turn.ID, "")
 
 	go s.runTurn(item, turnCtx, turn.ID, prompt, attachments, cloneChatRuntimeSkillContext(req.SkillContext))
 
@@ -844,6 +934,8 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 		if event.Item == nil {
 			return
 		}
+		sessionEventType := ""
+		runtimeEventID := ""
 		item.mu.Lock()
 
 		turn := item.turnByIDLocked(turnID)
@@ -858,17 +950,26 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 				item.mu.Unlock()
 				return
 			}
-			step := item.ensureCommandEventLocked(turn, event.Item.ID, command, time.Now().UTC())
+			step, created := item.ensureCommandEventResultLocked(turn, event.Item.ID, command, time.Now().UTC())
 			step.Status = "running"
+			runtimeEventID = step.ID
+			if created {
+				sessionEventType = SessionEventTurnEventAppended
+			} else {
+				sessionEventType = SessionEventTurnEventUpdated
+			}
 			item.appendEntryLocked("system", "running command: "+command)
 		}
 		item.mu.Unlock()
 		s.persistSession(item)
+		s.publishTurnSessionEvent(item, sessionEventType, turnID, runtimeEventID)
 	case "item.completed":
 		if event.Item == nil {
 			return
 		}
 		now := time.Now().UTC()
+		sessionEventType := ""
+		runtimeEventID := ""
 		item.mu.Lock()
 
 		turn := item.turnByIDLocked(turnID)
@@ -880,6 +981,10 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 		case "agent_message":
 			text := normalizeChunk(event.Item.Text)
 			if strings.TrimSpace(text) == "" {
+				item.mu.Unlock()
+				return
+			}
+			if !isVisibleCodexAgentProcessMessage(event.Item) && !isFinalCodexAgentMessage(event.Item) {
 				item.mu.Unlock()
 				return
 			}
@@ -895,6 +1000,10 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 			}}
 			step.Searchable = true
 			item.appendEntryLocked("stdout", text)
+			if isVisibleCodexAgentProcessMessage(event.Item) {
+				runtimeEventID = step.ID
+				sessionEventType = SessionEventTurnEventAppended
+			}
 		case "reasoning", "plan":
 			text := normalizeChunk(event.Item.Text)
 			if strings.TrimSpace(text) == "" {
@@ -912,9 +1021,11 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 				Status:  step.Status,
 			}}
 			step.Searchable = true
+			runtimeEventID = step.ID
+			sessionEventType = SessionEventTurnEventAppended
 		case "command_execution":
 			command := strings.TrimSpace(event.Item.Command)
-			step := item.ensureCommandEventLocked(turn, event.Item.ID, command, now)
+			step, created := item.ensureCommandEventResultLocked(turn, event.Item.ID, command, now)
 			step.Status = normalizeRuntimeEventStatus(strings.TrimSpace(event.Item.Status), event.Item.ExitCode)
 			step.FinishedAt = now
 			output := normalizeChunk(event.Item.AggregatedOutput)
@@ -937,9 +1048,16 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 				}
 				item.appendEntryLocked(stream, output)
 			}
+			runtimeEventID = step.ID
+			if created {
+				sessionEventType = SessionEventTurnEventAppended
+			} else {
+				sessionEventType = SessionEventTurnEventUpdated
+			}
 		}
 		item.mu.Unlock()
 		s.persistSession(item)
+		s.publishTurnSessionEvent(item, sessionEventType, turnID, runtimeEventID)
 	}
 }
 
@@ -959,8 +1077,10 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		item.activeTurnID = ""
 	} else if item.turnRunning && strings.TrimSpace(item.activeTurnID) != "" {
 		s.finishSupersededTurnLocked(item, turn, turnErr, stderrText, now)
+		sessionEventType := sessionEventTypeForTurn(turn)
 		item.mu.Unlock()
 		s.persistSession(item)
+		s.publishTurnSessionEvent(item, sessionEventType, turnID, "")
 		return
 	}
 
@@ -975,6 +1095,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		}
 		item.mu.Unlock()
 		s.persistSession(item)
+		s.publishTurnSessionEvent(item, SessionEventTurnCompleted, turnID, "")
 		return
 	}
 
@@ -992,6 +1113,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		}
 		item.mu.Unlock()
 		s.persistSession(item)
+		s.publishTurnSessionEvent(item, SessionEventTurnCompleted, turnID, "")
 		return
 	}
 
@@ -999,6 +1121,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		item.markInterruptedLocked(turn, now, chatRuntimeHostUnavailableMessage)
 		item.mu.Unlock()
 		s.persistSession(item)
+		s.publishTurnSessionEvent(item, SessionEventTurnInterrupted, turnID, "")
 		return
 	}
 
@@ -1013,6 +1136,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		}
 		item.mu.Unlock()
 		s.persistSession(item)
+		s.publishTurnSessionEvent(item, SessionEventTurnFailed, turnID, "")
 		return
 	}
 
@@ -1027,6 +1151,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	}
 	item.mu.Unlock()
 	s.persistSession(item)
+	s.publishTurnSessionEvent(item, SessionEventTurnFailed, turnID, "")
 }
 
 func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtimeTurn, turnErr error, stderrText string, now time.Time) {
@@ -1094,8 +1219,18 @@ func (s *runtimeSession) beginTurnLocked(prompt string, attachments []TurnAttach
 }
 
 func (s *runtimeSession) turnByIDLocked(turnID string) *runtimeTurn {
+	normalized := strings.TrimSpace(turnID)
+	numericID := numericRuntimeLookupID(normalized)
+	index := 0
 	for _, turn := range s.turns {
-		if turn != nil && turn.ID == strings.TrimSpace(turnID) {
+		if turn == nil {
+			continue
+		}
+		index++
+		if turn.ID == normalized {
+			return turn
+		}
+		if numericID > 0 && (numericRuntimeLookupID(turn.ID) == numericID || index == numericID) {
 			return turn
 		}
 	}
@@ -1132,12 +1267,17 @@ func (s *runtimeSession) newEventLocked(turn *runtimeTurn, stepType string, titl
 }
 
 func (s *runtimeSession) ensureCommandEventLocked(turn *runtimeTurn, itemID string, command string, now time.Time) *runtimeEventRecord {
+	step, _ := s.ensureCommandEventResultLocked(turn, itemID, command, now)
+	return step
+}
+
+func (s *runtimeSession) ensureCommandEventResultLocked(turn *runtimeTurn, itemID string, command string, now time.Time) (*runtimeEventRecord, bool) {
 	if turn == nil {
-		return nil
+		return nil, false
 	}
 	for _, step := range turn.events {
 		if step != nil && step.Type == "command" && strings.TrimSpace(step.ItemID) == strings.TrimSpace(itemID) && strings.TrimSpace(itemID) != "" {
-			return step
+			return step, false
 		}
 	}
 	step := s.newEventLocked(turn, "command", deriveRuntimeEventTitle("command", command), now)
@@ -1152,7 +1292,7 @@ func (s *runtimeSession) ensureCommandEventLocked(turn *runtimeTurn, itemID stri
 			Status:   "running",
 		}}
 	}
-	return step
+	return step, step != nil
 }
 
 func (s *runtimeSession) newSystemEventLocked(turn *runtimeTurn, title string, message string, now time.Time, status string) *runtimeEventRecord {
@@ -1175,6 +1315,7 @@ func (s *runtimeSession) newSystemEventLocked(turn *runtimeTurn, title string, m
 
 func (t *runtimeTurn) runtimeEventByID(eventID string) (*runtimeEventRecord, int) {
 	normalized := strings.TrimSpace(eventID)
+	numericID := numericRuntimeLookupID(normalized)
 	seq := 0
 	for _, event := range t.events {
 		if event == nil {
@@ -1184,8 +1325,36 @@ func (t *runtimeTurn) runtimeEventByID(eventID string) (*runtimeEventRecord, int
 		if event.ID == normalized {
 			return event, seq
 		}
+		if numericID > 0 && (numericRuntimeLookupID(event.ID) == numericID || seq == numericID) {
+			return event, seq
+		}
 	}
 	return nil, 0
+}
+
+func numericRuntimeLookupID(value string) int {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return 0
+	}
+	if parsed, err := strconv.Atoi(normalized); err == nil && parsed > 0 {
+		return parsed
+	}
+	digits := ""
+	for index := len(normalized) - 1; index >= 0; index-- {
+		if normalized[index] < '0' || normalized[index] > '9' {
+			break
+		}
+		digits = string(normalized[index]) + digits
+	}
+	if digits == "" {
+		return 0
+	}
+	parsed, err := strconv.Atoi(digits)
+	if err != nil || parsed <= 0 {
+		return 0
+	}
+	return parsed
 }
 
 func (t *runtimeTurn) summary(sessionID string) TurnSummary {
@@ -1719,6 +1888,25 @@ func normalizeCodexItemType(value string) string {
 	}
 }
 
+func isFinalCodexAgentMessage(item *codexExecItem) bool {
+	if item == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(item.Channel)) {
+	case "", "final":
+		return true
+	default:
+		return false
+	}
+}
+
+func isVisibleCodexAgentProcessMessage(item *codexExecItem) bool {
+	if item == nil {
+		return false
+	}
+	return strings.ToLower(strings.TrimSpace(item.Channel)) == "commentary"
+}
+
 func compactCodexError(stderrText string, turnErr error) string {
 	lines := make([]string, 0, 4)
 	for _, raw := range strings.Split(normalizeChunk(stderrText), "\n") {
@@ -1836,6 +2024,75 @@ func (s *Service) newID() string {
 		}
 	}
 	return fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+}
+
+func (s *Service) newSessionIDLocked() string {
+	for attempts := 0; attempts < 16; attempts++ {
+		sessionID := generateCompactChatRuntimeSessionID()
+		if _, exists := s.sessions[sessionID]; !exists {
+			return sessionID
+		}
+	}
+	for {
+		sessionID := chatRuntimeSessionIDPrefix + sanitizeCompactSessionIDSeed(s.newID())
+		if _, exists := s.sessions[sessionID]; !exists {
+			return sessionID
+		}
+	}
+}
+
+func generateCompactChatRuntimeSessionID() string {
+	var bytes [chatRuntimeSessionIDLength]byte
+	if _, err := rand.Read(bytes[:]); err == nil {
+		var builder strings.Builder
+		builder.Grow(len(chatRuntimeSessionIDPrefix) + chatRuntimeSessionIDLength)
+		builder.WriteString(chatRuntimeSessionIDPrefix)
+		for _, value := range bytes {
+			builder.WriteByte(chatRuntimeSessionIDAlphabet[int(value)%len(chatRuntimeSessionIDAlphabet)])
+		}
+		return builder.String()
+	}
+	return chatRuntimeSessionIDPrefix + sanitizeCompactSessionIDSeed(fmt.Sprintf("%d", time.Now().UTC().UnixNano()))
+}
+
+func sanitizeCompactSessionIDSeed(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	var builder strings.Builder
+	builder.Grow(chatRuntimeSessionIDLength)
+	for _, char := range normalized {
+		switch {
+		case char >= 'a' && char <= 'z':
+			builder.WriteRune(char)
+		case char >= '0' && char <= '9':
+			builder.WriteRune(char)
+		}
+		if builder.Len() >= chatRuntimeSessionIDLength {
+			break
+		}
+	}
+	for builder.Len() < chatRuntimeSessionIDLength {
+		builder.WriteByte('0')
+	}
+	return builder.String()
+}
+
+func isCompactChatRuntimeSessionID(value string) bool {
+	normalized := strings.TrimSpace(value)
+	if len(normalized) != len(chatRuntimeSessionIDPrefix)+chatRuntimeSessionIDLength {
+		return false
+	}
+	if !strings.HasPrefix(normalized, chatRuntimeSessionIDPrefix) {
+		return false
+	}
+	for _, char := range normalized[len(chatRuntimeSessionIDPrefix):] {
+		switch {
+		case char >= 'a' && char <= 'z':
+		case char >= '0' && char <= '9':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeRecoveredSessionTime(value time.Time, fallback time.Time) time.Time {

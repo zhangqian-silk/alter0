@@ -6,7 +6,6 @@ import {
   readWorkbenchRouteSessionID,
   writeWorkbenchRouteSessionID,
 } from "./routeState";
-import { hashSessionIDShort } from "../shared/session/sessionHash";
 
 describe("routeState", () => {
   afterEach(() => {
@@ -55,7 +54,7 @@ describe("routeState", () => {
   });
 
   it("clears stale Chat session query when re-entering Chat from the primary route", () => {
-    window.history.replaceState({}, "", `/chat?foo=bar&session_id=${hashSessionIDShort("older-chat-session")}`);
+    window.history.replaceState({}, "", "/chat?foo=bar&session_id=c_olderchat0000001");
 
     navigateWorkbenchRoute("chat");
 
@@ -85,16 +84,15 @@ describe("routeState", () => {
     expect(isConversationRoute("tasks")).toBe(false);
   });
 
-  it("reads Chat session query parameters and writes compact short hashes without clobbering other filters", () => {
-    window.history.replaceState({}, "", "/chat?foo=bar&session_id=session-chat-1");
+  it("reads and writes canonical Chat session ids without clobbering other filters", () => {
+    window.history.replaceState({}, "", "/chat?foo=bar&session_id=c_sessionchat00001");
 
-    expect(readWorkbenchRouteSessionID("chat")).toBe("session-chat-1");
+    expect(readWorkbenchRouteSessionID("chat")).toBe("c_sessionchat00001");
 
-    writeWorkbenchRouteSessionID("chat", "chat-9");
+    writeWorkbenchRouteSessionID("chat", "c_1234567890abcdef");
 
     expect(window.location.search).toContain("foo=bar");
-    expect(window.location.search).toContain(`session_id=${hashSessionIDShort("chat-9")}`);
-    expect(window.location.search).not.toContain("session_id=chat-9");
+    expect(window.location.search).toContain("session_id=c_1234567890abcdef");
     expect(window.location.pathname).toBe("/chat");
     expect(window.location.hash).toBe("");
 
@@ -102,5 +100,19 @@ describe("routeState", () => {
 
     expect(window.location.search).not.toContain("session_id=");
     expect(window.location.search).toContain("foo=bar");
+  });
+
+  it("rejects legacy and malformed Chat session ids in route state", () => {
+    expect(readWorkbenchRouteSessionID("chat", "?session_id=alter0-chat")).toBe("");
+    expect(readWorkbenchRouteSessionID("chat", "?session_id=chat-20260707T051709.110973500-f01ec2b780bbdb0d")).toBe("");
+    expect(readWorkbenchRouteSessionID("chat", "?session_id=c_short")).toBe("");
+    expect(readWorkbenchRouteSessionID("chat", "?session_id=c_51jttwiv4yggqagk")).toBe("c_51jttwiv4yggqagk");
+
+    window.history.replaceState({}, "", "/chat?foo=bar&session_id=c_51jttwiv4yggqagk");
+
+    writeWorkbenchRouteSessionID("chat", "alter0-chat");
+
+    expect(window.location.pathname).toBe("/chat");
+    expect(window.location.search).toBe("?foo=bar");
   });
 });

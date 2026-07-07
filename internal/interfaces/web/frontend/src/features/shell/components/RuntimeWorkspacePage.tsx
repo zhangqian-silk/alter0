@@ -81,7 +81,6 @@ export type RuntimeWorkspaceSessionItem = {
   title: string;
   contextLabel?: string;
   meta: string;
-  shortHash: string;
   statusTone?: RuntimeWorkspaceSessionTone;
   statusLabel?: string;
   activeLabel: string;

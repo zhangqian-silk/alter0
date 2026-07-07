@@ -137,8 +137,8 @@ type chatRuntimeService interface {
 	Delete(ownerID string, sessionID string) (chatruntimedomain.Session, error)
 }
 
-type chatRuntimeSessionUpdateHookSetter interface {
-	SetSessionUpdateHook(chatruntimeapp.SessionUpdateHook)
+type chatRuntimeSessionEventHookSetter interface {
+	SetSessionEventHook(chatruntimeapp.SessionEventHook)
 }
 
 type runtimeRestarter interface {
@@ -386,7 +386,7 @@ func NewServer(
 		workspaceRuntime:  newWorkspaceServiceRuntime(logger),
 		sessionEvents:     newSessionUpdateBroker(256),
 	}
-	server.registerChatRuntimeSessionUpdateHook()
+	server.registerChatRuntimeSessionEventHook()
 	server.ensureMaintenanceService()
 	server.registerMaintenanceSchedulerJobs()
 	return server

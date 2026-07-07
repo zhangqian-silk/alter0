@@ -351,6 +351,29 @@ describe("ChatMessageRegion", () => {
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
   });
 
+  it("renders the process disclosure before the final assistant answer", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "Final answer after processing.",
+            processEvents: buildProcessSteps(),
+          }),
+        ]}
+      />,
+    );
+
+    const article = document.querySelector("[data-message-id='message-1']") as HTMLElement;
+    const answer = article.querySelector("[data-conversation-final-output='message-1']") as HTMLElement;
+    const process = article.querySelector("[data-conversation-process-shell='message-1']") as HTMLElement;
+
+    expect(answer).toBeInTheDocument();
+    expect(process).toBeInTheDocument();
+    expect(process.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("renders chat process events with the same collapsible rows as chatRuntime", async () => {
     const onToggleProcessEvent = vi.fn();
     const message = buildAssistantMessage({

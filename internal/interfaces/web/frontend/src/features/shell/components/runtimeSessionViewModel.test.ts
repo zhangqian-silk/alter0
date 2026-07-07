@@ -35,4 +35,36 @@ describe("runtimeSessionTurnsToTimelineMessages", () => {
     });
     expect(messages[1].promptText).toBe("");
   });
+
+  it("keeps runtime turns whose ids arrive as numbers", () => {
+    const messages = runtimeSessionTurnsToTimelineMessages({
+      sessionID: "c_51jttwiv4yggqagk",
+      route: "chatRuntime",
+      source: "runtime",
+      turns: [{
+        id: 1,
+        prompt: "成都旅游攻略",
+        status: "running",
+        started_at: 1783437617847,
+        runtime_trace_events: [{
+          id: 1,
+          kind: "important_text",
+          status: "completed",
+          text: "我先确认你的出行环境要求。",
+          created_at: 1783437627484,
+        }],
+      }],
+    });
+
+    expect(messages.map((message) => message.id)).toEqual(["1:user", "1:assistant"]);
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      text: "成都旅游攻略",
+    });
+    expect(messages[1].processEvents[0]).toMatchObject({
+      id: "1",
+      turn_id: "1",
+      text: "我先确认你的出行环境要求。",
+    });
+  });
 });

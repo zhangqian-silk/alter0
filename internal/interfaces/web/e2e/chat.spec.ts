@@ -189,13 +189,14 @@ async function mockControlSkills(page: Parameters<typeof loginIfNeeded>[0]): Pro
   });
 }
 
-function hashSessionIDShort(value: string): string {
+function compactChatSessionID(value: string): string {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
+  const token = (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
+  return `c_${token}${token}`;
 }
 
 async function mockChatRuntimeSessions(
@@ -263,7 +264,7 @@ test.describe("Chat composer", () => {
   ]) {
     test(`opens the latest Chat session after stale query re-entry on ${scenario.name}`, async ({ page }) => {
       const latestSession = {
-        id: "latest-chat-session",
+        id: compactChatSessionID("latest-chat-session"),
         title: "Latest chat",
         title_auto: false,
         title_score: 10,
@@ -274,7 +275,7 @@ test.describe("Chat composer", () => {
         messages: [],
       };
       const olderSession = {
-        id: "older-chat-session",
+        id: compactChatSessionID("older-chat-session"),
         title: "Older chat",
         title_auto: false,
         title_score: 8,
@@ -293,7 +294,7 @@ test.describe("Chat composer", () => {
 
       await page.goto("/chat");
       await ensureChatRouteReady(page);
-      await page.goto(`/chat?session_id=${hashSessionIDShort(olderSession.id)}`);
+      await page.goto(`/chat?session_id=${olderSession.id}`);
       await ensureChatRouteReady(page);
       const navRail = page.locator('[data-nav-session-rail="chat"]');
       if (scenario.mobile) {
@@ -383,13 +384,12 @@ test.describe("Chat composer", () => {
     }
 
     const detailsButton = page.getByRole("button", { name: "Details" }).first();
-    const shortHash = hashSessionIDShort(sessionID);
-
-    expect(shortHash).toMatch(/^[0-9a-f]{8}$/);
+    expect(sessionID).toMatch(/^c_[a-z0-9]{16}$/);
     await expect(page.locator(".runtime-session-hash")).toHaveCount(0);
     await detailsButton.click();
 
-    await expect(page.locator('[data-runtime-details-panel="conversation"]')).toContainText(shortHash);
+    await expect(page.locator('[data-runtime-details-panel="conversation"]')).not.toContainText("Short hash");
+    await expect(page.locator('[data-runtime-details-panel="conversation"]')).not.toContainText(sessionID.slice(2, 10));
   });
 
   test("keeps empty session hint near the session header", async ({ page }) => {
@@ -831,7 +831,7 @@ test.describe("Chat composer", () => {
     await mockRuntimeSession(page, {
       route: "chat",
       session: {
-        id: "chat-jump-controls",
+        id: compactChatSessionID("chat-jump-controls"),
         title: "Jump controls",
         status: "ready",
         created_at: "2026-04-23T03:00:00Z",
@@ -839,7 +839,7 @@ test.describe("Chat composer", () => {
         turns_paging: { has_more_before: false },
       },
     });
-    await page.goto(`/chat?session_id=${hashSessionIDShort("chat-jump-controls")}`);
+    await page.goto(`/chat?session_id=${compactChatSessionID("chat-jump-controls")}`);
     await loginIfNeeded(page);
     await waitForAppReady(page);
     await expect(page.locator(".runtime-message-user[data-message-id]").first()).toBeVisible();
@@ -1364,8 +1364,9 @@ test.describe("Chat composer", () => {
   test("lets the mobile chat transcript scroll back to the top while the keyboard is open", async ({ page }) => {
     await installVisualViewportMock(page);
     await page.setViewportSize({ width: 430, height: 932 });
+    const sessionID = compactChatSessionID("mobile-keyboard-scroll-top-chat");
     await mockChatRuntimeSessions(page, [{
-      id: "mobile-keyboard-scroll-top-chat",
+      id: sessionID,
       title: "成都旅游攻略",
       title_auto: false,
       title_score: 8,
@@ -1429,13 +1430,13 @@ test.describe("Chat composer", () => {
         },
       ],
     }]);
-    await page.addInitScript(() => {
+    await page.addInitScript((activeSessionID) => {
       window.sessionStorage.setItem("alter0.web.session.active.v1", JSON.stringify({
-        chat: "mobile-keyboard-scroll-top-chat",
+        chat: activeSessionID,
       }));
-    });
+    }, sessionID);
 
-    await page.goto(`/chat?session_id=${hashSessionIDShort("mobile-keyboard-scroll-top-chat")}`);
+    await page.goto(`/chat?session_id=${sessionID}`);
     await loginIfNeeded(page);
     await waitForAppReady(page);
     await page.waitForSelector("[data-message-id='mobile-keyboard-scroll-top-turn:assistant']", { timeout: 20000 });
@@ -1770,7 +1771,8 @@ test.describe("Chat composer", () => {
   });
 
   test("renders structured process events from chat message results", async ({ page }) => {
-    await page.addInitScript(() => {
+    const sessionID = compactChatSessionID("chat-process-events");
+    await page.addInitScript((chatSessionID) => {
       const originalFetch = window.fetch.bind(window);
       window.fetch = async (input, init) => {
         const url = typeof input === "string"
@@ -1781,7 +1783,7 @@ test.describe("Chat composer", () => {
         if (new URL(url, window.location.href).pathname.endsWith("/input")) {
           return new Response(JSON.stringify({
             session: {
-              id: "alter0-chat",
+              id: chatSessionID,
               title: "检查仓库状态",
               status: "ready",
               created_at: "2026-06-18T00:00:00Z",
@@ -1820,12 +1822,12 @@ test.describe("Chat composer", () => {
         }
         return originalFetch(input, init);
       };
-    });
+    }, sessionID);
 
     await mockRuntimeSession(page, {
       route: "chat",
       session: {
-        id: "chat-process-events",
+        id: sessionID,
         title: "检查仓库状态",
         status: "ready",
         created_at: "2026-06-18T00:00:00Z",
@@ -1858,7 +1860,7 @@ test.describe("Chat composer", () => {
         }],
       },
     });
-    await page.goto(`/chat?session_id=${hashSessionIDShort("chat-process-events")}`);
+    await page.goto(`/chat?session_id=${sessionID}`);
     await loginIfNeeded(page);
     await waitForAppReady(page);
 
@@ -1881,7 +1883,8 @@ test.describe("Chat composer", () => {
 
   test("keeps structured skill process detail readable on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.addInitScript(() => {
+    const sessionID = compactChatSessionID("chat-mobile-process");
+    await page.addInitScript((chatSessionID) => {
       const originalFetch = window.fetch.bind(window);
       window.fetch = async (input, init) => {
         const url = typeof input === "string"
@@ -1892,7 +1895,7 @@ test.describe("Chat composer", () => {
         if (new URL(url, window.location.href).pathname.endsWith("/input")) {
           return new Response(JSON.stringify({
             session: {
-              id: "alter0-chat",
+              id: chatSessionID,
               title: "检查仓库同步情况",
               status: "ready",
               created_at: "2026-06-18T00:00:00Z",
@@ -1933,12 +1936,12 @@ test.describe("Chat composer", () => {
         }
         return originalFetch(input, init);
       };
-    });
+    }, sessionID);
 
     await mockRuntimeSession(page, {
       route: "chat",
       session: {
-        id: "chat-mobile-process",
+        id: sessionID,
         title: "检查仓库同步情况",
         status: "ready",
         created_at: "2026-06-18T00:00:00Z",
@@ -1973,7 +1976,7 @@ test.describe("Chat composer", () => {
         }],
       },
     });
-    await page.goto(`/chat?session_id=${hashSessionIDShort("chat-mobile-process")}`);
+    await page.goto(`/chat?session_id=${sessionID}`);
     await loginIfNeeded(page);
     await waitForAppReady(page);
     const assistantMessage = latestAssistantMessage(page);
@@ -2021,7 +2024,8 @@ test.describe("Chat composer", () => {
 
   test("keeps sparse mobile chat messages packed with their timestamps", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.addInitScript(() => {
+    const sessionID = compactChatSessionID("chat-node-go-process");
+    await page.addInitScript((chatSessionID) => {
       const originalFetch = window.fetch.bind(window);
       window.fetch = async (input, init) => {
         const url = typeof input === "string"
@@ -2032,7 +2036,7 @@ test.describe("Chat composer", () => {
         if (new URL(url, window.location.href).pathname.endsWith("/input")) {
           return new Response(JSON.stringify({
             session: {
-              id: "alter0-chat",
+              id: chatSessionID,
               title: "Node 和 Go 的差异",
               status: "ready",
               created_at: "2026-06-18T00:00:00Z",
@@ -2066,12 +2070,12 @@ test.describe("Chat composer", () => {
         }
         return originalFetch(input, init);
       };
-    });
+    }, sessionID);
 
     await mockRuntimeSession(page, {
       route: "chat",
       session: {
-        id: "chat-node-go-process",
+        id: sessionID,
         title: "Node 和 Go 的差异",
         status: "ready",
         created_at: "2026-06-18T00:00:00Z",
@@ -2099,7 +2103,7 @@ test.describe("Chat composer", () => {
         }],
       },
     });
-    await page.goto(`/chat?session_id=${hashSessionIDShort("chat-node-go-process")}`);
+    await page.goto(`/chat?session_id=${sessionID}`);
     await loginIfNeeded(page);
     await waitForAppReady(page);
 
