@@ -837,6 +837,7 @@ function useConversationWorkspaceController(
       rootProps: {
         "data-runtime-view": runtimeViewAlias,
         "data-runtime-route": runtime.route,
+        "data-runtime-empty-state": isEmptyState ? "true" : "false",
       },
       sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen
         ? "is-open"
@@ -861,6 +862,7 @@ function useConversationWorkspaceController(
       workspaceProps: {
         "data-runtime-workspace": runtimeViewAlias,
         "data-runtime-route": runtime.route,
+        "data-runtime-empty-state": isEmptyState ? "true" : "false",
       },
       workspaceBodyRef,
       mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
@@ -890,6 +892,7 @@ function useConversationWorkspaceController(
     activeSessionStatus.tone,
     activeSessionIsDraft,
     copy.sessionHide,
+    isEmptyState,
     emptyStateTitle,
     handleCreateSession,
     newSessionLabel,
@@ -986,11 +989,13 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   language,
   workspaceBodyRef,
   inputFocused,
+  isEmptyState,
   onInputFocusedChange,
 }: {
   language: LegacyShellLanguage;
   workspaceBodyRef: { current: HTMLDivElement | null };
   inputFocused: boolean;
+  isEmptyState: boolean;
   onInputFocusedChange: (focused: boolean) => void;
 }) {
   const workbench = useWorkbenchContext();
@@ -1330,6 +1335,14 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
     <RuntimeComposer
       runtimeKind={runtimeComposerKind}
       shellRef={composerShellRef}
+      shellProps={{
+        "data-runtime-composer-view": "conversation",
+        "data-runtime-empty-state": isEmptyState ? "true" : "false",
+      }}
+      formProps={{
+        "data-runtime-composer-view": "conversation",
+        "data-runtime-empty-state": isEmptyState ? "true" : "false",
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         submitDraft();
@@ -1393,11 +1406,14 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   const timelineScreenRef = useRef<HTMLDivElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
+  const runtime = useConversationRuntimeWorkspace();
+  const composerEmptyState = (runtime.activeSession?.messages.length || 0) === 0;
   const composerNode = (
     <ConversationComposerSection
       language={language}
       workspaceBodyRef={workspaceBodyRef}
       inputFocused={inputFocused}
+      isEmptyState={composerEmptyState}
       onInputFocusedChange={setInputFocused}
     />
   );

@@ -1,5 +1,5 @@
 /* Mobile runtime keyboard isolation: dynamic viewport owns keyboard resizing; only inner screens scroll. */
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
   .app-shell,
   .app-shell.info-mode {
     position: fixed;
@@ -114,7 +114,7 @@
   [data-runtime-view="chatRuntime"] .runtime-workspace-body,
   .runtime-workspace-body[data-runtime-view="conversation"],
   .runtime-workspace-body[data-runtime-view="chatRuntime"] {
-    --runtime-mobile-header-fixed-height: 56px;
+    --runtime-mobile-header-fixed-height: 48px;
     grid-template-rows: var(--runtime-mobile-header-fixed-height) minmax(0, 1fr) auto;
   }
 

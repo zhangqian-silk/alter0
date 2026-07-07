@@ -444,6 +444,10 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector("[data-runtime-session-list='conversation']")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-select='session-1']")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-create-session='chat']")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-composer-shell")).toHaveAttribute("data-runtime-composer-view", "conversation");
+    expect(document.querySelector(".runtime-composer-shell")).toHaveAttribute("data-runtime-empty-state", "true");
+    expect(document.querySelector(".runtime-composer-form")).toHaveAttribute("data-runtime-composer-view", "conversation");
+    expect(document.querySelector(".runtime-composer-form")).toHaveAttribute("data-runtime-empty-state", "true");
     expect(screen.getByRole("textbox", { name: /Type a message/i })).toHaveAttribute("data-composer-input", "conversation");
     expect(screen.getByRole("button", { name: "Add attachment" })).toHaveAttribute("data-runtime-composer-upload", "chat");
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("data-runtime-submit", "chat");
