@@ -37,16 +37,17 @@ type serviceRestarter struct {
 	cancel context.CancelFunc
 	logger *slog.Logger
 
-	executable string
-	workingDir string
-	args       []string
+	executable  string
+	workingDir  string
+	runtimeRoot string
+	args        []string
 
 	mu         sync.Mutex
 	restarting bool
 	status     web.RuntimeRestartStatus
 }
 
-func newServiceRestarter(cancel context.CancelFunc, logger *slog.Logger, args []string) (*serviceRestarter, error) {
+func newServiceRestarter(cancel context.CancelFunc, logger *slog.Logger, args []string, runtimeRoot string) (*serviceRestarter, error) {
 	if cancel == nil {
 		return nil, errors.New("restart cancel function is required")
 	}
@@ -59,11 +60,12 @@ func newServiceRestarter(cancel context.CancelFunc, logger *slog.Logger, args []
 		return nil, fmt.Errorf("resolve working directory: %w", err)
 	}
 	return &serviceRestarter{
-		cancel:     cancel,
-		logger:     logger,
-		executable: executable,
-		workingDir: workingDir,
-		args:       append([]string{}, args...),
+		cancel:      cancel,
+		logger:      logger,
+		executable:  executable,
+		workingDir:  workingDir,
+		runtimeRoot: cleanConfiguredPath(runtimeRoot),
+		args:        append([]string{}, args...),
 	}, nil
 }
 
@@ -166,7 +168,7 @@ func (r *serviceRestarter) resolveRelaunchExecutable(options web.RuntimeRestartO
 			return "", err
 		}
 	}
-	return buildRelaunchBinary(r.workingDir)
+	return buildRelaunchBinary(r.workingDir, r.runtimeRoot)
 }
 
 func (r *serviceRestarter) reset() {
@@ -380,13 +382,17 @@ func parseRuntimeRestartCandidate(line string, currentCommit string) (web.Runtim
 	}, true
 }
 
-func buildRelaunchBinary(workingDir string) (string, error) {
+func buildRelaunchBinary(workingDir string, runtimeRoot string) (string, error) {
 	repoDir := strings.TrimSpace(workingDir)
 	if repoDir == "" {
 		return "", errors.New("build relaunch binary requires a working directory")
 	}
+	runtimeRoot = cleanConfiguredPath(runtimeRoot)
+	if runtimeRoot == "" {
+		runtimeRoot = defaultRuntimeRoot
+	}
 
-	outputDir := filepath.Join(repoDir, "output", "runtime")
+	outputDir := filepath.Join(runtimeRoot, "output", "runtime")
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return "", fmt.Errorf("create runtime output directory: %w", err)
 	}

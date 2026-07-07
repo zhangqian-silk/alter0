@@ -30,7 +30,6 @@ const (
 	defaultCodexCommand                  = "codex"
 	defaultCodexSandbox                  = "danger-full-access"
 	defaultLinuxSandboxBwrapFeature      = "use_linux_sandbox_bwrap"
-	defaultWorkspaceRootDirName          = ".alter0"
 	workspaceDirectoryName               = "workspaces"
 	workspaceChatRuntimeDirName          = "chat"
 	workspaceSessionsDirName             = "sessions"
@@ -2229,7 +2228,6 @@ func resolveSessionWorkspacePath(baseDir string, sessionID string) (string, erro
 	}
 	workspaceDir := filepath.Join(
 		root,
-		defaultWorkspaceRootDirName,
 		workspaceDirectoryName,
 		workspaceChatRuntimeDirName,
 		workspaceSessionsDirName,

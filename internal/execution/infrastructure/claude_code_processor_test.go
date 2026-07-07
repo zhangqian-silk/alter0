@@ -22,7 +22,7 @@ func TestClaudeCodeProcessorProcessPreparesRuntimeAndProviderEnv(t *testing.T) {
 	metadata[codexWorkspaceModeMetadataKey] = codexWorkspaceModeSession
 	metadata[execdomain.SkillContextMetadataKey] = mustMarshalClaudeTestSkillContext(t, workspace)
 
-	processor := newTestClaudeProcessor("success", "整理方案", filepath.Join(".alter0", "workspaces", "sessions", "session-default"))
+	processor := newTestClaudeProcessor("success", "整理方案", filepath.Join("workspaces", "sessions", "session-default"))
 
 	output, err := processor.Process(context.Background(), "整理方案", metadata)
 	if err != nil {
@@ -31,7 +31,7 @@ func TestClaudeCodeProcessorProcessPreparesRuntimeAndProviderEnv(t *testing.T) {
 	if output != "mock claude response" {
 		t.Fatalf("Process() output = %q, want mock claude response", output)
 	}
-	sessionWorkspace := filepath.Join(workspace, ".alter0", "workspaces", "sessions", "session-default")
+	sessionWorkspace := filepath.Join(workspace, "workspaces", "sessions", "session-default")
 	assertClaudeFileContains(t, filepath.Join(sessionWorkspace, "CLAUDE.md"), "Read `.alter0/claude-runtime/runtime.md`")
 	assertClaudeFileContains(t, filepath.Join(sessionWorkspace, ".alter0", "claude-runtime", "runtime.md"), "session-default")
 	assertClaudeFileContains(t, filepath.Join(sessionWorkspace, ".alter0", "claude-runtime", "skills.md"), "- file_path: .alter0/claude-runtime/skills/summary/SKILL.md")

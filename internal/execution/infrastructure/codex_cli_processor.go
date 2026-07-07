@@ -981,7 +981,6 @@ func resolveCodexSessionWorkspaceBase(metadata map[string]string) (string, error
 	))
 	parts := []string{
 		rootDir,
-		defaultWorkspaceRootDir,
 		workspaceDirectoryName,
 		workspaceSessionsDirName,
 		sessionID,

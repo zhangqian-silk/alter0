@@ -441,6 +441,10 @@ describe("ConversationWorkspace", () => {
     expect(document.querySelector("[data-runtime-session-list='conversation']")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-session-select='session-1']")).toBeInTheDocument();
     expect(document.querySelector("[data-runtime-create-session='chat']")).toBeInTheDocument();
+    expect(document.querySelector(".runtime-composer-shell")).toHaveAttribute("data-runtime-composer-view", "conversation");
+    expect(document.querySelector(".runtime-composer-shell")).toHaveAttribute("data-runtime-empty-state", "true");
+    expect(document.querySelector(".runtime-composer-form")).toHaveAttribute("data-runtime-composer-view", "conversation");
+    expect(document.querySelector(".runtime-composer-form")).toHaveAttribute("data-runtime-empty-state", "true");
     expect(screen.getByRole("textbox", { name: /Type a message/i })).toHaveAttribute("data-composer-input", "conversation");
     expect(screen.getByRole("button", { name: "Add attachment" })).toHaveAttribute("data-runtime-composer-upload", "chat");
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("data-runtime-submit", "chat");
@@ -576,6 +580,56 @@ describe("ConversationWorkspace", () => {
     expect(buildChatTimelineItemsMock).toHaveBeenCalledWith(expect.objectContaining({
       messages: runtimeMock.activeSession.messages,
     }));
+  });
+
+  it("marks short mobile Chat timelines as non-scrollable until content overflows", async () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Short session",
+      messages: [
+        { id: "msg-1", role: "user", text: "One", at: Date.now(), status: "done" },
+        { id: "msg-2", role: "assistant", text: "Two", at: Date.now(), status: "done" },
+      ],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{ ...runtimeMock.sessionItems[0], draft: false }];
+
+    renderWorkspace({ isMobileViewport: true });
+
+    const screenNode = document.querySelector("[data-runtime-screen='conversation']") as HTMLDivElement;
+    expect(screenNode).toBeInTheDocument();
+    expect(screenNode).toHaveAttribute("data-runtime-scrollable", "false");
+
+    Object.defineProperty(screenNode, "clientHeight", {
+      configurable: true,
+      value: 360,
+    });
+    Object.defineProperty(screenNode, "scrollHeight", {
+      configurable: true,
+      value: 720,
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    await waitFor(() => {
+      expect(screenNode).toHaveAttribute("data-runtime-scrollable", "true");
+    });
+
+    Object.defineProperty(screenNode, "scrollHeight", {
+      configurable: true,
+      value: 361,
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    await waitFor(() => {
+      expect(screenNode).toHaveAttribute("data-runtime-scrollable", "false");
+    });
   });
 
   it("uses user messages as the Chat jump targets in both directions", async () => {

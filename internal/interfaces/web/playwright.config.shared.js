@@ -53,18 +53,18 @@ function buildPlaywrightEnv(env = process.env, randomBytes = crypto.randomBytes)
   const goCacheDir = String(env.GOCACHE || "").trim() || resolveScopedTempPath("alter0-playwright-go-build");
   const xdgCacheHome = String(env.XDG_CACHE_HOME || "").trim() || resolveScopedTempPath("alter0-playwright-cache");
   const browserCacheDir = String(env.ALTER0_PLAYWRIGHT_BROWSERS_PATH || "").trim() || resolveScopedTempPath("alter0-playwright-browsers");
-  const explicitStorageDir = String(env.ALTER0_STORAGE_DIR || "").trim();
-  const storageDir = explicitStorageDir || resolveScopedTempPath("alter0-playwright-storage");
-  if (!explicitStorageDir) {
-    fs.rmSync(storageDir, { recursive: true, force: true });
+  const explicitRuntimeRoot = String(env.ALTER0_RUNTIME_ROOT || "").trim();
+  const runtimeRoot = explicitRuntimeRoot || resolveScopedTempPath("alter0-playwright-runtime");
+  if (!explicitRuntimeRoot) {
+    fs.rmSync(runtimeRoot, { recursive: true, force: true });
   }
   fs.mkdirSync(goCacheDir, { recursive: true });
   fs.mkdirSync(xdgCacheHome, { recursive: true });
   fs.mkdirSync(browserCacheDir, { recursive: true });
-  fs.mkdirSync(storageDir, { recursive: true });
-  return {
+  fs.mkdirSync(runtimeRoot, { recursive: true });
+  const resolvedEnv = {
     ...env,
-    ALTER0_STORAGE_DIR: storageDir,
+    ALTER0_RUNTIME_ROOT: runtimeRoot,
     ALTER0_WEB_LOGIN_PASSWORD: loginPassword,
     ALTER0_PLAYWRIGHT_BROWSERS_PATH: browserCacheDir,
     ALTER0_PLAYWRIGHT_PASSWORD_FILE: cachePath,
@@ -72,6 +72,8 @@ function buildPlaywrightEnv(env = process.env, randomBytes = crypto.randomBytes)
     PLAYWRIGHT_BROWSERS_PATH: browserCacheDir,
     XDG_CACHE_HOME: xdgCacheHome,
   };
+  delete resolvedEnv.ALTER0_STORAGE_DIR;
+  return resolvedEnv;
 }
 
 module.exports = {

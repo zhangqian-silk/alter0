@@ -214,7 +214,7 @@ func memorySkillGuide() string {
 		"",
 		"- `USER.md` stores stable user profile, collaboration style, output preferences, and recurring personal facts. Read it when personalization matters. Write only after the user gives a durable preference or identity fact that should persist.",
 		"- `SOUL.md` stores hard, long-lived rules and non-negotiable constraints. Read it before making strategy, tone, or policy decisions. Write only when the user explicitly changes durable rules.",
-				"- `AGENTS.md` stores repository or workspace operating rules for automation runtimes, including coding conventions, role boundaries, and delivery expectations. Read it when entering a repo and before making code or process decisions. Write only when maintainers update project rules.",
+		"- `AGENTS.md` stores repository or workspace operating rules for automation runtimes, including coding conventions, role boundaries, and delivery expectations. Read it when entering a repo and before making code or process decisions. Write only when maintainers update project rules.",
 		"- `.alter0/memory/long-term/MEMORY.md`, `MEMORY.md`, or `memory.md` stores cross-session durable project memory: stable decisions, architecture facts, validated workflows, and long-lived plans. Read it when the task depends on history beyond the current session. Write after durable conclusions are confirmed.",
 		"- `.alter0/memory/YYYY-MM-DD.md` or `memory/YYYY-MM-DD.md` for today stores same-day working memory: recent discoveries, active hypotheses, and task notes that may still change. Read it when continuing today's work. Write after meaningful progress, debugging findings, or short-lived decisions that may later be promoted.",
 		"- Yesterday's daily memory is read-only by default. Read it only when today's work continues yesterday's thread or today's file points back to it. Prefer writing new notes to today's daily memory instead of editing yesterday.",
@@ -281,7 +281,7 @@ func previewPublishSkillGuide() string {
 		"- Keep test-service deployment session-scoped. Reuse the current session's short-hash namespace instead of inventing ad-hoc domains.",
 		"- Prefer concise service labels and stable health paths so repeated redeploys land on the same routed host.",
 		"- Keep additional services on certificate-safe single-label subdomains under `*.alter0.cn`. Do not generate nested hosts such as `https://<service>.<short_hash>.alter0.cn` or `https://<short_hash>.travel.alter0.cn`.",
-		"- Never report server-local artifact links such as `/srv/...`, `.alter0/workspaces/...`, `file://...`, `localhost`, or `127.0.0.1` as user-openable deliverables.",
+		"- Never report server-local artifact links such as `/srv/...`, runtime-root `workspaces/...`, `file://...`, `localhost`, or `127.0.0.1` as user-openable deliverables.",
 		"- Do not finish with a local HTML/file path as the primary artifact. Publish it first, then return the deployed `https://*.alter0.cn` URL.",
 		"- For public travel guides, deploy `service_name=travel` on `https://travel-<short_hash>.alter0.cn`. Publish only the current session workspace root after the current request's `index.html` has been generated there; do not publish a stale or unrelated page as a fallback.",
 	}, "\n")

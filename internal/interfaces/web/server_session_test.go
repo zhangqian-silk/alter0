@@ -251,7 +251,7 @@ func TestSessionHandlersValidateInputs(t *testing.T) {
 
 func TestSessionDeleteHandlerRemovesHistoryTasksAndWorkspace(t *testing.T) {
 	baseDir := t.TempDir()
-	workspaceDir := filepath.Join(baseDir, ".alter0", "workspaces", "sessions", "session-delete")
+	workspaceDir := filepath.Join(baseDir, "workspaces", "sessions", "session-delete")
 	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
 		t.Fatalf("prepare workspace: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestSessionPinHandlerUpdatesPinnedState(t *testing.T) {
 func TestSessionCleanupHandlerDeletesInactiveSessionsAndWorkspaces(t *testing.T) {
 	baseDir := t.TempDir()
 	for _, sessionID := range []string{"old-a", "old-b"} {
-		workspaceDir := filepath.Join(baseDir, ".alter0", "workspaces", "sessions", sessionID)
+		workspaceDir := filepath.Join(baseDir, "workspaces", "sessions", sessionID)
 		if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
 			t.Fatalf("prepare workspace: %v", err)
 		}
@@ -335,7 +335,7 @@ func TestSessionCleanupHandlerDeletesInactiveSessionsAndWorkspaces(t *testing.T)
 		t.Fatalf("expected fixed 7 day inactive cleanup, got %+v", history.lastCleanupOption)
 	}
 	for _, sessionID := range []string{"old-a", "old-b"} {
-		if _, err := os.Stat(filepath.Join(baseDir, ".alter0", "workspaces", "sessions", sessionID)); !errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(filepath.Join(baseDir, "workspaces", "sessions", sessionID)); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("expected workspace %s removed, got %v", sessionID, err)
 		}
 	}

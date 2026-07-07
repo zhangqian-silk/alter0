@@ -504,7 +504,6 @@ func resolveChatRuntimeSessionStatePath(baseDir string) (string, error) {
 	}
 	dir := filepath.Join(
 		root,
-		defaultWorkspaceRootDirName,
 		chatRuntimeStateDirectoryName,
 		workspaceChatRuntimeDirName,
 		workspaceSessionsDirName,

@@ -316,7 +316,7 @@ func writeConversationAttachmentManifest(dir string, manifest conversationAttach
 }
 
 func conversationAttachmentDir(baseDir string, sessionID string, attachmentID string) string {
-	return filepath.Join(baseDir, ".alter0", "workspaces", "sessions", sanitizeWorkspaceSegment(sessionID), conversationSessionAttachmentDirName, sanitizeWorkspaceSegment(attachmentID))
+	return filepath.Join(baseDir, "workspaces", "sessions", sanitizeWorkspaceSegment(sessionID), conversationSessionAttachmentDirName, sanitizeWorkspaceSegment(attachmentID))
 }
 
 const defaultAttachmentRoutePrefix = "/api/sessions"

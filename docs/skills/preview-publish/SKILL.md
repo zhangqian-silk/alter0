@@ -35,5 +35,5 @@ description: Deploy or refresh session-scoped previews and test services on the 
 - The standard `scripts/deploy_test_service.sh <session_id>` path now defaults `web` to a full-stack preview. Use `--service-type frontend_dist` only when a static UI-only preview is intentional.
 - For frontend work, keep the preview build aligned with the current session repository workspace rather than a stale source checkout.
 - For public travel guides, deploy `service_name=travel` on `https://travel-<short_hash>.alter0.cn`. If the session workspace root already contains `index.html`, publish that root directly as the static artifact source.
-- Never report server-local artifact links such as `/srv/...`, `.alter0/workspaces/...`, `file://...`, `localhost`, or `127.0.0.1` as user-openable deliverables.
+- Never report server-local artifact links such as `/srv/...`, runtime-root `workspaces/...`, `file://...`, `localhost`, or `127.0.0.1` as user-openable deliverables.
 - Do not finish a task with a local HTML/file path as the primary artifact. Publish it first, then return the deployed `https://*.alter0.cn` URL.

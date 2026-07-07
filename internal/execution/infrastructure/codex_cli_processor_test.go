@@ -16,6 +16,23 @@ import (
 	shareddomain "alter0/internal/shared/domain"
 )
 
+func TestMain(m *testing.M) {
+	runtimeRoot, err := os.MkdirTemp("", "alter0-codex-workspace-root-*")
+	if err != nil {
+		os.Exit(2)
+	}
+	previousRoot, hadPreviousRoot := os.LookupEnv(codexWorkspaceRootDirEnvKey)
+	_ = os.Setenv(codexWorkspaceRootDirEnvKey, runtimeRoot)
+	code := m.Run()
+	if hadPreviousRoot {
+		_ = os.Setenv(codexWorkspaceRootDirEnvKey, previousRoot)
+	} else {
+		_ = os.Unsetenv(codexWorkspaceRootDirEnvKey)
+	}
+	_ = os.RemoveAll(runtimeRoot)
+	os.Exit(code)
+}
+
 func TestCodexCLIProcessorProcessSuccess(t *testing.T) {
 	processor := newTestProcessor("success", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
 
@@ -232,6 +249,7 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey: "session-default",
+		codexWorkspaceRootDirMetadataKey:       rootDir,
 		execdomain.SkillContextMetadataKey:     string(rawSkillContext),
 		execdomain.MemoryContextMetadataKey:    string(rawMemoryContext),
 		execdomain.MCPContextMetadataKey:       string(rawMCPContext),
@@ -243,7 +261,7 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 		t.Fatalf("Process() output = %q, want %q", output, "mock response")
 	}
 
-	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default")
+	sessionWorkspace := filepath.Join(rootDir, "workspaces", "sessions", "session-default")
 	configText, err := os.ReadFile(filepath.Join(sessionWorkspace, "codex-home", "config.toml"))
 	if err != nil {
 		t.Fatalf("read codex runtime config: %v", err)
@@ -330,6 +348,7 @@ func TestCodexCLIProcessorPlainStrategySkipsNativeRuntimeAssets(t *testing.T) {
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey:     "session-default",
+		codexWorkspaceRootDirMetadataKey:           rootDir,
 		execdomain.SkillContextMetadataKey:         string(rawSkillContext),
 		execdomain.CodexRuntimeStrategyMetadataKey: execdomain.CodexRuntimeStrategyPlain,
 	})
@@ -339,7 +358,7 @@ func TestCodexCLIProcessorPlainStrategySkipsNativeRuntimeAssets(t *testing.T) {
 	if output != "mock response" {
 		t.Fatalf("Process() output = %q, want %q", output, "mock response")
 	}
-	sessionWorkspace := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "session-default")
+	sessionWorkspace := filepath.Join(rootDir, "workspaces", "sessions", "session-default")
 	if _, err := os.Stat(filepath.Join(sessionWorkspace, "codex-home", "config.toml")); !os.IsNotExist(err) {
 		t.Fatalf("expected plain strategy to skip codex runtime config, got err=%v", err)
 	}
@@ -352,7 +371,7 @@ func TestCodexCLIProcessorPlainStrategySkipsNativeRuntimeAssets(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessUsesSessionTaskWorkspace(t *testing.T) {
-	expectedWorkspace := filepath.Join(".alter0", "workspaces", "sessions", "session-a", "tasks", "task-a")
+	expectedWorkspace := filepath.Join("workspaces", "sessions", "session-a", "tasks", "task-a")
 	processor := newTestProcessor("success", mustBuildTestPrompt(t, "reply: hello", map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey: "session-a",
 		"task_id":                              "task-a",
@@ -372,7 +391,8 @@ func TestCodexCLIProcessorProcessUsesSessionTaskWorkspace(t *testing.T) {
 
 func TestResolveCodexWorkspaceSupportsRepoRootMode(t *testing.T) {
 	workspace, err := resolveCodexWorkspace(map[string]string{
-		codexWorkspaceModeMetadataKey: codexWorkspaceModeRepoRoot,
+		codexWorkspaceModeMetadataKey:    codexWorkspaceModeRepoRoot,
+		codexWorkspaceRootDirMetadataKey: ".",
 	})
 	if err != nil {
 		t.Fatalf("resolveCodexWorkspace() error = %v", err)
@@ -404,12 +424,13 @@ func TestResolveCodexWorkspaceSupportsSessionRepoCloneMode(t *testing.T) {
 	workspace, err := resolveCodexWorkspace(map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey: "implementation-session",
 		codexWorkspaceModeMetadataKey:          codexWorkspaceModeSessionRepo,
+		codexWorkspaceRootDirMetadataKey:       sourceRepoRoot,
 		codexWorktreeSourceRootKey:             sourceRepoRoot,
 	})
 	if err != nil {
 		t.Fatalf("resolveCodexWorkspace() error = %v", err)
 	}
-	expected, absErr := filepath.Abs(filepath.Join(".alter0", "workspaces", "sessions", "implementation-session", "repo"))
+	expected, absErr := filepath.Abs(filepath.Join("workspaces", "sessions", "implementation-session", "repo"))
 	if absErr != nil {
 		t.Fatalf("resolve expected workspace: %v", absErr)
 	}
@@ -638,7 +659,7 @@ func TestCodexCLIProcessorProcessStreamFailsFastOnAuthError(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessStreamUsesSessionWorkspace(t *testing.T) {
-	expectedWorkspace := filepath.Join(".alter0", "workspaces", "sessions", "stream-session")
+	expectedWorkspace := filepath.Join("workspaces", "sessions", "stream-session")
 	processor := newTestProcessor("stream-success", mustBuildTestPrompt(t, "reply: hello", map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey: "stream-session",
 	}), expectedWorkspace)
@@ -669,6 +690,7 @@ func TestCodexCLIProcessorProcessStreamPersistsAndResumesNativeThread(t *testing
 
 	metadata := map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey: "runtime-fallback-session",
+		codexWorkspaceRootDirMetadataKey:       rootDir,
 	}
 	expectedFirstPrompt := mustBuildTestPrompt(t, "first prompt", metadata)
 	expectedSecondPrompt := mustBuildTestPrompt(t, "second prompt", metadata)
@@ -682,7 +704,7 @@ func TestCodexCLIProcessorProcessStreamPersistsAndResumesNativeThread(t *testing
 		t.Fatalf("first ProcessStream() output = %q, want %q", output, "mock streamed response")
 	}
 
-	threadPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "runtime-fallback-session", ".alter0", "codex-runtime", "thread.json")
+	threadPath := filepath.Join(rootDir, "workspaces", "sessions", "runtime-fallback-session", ".alter0", "codex-runtime", "thread.json")
 	threadData, err := os.ReadFile(threadPath)
 	if err != nil {
 		t.Fatalf("read persisted codex thread: %v", err)
@@ -717,6 +739,7 @@ func TestCodexCLIProcessorArchivesCanonicalChatThreadsByArchiveDay(t *testing.T)
 	restoreClock := setCodexThreadClockForTest(time.Date(2026, 5, 24, 20, 0, 0, 0, time.UTC))
 	metadata := map[string]string{
 		execdomain.RuntimeSessionIDMetadataKey: "alter0-chat",
+		codexWorkspaceRootDirMetadataKey:       rootDir,
 	}
 	expectedFirstPrompt := mustBuildTestPrompt(t, "first chat prompt", metadata)
 	expectedSecondPrompt := mustBuildTestPrompt(t, "second chat prompt", metadata)
@@ -732,7 +755,7 @@ func TestCodexCLIProcessorArchivesCanonicalChatThreadsByArchiveDay(t *testing.T)
 		t.Fatalf("first ProcessStream() output = %q, want %q", output, "mock streamed response")
 	}
 
-	firstThreadPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "alter0-chat", ".alter0", "codex-runtime", "threads", "2026-05-24.json")
+	firstThreadPath := filepath.Join(rootDir, "workspaces", "sessions", "alter0-chat", ".alter0", "codex-runtime", "threads", "2026-05-24.json")
 	firstThreadData, err := os.ReadFile(firstThreadPath)
 	if err != nil {
 		restoreClock()
@@ -754,7 +777,7 @@ func TestCodexCLIProcessorArchivesCanonicalChatThreadsByArchiveDay(t *testing.T)
 	if output != "mock streamed response" {
 		t.Fatalf("second ProcessStream() output = %q, want %q", output, "mock streamed response")
 	}
-	secondThreadPath := filepath.Join(rootDir, ".alter0", "workspaces", "sessions", "alter0-chat", ".alter0", "codex-runtime", "threads", "2026-05-25.json")
+	secondThreadPath := filepath.Join(rootDir, "workspaces", "sessions", "alter0-chat", ".alter0", "codex-runtime", "threads", "2026-05-25.json")
 	if _, err := os.Stat(secondThreadPath); err != nil {
 		t.Fatalf("expected new archive day thread file: %v", err)
 	}
@@ -763,7 +786,7 @@ func TestCodexCLIProcessorArchivesCanonicalChatThreadsByArchiveDay(t *testing.T)
 func TestCodexCLIProcessorTreatsFallbackSessionIDAsCanonicalChatThread(t *testing.T) {
 	t.Cleanup(setCodexThreadClockForTest(time.Date(2026, 5, 24, 21, 30, 0, 0, time.UTC)))
 
-	sessionWorkspace := filepath.Join(t.TempDir(), ".alter0", "workspaces", "sessions", "alter0-chat")
+	sessionWorkspace := filepath.Join(t.TempDir(), "workspaces", "sessions", "alter0-chat")
 	state := resolveCodexThreadState(sessionWorkspace, map[string]string{
 		sessionIDMetadataFallback: "alter0-chat",
 	})

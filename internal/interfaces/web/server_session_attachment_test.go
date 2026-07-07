@@ -72,8 +72,8 @@ func TestChatSessionAttachmentHandlerStoresImagesInWorkspaceAndServesThem(t *tes
 		t.Fatalf("expected chat attachment preview url, got %q", payload.Items[0].PreviewURL)
 	}
 
-	originalPath := filepath.Join(workspaceRoot, ".alter0", "workspaces", "sessions", "session-images", "attachments", "asset-1", "original.png")
-	previewPath := filepath.Join(workspaceRoot, ".alter0", "workspaces", "sessions", "session-images", "attachments", "asset-1", "preview.webp")
+	originalPath := filepath.Join(workspaceRoot, "workspaces", "sessions", "session-images", "attachments", "asset-1", "original.png")
+	previewPath := filepath.Join(workspaceRoot, "workspaces", "sessions", "session-images", "attachments", "asset-1", "preview.webp")
 	if _, err := os.Stat(originalPath); err != nil {
 		t.Fatalf("expected original attachment file, got %v", err)
 	}
@@ -141,7 +141,7 @@ func TestChatSessionAttachmentHandlerStoresFilesWithoutPreviewVariant(t *testing
 		t.Fatalf("expected file preview url to fall back to original asset url, got %+v", payload.Items[0])
 	}
 
-	originalPath := filepath.Join(workspaceRoot, ".alter0", "workspaces", "sessions", "session-files", "attachments", "asset-file-1", "original.md")
+	originalPath := filepath.Join(workspaceRoot, "workspaces", "sessions", "session-files", "attachments", "asset-file-1", "original.md")
 	if _, err := os.Stat(originalPath); err != nil {
 		t.Fatalf("expected original file attachment, got %v", err)
 	}

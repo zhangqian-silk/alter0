@@ -327,6 +327,8 @@ type cronJobRunResponse struct {
 type WebSecurityOptions struct {
 	LoginPassword string
 	BindLocalhost bool
+	RuntimeRoot   string
+	StorageDir    string
 }
 
 func NewServer(
@@ -356,8 +358,9 @@ func NewServer(
 		}
 	}
 	frontendDevOrigin := resolveFrontendDevOrigin()
-	workspaceRoot := resolveServerWorkspaceRoot()
-	workspaceServiceRegistryPath := filepath.Join(workspaceRoot, ".alter0", workspaceServiceRegistryFilename)
+	workspaceRoot := resolveServerRuntimeRoot(securityOptions.RuntimeRoot)
+	workspaceStorageDir := resolveServerStorageDir(workspaceRoot, securityOptions.StorageDir)
+	workspaceServiceRegistryPath := filepath.Join(workspaceStorageDir, workspaceServiceRegistryFilename)
 	workspaceServiceRegistry, err := newFileWorkspaceServiceRegistry(workspaceServiceRegistryPath, "alter0.cn")
 	if err != nil && logger != nil {
 		logger.Error("failed to initialize workspace service registry", slog.String("error", err.Error()))
@@ -383,7 +386,7 @@ func NewServer(
 		frontendDevOrigin: frontendDevOrigin,
 		frontendDevProxy:  newFrontendDevProxy(frontendDevOrigin, logger),
 		workspaceService:  workspaceServiceRegistry,
-		workspaceRuntime:  newWorkspaceServiceRuntime(logger),
+		workspaceRuntime:  newWorkspaceServiceRuntime(logger, workspaceRoot),
 		sessionEvents:     newSessionUpdateBroker(256),
 	}
 	server.registerChatRuntimeSessionEventHook()
@@ -2230,7 +2233,15 @@ func sessionResourceID(path string) (string, string, string, string, bool) {
 	}
 }
 
-func resolveServerWorkspaceRoot() string {
+func resolveServerRuntimeRoot(rawRuntimeRoot string) string {
+	root := strings.TrimSpace(rawRuntimeRoot)
+	if root != "" {
+		absolute, err := filepath.Abs(root)
+		if err != nil {
+			return filepath.Clean(root)
+		}
+		return absolute
+	}
 	wd, err := os.Getwd()
 	if err != nil {
 		return "."
@@ -2238,6 +2249,18 @@ func resolveServerWorkspaceRoot() string {
 	absolute, err := filepath.Abs(wd)
 	if err != nil {
 		return wd
+	}
+	return absolute
+}
+
+func resolveServerStorageDir(runtimeRoot string, rawStorageDir string) string {
+	storageDir := strings.TrimSpace(rawStorageDir)
+	if storageDir == "" {
+		storageDir = filepath.Join(runtimeRoot, "storage")
+	}
+	absolute, err := filepath.Abs(storageDir)
+	if err != nil {
+		return filepath.Clean(storageDir)
 	}
 	return absolute
 }
@@ -2251,7 +2274,7 @@ func removeConversationSessionWorkspace(baseDir string, sessionID string) error 
 	if segment == "" {
 		return fmt.Errorf("invalid session id")
 	}
-	if err := os.RemoveAll(filepath.Join(root, ".alter0", "workspaces", "sessions", segment)); err != nil {
+	if err := os.RemoveAll(filepath.Join(root, "workspaces", "sessions", segment)); err != nil {
 		return fmt.Errorf("remove session workspace: %w", err)
 	}
 	return nil

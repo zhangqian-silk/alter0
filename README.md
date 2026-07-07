@@ -130,7 +130,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Settings` 两个稳定入口，主工作区按对话运行态或设置页渲染。`/chat` 是唯一对话运行时入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；`/settings` 承接 Runtime、Skills、Memory 与 Schedules。
 
-当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，Chat 的 `Sessions / New` 会话列表直接展示在同一左侧导航内；会话条目尾侧固定为三点更多按钮，展开后提供置顶、详情与删除操作，查看详情会聚焦对应会话并打开详情面板，删除需经过确认弹窗后才进入删除链路。右侧主面板承载 Conversation runtime 时间线或 Settings 内容流。工作台采用参考 Gemini 的扁平视觉基线：主工作区、Settings frame、设置分区、表格、详情面板和空态不再依赖外层圆角、卡片边框或厚阴影，视觉层级主要通过留白、轻量分割线、选中态底色和 Composer 胶囊建立；设计图保存在 `docs/design/workbench-flat-redesign.html` 与 `docs/design/workbench-flat-redesign-*.png`。Chat 与 Settings 顶部标题使用同一套紧凑工作台标题栏节奏：运行页显示会话标题、状态信号与 `Details`，Settings 显示同规格标题标记与路由标题，并收进同规格主面板 frame，不再使用独立大标题块、标题副文案或页面出现动效；移动端 `Menu / New` 等边缘操作使用无边框图标按钮并保留可访问文本标签。Settings 正文作为 frame 内部滚动区承载紧凑分区：`Runtime` 管理服务重启、Codex Runtime、Model 与思考深度，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Schedules` 管理普通定时任务、内置维护任务启停、手动触发与触发记录。旧管理子页面不再作为一级路由展示。
+当前桌面工作台基线收敛为两层：左侧品牌导航保持全高固定栏，Chat 的 `Sessions / New` 会话列表直接展示在同一左侧导航内；会话条目尾侧固定为三点更多按钮，展开后提供置顶、详情与删除操作，查看详情会聚焦对应会话并打开详情面板，删除需经过确认弹窗后才进入删除链路。右侧主面板承载 Conversation runtime 时间线或 Settings 内容流。工作台采用参考 Gemini 的扁平视觉基线：主工作区、Settings frame、设置分区、表格、详情面板和空态不再依赖外层圆角、卡片边框或厚阴影，视觉层级主要通过留白、轻量分割线、选中态底色和 Composer 输入面建立；设计图保存在 `docs/design/workbench-flat-redesign.html` 与 `docs/design/workbench-flat-redesign-*.png`。Chat 与 Settings 顶部标题使用同一套紧凑工作台标题栏节奏：运行页显示会话标题、状态信号与 `Details`，Settings 显示同规格标题标记与路由标题，并收进同规格主面板 frame，不再使用独立大标题块、标题副文案或页面出现动效；移动端 `Menu / New` 等边缘操作使用无边框图标按钮并保留可访问文本标签。Settings 正文作为 frame 内部滚动区承载紧凑分区：`Runtime` 管理服务重启、Codex Runtime、Model 与思考深度，`Skills` 管理可注入 Skill，`Memory` 查看记忆与任务摘要，`Schedules` 管理普通定时任务、内置维护任务启停、手动触发与触发记录。旧管理子页面不再作为一级路由展示。
 
 Web Shell 交互手感由全局 motion token 统一：常规反馈使用 `cubic-bezier(0.16, 1, 0.3, 1)`，按钮和工具入口具备快速按压缩放，列表项、快捷提示和轻量卡片具备克制抬升与三层阴影，弹层使用淡入加轻缩放进入；所有可交互控件共享 `focus-visible` 焦点环，数字型字段使用等宽数字，滚动容器隔离滚动穿透，并通过 `prefers-reduced-motion` 降级动效。
 
@@ -250,7 +250,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时：
 
 3. `Chat Runtime`
 - Chat 是唯一对话运行入口，所有会话通过 `/api/chat/sessions` 创建、恢复、输入、置顶、删除与增量更新。
-- 每个 Chat 会话使用独立工作区 `.alter0/workspaces/chat/sessions/<session_id>`，状态写入 `.alter0/state/chat/sessions/<session_id>.json`，并在同一 Web 登录态下跨设备共享。
+- 每个 Chat 会话使用独立工作区 `<ALTER0_RUNTIME_ROOT>/workspaces/chat/sessions/<session_id>`，状态写入 `<ALTER0_RUNTIME_ROOT>/state/chat/sessions/<session_id>.json`，并在同一 Web 登录态下跨设备共享。
 - Chat 会话状态固定为 `ready / busy / exited / interrupted / failed`；执行请求进入后端后不受浏览器刷新、断开或切页影响，最终结果通过会话详情恢复。
 - 新会话先显示 `New`，首条输入后按内容自动命名；早期多轮内可继续升级为更具体标题。
 - Composer 支持图片与常见文本/文档附件。图片保留缩略图和 `asset_url / preview_url` 引用，普通文件写入会话工作区并通过本轮 prompt 暴露稳定路径。
@@ -284,7 +284,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时：
 - Chat `Process` 的步骤头固定遵守“展开图标 / 标题 / 耗时与状态”三列结构；展开图标必须占用独立窄列，标题始终落在中间主阅读列，不允许因为节点缺失或列错位把中文标题挤进图标列，导致移动端只剩一个字符可见。
 - Chat `Process` 展开后的自然语言步骤详情必须按正文块渲染：`reasoning / plan / message / text` 等说明类内容沿用运行页 markdown 归一化与整列换行约束，异常零宽断行字符和“每字一行”病态段落需在展示前修正；等宽输出、diff 和代码类块继续保留预格式化等宽显示。带详情接口的步骤只在用户展开具体步骤时按 `session_id / turn_id / event_id` 懒加载完整 detail，避免首屏提前返回大段 thinking 内容。
 - Chat 中四键导航会跟随当前视口里的可见 turn 重新计算上下目标：`上一条` 取最上可见 turn，`下一条` 在单条可见时取真实下一条、在多条可见时取最下可见 turn；`Process` 折叠或展开后，上一条与下一条状态会随重排结果同步更新。
-- Chat 的整体视觉语言与 Chat 收敛：左侧会话列表、工作区容器、输入区与输出块统一使用扁平白底、必要分割线、有限强调色和 Composer 胶囊；用户输入使用共享右侧紧凑气泡，不再额外展示命令前缀符号或强调色，最终回复直接按共享助手消息阅读流渲染；`Process` 保留低对比提示区和左侧纵向时间线，内部步骤压缩为单行摘要，展开后只展示详细内容，不再重复状态标签。
+- Chat 的整体视觉语言与 Chat 收敛：左侧会话列表、工作区容器、输入区与输出块统一使用扁平白底、必要分割线、有限强调色和外圆内直的 Composer 输入面；用户输入使用共享右侧紧凑气泡，不再额外展示命令前缀符号或强调色，最终回复直接按共享助手消息阅读流渲染；`Process` 保留低对比提示区和左侧纵向时间线，内部步骤压缩为单行摘要，展开后只展示详细内容，不再重复状态标签。
 - Chat 桌面端会话列表直接显示在左侧主导航内，主工作区头部收敛为会话标题、状态按钮与 `Details` 工具栏；这套布局由 React 组件直接渲染，不再依赖旧版脚本控制。
 - 同一轮 Chat 最终输出出现后，前端会自动折叠对应 `Process` 面板，把阅读焦点收敛到输出正文；用户手动再次展开后保留该选择。
 - Chat 最终输出正文提供一键复制入口，复制内容仅包含最终回复，不包含 `Process` 步骤细节。
@@ -312,12 +312,12 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时：
 默认运行策略保持 `danger-full-access`，当前默认执行目录策略统一为“各执行会话独立工作区”：
 
 1. `Chat`
-- 默认执行目录：`.alter0/workspaces/sessions/<session_id>`
+- 默认执行目录：`<ALTER0_RUNTIME_ROOT>/workspaces/sessions/<session_id>`
 - `Chat` 与 `Skill` 会话历史可继续按各自会话维度回放；删除会话时会同步清理对应会话工作区
 
 2. `Chat`
-- Chat 会话工作区：`.alter0/workspaces/chat/sessions/<chat_session_id>`
-- Chat 会话状态：`.alter0/state/chat/sessions/<chat_session_id>.json`
+- Chat 会话工作区：`<ALTER0_RUNTIME_ROOT>/workspaces/chat/sessions/<chat_session_id>`
+- Chat 会话状态：`<ALTER0_RUNTIME_ROOT>/state/chat/sessions/<chat_session_id>.json`
 - 同一 Web 登录态下，手机与 PC 访问同一批 Chat 会话历史，不再按浏览器设备标识分桶
 
 说明：
@@ -387,8 +387,8 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 2. Web 地址默认 `127.0.0.1:18088`，可通过 `-web-addr` 参数覆盖。
 3. 如果使用自定义端口，后续示例中的 URL 也需同步替换端口。
 4. 默认以 `supervisor -> child runtime` 两层进程启动：父进程负责托管运行中的子进程，处理 Web 控制台发起的重启、构建、探活与切换。
-5. 存储后端默认本地文件（目录 `.alter0`）。
-6. 存储格式按业务场景选择：Control 配置使用 `json`，Scheduler 状态使用 `json`。
+5. 运行根目录由 `ALTER0_RUNTIME_ROOT` 注入；未配置时默认使用当前工作目录下的 `.alter0`。Control、Scheduler、Session、Task、Model 配置和 workspace service registry 写入 `<runtime_root>/storage/`，工作区、Chat state、日志和重启临时产物分别从同一 runtime root 派生。
+6. `ALTER0_STORAGE_DIR` 仅作为旧部署兼容入口保留；同时配置 `ALTER0_RUNTIME_ROOT` 时，`ALTER0_STORAGE_DIR` 必须等于 `<runtime_root>/storage`，否则服务启动失败。
 
 ### Runtime Restart
 
@@ -408,15 +408,17 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 
 ```bash
 export ALTER0_WEB_LOGIN_PASSWORD='请替换为强密码'
-export HOME=/var/lib/alter0
+export HOME=/root
+export ALTER0_RUNTIME_ROOT=/root/.alter0
 
 go run ./cmd/alter0 \
   -web-addr 127.0.0.1:18088 \
   -web-bind-localhost-only=true \
-  -web-login-password "$ALTER0_WEB_LOGIN_PASSWORD"
+  -web-login-password "$ALTER0_WEB_LOGIN_PASSWORD" \
+  -runtime-root "$ALTER0_RUNTIME_ROOT"
 ```
 
-若通过 `systemd` 运行，建议在服务环境中显式设置 `HOME=/var/lib/alter0`；启动脚本也会把历史 `HOME=/var/lib/alter0/codex-home` 归一到 `/var/lib/alter0`，确保 Codex 认证与运行态数据落在统一运行根目录。
+若通过 `systemd` 运行，建议在服务环境中显式设置 `ALTER0_RUNTIME_ROOT`；启动脚本会以该目录作为唯一运行根目录，并把历史 `HOME=<runtime_root>/codex-home` 归一到 `<runtime_root>`，确保服务存储、工作区、日志与运行输出来自同一根目录。
 
 `Codex Runtime` 固定读取当前活动 `CODEX_HOME` 下的 `auth.json` 与 `config.toml`；未显式设置 `CODEX_HOME` 时，对应目录即 `$HOME/.codex/`。Runtime 页面通过 Codex app-server 读取真实运行时能力与配置来源，并通过用户配置写接口更新当前活动配置中的 `model` 与 `model_reasoning_effort`。
 
@@ -426,7 +428,7 @@ go run ./cmd/alter0 \
 sudo ./scripts/setup_alter0_runtime_auth.sh
 ```
 
-该脚本会把 `alter0` 运行账户的 GitHub App token helper、`gh` 命令包装器、SSH signing key 与全局 Git 配置初始化到 `/var/lib/alter0`，用于服务内 `Codex CLI` 的提交 / PR / merge 链路。
+该脚本会把服务运行账户的 GitHub App token helper、`gh` 命令包装器、SSH signing key 与全局 Git 配置初始化到运行账户 HOME，用于服务内 `Codex CLI` 的提交 / PR / merge 链路。
 
 若希望服务内 `Codex CLI` 可直接执行 `internal/interfaces/web/frontend` 下的 `npm run build` / `npm run test`，以及 `internal/interfaces/web` 下的 `npm run test:e2e`、`npx playwright install chromium` 等 Node/Playwright 测试链路，还需在 root 下额外执行一次：
 
@@ -434,16 +436,16 @@ sudo ./scripts/setup_alter0_runtime_auth.sh
 sudo ./scripts/setup_alter0_runtime_node.sh
 ```
 
-该脚本会把带 `npm`/`npx`/`corepack` 的 Node 运行时安装到 `/var/lib/alter0/.local`，并默认在 `internal/interfaces/web` 与 `internal/interfaces/web/frontend` 目录预装 `npm ci`，随后安装 Playwright Chromium 浏览器，使服务运行账户在非交互式环境中也能同时执行前端构建、单测与 E2E 测试。正式服务启动与重启使用 `scripts/build_alter0_service.sh`，因此运行账户需要能在 `PATH` 中找到这套 Node 工具链。
+该脚本会把带 `npm`/`npx`/`corepack` 的 Node 运行时安装到运行账户的 `.local` 目录，并默认在 `internal/interfaces/web` 与 `internal/interfaces/web/frontend` 目录预装 `npm ci`，随后安装 Playwright Chromium 浏览器，使服务运行账户在非交互式环境中也能同时执行前端构建、单测与 E2E 测试。正式服务启动与重启使用 `scripts/build_alter0_service.sh`，因此运行账户需要能在 `PATH` 中找到这套 Node 工具链。
 
-之所以默认落在 `/var/lib/alter0/.local`，是因为这里属于 `alter0` 服务运行账户自己的运行时目录：既不会污染系统全局 `/usr/local/bin`，也不依赖宿主机预装 `npm`。脚本会把实际安装目录中的 `node`、`npm`、`npx`、`corepack` 软链接到 `/var/lib/alter0/.local/bin`，再由服务启动时补齐该目录到 `PATH`，这样 `Codex CLI`、Web 子进程和手工切到 `alter0` 账户执行时看到的都是同一套稳定工具链。
+Node 工具链属于服务运行账户自己的运行时依赖：既不会污染系统全局 `/usr/local/bin`，也不依赖宿主机预装 `npm`。脚本会把实际安装目录中的 `node`、`npm`、`npx`、`corepack` 软链接到运行账户的 `.local/bin`，再由服务启动时补齐该目录到 `PATH`，这样 `Codex CLI`、Web 子进程和手工切到服务账户执行时看到的都是同一套稳定工具链。
 
 新服务启用时，建议直接按下面顺序执行：
 
 ```bash
 # 1. 准备运行环境
 sudo install -d -m 750 /etc/alter0
-sudo sh -c "printf 'ALTER0_WEB_LOGIN_PASSWORD=请替换为强密码\nALTER0_RUN_AS=alter0\nALTER0_RUNTIME_ROOT=/var/lib/alter0\nHOME=/var/lib/alter0\n' > /etc/alter0/alter0.env"
+sudo sh -c "printf 'ALTER0_WEB_LOGIN_PASSWORD=请替换为强密码\nALTER0_RUNTIME_ROOT=/root/.alter0\nHOME=/root\n' > /etc/alter0/alter0.env"
 sudo chmod 600 /etc/alter0/alter0.env
 
 # 2. 确保公共路径可见 codex / node / gh
@@ -480,8 +482,8 @@ sudo ALTER0_RUN_AS=myservice \
 初始化完成后，建议至少做一次快速验证：
 
 ```bash
-sudo -u alter0 env HOME=/var/lib/alter0 PATH=/var/lib/alter0/.local/bin:/usr/local/bin:/usr/bin:/bin gh auth status
-sudo -u alter0 env HOME=/var/lib/alter0 PATH=/var/lib/alter0/.local/bin:/usr/local/bin:/usr/bin:/bin bash -lc 'printf "protocol=https\nhost=github.com\n\n" | git credential fill'
+env HOME=/root PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin gh auth status
+env HOME=/root PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin bash -lc 'printf "protocol=https\nhost=github.com\n\n" | git credential fill'
 curl --noproxy '*' http://127.0.0.1:18088/readyz
 ```
 
@@ -522,7 +524,7 @@ go run ./cmd/alter0
 - 运行时会补齐 `$HOME/.local/bin`、`$HOME/.local/share/pnpm`、`/usr/local/bin`、`/usr/bin` 等标准 PATH，确保服务内 `codex`、`node`、`npm`、`npx` 与运行账户自带的 `gh` 包装器可见。
 - Chat 会话退出或中断后不会清空历史或线程标识；用户继续发送输入时，系统优先复用已持久化的 Codex CLI 线程。
 - 若 Codex CLI 在线程续写阶段返回远端 compact 失败，Chat 会保留原会话历史与工作区，清空失效线程标识，并在下一次输入时在同一会话下启动新的 Codex 线程。
-- `DELETE /api/chat/sessions/{id}` 用于删除 Chat 会话，并同步清理 `.alter0/state/chat/sessions/{id}.json` 与对应工作区。
+- `DELETE /api/chat/sessions/{id}` 用于删除 Chat 会话，并同步清理 `<ALTER0_RUNTIME_ROOT>/state/chat/sessions/{id}.json` 与对应工作区。
 
 ## Control API
 
@@ -573,7 +575,7 @@ curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
 1. 服务启动后默认提供 `memory`、`preview-publish`、`frontend-design`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review`、`brainstorming` 与 `travel` 公有内置 Skill；`memory-maintenance` 作为系统维护专用私有 Skill 保留，不进入 Chat 常规选择列表。
 2. `memory` Skill 用于向 Skill / Codex 明确记忆文件的读取决策、写入路由、冲突优先级与禁止写入项，建议与 `memory_files` 一起启用。
 3. 项目内置 Skill 全部由源码仓库直接承载。标准 skill 使用 `docs/skills/<skill_id>/SKILL.md` 作为 file-backed 主入口；其中 `preview-publish` 的静态产物发布脚本位于 `docs/skills/preview-publish/scripts/publish_preview_artifact.sh`。`code-simplifier` 与 `code-review` 两个 plugin-style 条目则分别以 `docs/skills/code-simplifier/SKILL.md` 和 `docs/skills/code-review/commands/code-review.md` 作为 alter0 的 file-backed 注入入口，并保留各自 `.claude-plugin/plugin.json` 元数据。Codex 启动前会把本轮选中的可读 file-backed Skill 目录复制到当前工作区 `.alter0/codex-runtime/skills/<skill_id>/`，并将运行时 `file_path` 重写为该工作区内路径，保证 Chat 不依赖源码仓库相对路径。
-4. `preview-publish` 是静态用户可见产物与完整测试服务的统一发布通道。Skill / Chat 不得把 `/srv/...`、`.alter0/workspaces/...`、`file://`、`localhost` 或 `127.0.0.1` 作为用户可打开链接返回；HTML、Markdown 预览、截图、图片集合、文本报告、JSON 示例和代码样例等静态产物必须先发布到 `https://<service>-<short_hash>.alter0.cn` 后再作为交付入口。需要完整 Web 应用、后端路由或 API 联动时，也使用 `preview-publish` 发布会话级服务地址。
+4. `preview-publish` 是静态用户可见产物与完整测试服务的统一发布通道。Skill / Chat 不得把 `/srv/...`、运行根目录下的 `workspaces/...`、`file://`、`localhost` 或 `127.0.0.1` 作为用户可打开链接返回；HTML、Markdown 预览、截图、图片集合、文本报告、JSON 示例和代码样例等静态产物必须先发布到 `https://<service>-<short_hash>.alter0.cn` 后再作为交付入口。需要完整 Web 应用、后端路由或 API 联动时，也使用 `preview-publish` 发布会话级服务地址。
 5. 服务不再随启动注册任何内置业务编排；Chat 默认直接通过 Claude Code CLI 或 Codex CLI 执行。
 6. 所有可复用规则统一进入控制面可见的 `docs/skills/<skill_id>/SKILL.md` 或 plugin-style skill 入口，并由当前会话的 Skill 选择显式注入运行时。
 7. `travel` Skill 会预置城市页、行程、地铁、美食、路线卡与 Codex 行程地图图片输出规则；稳定偏好写入 `docs/skills/travel/SKILL.md`，一次性行程细节仍只保留在目标城市页数据中。

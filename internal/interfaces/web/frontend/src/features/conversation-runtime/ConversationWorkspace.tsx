@@ -60,6 +60,8 @@ type TimelineRenderWindowSnapshot = {
   visibleMessageIDs: string[];
 };
 
+const TIMELINE_SCROLL_OVERFLOW_TOLERANCE = 2;
+
 const EMPTY_TIMELINE_RENDER_WINDOW: TimelineRenderWindowSnapshot = {
   sessionID: "",
   messageIDs: [],
@@ -119,6 +121,13 @@ function snapshotTimelineRenderWindow(
     messageIDs: timelineMessageIDs(messages),
     visibleMessageIDs: timelineMessageIDs(visibleMessages),
   };
+}
+
+function isTimelineViewportScrollable(container: HTMLElement | null): boolean {
+  if (!container) {
+    return false;
+  }
+  return container.scrollHeight - container.clientHeight > TIMELINE_SCROLL_OVERFLOW_TOLERANCE;
 }
 
 function findTimelineMessageElement(container: HTMLElement, messageID: string): HTMLElement | null {
@@ -302,6 +311,7 @@ function useConversationWorkspaceController(
     sessionID: "",
     visibleCount: INITIAL_VISIBLE_CHAT_MESSAGES,
   });
+  const [timelineScrollable, setTimelineScrollable] = useState(false);
   const [expandedProcessEvents, setExpandedProcessSteps] = useState<Record<string, boolean>>({});
   const activeMessages = runtime.activeSession?.messages || [];
   const activeSessionID = runtime.activeSession?.id || "";
@@ -713,6 +723,59 @@ function useConversationWorkspaceController(
       window.cancelAnimationFrame(frame);
     };
   }, [timelineItems.length, timelineMessages, timelineMessages.length, timelineScreenRef, timelineSessionID]);
+  useLayoutEffect(() => {
+    const node = timelineScreenRef.current;
+    if (!node) {
+      setTimelineScrollable(false);
+      return undefined;
+    }
+    let frameID = 0;
+    const measure = () => {
+      frameID = 0;
+      setTimelineScrollable(isTimelineViewportScrollable(node));
+    };
+    const scheduleMeasure = () => {
+      if (frameID) {
+        window.cancelAnimationFrame(frameID);
+      }
+      frameID = window.requestAnimationFrame(measure);
+    };
+    measure();
+    scheduleMeasure();
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(scheduleMeasure);
+    resizeObserver?.observe(node);
+    const timelineNode = node.querySelector(".runtime-timeline");
+    if (timelineNode) {
+      resizeObserver?.observe(timelineNode);
+    }
+    const mutationObserver = typeof MutationObserver === "undefined"
+      ? null
+      : new MutationObserver(scheduleMeasure);
+    mutationObserver?.observe(node, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    window.addEventListener("resize", scheduleMeasure);
+    return () => {
+      if (frameID) {
+        window.cancelAnimationFrame(frameID);
+      }
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+    };
+  }, [
+    hasRemoteEarlierMessages,
+    hiddenMessageCount,
+    isEmptyState,
+    timelineItems.length,
+    timelineMessages.length,
+    timelineScreenRef,
+    timelineSessionID,
+  ]);
   const timelineEmptyState = useMemo(
     () => (
       <div className="conversation-empty-state">
@@ -772,6 +835,7 @@ function useConversationWorkspaceController(
       rootProps: {
         "data-runtime-view": runtimeViewAlias,
         "data-runtime-route": runtime.route,
+        "data-runtime-empty-state": isEmptyState ? "true" : "false",
       },
       sessionPaneClassName: workbench.isMobileViewport && workbench.mobileSessionPaneOpen
         ? "is-open"
@@ -796,6 +860,7 @@ function useConversationWorkspaceController(
       workspaceProps: {
         "data-runtime-workspace": runtimeViewAlias,
         "data-runtime-route": runtime.route,
+        "data-runtime-empty-state": isEmptyState ? "true" : "false",
       },
       workspaceBodyRef,
       mobileHeaderPlacement: workbench.isMobileViewport ? "body" : undefined,
@@ -825,6 +890,7 @@ function useConversationWorkspaceController(
     activeSessionStatus.tone,
     activeSessionIsDraft,
     copy.sessionHide,
+    isEmptyState,
     emptyStateTitle,
     handleCreateSession,
     newSessionLabel,
@@ -887,13 +953,17 @@ function useConversationWorkspaceController(
   const screen = useMemo(() => ({
     screen: {
       panelClassName: `conversation-console-panel${isEmptyState ? " is-empty" : ""}`,
-      screenClassName: isEmptyState
-        ? "is-empty"
-        : undefined,
-      screenProps: { "data-runtime-screen": runtimeViewAlias },
+      screenClassName: [
+        isEmptyState ? "is-empty" : undefined,
+        timelineScrollable ? "is-scrollable" : "is-not-scrollable",
+      ].filter(Boolean).join(" ") || undefined,
+      screenProps: {
+        "data-runtime-screen": runtimeViewAlias,
+        "data-runtime-scrollable": timelineScrollable ? "true" : "false",
+      },
       screenRef: timelineScreenRef,
     },
-  }), [isEmptyState, runtimeViewAlias]);
+  }), [isEmptyState, runtimeViewAlias, timelineScrollable]);
   const timeline = useMemo(() => ({
     timeline: {
       items: timelineItems,
@@ -917,11 +987,13 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   language,
   workspaceBodyRef,
   inputFocused,
+  isEmptyState,
   onInputFocusedChange,
 }: {
   language: LegacyShellLanguage;
   workspaceBodyRef: { current: HTMLDivElement | null };
   inputFocused: boolean;
+  isEmptyState: boolean;
   onInputFocusedChange: (focused: boolean) => void;
 }) {
   const workbench = useWorkbenchContext();
@@ -1261,6 +1333,14 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
     <RuntimeComposer
       runtimeKind={runtimeComposerKind}
       shellRef={composerShellRef}
+      shellProps={{
+        "data-runtime-composer-view": "conversation",
+        "data-runtime-empty-state": isEmptyState ? "true" : "false",
+      }}
+      formProps={{
+        "data-runtime-composer-view": "conversation",
+        "data-runtime-empty-state": isEmptyState ? "true" : "false",
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         submitDraft();
@@ -1324,11 +1404,14 @@ export function ConversationWorkspace({ language }: ConversationWorkspaceProps) 
   const timelineScreenRef = useRef<HTMLDivElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
+  const runtime = useConversationRuntimeWorkspace();
+  const composerEmptyState = (runtime.activeSession?.messages.length || 0) === 0;
   const composerNode = (
     <ConversationComposerSection
       language={language}
       workspaceBodyRef={workspaceBodyRef}
       inputFocused={inputFocused}
+      isEmptyState={composerEmptyState}
       onInputFocusedChange={setInputFocused}
     />
   );

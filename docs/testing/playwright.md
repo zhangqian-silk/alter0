@@ -62,7 +62,7 @@ Playwright 用于 `alter0` Web 控制台的端到端交互回归，覆盖页面�
 
 该初始化会把带 `npm`/`npx` 的 Node 运行时安装到服务运行账户的 `HOME` 下，并默认预装当前仓库的 Web E2E 依赖与 Chromium，避免 `Codex CLI` 在非交互式运行态中因为缺少 `npm` 而跳过 Playwright/E2E。
 
-默认路径选择为 `/var/lib/alter0/.local`，目的是把 Node/Playwright 依赖收敛在 `alter0` 服务账户自己的运行时目录内，不污染系统全局安装；脚本会把 `node`、`npm`、`npx`、`corepack` 统一暴露到 `/var/lib/alter0/.local/bin`，只要服务 `PATH` 包含这一目录，`Codex CLI` 与测试子进程就能稳定复用同一套工具链。
+默认路径选择为服务运行账户的 `.local` 目录，目的是把 Node/Playwright 依赖收敛在服务账户自己的运行时目录内，不污染系统全局安装；脚本会把 `node`、`npm`、`npx`、`corepack` 统一暴露到运行账户的 `.local/bin`，只要服务 `PATH` 包含这一目录，`Codex CLI` 与测试子进程就能稳定复用同一套工具链。Playwright 启动环境默认注入隔离的 `ALTER0_RUNTIME_ROOT`，不再主动设置 `ALTER0_STORAGE_DIR`。
 
 通过 `alter0` 服务内的 `Codex CLI` 触发 E2E 时，运行时会把当前 `web_login_password` 同步为子进程可见的 `ALTER0_WEB_LOGIN_PASSWORD`，并自动确保 `127.0.0.1`、`localhost` 进入 `NO_PROXY`，避免 Playwright 本地探活被代理转发。
 

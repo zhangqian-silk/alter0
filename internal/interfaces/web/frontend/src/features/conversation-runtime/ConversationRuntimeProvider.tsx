@@ -698,6 +698,7 @@ function normalizeRuntimeSessionDerivedStatus(session: ChatSession): string {
   if (
     !isConversationBusyStatus(status)
     && !isChatRuntimeRuntimeFailureStatus(status)
+    && !hasAuthoritativeReadyRuntimeSummary(session)
     && hasRecoverableRuntimeState(session)
   ) {
     return "busy";
@@ -941,11 +942,26 @@ function isStreamingPlaceholderText(text: string): boolean {
   return normalized === "" || normalized === "thinking...";
 }
 
+function isBusyRuntimeProcessEvent(event: RuntimeTraceEvent): boolean {
+  const status = normalizeText(event.status).toLowerCase();
+  const lifecycle = normalizeText(event.lifecycle).toLowerCase();
+  return ["queued", "running", "requires_approval", "unknown"].includes(status)
+    || ["created", "started", "delta", "updated"].includes(lifecycle);
+}
+
+function hasStableAssistantProcessPayload(message: ChatMessage): boolean {
+  return message.processEvents.length > 0
+    && message.processEvents.every((event) => !isBusyRuntimeProcessEvent(event));
+}
+
 function isRecoverableAssistantMessage(message: ChatMessage): boolean {
   if (message.role !== "assistant") {
     return false;
   }
-  return message.error || isConversationBusyStatus(message.status) || isStreamingPlaceholderText(message.text);
+  if (message.error || isConversationBusyStatus(message.status)) {
+    return true;
+  }
+  return isStreamingPlaceholderText(message.text) && !hasStableAssistantProcessPayload(message);
 }
 
 function hasRecoverableAssistantState(messages: ChatMessage[]): boolean {
@@ -972,6 +988,41 @@ function hasRecoverableRuntimeState(session: ChatSession | null | undefined): bo
   return hasRecoverableAssistantState(session.messages) || hasUnansweredLatestUserMessage(session.messages);
 }
 
+function latestRecoverableRuntimeStateAt(messages: ChatMessage[]): number {
+  let latest = 0;
+  messages.forEach((message) => {
+    if (isRecoverableAssistantMessage(message)) {
+      latest = Math.max(latest, Number(message.at) || 0);
+    }
+  });
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "assistant") {
+      break;
+    }
+    if (message.role === "user") {
+      latest = Math.max(latest, Number(message.at) || 0);
+      break;
+    }
+  }
+  return latest;
+}
+
+function hasAuthoritativeReadyRuntimeSummary(session: ChatSession | null | undefined): boolean {
+  if (!session || session.serverBacked !== true) {
+    return false;
+  }
+  const status = normalizeText(session.status) || "ready";
+  if (isConversationBusyStatus(status) || isChatRuntimeRuntimeFailureStatus(status)) {
+    return false;
+  }
+  const recoverableAt = latestRecoverableRuntimeStateAt(session.messages);
+  if (recoverableAt <= 0) {
+    return false;
+  }
+  return (Number(session.lastOutputAt) || 0) > recoverableAt;
+}
+
 function hasBusyRuntimeMessageState(messages: ChatMessage[]): boolean {
   return messages.some((message) => isConversationBusyStatus(message.status));
 }
@@ -983,7 +1034,8 @@ function shouldBlockRuntimeInput(session: ChatSession): boolean {
   if (isChatRuntimeRuntimeFailureStatus(session.status)) {
     return false;
   }
-  return isConversationBusyStatus(session.status) || hasRecoverableRuntimeState(session);
+  return isConversationBusyStatus(session.status)
+    || (hasRecoverableRuntimeState(session) && !hasAuthoritativeReadyRuntimeSummary(session));
 }
 
 function hasLocalRuntimeSyncIntent(session: ChatSession | null | undefined): boolean {
@@ -1052,7 +1104,8 @@ function hasPersistedAssistantState(messages: ChatMessage[]): boolean {
     if (message.role !== "assistant") {
       return false;
     }
-    return !isConversationBusyStatus(message.status) && !isStreamingPlaceholderText(message.text);
+    return !isConversationBusyStatus(message.status)
+      && (!isStreamingPlaceholderText(message.text) || hasStableAssistantProcessPayload(message));
   });
 }
 
@@ -2017,8 +2070,13 @@ function resolveMergedRuntimeSessionStatus(previous: ChatSession | undefined, in
     return incomingStatus;
   }
   const incomingHasCompleteRuntimeView = incoming.messagesLoaded === true;
-  const incomingStillRecoverable = hasRecoverableRuntimeState({ ...incoming, messages });
-  if (incomingStillRecoverable || (!incomingHasCompleteRuntimeView && incoming.messages.length === 0)) {
+  const incomingView = { ...incoming, messages };
+  const incomingStillRecoverable = hasRecoverableRuntimeState(incomingView);
+  const incomingReadySummaryAuthoritative = hasAuthoritativeReadyRuntimeSummary(incomingView);
+  if (
+    (incomingStillRecoverable && !incomingReadySummaryAuthoritative)
+    || (!incomingHasCompleteRuntimeView && incoming.messages.length === 0 && !incomingReadySummaryAuthoritative)
+  ) {
     return isConversationBusyStatus(previous.status) ? previous.status : "local_running";
   }
   return incomingStatus;
