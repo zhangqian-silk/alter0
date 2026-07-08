@@ -1372,7 +1372,7 @@ func TestChatRuntimeSessionItemHandlerUsesCompactDefaultTurnPage(t *testing.T) {
 }
 
 func TestChatRuntimeSessionItemHandlerCapsTurnPageByApproximatePayloadSize(t *testing.T) {
-	largeOutput := strings.Repeat("large chatRuntime output\n", 5000)
+	largeOutput := strings.Repeat("large chatRuntime output\n", 25000)
 	turns := make([]chatruntimeapp.TurnSummary, 5)
 	for index := range turns {
 		turnNumber := index + 1
@@ -1418,6 +1418,115 @@ func TestChatRuntimeSessionItemHandlerCapsTurnPageByApproximatePayloadSize(t *te
 	paging := session["turns_paging"].(map[string]any)
 	if paging["has_more_before"] != true {
 		t.Fatalf("expected payload cap to keep earlier turns available, got %v", paging)
+	}
+}
+
+func TestChatRuntimeSessionItemHandlerDefaultTurnPageKeepsRecentLargeContext(t *testing.T) {
+	largeOutput := strings.Repeat("large chatRuntime output\n", 16000)
+	turns := []chatruntimeapp.TurnSummary{
+		{ID: "turn-1", Prompt: "one", Status: "completed", FinalOutput: largeOutput},
+		{ID: "turn-2", Prompt: "two", Status: "completed", FinalOutput: largeOutput},
+		{ID: "turn-3", Prompt: "three", Status: "completed", FinalOutput: largeOutput},
+	}
+	service := &stubWebChatRuntimeService{
+		getResp: chatruntimedomain.Session{
+			ID:      "chatRuntime-4",
+			OwnerID: chatSessionOwnerID,
+			Status:  chatruntimedomain.SessionStatusReady,
+		},
+		getOK:     true,
+		turnsResp: turns,
+	}
+	server := &Server{chatRuntimes: service}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/chatRuntime-4", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	session := payload["session"].(map[string]any)
+	page := session["turns"].([]any)
+	if len(page) != 2 {
+		t.Fatalf("expected default detail page to keep two recent large turns, got %d", len(page))
+	}
+	if page[0].(map[string]any)["id"] != float64(2) || page[1].(map[string]any)["id"] != float64(3) {
+		t.Fatalf("expected latest two large turns, got %v", page)
+	}
+	paging := session["turns_paging"].(map[string]any)
+	if paging["byte_limit"] != float64(1048576) || paging["has_more_before"] != true {
+		t.Fatalf("expected one MiB paging budget with earlier turns available, got %v", paging)
+	}
+}
+
+func TestChatRuntimeSessionItemHandlerBudgetsFinalTurnDTOInsteadOfHiddenEventBlocks(t *testing.T) {
+	hiddenBlock := strings.Repeat("hidden runtime detail block\n", 40000)
+	turns := make([]chatruntimeapp.TurnSummary, 3)
+	for index := range turns {
+		turnNumber := index + 1
+		turnID := fmt.Sprintf("turn-%d", turnNumber)
+		turns[index] = chatruntimeapp.TurnSummary{
+			ID:          turnID,
+			Prompt:      fmt.Sprintf("prompt-%d", turnNumber),
+			Status:      "completed",
+			FinalOutput: fmt.Sprintf("visible output %d", turnNumber),
+			RuntimeTraceEvents: []chatruntimeapp.RuntimeTraceEvent{{
+				ID:     "event-1",
+				TurnID: turnID,
+				Seq:    1,
+				Kind:   "commands",
+				Status: "completed",
+				Summary: "visible process summary",
+				Blocks: []chatruntimeapp.RuntimeBlock{{
+					Type: "text",
+					Text: hiddenBlock,
+				}},
+				Raw: chatruntimeapp.RuntimeTraceEventRaw{HasDetail: true},
+			}},
+		}
+	}
+	service := &stubWebChatRuntimeService{
+		getResp: chatruntimedomain.Session{
+			ID:      "chatRuntime-4",
+			OwnerID: chatSessionOwnerID,
+			Status:  chatruntimedomain.SessionStatusReady,
+		},
+		getOK:     true,
+		turnsResp: turns,
+	}
+	server := &Server{chatRuntimes: service}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/chatRuntime-4", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	session := payload["session"].(map[string]any)
+	page := session["turns"].([]any)
+	if len(page) != 3 {
+		t.Fatalf("expected hidden event detail blocks not to cap visible turn page, got %d", len(page))
+	}
+	if rec.Body.Len() > 20000 {
+		t.Fatalf("expected response DTO to omit hidden blocks, got %d bytes", rec.Body.Len())
+	}
+	paging := session["turns_paging"].(map[string]any)
+	if paging["has_more_before"] != false {
+		t.Fatalf("expected all visible turns in page, got %v", paging)
 	}
 }
 

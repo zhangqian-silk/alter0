@@ -988,6 +988,52 @@ function hasRecoverableRuntimeState(session: ChatSession | null | undefined): bo
   return hasRecoverableAssistantState(session.messages) || hasUnansweredLatestUserMessage(session.messages);
 }
 
+function staleRecoverableRuntimeTurnIDs(
+  previous: ChatMessage[],
+  parsed: ChatMessage[],
+  authoritativeAt: number,
+): Set<string> {
+  if (!hasPersistedAssistantState(parsed)) {
+    return new Set();
+  }
+  const parsedTurnIDs = new Set(parsed.map((message) => messageTurnID(message.id)).filter(Boolean));
+  const parsedFirstAt = parsed.reduce((first, message) => {
+    const at = Number(message.at) || 0;
+    return at > 0 && (first <= 0 || at < first) ? at : first;
+  }, 0);
+  const staleTurnIDs = new Set<string>();
+  previous.forEach((message) => {
+    const turnID = messageTurnID(message.id);
+    if (!turnID || parsedTurnIDs.has(turnID)) {
+      return;
+    }
+    const at = Number(message.at) || 0;
+    const olderThanAuthoritativeDetail = (
+      (authoritativeAt > 0 && at > 0 && authoritativeAt > at)
+      || (parsedFirstAt > 0 && at > 0 && parsedFirstAt > at)
+    );
+    if (!olderThanAuthoritativeDetail) {
+      return;
+    }
+    if (isRecoverableAssistantMessage(message) || isConversationBusyStatus(message.status)) {
+      staleTurnIDs.add(turnID);
+    }
+  });
+  return staleTurnIDs;
+}
+
+function pruneStaleRecoverableRuntimeMessages(
+  previous: ChatMessage[],
+  parsed: ChatMessage[],
+  authoritativeAt: number,
+): ChatMessage[] {
+  const staleTurnIDs = staleRecoverableRuntimeTurnIDs(previous, parsed, authoritativeAt);
+  if (staleTurnIDs.size === 0) {
+    return previous;
+  }
+  return previous.filter((message) => !staleTurnIDs.has(messageTurnID(message.id)));
+}
+
 function latestRecoverableRuntimeStateAt(messages: ChatMessage[]): number {
   let latest = 0;
   messages.forEach((message) => {
@@ -1978,7 +2024,7 @@ function markRuntimeTurnMessagesProcessEventsPartial(messages: ChatMessage[], pa
   });
 }
 
-function normalizeRuntimeSession(
+export function normalizeRuntimeSession(
   item: RuntimeSessionDetailPayload,
   previous?: ChatSession | null,
   sourceRoute: ConversationRoute = "chat",
@@ -1988,37 +2034,50 @@ function normalizeRuntimeSession(
   if (!id) {
     return null;
   }
-  const hasDetailTurns = Array.isArray(item.turns)
+  const hasTurnPayload = Array.isArray(item.turns)
     && (context.source !== "summary" || item.turns.length > 0);
-  const rawParsedMessages = hasDetailTurns
+  const hasAuthoritativeTurnDetail = hasTurnPayload && context.source !== "event";
+  const createdAt = normalizeOptionalDateValue(item.created_at) || previous?.createdAt || Date.now();
+  const updatedAt = normalizeOptionalDateValue(item.updated_at);
+  const lastOutputAt = normalizeOptionalDateValue(item.last_output_at);
+  const incomingSummaryAt = latestTimestamp(
+    normalizeOptionalDateValue(item.activity_at),
+    lastOutputAt,
+    updatedAt,
+    createdAt,
+  );
+  const rawParsedMessages = hasTurnPayload
     ? item.turns.flatMap((turn) => normalizeRuntimeTurnMessages(id, turn, sourceRoute))
     : null;
   const parsedMessages = rawParsedMessages && previous?.messages.length
     ? rawParsedMessages.map((message) => mergeIncomingRuntimeMessage(previous.messages, message))
     : rawParsedMessages;
   const incomingPaging = normalizeRuntimeSessionTurnPagingPayload(item.turns_paging);
+  const previousMessages = hasAuthoritativeTurnDetail && parsedMessages
+    ? pruneStaleRecoverableRuntimeMessages(previous?.messages || [], parsedMessages, incomingSummaryAt)
+    : previous?.messages || [];
   const shouldMergeRuntimeMessages = parsedMessages
-    && previous?.messages.length
-    && (Boolean(incomingPaging) || isPagedRuntimeSessionTurnPayload(item, incomingPaging) || parsedMessages.length < previous.messages.length);
+    && previousMessages.length
+    && (Boolean(incomingPaging) || isPagedRuntimeSessionTurnPayload(item, incomingPaging) || parsedMessages.length < previousMessages.length);
   const messages = parsedMessages
     ? (shouldMergeRuntimeMessages
-      ? mergePagedMessages(previous.messages, parsedMessages)
-      : previous?.messages.length && !shouldUseParsedMessages(previous.messages, parsedMessages)
-        ? previous.messages
+      ? mergePagedMessages(previousMessages, parsedMessages)
+      : previousMessages.length && !shouldUseParsedMessages(previousMessages, parsedMessages)
+        ? previousMessages
         : parsedMessages)
-    : previous?.messages || [];
+    : previousMessages;
   const hasExplicitSkillIDs = Array.isArray(item.skill_ids);
-  const createdAt = normalizeOptionalDateValue(item.created_at) || previous?.createdAt || Date.now();
-  const updatedAt = normalizeOptionalDateValue(item.updated_at);
-  const lastOutputAt = normalizeOptionalDateValue(item.last_output_at);
   const latestMessageAt = latestTimestamp(...messages.map((message) => Number(message.at) || 0));
   const activityAt = normalizeOptionalDateValue(item.activity_at)
     || latestTimestamp(lastOutputAt, updatedAt, latestMessageAt, createdAt);
   const inferredFreshnessAt = latestTimestamp(activityAt, updatedAt, lastOutputAt, createdAt, previous?.freshnessAt || 0);
   const freshnessAt = inferredFreshnessAt;
-  const detailFreshnessAt = hasDetailTurns
+  const detailFreshnessAt = hasAuthoritativeTurnDetail
     ? freshnessAt
     : previous?.detailFreshnessAt || 0;
+  const messagesLoaded = hasAuthoritativeTurnDetail
+    ? true
+    : previous?.messagesLoaded;
   return {
     id,
     sourceRoute: previous?.sourceRoute || sourceRoute,
@@ -2043,7 +2102,7 @@ function normalizeRuntimeSession(
     skillIDsExplicit: hasExplicitSkillIDs ? true : previous?.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(item.mcp_ids || previous?.mcpIDs || []),
     messages,
-    messagesLoaded: hasDetailTurns ? true : previous?.messagesLoaded,
+    messagesLoaded,
     serverBacked: true,
     turnsPaging: mergeRuntimeSessionTurnPagingPayload(previous, incomingPaging, messages),
   };
@@ -2261,11 +2320,13 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
         ? previous?.turnsPaging
         : mergeRuntimeSessionTurnPagingPayload(previous, normalizedSession.turnsPaging, compactedMessages),
     };
+    const mergedActivityAt = resolveSessionActivityAt(mergedSession);
+    const mergedFreshnessAt = mergedSession.freshnessAt || mergedActivityAt;
     merged.set(sessionID, {
       ...mergedSession,
       id: sessionID,
-      activityAt: resolveSessionActivityAt(mergedSession),
-      freshnessAt: mergedSession.freshnessAt || resolveSessionActivityAt(mergedSession),
+      activityAt: mergedActivityAt,
+      freshnessAt: mergedFreshnessAt,
     });
   });
   existing

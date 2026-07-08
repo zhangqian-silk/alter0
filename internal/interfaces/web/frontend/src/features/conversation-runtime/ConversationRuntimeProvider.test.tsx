@@ -4,6 +4,7 @@ import {
   CHAT_RUNTIME_CACHE_SESSION_TTL_MS,
   ConversationRuntimeProvider,
   mergeRuntimeSessions,
+  normalizeRuntimeSession,
   resetConversationRuntimeCache,
   resolveChatSessionPollPlan,
   resolveRuntimeResyncSessionIDs,
@@ -259,6 +260,21 @@ function SessionListHarness() {
       <output data-testid="sessions">
         {runtime.sessionItems.map((session) => `${session.title}:${session.pinned ? "pinned" : "unpinned"}`).join("|")}
       </output>
+    </div>
+  );
+}
+
+function FocusSessionHarness() {
+  const runtime = useConversationRuntimeWorkspace();
+  return (
+    <div>
+      <button type="button" onClick={() => runtime.focusSession("c_stalechat0000000")}>
+        focus stale
+      </button>
+      <button type="button" onClick={() => runtime.focusSession("c_otherchat0000000")}>
+        focus other
+      </button>
+      <output data-testid="active-session-id">{runtime.activeSession?.id || ""}</output>
     </div>
   );
 }
@@ -1796,6 +1812,257 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("active-session-title")).toHaveTextContent("Cached resilient chat");
     expect(screen.getByTestId("message-texts")).toHaveTextContent("resilient answer 1");
     expect(screen.getByTestId("message-texts")).toHaveTextContent(`resilient answer ${cachedTurnCount}`);
+  });
+
+  it("keeps cached Chat messages loaded when a newer summary arrives without turns", async () => {
+    window.history.replaceState(window.history.state, "", "/chat?session_id=c_otherchat0000000");
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_otherchat0000000" }));
+    window.localStorage.setItem(
+      LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        activeSessionByRoute: { chat: "c_otherchat0000000" },
+        sessionsByRoute: {
+          chat: [
+            {
+              id: "c_stalechat0000000",
+              status: "ready",
+              title: "Stale chat",
+              createdAt: Date.parse("2026-04-23T03:20:00Z"),
+              updatedAt: Date.parse("2026-04-23T03:30:00Z"),
+              lastOutputAt: Date.parse("2026-04-23T03:30:00Z"),
+              activityAt: Date.parse("2026-04-23T03:30:00Z"),
+              freshnessAt: Date.parse("2026-04-23T03:30:00Z"),
+              detailFreshnessAt: Date.parse("2026-04-23T03:30:00Z"),
+              pinned: false,
+              targetID: "codex",
+              targetName: "Codex",
+              messages: [{
+                id: "turn-old:assistant",
+                role: "assistant",
+                text: "old cached answer",
+                attachments: [],
+                route: "chat",
+                source: "runtime",
+                error: false,
+                status: "done",
+                at: Date.parse("2026-04-23T03:30:00Z"),
+                processEvents: [],
+              }],
+              messagesLoaded: true,
+              serverBacked: true,
+              turnsPaging: { has_more_before: false },
+            },
+            {
+              id: "c_otherchat0000000",
+              status: "ready",
+              title: "Other chat",
+              createdAt: Date.parse("2026-04-23T03:25:00Z"),
+              updatedAt: Date.parse("2026-04-23T03:31:00Z"),
+              lastOutputAt: Date.parse("2026-04-23T03:31:00Z"),
+              activityAt: Date.parse("2026-04-23T03:31:00Z"),
+              freshnessAt: Date.parse("2026-04-23T03:31:00Z"),
+              detailFreshnessAt: Date.parse("2026-04-23T03:31:00Z"),
+              pinned: false,
+              targetID: "codex",
+              targetName: "Codex",
+              messages: [{
+                id: "turn-other:assistant",
+                role: "assistant",
+                text: "other answer",
+                attachments: [],
+                route: "chat",
+                source: "runtime",
+                error: false,
+                status: "done",
+                at: Date.parse("2026-04-23T03:31:00Z"),
+                processEvents: [],
+              }],
+              messagesLoaded: true,
+              serverBacked: true,
+              turnsPaging: { has_more_before: false },
+            },
+          ],
+        },
+      }),
+    );
+
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return {
+            items: [
+              {
+                id: "c_stalechat0000000",
+                title: "Stale chat",
+                status: "ready",
+                created_at: "2026-04-23T03:20:00Z",
+                updated_at: "2026-04-23T03:40:00Z",
+                last_output_at: "2026-04-23T03:40:00Z",
+                activity_at: "2026-04-23T03:40:00Z",
+              },
+              {
+                id: "c_otherchat0000000",
+                title: "Other chat",
+                status: "ready",
+                created_at: "2026-04-23T03:25:00Z",
+                updated_at: "2026-04-23T03:31:00Z",
+                last_output_at: "2026-04-23T03:31:00Z",
+                activity_at: "2026-04-23T03:31:00Z",
+              },
+            ],
+          };
+        case "/api/chat/sessions/c_otherchat0000000":
+          return {
+            session: {
+              id: "c_otherchat0000000",
+              title: "Other chat",
+              status: "ready",
+              created_at: "2026-04-23T03:25:00Z",
+              updated_at: "2026-04-23T03:31:00Z",
+              last_output_at: "2026-04-23T03:31:00Z",
+              turns: [{
+                id: "turn-other",
+                prompt: "other prompt",
+                status: "success",
+                started_at: "2026-04-23T03:31:00Z",
+                finished_at: "2026-04-23T03:31:02Z",
+                final_output: "other answer",
+              }],
+              turns_paging: { has_more_before: false },
+            },
+          };
+        case "/api/chat/sessions/c_stalechat0000000":
+          throw new Error("summary-only refresh should not force stale chat detail hydration");
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <FocusSessionHarness />
+        <MessageTextHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("active-session-id")).toHaveTextContent("c_otherchat0000000"));
+    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("other answer"));
+    apiClientMock.get.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "focus stale" }));
+
+    await waitFor(() => expect(screen.getByTestId("active-session-id")).toHaveTextContent("c_stalechat0000000"));
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("old cached answer");
+    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions/c_stalechat0000000");
+  });
+
+  it("merges Chat event turn patches without marking detail messages loaded", () => {
+    const previous = chatSessionFixture({
+      id: "c_eventpatch000000",
+      status: "local_running",
+      updatedAt: Date.parse("2026-04-23T03:30:00Z"),
+      activityAt: Date.parse("2026-04-23T03:30:00Z"),
+      freshnessAt: Date.parse("2026-04-23T03:30:00Z"),
+      detailFreshnessAt: 0,
+      messages: [],
+      messagesLoaded: false,
+      turnsPaging: undefined,
+    });
+
+    const normalized = normalizeRuntimeSession({
+      id: "c_eventpatch000000",
+      title: "Event patch",
+      status: "ready",
+      created_at: "2026-04-23T03:20:00Z",
+      updated_at: "2026-04-23T03:31:00Z",
+      turns: [{
+        id: "turn-event",
+        prompt: "event prompt",
+        status: "success",
+        started_at: "2026-04-23T03:31:00Z",
+        finished_at: "2026-04-23T03:31:01Z",
+        final_output: "event answer",
+      }],
+    }, previous, "chat", { source: "event" });
+
+    expect(normalized?.messages.map((message) => message.text)).toEqual(["event prompt", "event answer"]);
+    expect(normalized?.messagesLoaded).toBe(false);
+    expect(normalized?.detailFreshnessAt).toBe(0);
+  });
+
+  it("drops stale recoverable Chat placeholders when a ready detail page returns a newer turn", () => {
+    const previous = chatSessionFixture({
+      id: "c_jwq2bz6wjw3lyusw",
+      status: "busy",
+      updatedAt: Date.parse("2026-07-08T10:01:00Z"),
+      activityAt: Date.parse("2026-07-08T10:01:00Z"),
+      freshnessAt: Date.parse("2026-07-08T10:01:00Z"),
+      detailFreshnessAt: 0,
+      messagesLoaded: false,
+      messages: [
+        {
+          id: "turn-1:user",
+          role: "user",
+          text: "old prompt",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "running",
+          at: Date.parse("2026-07-08T10:01:00Z"),
+          processEvents: [],
+        },
+        {
+          id: "turn-1:assistant",
+          role: "assistant",
+          text: "",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "running",
+          at: Date.parse("2026-07-08T10:01:01Z"),
+          processEvents: [],
+        },
+      ],
+      turnsPaging: undefined,
+    });
+
+    const normalized = normalizeRuntimeSession({
+      id: "c_jwq2bz6wjw3lyusw",
+      title: "Ready detail",
+      status: "ready",
+      created_at: "2026-07-08T09:59:32Z",
+      updated_at: "2026-07-08T10:19:48Z",
+      last_output_at: "2026-07-08T10:19:40Z",
+      activity_at: "2026-07-08T10:19:48Z",
+      turns_paging: {
+        total: 2,
+        has_more_before: true,
+        oldest_turn_id: "turn-2",
+        newest_turn_id: "turn-2",
+        next_before_turn_id: "turn-2",
+      },
+      turns: [{
+        id: "turn-2",
+        prompt: "new prompt",
+        status: "success",
+        started_at: "2026-07-08T10:19:00Z",
+        finished_at: "2026-07-08T10:19:40Z",
+        final_output: "new ready answer",
+      }],
+    }, previous, "chat", { source: "detail" });
+
+    expect(normalized?.status).toBe("ready");
+    expect(normalized?.messages.map((message) => message.id)).toEqual(["turn-2:user", "turn-2:assistant"]);
+    expect(normalized?.messages.map((message) => message.text)).toEqual(["new prompt", "new ready answer"]);
+    expect(normalized?.messagesLoaded).toBe(true);
+    expect(normalized?.turnsPaging?.has_more_before).toBe(true);
   });
 
   it("keeps runtime trace events when detail refresh fills a cached assistant message", () => {
