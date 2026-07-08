@@ -146,7 +146,7 @@ export type RuntimeWorkspacePageController = {
   composerNode?: ReactNode;
 };
 
-function RuntimeWorkspaceNavigationSessionList({
+export function RuntimeWorkspaceNavigationSessionList({
   sessionList,
 }: {
   sessionList: RuntimeWorkspacePageController["sessionList"];
