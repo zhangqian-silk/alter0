@@ -18,7 +18,7 @@ import (
 const chatSessionOwnerID = "chat"
 const defaultChatRuntimeTurnDetailLimit = 20
 const maxChatRuntimeTurnDetailLimit = 160
-const maxChatRuntimeTurnDetailBytes = 256 * 1024
+const maxChatRuntimeTurnDetailBytes = 1024 * 1024
 
 type chatRuntimeClientIDContextKey struct{}
 
@@ -650,7 +650,7 @@ func pageChatRuntimeTurns(turns []chatruntimeapp.TurnSummary, r *http.Request) (
 }
 
 func approximateChatRuntimeTurnBytes(turn chatruntimeapp.TurnSummary) int {
-	raw, err := json.Marshal(turn)
+	raw, err := json.Marshal(buildChatRuntimeTurnDTO(turn, 1))
 	if err != nil {
 		return len(turn.ID) + len(turn.Prompt) + len(turn.FinalOutput)
 	}
