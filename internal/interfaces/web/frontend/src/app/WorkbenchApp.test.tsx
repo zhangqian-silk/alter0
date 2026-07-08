@@ -117,6 +117,26 @@ vi.mock("../features/shell/components/PrimaryNav", () => ({
 }));
 
 import { WorkbenchApp } from "./WorkbenchApp";
+import { resetConversationRuntimeCache } from "../features/conversation-runtime/ConversationRuntimeProvider";
+
+function jsonResponse(payload: unknown) {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function stubChatRuntimeFetch(items: unknown[] = []) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const path = input.toString();
+    if (path === "/api/chat/sessions") {
+      return jsonResponse({ items });
+    }
+    return jsonResponse({ items: [] });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
 
 describe("WorkbenchApp", () => {
   beforeEach(() => {
@@ -126,10 +146,17 @@ describe("WorkbenchApp", () => {
     mockRuntimeRouteHostRegistersRail = true;
     mockCreateMobileViewportSyncController.mockClear();
     mockViewportSyncDestroy.mockClear();
+    resetConversationRuntimeCache();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    resetConversationRuntimeCache();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     window.history.replaceState({}, "", "/");
     document.documentElement.lang = "en";
   });
@@ -164,6 +191,43 @@ describe("WorkbenchApp", () => {
     expect(container.querySelector(".app-shell")).toHaveAttribute("data-workbench-route", "settings");
     expect(container.querySelector(".chat-pane")).toHaveAttribute("data-route", "settings");
     expect(screen.queryByTestId("runtime-route-host")).not.toBeInTheDocument();
+  });
+
+  it("loads the real Chat session rail when Settings is opened directly", async () => {
+    window.history.replaceState({}, "", "/settings");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = input.toString();
+      if (path === "/api/chat/sessions") {
+        return jsonResponse({
+          items: [
+            {
+              id: "c_51jttwiv4yggqagk",
+              title: "Real settings session",
+              status: "ready",
+              created_at: "2026-07-08T10:00:00Z",
+              updated_at: "2026-07-08T10:05:00Z",
+              activity_at: "2026-07-08T10:05:00Z",
+              turns: [],
+            },
+          ],
+        });
+      }
+      return jsonResponse({ items: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<WorkbenchApp />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/chat/sessions",
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("Real settings session");
+    });
+    expect(screen.getByTestId("primary-nav-session-rail-body")).not.toHaveTextContent(/^New$/);
   });
 
   it("uses an overlay on mobile nav and closes it after route navigation", async () => {
@@ -279,6 +343,7 @@ describe("WorkbenchApp", () => {
   });
 
   it("keeps the Chat session rail visible when opening Settings from the sidebar shortcut", async () => {
+    const fetchMock = stubChatRuntimeFetch([]);
     render(<WorkbenchApp />);
 
     await waitFor(() => {
@@ -293,12 +358,14 @@ describe("WorkbenchApp", () => {
     });
     expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-route", "settings");
     expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByTestId("primary-nav-session-rail-body")).toHaveTextContent("session rail body:chat");
     expect(screen.queryByTestId("runtime-route-host")).not.toBeInTheDocument();
   });
 
   it("does not show a selected fallback conversation while Settings owns the right pane", async () => {
     mockRuntimeRouteHostRegistersRail = false;
+    stubChatRuntimeFetch([]);
 
     render(<WorkbenchApp />);
 
@@ -308,8 +375,9 @@ describe("WorkbenchApp", () => {
       expect(screen.getByTestId("route-body")).toHaveAttribute("data-route", "settings");
     });
     expect(screen.getByTestId("primary-nav")).toHaveAttribute("data-session-rail-route", "chat");
-    expect(screen.getByTestId("primary-nav-session-rail-body").querySelector(".runtime-session-card")).not.toHaveClass("is-active");
-    expect(screen.getByTestId("primary-nav-session-rail-body").querySelector(".runtime-session-select")).not.toHaveClass("active");
+    expect(screen.getByTestId("primary-nav-session-rail-body").querySelector("[data-runtime-session-list-placeholder]")).not.toBeInTheDocument();
+    expect(screen.getByTestId("primary-nav-session-rail-body").querySelector(".runtime-session-card.is-active")).not.toBeInTheDocument();
+    expect(screen.getByTestId("primary-nav-session-rail-body").querySelector(".runtime-session-select.active")).not.toBeInTheDocument();
   });
 
   it("keeps the Chat runtime session rail when navigating to the removed ChatRuntime route", async () => {

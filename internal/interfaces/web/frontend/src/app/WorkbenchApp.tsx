@@ -14,6 +14,8 @@ import { ReactManagedRouteBody } from "../features/shell/components/ReactManaged
 import { RuntimeWorkspaceHeader } from "../features/shell/components/RuntimeWorkspaceHeader";
 import { RuntimeWorkspaceShell } from "../features/shell/components/RuntimeWorkspaceShell";
 import { RuntimeRouteHost } from "../features/shell/components/RuntimeRouteHost";
+import { ConversationRuntimeProvider } from "../features/conversation-runtime/ConversationRuntimeProvider";
+import { ConversationSessionRailBridge } from "../features/conversation-runtime/ConversationSessionRailBridge";
 import { createMobileViewportSyncController } from "../shared/viewport/mobileViewportSync";
 
 function blurActiveRuntimeInput() {
@@ -60,6 +62,7 @@ export function WorkbenchApp() {
   const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());
   const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);
   const [runtimeSessionRail, setRuntimeSessionRailState] = useState<WorkbenchSessionRail | null>(null);
+  const [settingsSessionRailHydrationActive, setSettingsSessionRailHydrationActive] = useState(false);
   const setRuntimeSessionRail = useCallback((rail: WorkbenchSessionRail | null) => {
     if (!rail) {
       return;
@@ -68,10 +71,23 @@ export function WorkbenchApp() {
       if (current === rail) {
         return current;
       }
+      if (rail.versionKey && current?.route === rail.route && current.versionKey === rail.versionKey) {
+        return current;
+      }
       return rail;
     });
   }, []);
   const runtimeRouteActive = isConversationRoute(route);
+  const settingsRouteActive = route === "settings";
+  useEffect(() => {
+    if (!settingsRouteActive) {
+      setSettingsSessionRailHydrationActive(false);
+      return;
+    }
+    if (!runtimeSessionRail) {
+      setSettingsSessionRailHydrationActive(true);
+    }
+  }, [runtimeSessionRail, settingsRouteActive]);
   const fallbackSessionRail = useMemo<WorkbenchSessionRail | null>(() => {
     const fallbackSelected = runtimeRouteActive;
     const newLabel = language === "zh" ? "新对话" : "New";
@@ -104,7 +120,11 @@ export function WorkbenchApp() {
       ),
     };
   }, [language, runtimeRouteActive]);
-  const visibleSessionRail = route === "settings" || runtimeRouteActive ? (runtimeSessionRail ?? fallbackSessionRail) : null;
+  const visibleSessionRail = runtimeRouteActive
+    ? (runtimeSessionRail ?? fallbackSessionRail)
+    : settingsRouteActive
+      ? runtimeSessionRail
+      : null;
   const runtimeSessionsUseNav = Boolean(visibleSessionRail);
   const navOpen = mobilePanel === "nav";
   const sessionPaneOpen = !runtimeSessionsUseNav && mobilePanel === "sessions";
@@ -220,6 +240,11 @@ export function WorkbenchApp() {
   return (
     <WorkbenchContext.Provider value={contextValue}>
       <div className={shellClassName} data-workbench-route={route}>
+        {settingsRouteActive && settingsSessionRailHydrationActive ? (
+          <ConversationRuntimeProvider route="chat" language={language}>
+            <ConversationSessionRailBridge language={language} />
+          </ConversationRuntimeProvider>
+        ) : null}
         {isMobileViewport ? null : primaryNav}
         <main className="workbench-main">
           <div className="chat-pane page-mode workbench-pane-shell" data-route={route} data-workbench-pane-shell>
