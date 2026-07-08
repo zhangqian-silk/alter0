@@ -1,6 +1,6 @@
 # Conversation & Session Experience Requirements
 
-> Last update: 2026-07-06
+> Last update: 2026-07-08
 
 ## 领域边界
 
@@ -119,7 +119,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 的完整消息快照与轻量会话信息快照读取时按 session 合并：同一 session 优先保留完整消息、过程事件、附件引用与 `turnsPaging`，轻量信息快照只补齐缺失会话摘要和列表可见字段。完整快照中已有某条会话时，不得因此丢弃轻量快照里的其他最近会话；轻量快照也不得把完整快照中的 `messagesLoaded=true`、过程详情或已加载历史降级为空列表。
 - `Chat` 需复用 Chat session store 作为服务端会话事实来源，记录 `session_id -> title / skills / status / turns / pinned / updated_at` 等最小恢复视图；`updated_at` 是会话摘要与详情合并的新鲜度依据，不再维护独立版本字段。浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
-- `Chat` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前Chat 会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。列表项主体只展示标题，真实会话尾侧固定提供单个三点更多按钮；展开菜单承载置顶、查看详情与删除操作，查看详情会聚焦该会话并打开 `Details` 面板且不主动收起已打开的移动会话抽屉，删除操作必须二次确认后才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、会话标识、Skill 标签或额外摘要。运行页空列表、Chat 本地空白草稿和 Chat 本地空白草稿优先展示一条 active `New` 占位会话；`New` 草稿/占位只作为输入入口，不显示三点菜单，不支持置顶、详情或删除，同一路径内重复点击 `New` 只聚焦既有空白虚拟会话，不创建多个空会话。`/chat` 首次发送时创建真实 Chat session；短 canonical id 继续用于接口、持久化、URL 与工作区隔离，不直接作为列表展示值。
+- `Chat` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前Chat 会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。从 Chat 切到 Settings 时复用当前已注册 Chat 会话 rail，不因页面切换主动刷新；直接打开 `/settings` 或当前没有已注册会话 rail 时，才挂载 Chat session 数据源并请求 `/api/chat/sessions`，以服务端返回的真实会话或真实空列表渲染；不得把本地 fallback 的单条 `New` 占位当作 Settings 侧栏会话列表。列表项主体只展示标题，真实会话尾侧固定提供单个三点更多按钮；展开菜单承载置顶、查看详情与删除操作，查看详情会聚焦该会话并打开 `Details` 面板且不主动收起已打开的移动会话抽屉，删除操作必须二次确认后才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、会话标识、Skill 标签或额外摘要。运行页空列表、Chat 本地空白草稿和 Chat 本地空白草稿优先展示一条 active `New` 占位会话；`New` 草稿/占位只作为输入入口，不显示三点菜单，不支持置顶、详情或删除，同一路径内重复点击 `New` 只聚焦既有空白虚拟会话，不创建多个空会话。`/chat` 首次发送时创建真实 Chat session；短 canonical id 继续用于接口、持久化、URL 与工作区隔离，不直接作为列表展示值。
 - `Chat` 的会话列表项与 workspace header 状态按钮共享同一会话状态语义：前端按当前 assistant 消息与任务态派生 `ready / busy / failed / interrupted`；其中 `streaming / queued / running / in_progress`、空 assistant 占位与挂起任务映射为 `busy`，错误、失败、取消与显式 `message.error` 映射为 `failed`，请求已被接受但恢复失败时映射为 `interrupted`，其余稳定态映射为 `ready`。列表项只在 `busy` 时于标题旁显示 loading，`ready / failed / interrupted` 不显示行内状态灯；workspace header 的状态按钮可见层只显示信号，状态名称只保留给读屏与悬浮语义。
 
 ## 消息结果与恢复
