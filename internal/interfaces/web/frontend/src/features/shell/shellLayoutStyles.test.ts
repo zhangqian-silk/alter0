@@ -124,6 +124,15 @@ describe("shell layout stylesheet", () => {
     );
   });
 
+  it("keeps the mobile runtime composer input large enough to avoid iOS focus zoom", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\[data-runtime-view="conversation"\] \.runtime-composer-input,\s*\[data-runtime-composer-view="conversation"\] \.runtime-composer-input\s*\{[^}]*font-size:\s*16px;/,
+    );
+  });
+
   it("keeps the mobile runtime composer in the workspace footer instead of a fixed overlay", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/runtimeKeyboardIsolation.css"), "utf8");

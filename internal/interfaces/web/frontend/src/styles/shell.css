@@ -13785,6 +13785,7 @@ select:focus-visible,
   [data-runtime-composer-view="conversation"] .runtime-composer-input {
     min-height: 36px;
     padding: 0 2px;
+    font-size: 16px;
     line-height: 1.45;
   }
 
