@@ -236,6 +236,16 @@ function resolveConversationSessionSignalTone(session: {
     error?: boolean;
   }>;
 } | null | undefined): ConversationSessionSignalTone {
+  const sessionStatus = normalizeConversationSessionMessageStatus(session?.status || "");
+  if (["error", "failed", "canceled", "cancelled", "interrupted"].includes(sessionStatus)) {
+    return "failed";
+  }
+  if (["streaming", "queued", "running", "in_progress", "inprogress", "busy", "local_running", "recovering"].includes(sessionStatus)) {
+    return "busy";
+  }
+  if (sessionStatus) {
+    return "ready";
+  }
   const messages = Array.isArray(session?.messages) ? session.messages : [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -250,13 +260,6 @@ function resolveConversationSessionSignalTone(session: {
       return "busy";
     }
     return "ready";
-  }
-  const sessionStatus = normalizeConversationSessionMessageStatus(session?.status || "");
-  if (["error", "failed", "canceled", "cancelled"].includes(sessionStatus)) {
-    return "failed";
-  }
-  if (["streaming", "queued", "running", "in_progress", "inprogress", "busy"].includes(sessionStatus)) {
-    return "busy";
   }
   return "ready";
 }

@@ -23,6 +23,16 @@ function resolveSessionSignalTone(session: {
     error?: boolean;
   }>;
 }): ConversationSessionSignalTone {
+  const status = normalizeStatus(session.status);
+  if (["error", "failed", "canceled", "cancelled", "interrupted"].includes(status)) {
+    return "failed";
+  }
+  if (["streaming", "queued", "running", "in_progress", "inprogress", "busy", "local_running", "recovering"].includes(status)) {
+    return "busy";
+  }
+  if (status) {
+    return "ready";
+  }
   const messages = Array.isArray(session.messages) ? session.messages : [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -37,13 +47,6 @@ function resolveSessionSignalTone(session: {
       return "busy";
     }
     return "ready";
-  }
-  const status = normalizeStatus(session.status);
-  if (["error", "failed", "canceled", "cancelled"].includes(status)) {
-    return "failed";
-  }
-  if (["streaming", "queued", "running", "in_progress", "inprogress", "busy"].includes(status)) {
-    return "busy";
   }
   return "ready";
 }
