@@ -778,6 +778,114 @@ describe("ConversationRuntimeProvider", () => {
     ]);
   });
 
+  it("keeps restored ready detail authoritative when a stale busy partial carries old messages", () => {
+    const restoredDetail = chatSessionFixture({
+      status: "ready",
+      freshnessAt: Date.parse("2026-07-08T10:20:00Z"),
+      detailFreshnessAt: Date.parse("2026-07-08T10:20:00Z"),
+      updatedAt: Date.parse("2026-07-08T10:20:00Z"),
+      lastOutputAt: Date.parse("2026-07-08T10:20:00Z"),
+      activityAt: Date.parse("2026-07-08T10:20:00Z"),
+      messagesLoaded: true,
+      messages: [
+        {
+          id: "turn-1:user",
+          role: "user",
+          text: "first prompt",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "done",
+          at: Date.parse("2026-07-08T10:01:00Z"),
+          processEvents: [],
+        },
+        {
+          id: "turn-1:assistant",
+          role: "assistant",
+          text: "first answer",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "done",
+          at: Date.parse("2026-07-08T10:02:00Z"),
+          processEvents: [],
+        },
+        {
+          id: "turn-2:user",
+          role: "user",
+          text: "second prompt",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "done",
+          at: Date.parse("2026-07-08T10:19:00Z"),
+          processEvents: [],
+        },
+        {
+          id: "turn-2:assistant",
+          role: "assistant",
+          text: "second answer",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "done",
+          at: Date.parse("2026-07-08T10:20:00Z"),
+          processEvents: [],
+        },
+      ],
+    });
+    const staleBusyPartial = chatSessionFixture({
+      status: "busy",
+      freshnessAt: Date.parse("2026-07-08T10:01:00Z"),
+      detailFreshnessAt: 0,
+      updatedAt: Date.parse("2026-07-08T10:01:00Z"),
+      lastOutputAt: 0,
+      activityAt: Date.parse("2026-07-08T10:01:00Z"),
+      messagesLoaded: false,
+      messages: [
+        {
+          id: "turn-stale:user",
+          role: "user",
+          text: "stale prompt",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "queued",
+          at: Date.parse("2026-07-08T10:01:00Z"),
+          processEvents: [],
+        },
+        {
+          id: "turn-stale:assistant",
+          role: "assistant",
+          text: "",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "running",
+          at: Date.parse("2026-07-08T10:01:01Z"),
+          processEvents: [],
+        },
+      ],
+    });
+
+    const merged = mergeRuntimeSessions([staleBusyPartial], [restoredDetail]);
+
+    expect(merged[0]?.status).toBe("ready");
+    expect(merged[0]?.messagesLoaded).toBe(true);
+    expect(merged[0]?.messages.map((message) => message.text)).toEqual([
+      "first prompt",
+      "first answer",
+      "second prompt",
+      "second answer",
+    ]);
+  });
+
   it("unblocks a restored ready detail when a cached placeholder assistant has no turn id", () => {
     const restoredDetail = chatSessionFixture({
       status: "ready",

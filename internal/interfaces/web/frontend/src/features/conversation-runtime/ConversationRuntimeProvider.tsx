@@ -2260,17 +2260,24 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
     const incomingFreshness = runtimeSessionFreshnessAt(normalizedSession);
     const previousFreshness = runtimeSessionFreshnessAt(previous);
     const incomingOlderThanPrevious = Boolean(previous && incomingFreshness > 0 && previousFreshness > incomingFreshness);
+    const incomingLatestMessageAt = latestTimestamp(...normalizedSession.messages.map((message) => Number(message.at) || 0));
+    const incomingPartialFreshness = latestTimestamp(incomingFreshness, incomingLatestMessageAt);
     const incomingStaleSummaryAgainstStableDetail = Boolean(
       previous
       && normalizedSession.messagesLoaded !== true
-      && normalizedSession.messages.length === 0
       && previous.messagesLoaded === true
+      && previous.detailFreshnessAt > 0
+      && incomingPartialFreshness > 0
+      && previous.detailFreshnessAt >= incomingPartialFreshness
+      && normalizedSession.messages.length <= previous.messages.length
       && previousFreshness >= incomingFreshness
       && !isConversationBusyStatus(previous.status)
       && !hasRecoverableRuntimeState(previous)
       && isConversationBusyStatus(normalizedSession.status),
     );
-    const messages = previous && normalizedSession.messagesLoaded === true
+    const messages = incomingStaleSummaryAgainstStableDetail
+      ? previous?.messages || []
+      : previous && normalizedSession.messagesLoaded === true
       ? mergePagedMessages(previous.messages, normalizedSession.messages)
       : normalizedSession.messages.length > 0
         ? normalizedSession.messages
