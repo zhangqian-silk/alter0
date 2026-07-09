@@ -73,7 +73,9 @@ export type RuntimeSessionEventDetail = {
 };
 
 type RuntimeSessionEventDetailResponse = {
-  event?: RuntimeSessionEventDetail;
+  event?: unknown;
+  blocks?: unknown[];
+  searchable?: boolean;
 };
 
 export type RuntimeSessionAttachmentUploadResponse = {
@@ -400,7 +402,20 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
     const payload = await apiClient.get<RuntimeSessionEventDetailResponse>(
       runtimeSessionEventDetailEndpoint(options.route, sessionID, turnID, eventID),
     );
-    return payload.event || null;
+    const event = payload.event || payload;
+    const blocks = Array.isArray(payload.blocks)
+      ? payload.blocks
+      : Array.isArray((event as { blocks?: unknown[] }).blocks)
+        ? (event as { blocks?: unknown[] }).blocks || []
+        : [];
+    if (!event || (!payload.event && blocks.length === 0 && !("id" in (event as object)))) {
+      return null;
+    }
+    return {
+      event,
+      blocks,
+      searchable: payload.searchable,
+    };
   }, [apiClient, options.route]);
 
   useEffect(() => {

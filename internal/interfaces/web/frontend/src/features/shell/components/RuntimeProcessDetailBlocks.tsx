@@ -64,7 +64,8 @@ function runtimeBlockToProcessDetailBlock(block: RuntimeBlock): RuntimeProcessDe
       return {
         type: "chatRuntime",
         title: block.title || "Shell",
-        content: [block.command, block.output].filter(Boolean).join("\n\n"),
+        command: block.command,
+        output: block.output,
         language: block.language,
         exit_code: typeof block.exit_code === "number" ? block.exit_code : block.exit_code ?? null,
       };
@@ -126,7 +127,9 @@ function renderRuntimeProcessDetailBlock(block: RuntimeProcessDetailBlock, key: 
   const blockTitle = normalizeText(block.title);
   const blockFile = normalizeText(block.file);
   const content = typeof block.content === "string" ? block.content : "";
-  if (!content.trim() && !blockTitle && !blockFile) {
+  const command = typeof block.command === "string" ? block.command : "";
+  const output = typeof block.output === "string" ? block.output : "";
+  if (!content.trim() && !command.trim() && !output.trim() && !blockTitle && !blockFile) {
     return null;
   }
   return (
@@ -147,17 +150,43 @@ function renderRuntimeProcessDetailBlock(block: RuntimeProcessDetailBlock, key: 
           </div>
         </div>
       ) : null}
-      {isRuntimeProcessNarrativeBlockType(blockType) ? (
+      {blockType === "chatruntime" ? (
+        <RuntimeShellDetailBlock command={command} output={output} />
+      ) : isRuntimeProcessNarrativeBlockType(blockType) ? (
         <MessageMarkdownHTML
           html={renderMessageMarkdownToHTML(content)}
           className="chatRuntime-step-content chatRuntime-step-richtext"
         />
       ) : (
-        <pre className={`chatRuntime-rich-pre chatRuntime-step-content${blockType === "diff" ? " chatRuntime-diff-block" : ""}`}>
+        <pre className={`chatRuntime-rich-pre chatRuntime-step-content chatRuntime-structured-output${blockType === "diff" ? " chatRuntime-diff-block" : ""}`}>
           <code>{content}</code>
         </pre>
       )}
     </section>
+  );
+}
+
+function RuntimeShellDetailBlock({ command, output }: { command: string; output: string }) {
+  return (
+    <div className="chatRuntime-shell-detail">
+      {command.trim() ? (
+        <ShellFragment label="Command" className="chatRuntime-shell-command" content={command} />
+      ) : null}
+      {output.trim() ? (
+        <ShellFragment label="Output" className="chatRuntime-shell-output" content={output} />
+      ) : null}
+    </div>
+  );
+}
+
+function ShellFragment({ label, className, content }: { label: string; className: string; content: string }) {
+  return (
+    <div className={`chatRuntime-shell-fragment ${className}`}>
+      <div className="chatRuntime-shell-label">{label}</div>
+      <pre className="chatRuntime-shell-pre">
+        <code>{content}</code>
+      </pre>
+    </div>
   );
 }
 

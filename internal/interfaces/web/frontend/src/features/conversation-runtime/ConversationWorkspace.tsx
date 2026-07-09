@@ -10,7 +10,7 @@ import {
 } from "../shell/components/codexSlashCommands";
 import { conversationMarkdownSyntaxFixture } from "../shell/components/MessageMarkdownSyntaxFixture";
 import { normalizeText } from "../shell/components/RouteBodyPrimitives";
-import { RUNTIME_EVENT_FILTER_OPTIONS } from "../shell/components/runtimeTraceEvents";
+import { RUNTIME_EVENT_FILTER_OPTIONS, runtimeTraceEventDetailID } from "../shell/components/runtimeTraceEvents";
 import { RuntimeComposer } from "../shell/components/RuntimeComposer";
 import { resolveRuntimeMobileLayoutState } from "../shell/components/runtimeMobileLayout";
 import { RuntimeWorkspacePage, type RuntimeWorkspacePageController } from "../shell/components/RuntimeWorkspacePage";
@@ -316,6 +316,7 @@ function useConversationWorkspaceController(
   });
   const [timelineScrollable, setTimelineScrollable] = useState(false);
   const [expandedProcessEvents, setExpandedProcessSteps] = useState<Record<string, boolean>>({});
+  const [processEventDetailStates, setProcessEventDetailStates] = useState<Record<string, "loading" | "failed">>({});
   const activeMessages = runtime.activeSession?.messages || [];
   const activeSessionID = runtime.activeSession?.id || "";
   const showMarkdownSyntaxDemo = shouldShowConversationMarkdownSyntaxDemo(runtime.route);
@@ -350,20 +351,58 @@ function useConversationWorkspaceController(
       });
       return changed ? next : current;
     });
+    setProcessEventDetailStates((current) => {
+      let changed = false;
+      const next: Record<string, "loading" | "failed"> = {};
+      Object.entries(current).forEach(([key, value]) => {
+        if (key.startsWith(processStepKeyPrefix)) {
+          changed = true;
+          return;
+        }
+        next[key] = value;
+      });
+      return changed ? next : current;
+    });
     toggleProcessRef.current(messageID);
   }, []);
   const toggleProcessStep = useCallback((messageID: string, stepID: string) => {
     const key = `${messageID}:${stepID}`;
+    const opening = !expandedProcessEvents[key];
+    const processEvent = activeMessages
+      .find((message) => message.id === messageID)
+      ?.processEvents
+      .find((event) => runtimeTraceEventDetailID(event) === stepID || event.id === stepID);
+    const needsDetail = Boolean(
+      opening
+      && processEvent
+      && processEvent.raw?.has_detail !== false
+      && (!Array.isArray(processEvent.blocks) || processEvent.blocks.length === 0),
+    );
     setExpandedProcessSteps((current) => ({
       ...current,
       [key]: !current[key],
     }));
-    if (!expandedProcessEvents[key]) {
-      void runtime.loadProcessEventDetail(messageID, stepID);
+    if (needsDetail) {
+      setProcessEventDetailStates((current) => ({ ...current, [key]: "loading" }));
+      void runtime.loadProcessEventDetail(messageID, stepID)
+        .then(() => {
+          setProcessEventDetailStates((current) => {
+            if (!current[key]) {
+              return current;
+            }
+            const next = { ...current };
+            delete next[key];
+            return next;
+          });
+        })
+        .catch(() => {
+          setProcessEventDetailStates((current) => ({ ...current, [key]: "failed" }));
+        });
     }
-  }, [expandedProcessEvents, runtime]);
+  }, [activeMessages, expandedProcessEvents, runtime]);
   useEffect(() => {
     setExpandedProcessSteps({});
+    setProcessEventDetailStates({});
   }, [timelineSessionID]);
   const visibleMessageCount = timelineWindow.sessionID === timelineSessionID
     ? timelineWindow.visibleCount
@@ -545,10 +584,11 @@ function useConversationWorkspaceController(
       language,
       onToggleProcess: toggleProcess,
       expandedProcessEvents,
+      processEventDetailStates,
       onToggleProcessEvent: toggleProcessStep,
       runtimeEventFilter: runtime.runtimeEventFilter,
     }),
-    [expandedProcessEvents, language, runtime.runtimeEventFilter, timelineSessionID, toggleProcess, toggleProcessStep, visibleMessages],
+    [expandedProcessEvents, language, processEventDetailStates, runtime.runtimeEventFilter, timelineSessionID, toggleProcess, toggleProcessStep, visibleMessages],
   );
   const loadEarlierMessages = useCallback(() => {
     if (!timelineSessionID || (hiddenMessageCount <= 0 && !hasRemoteEarlierMessages)) {

@@ -1410,6 +1410,24 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+.chatRuntime-structured-output {
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chatRuntime-structured-output code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  white-space: inherit;
+  word-break: inherit;
+  overflow-wrap: inherit;
+}
+
 .chatRuntime-step-richtext {
   display: block;
   width: 100%;

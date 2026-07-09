@@ -121,9 +121,9 @@ describe("legacy route layout stylesheet", () => {
     const html = readFileSync(resolve(currentDirectory, "../../../index.html"), "utf8");
     const legacyEntry = readFileSync(resolve(currentDirectory, "../../../public/legacy/chat.css"), "utf8");
 
-    expect(html).toContain('/legacy/chat.css?v=20260429-chat-runtime-process-wrap');
-    expect(legacyEntry).toContain('@import url("./chat-core.css?v=20260429-chat-runtime-process-wrap");');
-    expect(legacyEntry).toContain('@import url("./chat-routes.css?v=20260429-chat-runtime-process-wrap");');
-    expect(legacyEntry).toContain('@import url("./chat-runtime.css?v=20260429-chat-runtime-process-wrap");');
+    expect(html).toContain('/legacy/chat.css?v=20260709-structured-output');
+    expect(legacyEntry).toContain('@import url("./chat-core.css?v=20260709-structured-output");');
+    expect(legacyEntry).toContain('@import url("./chat-routes.css?v=20260709-structured-output");');
+    expect(legacyEntry).toContain('@import url("./chat-runtime.css?v=20260709-structured-output");');
   });
 });

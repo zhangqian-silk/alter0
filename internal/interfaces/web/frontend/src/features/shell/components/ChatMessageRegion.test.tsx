@@ -416,6 +416,64 @@ describe("ChatMessageRegion", () => {
     expect(document.querySelector("[data-chat-runtime-step-item='step-1'] .chatRuntime-step-body")).not.toHaveAttribute("hidden");
   });
 
+  it("keeps individual process event details collapsed when expanding the outer Thinking disclosure", () => {
+    const onToggleProcess = vi.fn();
+    const onToggleProcessEvent = vi.fn();
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "Final answer.",
+            processEvents: buildProcessSteps(),
+            processCollapsed: true,
+          }),
+        ]}
+        expandedProcessEvents={{}}
+        onToggleProcess={onToggleProcess}
+        onToggleProcessEvent={onToggleProcessEvent}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Thinking 4 steps/i }));
+
+    expect(onToggleProcess).toHaveBeenCalledWith("message-1");
+    expect(onToggleProcessEvent).not.toHaveBeenCalled();
+  });
+
+  it("waits for full process detail instead of rendering lightweight summaries", () => {
+    render(
+      <ChatMessageRegion
+        sessionId="session-1"
+        language="en"
+        messages={[
+          buildAssistantMessage({
+            text: "Final answer.",
+            processEvents: [
+              {
+                ...buildProcessEvent("step-loading", "Investigate merge freshness", ""),
+                summary: "The merge path still treats unchanged summaries as locally fresh.",
+                blocks: [],
+                raw: { has_detail: true },
+              },
+            ],
+            processCollapsed: false,
+          }),
+        ]}
+        expandedProcessEvents={{ "message-1:step-loading": true }}
+        processEventDetailStates={{ "message-1:step-loading": "loading" }}
+      />,
+    );
+
+    const step = document.querySelector("[data-chat-runtime-step-item='step-loading']") as HTMLElement;
+    expect(step.querySelector(".chatRuntime-step-body")).not.toHaveAttribute("hidden");
+    expect(step.querySelector(".chatRuntime-step-detail")).toHaveTextContent("Loading details...");
+    expect(step.querySelector(".chatRuntime-step-detail")).not.toHaveTextContent("locally fresh");
+    expect(step.querySelector(".chatRuntime-rich-block.type-markdown")).not.toBeInTheDocument();
+    expect(step.querySelector(".chatRuntime-step-summary-fallback")).not.toBeInTheDocument();
+  });
+
   it("renders shell process event details as chatRuntime blocks on the first expanded frame", () => {
     render(
       <ChatMessageRegion
@@ -459,9 +517,15 @@ describe("ChatMessageRegion", () => {
     );
 
     const step = document.querySelector("[data-chat-runtime-step-item='shell-step']") as HTMLElement;
-    const content = step.querySelector(".chatRuntime-step-content code") as HTMLElement;
-    expect(content).toBeInTheDocument();
-    expect(content.textContent).toBe("sed -n '1,120p' AGENTS.md\n\n# Rule\n\n## Collaboration");
+    const block = step.querySelector(".chatRuntime-rich-block.type-chatruntime") as HTMLElement;
+    const command = block.querySelector(".chatRuntime-shell-command code") as HTMLElement;
+    const output = block.querySelector(".chatRuntime-shell-output code") as HTMLElement;
+    expect(block).toBeInTheDocument();
+    expect(command).toBeInTheDocument();
+    expect(output).toBeInTheDocument();
+    expect(command.textContent).toBe("sed -n '1,120p' AGENTS.md");
+    expect(output.textContent).toBe("# Rule\n\n## Collaboration");
+    expect(block.querySelector(".chatRuntime-rich-pre.chatRuntime-step-content")).not.toBeInTheDocument();
     expect(step.querySelector(".chatRuntime-step-detail > .message-markdown-rendered")).not.toBeInTheDocument();
   });
 

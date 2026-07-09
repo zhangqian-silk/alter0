@@ -214,6 +214,8 @@ export type RuntimeProcessDetailBlockLike = {
   type?: string;
   title?: string;
   content?: string;
+  command?: string;
+  output?: string;
   language?: string;
   file?: string;
   start_line?: number;

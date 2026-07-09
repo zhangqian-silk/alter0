@@ -32,6 +32,8 @@ type MessageCopy = {
   processLabel: string;
   processEvents: (count: number) => string;
   processEmpty: string;
+  processDetailLoading: string;
+  processDetailFailed: string;
   processObservation: string;
   copyValue: string;
 };
@@ -54,6 +56,8 @@ const MESSAGE_COPY: Record<LegacyShellLanguage, MessageCopy> = {
     processLabel: "Thinking",
     processEvents: (count) => `${count} steps`,
     processEmpty: "No execution details.",
+    processDetailLoading: "Loading details...",
+    processDetailFailed: "Failed to load details.",
     processObservation: "Observation",
     copyValue: "Copy value",
   },
@@ -68,6 +72,8 @@ const MESSAGE_COPY: Record<LegacyShellLanguage, MessageCopy> = {
     processLabel: "已思考",
     processEvents: (count) => `${count} 步`,
     processEmpty: "暂无执行细节。",
+    processDetailLoading: "正在加载详情...",
+    processDetailFailed: "详情加载失败。",
     processObservation: "观察",
     copyValue: "复制内容",
   },
@@ -79,6 +85,7 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
   language,
   onToggleProcess,
   expandedProcessEvents,
+  processEventDetailStates,
   onToggleProcessEvent,
   runtimeEventFilter,
 }: {
@@ -87,6 +94,7 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
   language: LegacyShellLanguage;
   onToggleProcess?: (messageID: string) => void;
   expandedProcessEvents?: Record<string, boolean>;
+  processEventDetailStates?: Record<string, "loading" | "failed">;
   onToggleProcessEvent?: (messageID: string, stepID: string) => void;
   runtimeEventFilter?: RuntimeEventFilterID[];
 }) {
@@ -100,6 +108,7 @@ export const ChatMessageRegion = memo(function ChatMessageRegion({
         language,
         onToggleProcess,
         expandedProcessEvents,
+        processEventDetailStates,
         onToggleProcessEvent,
         runtimeEventFilter,
       })}
@@ -119,6 +128,7 @@ export function buildRuntimeSessionTimelineItems({
   language,
   onToggleProcess,
   expandedProcessEvents,
+  processEventDetailStates,
   onToggleProcessEvent,
   runtimeEventFilter,
   renderProcessEventDetail,
@@ -128,12 +138,14 @@ export function buildRuntimeSessionTimelineItems({
   const copy = MESSAGE_COPY[language];
   const filter = runtimeEventFilter || DEFAULT_RUNTIME_EVENT_FILTER;
   const expandedStepMap = expandedProcessEvents || {};
+  const detailStateMap = processEventDetailStates || {};
   return messages.map((message) => {
     const cacheKey = `${cacheScope}\u0000${language}\u0000${callbackCacheID}\u0000${stepCallbackCacheID}\u0000${message.id}`;
     const signature = [
       resolveChatTimelineItemSignature(message),
       filter.join(","),
       resolveExpandedProcessStepSignature(message.id, expandedStepMap),
+      resolveProcessEventDetailStateSignature(message.id, detailStateMap),
     ].join("\u0000");
     const cached = timelineItemCache.get(cacheKey);
     if (cached?.signature === signature) {
@@ -145,6 +157,7 @@ export function buildRuntimeSessionTimelineItems({
       copy,
       onToggleProcess,
       expandedStepMap,
+      detailStateMap,
       onToggleProcessEvent,
       filter,
       renderProcessEventDetail,
@@ -161,6 +174,7 @@ type BuildRuntimeSessionTimelineItemsOptions = {
   language: LegacyShellLanguage;
   onToggleProcess?: (messageID: string) => void;
   expandedProcessEvents?: Record<string, boolean>;
+  processEventDetailStates?: Record<string, "loading" | "failed">;
   onToggleProcessEvent?: (messageID: string, stepID: string) => void;
   runtimeEventFilter?: RuntimeEventFilterID[];
   renderProcessEventDetail?: (messageID: string, event: RuntimeTraceEvent) => ReactNode;
@@ -197,6 +211,15 @@ function resolveExpandedProcessStepSignature(messageID: string, expandedProcessE
   const prefix = `${messageID}:`;
   return Object.keys(expandedProcessEvents)
     .filter((key) => key.startsWith(prefix) && expandedProcessEvents[key])
+    .sort()
+    .join(",");
+}
+
+function resolveProcessEventDetailStateSignature(messageID: string, processEventDetailStates: Record<string, "loading" | "failed">) {
+  const prefix = `${messageID}:`;
+  return Object.entries(processEventDetailStates)
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([key, value]) => `${key}=${value}`)
     .sort()
     .join(",");
 }
@@ -276,6 +299,7 @@ function buildChatTimelineItem(
   copy: MessageCopy,
   onToggleProcess?: (messageID: string) => void,
   expandedProcessEvents: Record<string, boolean> = {},
+  processEventDetailStates: Record<string, "loading" | "failed"> = {},
   onToggleProcessEvent?: (messageID: string, stepID: string) => void,
   runtimeEventFilter: RuntimeEventFilterID[] = DEFAULT_RUNTIME_EVENT_FILTER,
   renderProcessEventDetail?: (messageID: string, event: RuntimeTraceEvent) => ReactNode,
@@ -362,6 +386,38 @@ function buildChatTimelineItem(
     typeof message.processCollapsed === "boolean"
       ? message.processCollapsed
       : Boolean(parsed.answer.trim()) && message.status !== "streaming";
+  const processEvents = parsed.events.map((step, index) => {
+    const stepID = runtimeTraceEventDetailID(step) || `${step.title}-${index}`;
+    const stepKey = chatProcessEventKey(message.id, stepID);
+    const expanded = Boolean(expandedProcessEvents[stepKey]);
+    const detailState = processEventDetailStates[stepKey];
+    return {
+      id: stepID,
+      itemClassName: "chatRuntime-step-item",
+      itemProps: {
+        "data-chat-runtime-step-item": stepID,
+        "data-conversation-process-step": stepID,
+        "data-runtime-event-kind": step.kind,
+        "data-runtime-event-source": step.source,
+      },
+      title: normalizeRuntimeTimelineText(step.summary || step.title) || `${copy.processLabel} ${index + 1}`,
+      titleClassName: "chatRuntime-step-title",
+      meta: runtimeEventDisclosureMeta(step, language),
+      expanded,
+      onToggle: () => onToggleProcessEvent?.(message.id, stepID),
+      toggleClassName: "chatRuntime-step-toggle",
+      toggleProps: {
+        "data-chat-runtime-step-toggle": stepID,
+        "data-conversation-process-step-toggle": stepID,
+      },
+      bodyClassName: "chatRuntime-step-body",
+      detail: (
+        <div className="chatRuntime-step-detail">
+          {renderProcessEventDetail?.(message.id, step) || runtimeEventDetail(step, detailState, copy)}
+        </div>
+      ),
+    };
+  });
 
   return {
     id: message.id,
@@ -398,36 +454,7 @@ function buildChatTimelineItem(
         onToggle: () => onToggleProcess?.(message.id),
         bodyClassName: "chatRuntime-process-body",
         emptyState: <div className="chatRuntime-process-empty">{copy.processEmpty}</div>,
-        events: parsed.events.map((step, index) => {
-          const stepID = runtimeTraceEventDetailID(step) || `${step.title}-${index}`;
-          const expanded = Boolean(expandedProcessEvents[chatProcessEventKey(message.id, stepID)]);
-          return {
-            id: stepID,
-            itemClassName: "chatRuntime-step-item",
-            itemProps: {
-              "data-chat-runtime-step-item": stepID,
-              "data-conversation-process-step": stepID,
-              "data-runtime-event-kind": step.kind,
-              "data-runtime-event-source": step.source,
-            },
-            title: normalizeRuntimeTimelineText(step.summary || step.title) || `${copy.processLabel} ${index + 1}`,
-            titleClassName: "chatRuntime-step-title",
-            meta: runtimeEventDisclosureMeta(step, language),
-            expanded,
-            onToggle: () => onToggleProcessEvent?.(message.id, stepID),
-            toggleClassName: "chatRuntime-step-toggle",
-            toggleProps: {
-              "data-chat-runtime-step-toggle": stepID,
-              "data-conversation-process-step-toggle": stepID,
-            },
-            bodyClassName: "chatRuntime-step-body",
-            detail: (
-              <div className="chatRuntime-step-detail">
-                {renderProcessEventDetail?.(message.id, step) || runtimeEventDetail(step)}
-              </div>
-            ),
-          };
-        }),
+        events: processEvents,
       },
       ...(parsed.answer.trim() ? [
         {
@@ -548,10 +575,21 @@ function runtimeEventDisclosureMeta(step: RuntimeTraceEvent, language: LegacyShe
   return <RuntimeProcessStepMeta event={step} language={language} />;
 }
 
-function runtimeEventDetail(event: RuntimeTraceEvent) {
+function runtimeEventDetail(
+  event: RuntimeTraceEvent,
+  detailState: "loading" | "failed" | undefined,
+  copy: MessageCopy,
+) {
+  const blocks = runtimeTraceEventToProcessDetailBlocks(event);
+  if (blocks.length === 0 && detailState === "loading") {
+    return <div className="chatRuntime-step-detail-state">{copy.processDetailLoading}</div>;
+  }
+  if (blocks.length === 0 && detailState === "failed") {
+    return <div className="chatRuntime-step-detail-state is-error">{copy.processDetailFailed}</div>;
+  }
   return (
     <RuntimeProcessDetailBlocks
-      blocks={runtimeTraceEventToProcessDetailBlocks(event)}
+      blocks={blocks}
       blockKeyPrefix={event.id}
     />
   );
