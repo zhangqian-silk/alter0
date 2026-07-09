@@ -1357,7 +1357,7 @@ func TestServiceKeepsThreadAfterCodexCompactionFailure(t *testing.T) {
 	}
 }
 
-func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
+func TestServiceListSortsByConversationUpdatedAt(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	service := &Service{
 		sessions: map[string]*runtimeSession{
@@ -1386,8 +1386,8 @@ func TestServiceListPrefersLastOutputAtOverUpdatedAt(t *testing.T) {
 	if len(items) != 2 {
 		t.Fatalf("expected 2 sessions, got %d", len(items))
 	}
-	if items[0].ID != "chat-output-newer" {
-		t.Fatalf("expected last output ordering, got first session %q", items[0].ID)
+	if items[0].ID != "chat-updated-newer" {
+		t.Fatalf("expected updated_at ordering, got first session %q", items[0].ID)
 	}
 }
 

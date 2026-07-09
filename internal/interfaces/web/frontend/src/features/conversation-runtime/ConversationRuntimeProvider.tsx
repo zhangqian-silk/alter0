@@ -1066,7 +1066,7 @@ function hasAuthoritativeReadyRuntimeSummary(session: ChatSession | null | undef
   if (recoverableAt <= 0) {
     return false;
   }
-  return (Number(session.lastOutputAt) || 0) > recoverableAt;
+  return (Number(session.updatedAt) || 0) > recoverableAt;
 }
 
 function hasBusyRuntimeMessageState(messages: ChatMessage[]): boolean {
@@ -1496,11 +1496,9 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     : [];
   const createdAt = normalizeOptionalDateValue(record.createdAt ?? record.created_at) || Date.now();
   const updatedAt = normalizeOptionalDateValue(record.updatedAt ?? record.updated_at);
-  const lastOutputAt = normalizeOptionalDateValue(record.lastOutputAt ?? record.last_output_at);
   const latestMessageAt = latestTimestamp(...messages.map((message) => Number(message.at) || 0));
-  const activityAt = normalizeOptionalDateValue(record.activityAt ?? record.activity_at)
-    || latestTimestamp(lastOutputAt, updatedAt, latestMessageAt, createdAt);
-  const freshnessAt = normalizeFreshnessAtValue(record.freshnessAt, latestTimestamp(activityAt, updatedAt, lastOutputAt, latestMessageAt, createdAt));
+  const activityAt = latestTimestamp(updatedAt, latestMessageAt, createdAt);
+  const freshnessAt = normalizeFreshnessAtValue(record.freshnessAt, latestTimestamp(activityAt, updatedAt, latestMessageAt, createdAt));
   const detailFreshnessAt = normalizeFreshnessAtValue(
     record.detailFreshnessAt ?? record.detail_freshness_at,
     (record.messagesLoaded === true || messages.length > 0) ? freshnessAt : 0,
@@ -1514,7 +1512,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     titleScore: Number.isFinite(Number(record.titleScore)) ? Number(record.titleScore) : 0,
     createdAt,
     updatedAt,
-    lastOutputAt,
+    lastOutputAt: 0,
     activityAt,
     freshnessAt,
     detailFreshnessAt,
@@ -1593,8 +1591,6 @@ function serializeStoredSession(session: ChatSession): Record<string, unknown> {
     titleScore: session.titleScore,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
-    lastOutputAt: session.lastOutputAt,
-    activityAt,
     freshnessAt: session.freshnessAt || activityAt,
     detailFreshnessAt: session.detailFreshnessAt || (session.messagesLoaded ? session.freshnessAt || activityAt : 0),
     pinned: session.pinned,
@@ -2039,13 +2035,7 @@ export function normalizeRuntimeSession(
   const hasAuthoritativeTurnDetail = hasTurnPayload && context.source !== "event";
   const createdAt = normalizeOptionalDateValue(item.created_at) || previous?.createdAt || Date.now();
   const updatedAt = normalizeOptionalDateValue(item.updated_at);
-  const lastOutputAt = normalizeOptionalDateValue(item.last_output_at);
-  const incomingSummaryAt = latestTimestamp(
-    normalizeOptionalDateValue(item.activity_at),
-    lastOutputAt,
-    updatedAt,
-    createdAt,
-  );
+  const incomingSummaryAt = latestTimestamp(updatedAt, createdAt);
   const rawParsedMessages = hasTurnPayload
     ? item.turns.flatMap((turn) => normalizeRuntimeTurnMessages(id, turn, sourceRoute))
     : null;
@@ -2068,9 +2058,8 @@ export function normalizeRuntimeSession(
     : previousMessages;
   const hasExplicitSkillIDs = Array.isArray(item.skill_ids);
   const latestMessageAt = latestTimestamp(...messages.map((message) => Number(message.at) || 0));
-  const activityAt = normalizeOptionalDateValue(item.activity_at)
-    || latestTimestamp(lastOutputAt, updatedAt, latestMessageAt, createdAt);
-  const inferredFreshnessAt = latestTimestamp(activityAt, updatedAt, lastOutputAt, createdAt, previous?.freshnessAt || 0);
+  const activityAt = latestTimestamp(updatedAt, latestMessageAt, createdAt);
+  const inferredFreshnessAt = latestTimestamp(activityAt, updatedAt, latestMessageAt, createdAt, previous?.freshnessAt || 0);
   const freshnessAt = inferredFreshnessAt;
   const detailFreshnessAt = hasAuthoritativeTurnDetail
     ? freshnessAt
@@ -2087,7 +2076,7 @@ export function normalizeRuntimeSession(
     titleScore: previous?.titleScore || 0,
     createdAt,
     updatedAt,
-    lastOutputAt,
+    lastOutputAt: 0,
     activityAt,
     freshnessAt,
     detailFreshnessAt,
@@ -2154,8 +2143,6 @@ function runtimeSessionFreshnessAt(session: ChatSession | null | undefined): num
   }
   return latestTimestamp(
     session.updatedAt,
-    session.lastOutputAt,
-    session.activityAt,
     resolveSessionActivityAt(session),
     session.createdAt,
   );
@@ -2294,7 +2281,6 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
         titleAuto: previous?.titleAuto,
         titleScore: previous?.titleScore,
         updatedAt: previous?.updatedAt,
-        lastOutputAt: previous?.lastOutputAt,
         activityAt: previous?.activityAt,
         freshnessAt: previous?.freshnessAt,
         detailFreshnessAt: previous?.detailFreshnessAt,
@@ -2368,8 +2354,6 @@ function resolveSessionActivityAt(session: ChatSession): number {
     return Math.max(latest, Number(message.at) || 0);
   }, 0);
   return latestTimestamp(
-    session.activityAt,
-    session.lastOutputAt,
     session.updatedAt,
     latestMessageAt,
     session.createdAt,

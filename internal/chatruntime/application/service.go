@@ -458,13 +458,13 @@ func (s *Service) List(ownerID string) []chatruntimedomain.Session {
 }
 
 func chatRuntimeSessionSortAt(session chatruntimedomain.Session) time.Time {
-	if !session.LastOutputAt.IsZero() {
-		return session.LastOutputAt
+	if !session.UpdatedAt.IsZero() {
+		return session.UpdatedAt
 	}
 	if !session.CreatedAt.IsZero() {
 		return session.CreatedAt
 	}
-	return session.UpdatedAt
+	return time.Time{}
 }
 
 func (s *Service) Get(ownerID string, sessionID string) (chatruntimedomain.Session, bool) {
