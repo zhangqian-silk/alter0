@@ -291,11 +291,11 @@ func TestRuntimeRestartCandidatesEndpointReturnsCurrentAndNextMasterCommits(t *t
 	if len(payload.Items) != 2 {
 		t.Fatalf("expected 2 candidates, got %d", len(payload.Items))
 	}
-	if !payload.Items[0].Current || payload.Items[0].ShortHash != "1111111" {
-		t.Fatalf("expected current candidate highlighted first, got %+v", payload.Items[0])
+	if payload.Items[0].ShortHash != "2222222" || payload.Items[0].Message != "next runtime" {
+		t.Fatalf("expected newest master candidate first, got %+v", payload.Items[0])
 	}
-	if payload.Items[1].ShortHash != "2222222" || payload.Items[1].Message != "next runtime" {
-		t.Fatalf("unexpected next candidate: %+v", payload.Items[1])
+	if !payload.Items[1].Current || payload.Items[1].ShortHash != "1111111" {
+		t.Fatalf("expected current candidate second, got %+v", payload.Items[1])
 	}
 }
 

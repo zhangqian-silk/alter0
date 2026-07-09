@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1231,7 +1232,25 @@ func (s *Server) runtimeRestartCandidatesHandler(w http.ResponseWriter, r *http.
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	sortRuntimeRestartCandidates(candidates.Items)
 	writeJSON(w, http.StatusOK, candidates)
+}
+
+func sortRuntimeRestartCandidates(items []RuntimeRestartCandidate) {
+	sort.SliceStable(items, func(i, j int) bool {
+		left := items[i].CommittedAt
+		right := items[j].CommittedAt
+		if left.Equal(right) {
+			return false
+		}
+		if left.IsZero() {
+			return false
+		}
+		if right.IsZero() {
+			return true
+		}
+		return left.After(right)
+	})
 }
 
 func (s *Server) channelListHandler(w http.ResponseWriter, r *http.Request) {

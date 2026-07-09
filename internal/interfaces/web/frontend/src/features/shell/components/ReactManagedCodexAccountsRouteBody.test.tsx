@@ -317,13 +317,6 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
           current_commit: "1111111111111111111111111111111111111111",
           items: [
             {
-              hash: "2222222222222222222222222222222222222222",
-              short_hash: "2222222",
-              message: "next runtime",
-              committed_at: "2026-06-23T04:20:00Z",
-              current: false,
-            },
-            {
               hash: "1111111111111111111111111111111111111111",
               short_hash: "1111111",
               message: "current runtime",
@@ -335,6 +328,13 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
               short_hash: "0000000",
               message: "previous runtime",
               committed_at: "2026-06-23T04:00:00Z",
+              current: false,
+            },
+            {
+              hash: "2222222222222222222222222222222222222222",
+              short_hash: "2222222",
+              message: "next runtime",
+              committed_at: "2026-06-23T04:20:00Z",
               current: false,
             },
           ],
@@ -368,6 +368,11 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(screen.getByText("2222222")).toBeInTheDocument();
     expect(screen.getByText("2026-06-23 12:20")).toBeInTheDocument();
     expect(screen.getByText("previous runtime")).toBeInTheDocument();
+    expect(Array.from(document.querySelectorAll(".codex-runtime-commit-option code")).map((node) => node.textContent)).toEqual([
+      "2222222",
+      "1111111",
+      "0000000",
+    ]);
     expect(screen.getByLabelText(/2222222/)).toBeChecked();
     expect(screen.getByLabelText(/2222222/).closest(".codex-runtime-commit-option")).toHaveClass("is-selected");
     expect(document.querySelector(".codex-runtime-commit-option.is-current")).not.toBeNull();

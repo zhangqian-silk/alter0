@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -339,7 +340,25 @@ func listRuntimeRestartCandidates(workingDir string, currentCommit string) (web.
 		return result, nil
 	}
 	appendRuntimeRestartCandidates(&result, historyOutput, currentCommit, seen)
+	sortRuntimeRestartCandidates(result.Items)
 	return result, nil
+}
+
+func sortRuntimeRestartCandidates(items []web.RuntimeRestartCandidate) {
+	sort.SliceStable(items, func(i, j int) bool {
+		left := items[i].CommittedAt
+		right := items[j].CommittedAt
+		if left.Equal(right) {
+			return false
+		}
+		if left.IsZero() {
+			return false
+		}
+		if right.IsZero() {
+			return true
+		}
+		return left.After(right)
+	})
 }
 
 func appendRuntimeRestartCandidates(result *web.RuntimeRestartCandidateList, output string, currentCommit string, seen map[string]bool) {
