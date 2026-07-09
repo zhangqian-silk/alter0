@@ -124,7 +124,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ## Runtime Service Controls
 
 - 旧运行参数配置页和对应接口不再提供；运行时路径、记忆文件、队列、运行时 shell 等参数由源码内置默认值或启动配置控制，不在 Settings 中持久化为用户配置。
-- Runtime 面板提供服务重启入口。更新远端 master 默认勾选；打开重启弹窗时前端请求候选 commit 列表，后端先拉取 `origin/master`，再返回当前运行 commit 之后全部 master 提交，并追加当前运行 commit 及其向前 10 个历史提交。候选项展示短 hash、提交时间和提交信息，当前运行 commit 保持高亮；用户确认重启时可通过 `target_commit` 传入选中的短 hash。仅当后端检测到 Git 已跟踪本地改动并返回确认要求时，前端才进入二次确认。只有二次确认后才传入 `confirm_discard_tracked_changes=true` 并允许后端丢弃已跟踪改动；未跟踪文件保留。
+- Runtime 面板提供服务重启入口。更新远端 master 默认勾选；打开重启弹窗时前端请求候选 commit 列表，后端先拉取 `origin/master`，再返回当前运行 commit 之后全部 master 提交，并追加当前运行 commit 及其向前 10 个历史提交。候选项按提交时间从新到旧展示短 hash、提交时间和提交信息，当前运行 commit 保持高亮；用户确认重启时可通过 `target_commit` 传入选中的短 hash。仅当后端检测到 Git 已跟踪本地改动并返回确认要求时，前端才进入二次确认。只有二次确认后才传入 `confirm_discard_tracked_changes=true` 并允许后端丢弃已跟踪改动；未跟踪文件保留。
 - Runtime 面板展示当前在线实例最近启动时间和 commit hash，用于确认重启切换后的版本。
 - 工具栏展示当前在线实例对应 commit hash。
 - 页面重连到新实例后以站内成功弹窗提示。
@@ -174,7 +174,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - Web 控制台发起重启时，由 supervisor 托管子进程切换。
 - 重启确认使用单一站内弹窗。
 - “同步远端 master 最新改动”作为弹窗内勾选项展示，默认勾选。
-- 弹窗打开时，前端通过 `GET /api/control/runtime/restart-candidates` 拉取候选提交；列表包含当前运行 commit 之后全部更新的 `origin/master` 提交，并追加当前运行 commit 及其向前 10 个历史提交。
+- 弹窗打开时，前端通过 `GET /api/control/runtime/restart-candidates` 拉取候选提交；列表包含当前运行 commit 之后全部更新的 `origin/master` 提交，并追加当前运行 commit 及其向前 10 个历史提交，返回与展示顺序均按提交时间从新到旧排列。
 - 候选提交在前端以短 hash、提交时间、提交信息展示，当前运行 commit 保持高亮；提交重启请求时使用短 hash 作为 `target_commit`。
 
 ### 同步远端

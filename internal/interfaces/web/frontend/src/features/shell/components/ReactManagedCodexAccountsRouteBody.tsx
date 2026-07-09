@@ -1181,18 +1181,52 @@ function normalizeRestartCandidates(candidates: RuntimeRestartCandidateList | nu
   if (!candidates || !Array.isArray(candidates.items)) {
     return [];
   }
-  return candidates.items.filter((item) => normalizeText(item?.short_hash || item?.hash));
+  return candidates.items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => normalizeText(item?.short_hash || item?.hash))
+    .sort((left, right) => compareRestartCandidatesByCommittedAt(left.item, right.item, left.index, right.index))
+    .map(({ item }) => item);
+}
+
+function compareRestartCandidatesByCommittedAt(
+  left: RuntimeRestartCandidate,
+  right: RuntimeRestartCandidate,
+  leftIndex: number,
+  rightIndex: number,
+) {
+  const leftTime = parseRestartCandidateTime(left);
+  const rightTime = parseRestartCandidateTime(right);
+  const leftTimeValid = Number.isFinite(leftTime);
+  const rightTimeValid = Number.isFinite(rightTime);
+  if ((!leftTimeValid && !rightTimeValid) || leftTime === rightTime) {
+    return leftIndex - rightIndex;
+  }
+  if (!leftTimeValid) {
+    return 1;
+  }
+  if (!rightTimeValid) {
+    return -1;
+  }
+  return rightTime - leftTime;
+}
+
+function parseRestartCandidateTime(candidate: RuntimeRestartCandidate) {
+  const committedAt = normalizeText(candidate.committed_at);
+  if (!committedAt) {
+    return Number.NaN;
+  }
+  return Date.parse(committedAt);
 }
 
 function defaultRestartTargetCandidate(items: RuntimeRestartCandidate[]): RuntimeRestartCandidate | undefined {
   const currentIndex = items.findIndex((item) => Boolean(item.current));
   if (currentIndex > 0) {
-    return items[currentIndex - 1];
+    return items[0];
   }
   if (currentIndex >= 0) {
     return items[currentIndex];
   }
-  return items[items.length - 1];
+  return items[0];
 }
 
 function normalizeRestartStatus(status: RuntimeRestartStatus | null | undefined): RuntimeRestartStatus | null {

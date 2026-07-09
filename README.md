@@ -394,7 +394,7 @@ go run ./cmd/alter0 -web-addr 127.0.0.1:<your-port>
 
 `Settings > Runtime` 中的“重启服务”会走运行时托管链路，而不是由当前业务进程直接自拉起：
 
-1. 点击“重启服务”后会打开站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项展示，默认勾选。弹窗打开时会先执行 `git fetch --prune origin master`，读取当前运行实例之后全部 `origin/master` 提交，并追加当前运行 commit 及其向前 10 个历史提交，列表以短 hash、提交时间和提交信息展示，当前运行中的 commit 保持高亮。
+1. 点击“重启服务”后会打开站内确认弹窗；“同步远端 master 最新改动”作为弹窗内勾选项展示，默认勾选。弹窗打开时会先执行 `git fetch --prune origin master`，读取当前运行实例之后全部 `origin/master` 提交，并追加当前运行 commit 及其向前 10 个历史提交，列表按提交时间从新到旧排列，并以短 hash、提交时间和提交信息展示，当前运行中的 commit 保持高亮。
 2. `sync_remote_master=false`：基于当前仓库状态调用统一构建入口，先重建前端 `static/dist`，再构建候选二进制，并由 `supervisor` 完成子进程切换。
 3. `sync_remote_master=true`：先校验当前分支为 `master`；未指定目标 commit 时快进到 `origin/master` 最新提交，指定目标 commit 时校验该提交可从 `origin/master` 到达并将本地 `master` 重置到该提交；若后端检测到 Git 已跟踪本地改动，会以结构化错误要求前端进入二次确认。只有用户二次确认并传入 `confirm_discard_tracked_changes=true` 时才会丢弃这些改动，否则不会清理本地工作区内容。确认后通过统一构建入口先重建前端 `static/dist`、再构建候选二进制并切换。
 4. 候选版本只有在 `/readyz` 探活通过后才会成为当前运行版本；若启动失败，会自动恢复上一运行版本。

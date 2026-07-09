@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSyncRemoteMasterBranchRejectsTrackedChangesAndPreservesFiles(t *testing.T) {
@@ -120,13 +121,14 @@ func TestListRuntimeRestartCandidatesFetchesAllNewerCommitsAndCurrentHistory(t *
 	configureTestGitIdentity(t, seedDir)
 
 	trackedPath := filepath.Join(seedDir, "tracked.txt")
+	baseCommitTime := time.Date(2026, time.June, 23, 4, 0, 0, 0, time.UTC)
 	writeTestFile(t, trackedPath, "commit-00\n")
 	runGitCommand(t, seedDir, "add", "tracked.txt")
-	runGitCommand(t, seedDir, "commit", "-m", "commit 00")
+	runGitCommandWithEnv(t, seedDir, gitCommitDateEnv(baseCommitTime), "commit", "-m", "commit 00")
 
 	for i := 1; i <= 12; i++ {
 		writeTestFile(t, trackedPath, fmt.Sprintf("commit-%02d\n", i))
-		runGitCommand(t, seedDir, "commit", "-am", fmt.Sprintf("commit %02d", i))
+		runGitCommandWithEnv(t, seedDir, gitCommitDateEnv(baseCommitTime.Add(time.Duration(i)*time.Minute)), "commit", "-am", fmt.Sprintf("commit %02d", i))
 		if i == 10 {
 			runGitCommand(t, seedDir, "push", "origin", "master")
 			runGitCommand(t, baseDir, "clone", remoteDir, localDir)
@@ -146,8 +148,8 @@ func TestListRuntimeRestartCandidatesFetchesAllNewerCommitsAndCurrentHistory(t *
 	if len(candidates.Items) != 13 {
 		t.Fatalf("expected all newer commits plus current commit and 10 historical candidates, got %d", len(candidates.Items))
 	}
-	if candidates.Items[0].Message != "commit 11" || candidates.Items[1].Message != "commit 12" {
-		t.Fatalf("expected newer commits to be listed before current history, got first items %+v and %+v", candidates.Items[0], candidates.Items[1])
+	if candidates.Items[0].Message != "commit 12" || candidates.Items[1].Message != "commit 11" {
+		t.Fatalf("expected newer commits to be listed newest first before current history, got first items %+v and %+v", candidates.Items[0], candidates.Items[1])
 	}
 	if !candidates.Items[2].Current || candidates.Items[2].Hash != currentCommit {
 		t.Fatalf("expected current history window to start with current commit, got %+v", candidates.Items[2])
@@ -239,4 +241,24 @@ func runGitCommand(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
 	return strings.TrimSpace(string(output))
+}
+
+func runGitCommandWithEnv(t *testing.T, dir string, env []string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return strings.TrimSpace(string(output))
+}
+
+func gitCommitDateEnv(committedAt time.Time) []string {
+	value := committedAt.Format(time.RFC3339)
+	return []string{
+		"GIT_AUTHOR_DATE=" + value,
+		"GIT_COMMITTER_DATE=" + value,
+	}
 }
