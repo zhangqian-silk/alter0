@@ -696,6 +696,14 @@ function normalizeRouteSessions(routeKey: ConversationRoute, sessions: ChatSessi
 function normalizeRuntimeSessionDerivedStatus(session: ChatSession): string {
   const status = normalizeText(session.status) || "ready";
   if (
+    status === "ready"
+    && session.serverBacked === true
+    && (Number(session.updatedAt) || 0) > 0
+    && !hasLocalRuntimeSyncIntent(session)
+  ) {
+    return status;
+  }
+  if (
     !isConversationBusyStatus(status)
     && !isChatRuntimeRuntimeFailureStatus(status)
     && !hasAuthoritativeReadyRuntimeSummary(session)
@@ -2262,6 +2270,16 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
       && !hasRecoverableRuntimeState(previous)
       && isConversationBusyStatus(normalizedSession.status),
     );
+    const incomingReadySummaryRepairsStaleBusyCache = Boolean(
+      previous
+      && incomingOlderThanPrevious
+      && normalizedSession.serverBacked === true
+      && !hasLocalRuntimeSyncIntent(previous)
+      && isConversationBusyStatus(previous.status)
+      && !isConversationBusyStatus(normalizedSession.status)
+      && !isChatRuntimeRuntimeFailureStatus(normalizedSession.status)
+      && (Number(normalizedSession.updatedAt) || incomingFreshness) >= (Number(previous.updatedAt) || 0),
+    );
     const messages = incomingStaleSummaryAgainstStableDetail
       ? previous?.messages || []
       : previous && normalizedSession.messagesLoaded === true
@@ -2294,7 +2312,9 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
         turnsPaging: previous?.turnsPaging,
       } : {}),
       status: incomingOlderThanPrevious
-        ? previous?.status || normalizedSession.status
+        ? incomingReadySummaryRepairsStaleBusyCache
+          ? normalizedSession.status
+          : previous?.status || normalizedSession.status
         : incomingStaleSummaryAgainstStableDetail
           ? previous?.status || normalizedSession.status
           : resolveMergedRuntimeSessionStatus(previous, normalizedSession, compactedMessages),
@@ -2302,8 +2322,8 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
       messagesLoaded:
         incomingStaleSummaryAgainstStableDetail
           ? previous?.messagesLoaded
-          : typeof session.messagesLoaded === "boolean"
-          ? normalizedSession.messagesLoaded
+          : normalizedSession.messagesLoaded === true
+          ? true
           : previous?.messagesLoaded,
       serverBacked:
         typeof normalizedSession.serverBacked === "boolean"
