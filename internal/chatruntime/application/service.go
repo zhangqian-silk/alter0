@@ -138,10 +138,22 @@ type codexCommand struct {
 }
 
 type codexExecEvent struct {
-	Type     string         `json:"type"`
-	ThreadID string         `json:"thread_id,omitempty"`
-	Message  string         `json:"message,omitempty"`
-	Item     *codexExecItem `json:"item,omitempty"`
+	Type              string           `json:"type"`
+	ThreadID          string           `json:"thread_id,omitempty"`
+	Message           string           `json:"message,omitempty"`
+	Title             string           `json:"title,omitempty"`
+	Name              string           `json:"name,omitempty"`
+	ThreadTitle       string           `json:"thread_title,omitempty"`
+	ConversationTitle string           `json:"conversation_title,omitempty"`
+	Thread            *codexExecThread `json:"thread,omitempty"`
+	Session           *codexExecThread `json:"session,omitempty"`
+	Conversation      *codexExecThread `json:"conversation,omitempty"`
+	Item              *codexExecItem   `json:"item,omitempty"`
+}
+
+type codexExecThread struct {
+	Title string `json:"title,omitempty"`
+	Name  string `json:"name,omitempty"`
 }
 
 type codexExecItem struct {
@@ -167,21 +179,22 @@ type preparedTurnAttachment struct {
 type runtimeSession struct {
 	mu sync.RWMutex
 
-	summary      chatruntimedomain.Session
-	titleManual  bool
-	titleAuto    bool
-	titleScore   int
-	entries      []chatruntimedomain.Entry
-	nextID       int
-	turns        []*runtimeTurn
-	activeTurnID string
-	nextTurnID   int
-	nextEventID  int
-	threadID     string
-	turnRunning  bool
-	turnCancel   context.CancelFunc
-	closedByUser bool
-	deleted      bool
+	summary       chatruntimedomain.Session
+	titleManual   bool
+	titleAuto     bool
+	titleExternal bool
+	titleScore    int
+	entries       []chatruntimedomain.Entry
+	nextID        int
+	turns         []*runtimeTurn
+	activeTurnID  string
+	nextTurnID    int
+	nextEventID   int
+	threadID      string
+	turnRunning   bool
+	turnCancel    context.CancelFunc
+	closedByUser  bool
+	deleted       bool
 }
 
 type runtimeTurn struct {
@@ -247,6 +260,27 @@ func (s *Service) currentSessionEventHook() SessionEventHook {
 	s.hookMu.RLock()
 	defer s.hookMu.RUnlock()
 	return s.eventHook
+}
+
+func (s *Service) publishSessionEvent(item *runtimeSession, eventType string) {
+	hook := s.currentSessionEventHook()
+	if hook == nil || item == nil || strings.TrimSpace(eventType) == "" {
+		return
+	}
+
+	item.mu.RLock()
+	session := item.summary
+	item.mu.RUnlock()
+
+	if strings.TrimSpace(session.OwnerID) == "" || strings.TrimSpace(session.ID) == "" {
+		return
+	}
+	hook(SessionEvent{
+		OwnerID:   session.OwnerID,
+		SessionID: session.ID,
+		EventType: eventType,
+		Session:   session,
+	})
 }
 
 func (s *Service) publishTurnSessionEvent(item *runtimeSession, eventType string, turnID string, runtimeEventID string) {
@@ -629,7 +663,7 @@ func (s *Service) InputWithAttachments(req InputRequest) (chatruntimedomain.Sess
 	now := time.Now().UTC()
 	if nextTitle, nextAuto, nextScore, changed := nextAutoSessionTitle(
 		item.summary.Title,
-		item.titleManual,
+		item.titleManual || item.titleExternal,
 		item.titleScore,
 		prompt,
 		item.summary.ID,
@@ -916,16 +950,87 @@ func fatalCodexEventMessage(message string) string {
 	}
 }
 
+func externalThreadTitleFromCodexEvent(event codexExecEvent) string {
+	for _, candidate := range []string{
+		event.Title,
+		event.ThreadTitle,
+		event.ConversationTitle,
+		event.Name,
+		nestedCodexThreadTitle(event.Thread),
+		nestedCodexThreadTitle(event.Session),
+		nestedCodexThreadTitle(event.Conversation),
+	} {
+		if title := strings.TrimSpace(candidate); title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func nestedCodexThreadTitle(thread *codexExecThread) string {
+	if thread == nil {
+		return ""
+	}
+	if title := strings.TrimSpace(thread.Title); title != "" {
+		return title
+	}
+	return strings.TrimSpace(thread.Name)
+}
+
+func applyExternalThreadTitleLocked(item *runtimeSession, title string, now time.Time) bool {
+	title = strings.TrimSpace(title)
+	if item == nil || title == "" {
+		return false
+	}
+	if item.summary.Title == title && item.titleExternal && !item.titleAuto && item.titleScore == 0 {
+		return false
+	}
+	item.summary.Title = title
+	item.summary.UpdatedAt = now
+	item.titleAuto = false
+	item.titleScore = 0
+	item.titleExternal = true
+	return true
+}
+
 func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event codexExecEvent) {
 	switch strings.TrimSpace(event.Type) {
 	case "thread.started":
+		now := time.Now().UTC()
+		titleChanged := false
+		threadChanged := false
 		if threadID := strings.TrimSpace(event.ThreadID); threadID != "" {
 			item.mu.Lock()
-			item.threadID = threadID
-			item.summary.RuntimeSessionID = threadID
-			item.summary.UpdatedAt = time.Now().UTC()
+			if item.threadID != threadID || item.summary.RuntimeSessionID != threadID {
+				item.threadID = threadID
+				item.summary.RuntimeSessionID = threadID
+				item.summary.UpdatedAt = now
+				threadChanged = true
+			}
+			titleChanged = applyExternalThreadTitleLocked(item, externalThreadTitleFromCodexEvent(event), now)
 			item.mu.Unlock()
+		} else if title := externalThreadTitleFromCodexEvent(event); title != "" {
+			item.mu.Lock()
+			titleChanged = applyExternalThreadTitleLocked(item, title, now)
+			item.mu.Unlock()
+		}
+		if threadChanged || titleChanged {
 			s.persistSession(item)
+		}
+		if titleChanged {
+			s.publishSessionEvent(item, SessionEventSessionUpdated)
+		}
+	case "thread.updated", "session.updated", "conversation.updated":
+		title := externalThreadTitleFromCodexEvent(event)
+		if title == "" {
+			return
+		}
+		item.mu.Lock()
+		titleChanged := applyExternalThreadTitleLocked(item, title, time.Now().UTC())
+		item.mu.Unlock()
+		if titleChanged {
+			s.persistSession(item)
+			s.publishSessionEvent(item, SessionEventSessionUpdated)
 		}
 	case "item.delta":
 		return

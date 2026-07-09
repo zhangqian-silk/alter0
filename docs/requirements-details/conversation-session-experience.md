@@ -93,7 +93,12 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 ### 标题
 
+- Chat 会话标题由底层 ChatRuntime session store 生成与维护；前端只能展示当前 session summary/detail/update 返回的标题，不得从首条 prompt、本地 queued user 消息或浏览器草稿派生并覆盖标题。
+- 首次发送时，如果尚无真实 active session，前端需先创建无显式 title 的 ChatRuntime session，再向该 session 提交 input；创建请求不得携带首条 prompt 作为 `title`。
 - 新会话先使用统一占位标题 `New`。
+- Codex/Claude 等外部 CLI Runtime 暴露自身 thread title 时，ChatRuntime 必须优先采用该 title，并把会话标记为外部标题来源；同一底层 thread 后续再次发布 title 更新时继续覆盖当前标题。
+- 外部 runtime title 更新必须持久化，并通过 `session.updated` 增量事件同步到当前 owner 的会话列表、workspace header 和移动端标题按钮。
+- 已由外部 runtime title 接管的会话，不再被后续 prompt 自动标题或补充约束改写；只有新的外部 title 更新或显式会话级标题管理才能改变它。
 - 早期多轮输入仍偏通用时，标题可继续等待更具体输入。
 - 后续出现更具体目标后，标题需自动升级，不长期停留在“拉取仓库”“分析仓库”等低辨识度名称。
 - 已形成主题型标题后，后续“而不是 / 不要 / instead of / rather than”等补充约束、修正说明或实现偏好不得覆盖当前主题标题；这类输入应作为消息内容和执行上下文保留。

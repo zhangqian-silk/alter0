@@ -596,6 +596,88 @@ func TestServiceInputKeepsManualTitleWhenLaterPromptChanges(t *testing.T) {
 	}
 }
 
+func TestServiceInputAppliesExternalThreadTitleFromCodexEvents(t *testing.T) {
+	service := newTestService("external-title")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-external-title",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-external-title", session.ID, "first prompt"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	snapshot, _ := waitForSessionEntries(t, service, "owner-external-title", session.ID, 2)
+	if snapshot.Title != "Codex internal thread title" {
+		t.Fatalf("expected external thread title, got %q", snapshot.Title)
+	}
+}
+
+func TestServiceInputAcceptsLaterExternalThreadTitleUpdates(t *testing.T) {
+	service := newTestService("external-title")
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-external-title-update",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if _, err := service.Input("owner-external-title-update", session.ID, "first prompt"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	firstSnapshot, _ := waitForSessionEntries(t, service, "owner-external-title-update", session.ID, 2)
+	if firstSnapshot.Title != "Codex internal thread title" {
+		t.Fatalf("expected first external thread title, got %q", firstSnapshot.Title)
+	}
+
+	secondStart, err := service.Input("owner-external-title-update", session.ID, "second prompt")
+	if err != nil {
+		t.Fatalf("second input: %v", err)
+	}
+	if secondStart.Title != "Codex internal thread title" {
+		t.Fatalf("expected external title to remain until runtime sends an update, got %q", secondStart.Title)
+	}
+	secondSnapshot, _ := waitForSessionEntries(t, service, "owner-external-title-update", session.ID, 4)
+	if secondSnapshot.Title != "Codex renamed thread title" {
+		t.Fatalf("expected later external thread title update, got %q", secondSnapshot.Title)
+	}
+}
+
+func TestServiceInputPublishesSessionUpdatedForExternalThreadTitle(t *testing.T) {
+	service := newTestService("external-title")
+	events := make(chan SessionEvent, 16)
+	service.SetSessionEventHook(func(event SessionEvent) {
+		if event.OwnerID == "owner-external-title-event" {
+			events <- event
+		}
+	})
+
+	session, err := service.Create(CreateRequest{
+		OwnerID: "owner-external-title-event",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := service.Input("owner-external-title-event", session.ID, "first prompt"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			if event.EventType == SessionEventSessionUpdated && event.Session.Title == "Codex internal thread title" {
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for external title session.updated event")
+		}
+	}
+}
+
 func TestServiceRecoverRestoresCodexThreadForFollowUpInput(t *testing.T) {
 	service := newTestService("success")
 
@@ -1885,7 +1967,11 @@ func TestChatRuntimeServiceHelperProcess(t *testing.T) {
 		}
 		threadID := chatRuntimeArgs[len(chatRuntimeArgs)-2]
 		prompt := chatRuntimeArgs[len(chatRuntimeArgs)-1]
-		fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
+		if mode == "external-title" {
+			fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q,\"title\":\"Codex renamed thread title\"}\n", threadID)
+		} else {
+			fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
+		}
 		fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)
 		fmt.Fprintf(os.Stdout, "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":%q}}\n", "mock:"+prompt)
 		fmt.Fprintln(os.Stdout, `{"type":"turn.completed"}`)
@@ -1894,7 +1980,11 @@ func TestChatRuntimeServiceHelperProcess(t *testing.T) {
 
 	prompt := chatRuntimeArgs[len(chatRuntimeArgs)-1]
 	threadID := "thread-" + strings.ReplaceAll(prompt, " ", "-")
-	fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
+	if mode == "external-title" {
+		fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q,\"title\":\"Codex internal thread title\"}\n", threadID)
+	} else {
+		fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q}\n", threadID)
+	}
 	fmt.Fprintln(os.Stdout, `{"type":"turn.started"}`)
 	if mode == "auth-error" {
 		fmt.Fprintln(os.Stdout, `{"type":"error","message":"Reconnecting... 1/5 (unexpected status 401 Unauthorized: Missing bearer or basic authentication in header)"}`)

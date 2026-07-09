@@ -20,6 +20,7 @@ import (
 type stubProcessor struct {
 	output       string
 	source       string
+	threadTitle  string
 	lastContent  string
 	lastMetadata map[string]string
 }
@@ -32,6 +33,9 @@ func (s *stubProcessor) Process(_ context.Context, content string, metadata map[
 	}
 	if strings.TrimSpace(s.source) != "" {
 		metadata[execdomain.ExecutionSourceMetadataKey] = s.source
+	}
+	if strings.TrimSpace(s.threadTitle) != "" {
+		metadata[execdomain.RuntimeThreadTitleMetadataKey] = s.threadTitle
 	}
 	return s.output, nil
 }
@@ -131,6 +135,26 @@ func TestExecuteAgentReturnsExecutionSourceMetadata(t *testing.T) {
 	}
 	if got := result.Metadata[execdomain.ExecutionSourceMetadataKey]; got != execdomain.ExecutionSourceModel {
 		t.Fatalf("execution source metadata = %q, want %q", got, execdomain.ExecutionSourceModel)
+	}
+}
+
+func TestExecuteAgentReturnsRuntimeThreadTitleMetadata(t *testing.T) {
+	processor := &stubProcessor{output: "ok", threadTitle: "External runtime title"}
+	service := NewService(processor)
+
+	result, err := service.ExecuteAgent(context.Background(), shareddomain.UnifiedMessage{
+		MessageID:   "msg-title",
+		SessionID:   "session-title",
+		ChannelID:   "web-default",
+		ChannelType: shareddomain.ChannelTypeWeb,
+		TriggerType: shareddomain.TriggerTypeUser,
+		Content:     "title metadata",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteAgent() error = %v", err)
+	}
+	if got := result.Metadata[execdomain.RuntimeThreadTitleMetadataKey]; got != "External runtime title" {
+		t.Fatalf("runtime thread title metadata = %q, want external title", got)
 	}
 }
 

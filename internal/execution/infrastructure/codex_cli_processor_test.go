@@ -495,10 +495,11 @@ func TestBuildCodexExecArgsIncludesWorkspaceImageAttachments(t *testing.T) {
 }
 
 func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
-	processor := newTestProcessor("stream-success", mustBuildTestPrompt(t, "reply: hello", testRuntimeMetadata()))
+	metadata := testRuntimeMetadata()
+	processor := newTestProcessor("stream-success", mustBuildTestPrompt(t, "reply: hello", metadata))
 	deltas := make([]string, 0, 2)
 
-	output, err := processor.ProcessStream(context.Background(), "reply: hello", testRuntimeMetadata(), func(event execdomain.StreamEvent) error {
+	output, err := processor.ProcessStream(context.Background(), "reply: hello", metadata, func(event execdomain.StreamEvent) error {
 		deltas = append(deltas, event.Text)
 		return nil
 	})
@@ -510,6 +511,9 @@ func TestCodexCLIProcessorProcessStreamSuccess(t *testing.T) {
 	}
 	if len(deltas) == 0 {
 		t.Fatalf("expected stream deltas, got none")
+	}
+	if metadata[execdomain.RuntimeThreadTitleMetadataKey] != "Codex stream thread title" {
+		t.Fatalf("runtime thread title metadata = %q, want external title", metadata[execdomain.RuntimeThreadTitleMetadataKey])
 	}
 }
 
@@ -566,8 +570,8 @@ func TestCodexCLIProcessorProcessStreamStoresCommentaryAsProcessSteps(t *testing
 
 func TestCollectStreamOutputKeepsCommentaryOutOfFinalAnswer(t *testing.T) {
 	var deltas []string
-	output, threadID, _, err := collectStreamOutput(strings.NewReader(strings.Join([]string{
-		`{"type":"thread.started","thread_id":"thread-1"}`,
+	output, threadID, threadTitle, _, err := collectStreamOutput(strings.NewReader(strings.Join([]string{
+		`{"type":"thread.started","thread_id":"thread-1","title":"Codex collected thread title"}`,
 		`{"type":"item.delta","item":{"type":"agent_message","channel":"commentary","delta":"我会先确认工作区。" }}`,
 		`{"type":"item.completed","item":{"type":"agent_message","channel":"commentary","text":"我会先确认工作区。现在开始处理。" }}`,
 		`{"type":"item.delta","item":{"type":"agent_message","channel":"final","delta":"最终" }}`,
@@ -582,6 +586,9 @@ func TestCollectStreamOutputKeepsCommentaryOutOfFinalAnswer(t *testing.T) {
 	if threadID != "thread-1" {
 		t.Fatalf("collectStreamOutput() threadID = %q, want thread-1", threadID)
 	}
+	if threadTitle != "Codex collected thread title" {
+		t.Fatalf("collectStreamOutput() threadTitle = %q, want external title", threadTitle)
+	}
 	if output != "最终回复" {
 		t.Fatalf("collectStreamOutput() output = %q, want final answer only", output)
 	}
@@ -591,7 +598,7 @@ func TestCollectStreamOutputKeepsCommentaryOutOfFinalAnswer(t *testing.T) {
 }
 
 func TestCollectStreamOutputDeduplicatesCommentaryProcessStep(t *testing.T) {
-	_, _, processSteps, err := collectStreamOutput(strings.NewReader(strings.Join([]string{
+	_, _, _, processSteps, err := collectStreamOutput(strings.NewReader(strings.Join([]string{
 		`{"type":"item.updated","item":{"id":"msg-commentary","type":"agent_message","channel":"commentary","text":"正在读取上下文" }}`,
 		`{"type":"item.completed","item":{"id":"msg-commentary","type":"agent_message","channel":"commentary","text":"正在读取上下文" }}`,
 		`{"type":"item.completed","item":{"type":"agent_message","channel":"final","text":"完成" }}`,
@@ -1072,7 +1079,7 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 		_ = os.WriteFile(outputPath, []byte("repair completed\n"), 0o600)
 		os.Exit(0)
 	case "stream-success":
-		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\"}\n")
+		_, _ = os.Stdout.WriteString("{\"type\":\"thread.started\",\"title\":\"Codex stream thread title\"}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.delta\",\"item\":{\"type\":\"agent_message\",\"delta\":\"mock \"}}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"mock streamed response\"}}\n")
 		os.Exit(0)

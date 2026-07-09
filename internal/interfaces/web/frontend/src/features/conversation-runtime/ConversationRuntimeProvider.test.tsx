@@ -2982,6 +2982,74 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:/));
   });
 
+  it("uses the underlying ChatRuntime session title for first-turn Chat input", async () => {
+    window.sessionStorage.clear();
+    const inputRequest = deferred<Record<string, unknown>>();
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === "/api/chat/sessions") {
+        return {
+          session: {
+            id: "c_underlyingtitle0",
+            title: "Underlying runtime title",
+            status: "ready",
+            created_at: "2026-04-23T04:00:00Z",
+            turns: [],
+          },
+        };
+      }
+      if (path === "/api/chat/sessions/c_underlyingtitle0/input") {
+        return inputRequest.promise;
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <ActiveSessionTitleHarness />
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions", {}));
+    await waitFor(() => expect(screen.getByTestId("user-text")).toHaveTextContent("Inspect this image"));
+    expect(screen.getByTestId("active-session-title")).toHaveTextContent("Underlying runtime title");
+
+    inputRequest.resolve({
+      session: {
+        id: "c_underlyingtitle0",
+        title: "Underlying runtime title",
+        status: "ready",
+        created_at: "2026-04-23T04:00:00Z",
+        turns: [
+          {
+            id: "turn-underlying-title",
+            prompt: "Inspect this image",
+            status: "success",
+            started_at: "2026-04-23T04:00:01Z",
+            finished_at: "2026-04-23T04:00:02Z",
+            final_output: "Done",
+          },
+        ],
+      },
+    });
+    await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Done"));
+  });
+
   it("loads Chat sessions through the isolated chat ChatRuntime scope", async () => {
     window.sessionStorage.clear();
     apiClientMock.get.mockImplementation(async () => ({ items: [] }));
@@ -3663,7 +3731,7 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("user-text")).toHaveTextContent("Inspect this image"));
     expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
-    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").toContain("Inspect this image");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").toContain("local_running");
 
     inputResponse.resolve({
       session: {
