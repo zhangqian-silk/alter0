@@ -328,6 +328,7 @@ type ConversationRuntimeContextValue = {
     contextLabel?: string;
     meta: string;
     createdAt: number;
+    updatedAt: number;
     active: boolean;
     draft: boolean;
     pinned: boolean;
@@ -3793,6 +3794,7 @@ export function ConversationRuntimeProvider({
       contextLabel: buildSessionContextLabel(session),
       meta: buildSessionMeta(session, language),
       createdAt: session.createdAt,
+      updatedAt: session.updatedAt || session.createdAt,
       active: session.id === activeSessionID,
       draft: isBlankDraftSession(session),
       pinned: session.pinned,

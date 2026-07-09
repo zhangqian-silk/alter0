@@ -219,6 +219,10 @@ describe("ConversationWorkspace", () => {
     buildChatTimelineItemsMock.mockClear();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders the markdown syntax demo timeline when the chat demo query is present", () => {
     window.history.pushState({}, "", "/chat?markdown_demo=1");
 
@@ -1259,6 +1263,31 @@ describe("ConversationWorkspace", () => {
     expect(within(sessionPane).getByText("Travel Plan")).toBeInTheDocument();
     expect(sessionPane.querySelector(".runtime-session-context")).not.toBeInTheDocument();
     expect(screen.queryByText("Travel Skill")).not.toBeInTheDocument();
+  });
+
+  it("groups chat sessions by updated time instead of creation time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-23T12:00:00Z"));
+    runtimeMock.sessionItems = [
+      {
+        id: "session-updated-today",
+        title: "Updated Today",
+        meta: "2026-04-23 11:00",
+        createdAt: Date.parse("2026-04-22T09:00:00Z"),
+        updatedAt: Date.parse("2026-04-23T11:00:00Z"),
+        active: true,
+        draft: false,
+        pinned: false,
+        pinning: false,
+      },
+    ];
+
+    renderWorkspace({ isMobileViewport: false });
+
+    const sessionPane = screen.getByTestId("conversation-session-pane");
+    expect(within(sessionPane).getByText("Today")).toBeInTheDocument();
+    expect(within(sessionPane).queryByText("Yesterday")).not.toBeInTheDocument();
+    expect(within(sessionPane).getByText("Updated Today")).toBeInTheDocument();
   });
 
   it("removes the Chat empty-state picker while keeping the composer session control", () => {
