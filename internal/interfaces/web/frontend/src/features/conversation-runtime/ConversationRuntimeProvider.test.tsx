@@ -264,6 +264,15 @@ function SessionListHarness() {
   );
 }
 
+function SessionStatusListHarness() {
+  const runtime = useConversationRuntimeWorkspace();
+  return (
+    <output data-testid="session-statuses">
+      {runtime.sessions.map((session) => `${session.id}:${session.status}`).join("|")}
+    </output>
+  );
+}
+
 function FocusSessionHarness() {
   const runtime = useConversationRuntimeWorkspace();
   return (
@@ -522,7 +531,7 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("runtime-event-filter")).toHaveTextContent("important_text|reasoning"));
   });
 
-  it("keeps a locally busy runtime session busy when a stale list summary returns ready", () => {
+  it("keeps a locally running runtime session busy when a stale list summary returns ready", () => {
     const merged = mergeRuntimeSessions([
       chatSessionFixture({
         status: "ready",
@@ -531,7 +540,7 @@ describe("ConversationRuntimeProvider", () => {
       }),
     ], [
       chatSessionFixture({
-        status: "busy",
+        status: "local_running",
         messages: [{
           id: "turn-1:user",
           role: "user",
@@ -548,8 +557,152 @@ describe("ConversationRuntimeProvider", () => {
       }),
     ]);
 
-    expect(merged[0]?.status).toBe("busy");
+    expect(merged[0]?.status).toBe("local_running");
     expect(merged[0]?.messages.map((message) => message.text)).toEqual(["new prompt"]);
+  });
+
+  it("lets a ready server summary repair a stale cached busy session", () => {
+    const merged = mergeRuntimeSessions([
+      chatSessionFixture({
+        status: "ready",
+        updatedAt: Date.parse("2026-07-08T02:19:48Z"),
+        freshnessAt: Date.parse("2026-07-08T02:19:48Z"),
+        detailFreshnessAt: 0,
+        messages: [],
+        messagesLoaded: false,
+      }),
+    ], [
+      chatSessionFixture({
+        status: "busy",
+        updatedAt: Date.parse("2026-07-08T02:19:48Z"),
+        freshnessAt: Date.parse("2026-07-08T02:20:00Z"),
+        detailFreshnessAt: Date.parse("2026-07-08T02:20:00Z"),
+        messagesLoaded: true,
+        messages: [{
+          id: "turn-1:user",
+          role: "user",
+          text: "cached stale prompt",
+          attachments: [],
+          route: "chat",
+          source: "runtime",
+          error: false,
+          status: "",
+          at: Date.parse("2026-07-08T02:20:00Z"),
+          processEvents: [],
+        }],
+      }),
+    ]);
+
+    expect(merged[0]?.status).toBe("ready");
+    expect(merged[0]?.messages.map((message) => message.text)).toEqual(["cached stale prompt"]);
+    expect(merged[0]?.messagesLoaded).toBe(true);
+  });
+
+  it("repairs a stale cached busy session from the session list while another session is active", async () => {
+    window.history.replaceState(window.history.state, "", "/chat?session_id=c_otherchat0000000");
+    window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_otherchat0000000" }));
+    window.localStorage.setItem(
+      LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        activeSessionByRoute: { chat: "c_otherchat0000000" },
+        sessionsByRoute: {
+          chat: [
+            {
+              id: "c_stalechat0000000",
+              status: "busy",
+              title: "Stale cached busy",
+              createdAt: Date.parse("2026-07-08T01:59:32Z"),
+              updatedAt: Date.parse("2026-07-08T02:19:48Z"),
+              freshnessAt: Date.parse("2026-07-08T02:20:00Z"),
+              detailFreshnessAt: Date.parse("2026-07-08T02:20:00Z"),
+              pinned: false,
+              targetID: "codex",
+              targetName: "Codex",
+              messages: [{
+                id: "turn-stale:user",
+                role: "user",
+                text: "cached stale prompt",
+                attachments: [],
+                route: "chat",
+                source: "runtime",
+                error: false,
+                status: "",
+                at: Date.parse("2026-07-08T02:20:00Z"),
+                processEvents: [],
+              }],
+              messagesLoaded: true,
+              serverBacked: true,
+            },
+            {
+              id: "c_otherchat0000000",
+              status: "ready",
+              title: "Other chat",
+              createdAt: Date.parse("2026-07-09T01:00:00Z"),
+              updatedAt: Date.parse("2026-07-09T01:00:00Z"),
+              freshnessAt: Date.parse("2026-07-09T01:00:00Z"),
+              detailFreshnessAt: Date.parse("2026-07-09T01:00:00Z"),
+              pinned: false,
+              targetID: "codex",
+              targetName: "Codex",
+              messages: [],
+              messagesLoaded: true,
+              serverBacked: true,
+            },
+          ],
+        },
+      }),
+    );
+
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      switch (path) {
+        case "/api/chat/sessions":
+          return {
+            items: [
+              {
+                id: "c_stalechat0000000",
+                title: "Stale cached busy",
+                status: "ready",
+                created_at: "2026-07-08T01:59:32Z",
+                updated_at: "2026-07-08T02:19:48Z",
+              },
+              {
+                id: "c_otherchat0000000",
+                title: "Other chat",
+                status: "ready",
+                created_at: "2026-07-09T01:00:00Z",
+                updated_at: "2026-07-09T01:00:00Z",
+              },
+            ],
+          };
+        case "/api/chat/sessions/c_otherchat0000000":
+          return {
+            session: {
+              id: "c_otherchat0000000",
+              title: "Other chat",
+              status: "ready",
+              created_at: "2026-07-09T01:00:00Z",
+              updated_at: "2026-07-09T01:00:00Z",
+              turns: [],
+              turns_paging: { has_more_before: false },
+            },
+          };
+        case "/api/control/llm/providers":
+        case "/api/control/skills":
+        case "/api/control/mcps":
+          return { items: [] };
+        default:
+          return { items: [] };
+      }
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SessionStatusListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("session-statuses")).toHaveTextContent("c_stalechat0000000:ready"));
   });
 
   it("unblocks input when a newer ready summary overtakes a cached running placeholder", async () => {
