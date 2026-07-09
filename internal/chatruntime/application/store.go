@@ -411,7 +411,7 @@ func normalizeRestoredSessionState(session *runtimeSession, now time.Time) {
 		}
 		session.nextID = nextID
 	}
-	liveStatus := chatruntimedomain.NormalizeSessionStatus(session.summary.Status) == chatruntimedomain.SessionStatusBusy
+	liveStatus := false
 	for _, turn := range session.turns {
 		if turn == nil {
 			continue
