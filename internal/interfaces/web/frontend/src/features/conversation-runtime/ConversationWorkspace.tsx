@@ -409,7 +409,7 @@ function useConversationWorkspaceController(
   const groupedSessionItems = useMemo(
     () => groupSessionListItems(runtime.sessionItems, {
       language,
-      getTimestamp: (item) => item.createdAt,
+      getTimestamp: (item) => item.updatedAt || item.createdAt,
       getPinned: (item) => item.pinned,
     }),
     [language, runtime.sessionItems],
