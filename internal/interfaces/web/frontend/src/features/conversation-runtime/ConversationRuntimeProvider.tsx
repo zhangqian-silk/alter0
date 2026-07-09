@@ -2151,7 +2151,6 @@ function runtimeSessionFreshnessAt(session: ChatSession | null | undefined): num
   }
   return latestTimestamp(
     session.updatedAt,
-    resolveSessionActivityAt(session),
     session.createdAt,
   );
 }
@@ -2270,16 +2269,6 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
       && !hasRecoverableRuntimeState(previous)
       && isConversationBusyStatus(normalizedSession.status),
     );
-    const incomingReadySummaryRepairsStaleBusyCache = Boolean(
-      previous
-      && incomingOlderThanPrevious
-      && normalizedSession.serverBacked === true
-      && !hasLocalRuntimeSyncIntent(previous)
-      && isConversationBusyStatus(previous.status)
-      && !isConversationBusyStatus(normalizedSession.status)
-      && !isChatRuntimeRuntimeFailureStatus(normalizedSession.status)
-      && (Number(normalizedSession.updatedAt) || incomingFreshness) >= (Number(previous.updatedAt) || 0),
-    );
     const messages = incomingStaleSummaryAgainstStableDetail
       ? previous?.messages || []
       : previous && normalizedSession.messagesLoaded === true
@@ -2312,9 +2301,7 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
         turnsPaging: previous?.turnsPaging,
       } : {}),
       status: incomingOlderThanPrevious
-        ? incomingReadySummaryRepairsStaleBusyCache
-          ? normalizedSession.status
-          : previous?.status || normalizedSession.status
+        ? previous?.status || normalizedSession.status
         : incomingStaleSummaryAgainstStableDetail
           ? previous?.status || normalizedSession.status
           : resolveMergedRuntimeSessionStatus(previous, normalizedSession, compactedMessages),
