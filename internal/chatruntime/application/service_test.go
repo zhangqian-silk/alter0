@@ -1469,34 +1469,6 @@ func TestServiceListReconcilesOrphanedBusySession(t *testing.T) {
 	}
 }
 
-func TestServiceListRepairsStaleBusySessionWithCompletedTurn(t *testing.T) {
-	service := newTestService("success")
-	now := time.Date(2026, 7, 8, 10, 19, 0, 0, time.UTC)
-	sessionID := "c_stalebusy0000000"
-	insertStaleBusyCompletedRuntimeSession(t, service, "owner-stale-busy", sessionID, now)
-
-	restarted := NewService(context.Background(), nil, nil, Options{WorkingDir: service.options.WorkingDir})
-	items := restarted.List("owner-stale-busy")
-	if len(items) != 1 {
-		t.Fatalf("expected stale busy session in list, got %+v", items)
-	}
-	if items[0].Status != chatruntimedomain.SessionStatusReady {
-		t.Fatalf("expected completed stale busy session to list as ready, got %q", items[0].Status)
-	}
-	if items[0].ErrorMessage != "" {
-		t.Fatalf("expected repaired session to clear error message, got %q", items[0].ErrorMessage)
-	}
-
-	reloaded := NewService(context.Background(), nil, nil, Options{WorkingDir: service.options.WorkingDir})
-	restored, ok := reloaded.Get("owner-stale-busy", sessionID)
-	if !ok {
-		t.Fatalf("expected repaired session to persist")
-	}
-	if restored.Status != chatruntimedomain.SessionStatusReady {
-		t.Fatalf("expected persisted repaired session to stay ready, got %q", restored.Status)
-	}
-}
-
 func TestServiceInputReconcilesOrphanedBusySessionBeforeBusyCheck(t *testing.T) {
 	service := newTestService("success")
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
@@ -1758,71 +1730,6 @@ func insertOrphanedBusyRuntimeSession(t *testing.T, service *Service, ownerID st
 						Title:     "Thinking",
 						Status:    "running",
 						StartedAt: now,
-					},
-				},
-			},
-		},
-	}
-
-	service.mu.Lock()
-	service.sessions[sessionID] = item
-	service.mu.Unlock()
-	service.persistSession(item)
-}
-
-func insertStaleBusyCompletedRuntimeSession(t *testing.T, service *Service, ownerID string, sessionID string, now time.Time) {
-	t.Helper()
-
-	workspaceDir, err := resolveSessionWorkspaceDir(service.options.WorkingDir, sessionID)
-	if err != nil {
-		t.Fatalf("prepare workspace: %v", err)
-	}
-	item := &runtimeSession{
-		summary: chatruntimedomain.Session{
-			ID:               sessionID,
-			RuntimeSessionID: sessionID,
-			OwnerID:          ownerID,
-			Title:            "Completed stale busy session",
-			Shell:            defaultCodexCommand,
-			WorkingDir:       workspaceDir,
-			Status:           chatruntimedomain.SessionStatusBusy,
-			CreatedAt:        now.Add(-time.Minute),
-			UpdatedAt:        now,
-		},
-		entries: []chatruntimedomain.Entry{
-			{
-				Cursor:    0,
-				Stream:    "input",
-				Text:      "old prompt",
-				CreatedAt: now.Add(-time.Second),
-			},
-			{
-				Cursor:    1,
-				Stream:    "stdout",
-				Text:      "old answer",
-				CreatedAt: now,
-			},
-		},
-		nextID:      2,
-		nextTurnID:  2,
-		nextEventID: 2,
-		turns: []*runtimeTurn{
-			{
-				ID:          "turn-1",
-				Prompt:      "old prompt",
-				Status:      "completed",
-				StartedAt:   now.Add(-time.Second),
-				FinishedAt:  now,
-				FinalOutput: "old answer",
-				events: []*runtimeEventRecord{
-					{
-						ID:         "event-1",
-						Type:       "message",
-						Title:      "Message",
-						Status:     "completed",
-						Preview:    "old answer",
-						StartedAt:  now,
-						FinishedAt: now,
 					},
 				},
 			},

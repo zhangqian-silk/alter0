@@ -779,11 +779,6 @@ func (s *Service) reconcileOrphanedRuntimeSession(item *runtimeSession) {
 		item.mu.Unlock()
 		return
 	}
-	if turn == nil && item.repairStaleBusyTerminalSessionLocked() {
-		item.mu.Unlock()
-		s.persistSession(item)
-		return
-	}
 	item.turnRunning = false
 	item.turnCancel = nil
 	item.activeTurnID = ""
@@ -1252,30 +1247,6 @@ func (s *runtimeSession) orphanedRuntimeTurnLocked() *runtimeTurn {
 		}
 	}
 	return nil
-}
-
-func (s *runtimeSession) repairStaleBusyTerminalSessionLocked() bool {
-	if s == nil || chatruntimedomain.NormalizeSessionStatus(s.summary.Status) != chatruntimedomain.SessionStatusBusy {
-		return false
-	}
-	var latest *runtimeTurn
-	for index := len(s.turns) - 1; index >= 0; index-- {
-		if s.turns[index] != nil {
-			latest = s.turns[index]
-			break
-		}
-	}
-	if latest == nil || normalizeFallbackStatus(latest.Status) != "completed" {
-		return false
-	}
-	s.summary.Status = chatruntimedomain.SessionStatusReady
-	s.summary.ErrorMessage = ""
-	s.summary.FinishedAt = time.Time{}
-	s.summary.ExitCode = nil
-	s.turnRunning = false
-	s.turnCancel = nil
-	s.activeTurnID = ""
-	return true
 }
 
 func (s *runtimeSession) newEventLocked(turn *runtimeTurn, stepType string, title string, now time.Time) *runtimeEventRecord {
