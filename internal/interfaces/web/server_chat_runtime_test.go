@@ -190,11 +190,14 @@ func TestChatRuntimeSessionCollectionHandlerCreatesSession(t *testing.T) {
 	if session["id"] != "chatRuntime-1" {
 		t.Fatalf("expected chatRuntime id chatRuntime-1, got %v", session["id"])
 	}
-	if value, ok := session["last_output_at"].(float64); !ok || value <= 0 {
-		t.Fatalf("expected last_output_at in session payload, got %v", session["last_output_at"])
+	if value, ok := session["updated_at"].(float64); !ok || value <= 0 {
+		t.Fatalf("expected updated_at in session payload, got %v", session["updated_at"])
 	}
-	if value, ok := session["activity_at"].(float64); !ok || value <= 0 {
-		t.Fatalf("expected activity_at in session payload, got %v", session["activity_at"])
+	if _, ok := session["last_output_at"]; ok {
+		t.Fatalf("expected session payload to omit last_output_at, got %v", session)
+	}
+	if _, ok := session["activity_at"]; ok {
+		t.Fatalf("expected session payload to omit activity_at, got %v", session)
 	}
 	assertNoLegacyChatRuntimeAPIFields(t, rec.Body.String())
 }
@@ -240,8 +243,14 @@ func TestChatRuntimeSessionCollectionHandlerReturnsComparableSessionSummaries(t 
 		t.Fatalf("expected two session summaries, got %v", payload)
 	}
 	for _, session := range items {
-		if value, ok := session["activity_at"].(float64); !ok || value <= 0 {
-			t.Fatalf("expected activity_at in session summary, got %v", session)
+		if value, ok := session["updated_at"].(float64); !ok || value <= 0 {
+			t.Fatalf("expected updated_at in session summary, got %v", session)
+		}
+		if _, ok := session["activity_at"]; ok {
+			t.Fatalf("expected session summary to omit activity_at, got %v", session)
+		}
+		if _, ok := session["last_output_at"]; ok {
+			t.Fatalf("expected session summary to omit last_output_at, got %v", session)
 		}
 		if _, hasTurns := session["turns"]; hasTurns {
 			t.Fatalf("expected collection summary without turns, got %v", session)
@@ -1478,11 +1487,11 @@ func TestChatRuntimeSessionItemHandlerBudgetsFinalTurnDTOInsteadOfHiddenEventBlo
 			Status:      "completed",
 			FinalOutput: fmt.Sprintf("visible output %d", turnNumber),
 			RuntimeTraceEvents: []chatruntimeapp.RuntimeTraceEvent{{
-				ID:     "event-1",
-				TurnID: turnID,
-				Seq:    1,
-				Kind:   "commands",
-				Status: "completed",
+				ID:      "event-1",
+				TurnID:  turnID,
+				Seq:     1,
+				Kind:    "commands",
+				Status:  "completed",
 				Summary: "visible process summary",
 				Blocks: []chatruntimeapp.RuntimeBlock{{
 					Type: "text",

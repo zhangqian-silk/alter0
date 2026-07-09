@@ -389,21 +389,15 @@ func applyChatRuntimeSessionAPIFields(sessionMap map[string]any) {
 	if sessionMap == nil {
 		return
 	}
-	activityAt := latestNonZeroTime(
-		parseChatRuntimeSessionPayloadTime(sessionMap["last_output_at"]),
-		parseChatRuntimeSessionPayloadTime(sessionMap["updated_at"]),
-		parseChatRuntimeSessionPayloadTime(sessionMap["created_at"]),
-	)
-	if !activityAt.IsZero() {
-		sessionMap["activity_at"] = unixMillis(activityAt)
-	}
-	for _, key := range []string{"created_at", "last_output_at", "updated_at"} {
+	for _, key := range []string{"created_at", "updated_at"} {
 		if parsed := parseChatRuntimeSessionPayloadTime(sessionMap[key]); !parsed.IsZero() {
 			sessionMap[key] = unixMillis(parsed)
 		} else {
 			delete(sessionMap, key)
 		}
 	}
+	delete(sessionMap, "activity_at")
+	delete(sessionMap, "last_output_at")
 	if parsed := parseChatRuntimeSessionPayloadTime(sessionMap["finished_at"]); !parsed.IsZero() {
 		sessionMap["finished_at"] = unixMillis(parsed)
 	} else {
@@ -572,19 +566,6 @@ func chatRuntimeAPIEventKind(kind string) string {
 	default:
 		return "system"
 	}
-}
-
-func latestNonZeroTime(values ...time.Time) time.Time {
-	var latest time.Time
-	for _, value := range values {
-		if value.IsZero() {
-			continue
-		}
-		if latest.IsZero() || value.After(latest) {
-			latest = value
-		}
-	}
-	return latest
 }
 
 func pageChatRuntimeTurns(turns []chatruntimeapp.TurnSummary, r *http.Request) ([]chatruntimeapp.TurnSummary, chatRuntimeTurnPagingEnvelope) {

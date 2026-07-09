@@ -560,7 +560,6 @@ describe("ConversationRuntimeProvider", () => {
         status: string;
         created_at: string;
         updated_at: string;
-        last_output_at: string;
         revision: number;
         turns: Array<{
           id: string;
@@ -633,8 +632,6 @@ describe("ConversationRuntimeProvider", () => {
               status: "ready",
               created_at: "2026-04-23T03:30:00Z",
               updated_at: "2026-04-23T03:35:00Z",
-              last_output_at: "2026-04-23T03:35:00Z",
-              activity_at: "2026-04-23T03:35:00Z",
               revision: Date.parse("2026-04-23T03:35:00Z"),
             }],
           };
@@ -693,7 +690,6 @@ describe("ConversationRuntimeProvider", () => {
           status: "ready",
           created_at: "2026-04-23T03:30:00Z",
           updated_at: "2026-04-23T03:35:00Z",
-          last_output_at: "2026-04-23T03:35:00Z",
           revision: Date.parse("2026-04-23T03:35:00Z"),
           turns: [{
             id: "turn-running",
@@ -1230,27 +1226,23 @@ describe("ConversationRuntimeProvider", () => {
     expect(merged[0]?.messages.map((message) => message.text)).toContain("new answer selected by updatedAt");
   });
 
-  it("orders sessions by the latest runtime activity instead of creation time", () => {
+  it("orders sessions by conversation updatedAt instead of creation time", () => {
     const recentlyActiveOlderSession = {
       ...chatSessionFixture({
         id: "c_olderactivechat0",
         title: "Older but active",
         createdAt: Date.parse("2026-04-21T03:30:00Z"),
       }),
-      lastOutputAt: Date.parse("2026-04-23T04:30:00Z"),
       updatedAt: Date.parse("2026-04-23T04:31:00Z"),
-      activityAt: Date.parse("2026-04-23T04:31:00Z"),
-    } as ChatSession & { lastOutputAt: number; updatedAt: number; activityAt: number };
+    };
     const newlyCreatedIdleSession = {
       ...chatSessionFixture({
         id: "c_newidlechat00000",
         title: "New but idle",
         createdAt: Date.parse("2026-04-23T03:30:00Z"),
       }),
-      lastOutputAt: 0,
       updatedAt: Date.parse("2026-04-23T03:30:00Z"),
-      activityAt: Date.parse("2026-04-23T03:30:00Z"),
-    } as ChatSession & { lastOutputAt: number; updatedAt: number; activityAt: number };
+    };
 
     const merged = mergeRuntimeSessions([], [
       newlyCreatedIdleSession,
