@@ -96,10 +96,22 @@ type codexExecutionPayload struct {
 }
 
 type codexJSONEvent struct {
-	Type     string          `json:"type"`
-	Message  string          `json:"message,omitempty"`
-	ThreadID string          `json:"thread_id,omitempty"`
-	Item     *codexEventItem `json:"item,omitempty"`
+	Type              string           `json:"type"`
+	Message           string           `json:"message,omitempty"`
+	ThreadID          string           `json:"thread_id,omitempty"`
+	Title             string           `json:"title,omitempty"`
+	Name              string           `json:"name,omitempty"`
+	ThreadTitle       string           `json:"thread_title,omitempty"`
+	ConversationTitle string           `json:"conversation_title,omitempty"`
+	Thread            *codexJSONThread `json:"thread,omitempty"`
+	Session           *codexJSONThread `json:"session,omitempty"`
+	Conversation      *codexJSONThread `json:"conversation,omitempty"`
+	Item              *codexEventItem  `json:"item,omitempty"`
+}
+
+type codexJSONThread struct {
+	Title string `json:"title,omitempty"`
+	Name  string `json:"name,omitempty"`
 }
 
 type codexEventItem struct {
@@ -207,6 +219,7 @@ func (p *CodexCLIProcessor) Process(ctx context.Context, content string, metadat
 	if threadState.Enabled {
 		persistCodexThreadID(threadState, collectThreadIDFromOutput(stdout.String()))
 	}
+	storeRuntimeThreadTitle(metadata, collectThreadTitleFromOutput(stdout.String()))
 
 	rawOutput, err := os.ReadFile(outputPath)
 	if err != nil {
@@ -282,7 +295,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 	}
 	stopHeartbeat := p.startHeartbeatReporter(procCtx, cmd)
 
-	output, threadID, processSteps, scanErr := collectStreamOutput(stdoutPipe, emit)
+	output, threadID, threadTitle, processSteps, scanErr := collectStreamOutput(stdoutPipe, emit)
 	if scanErr != nil {
 		procCancel()
 		_ = cmd.Wait()
@@ -301,6 +314,7 @@ func (p *CodexCLIProcessor) ProcessStream(
 	if threadState.Enabled {
 		persistCodexThreadID(threadState, threadID)
 	}
+	storeRuntimeThreadTitle(metadata, threadTitle)
 	storeCodexProcessSteps(metadata, processSteps)
 	result := strings.TrimSpace(output)
 	if result == "" {
@@ -494,13 +508,14 @@ func isCodexProcessRunning(cmd *exec.Cmd) bool {
 func collectStreamOutput(
 	reader io.Reader,
 	emit func(event execdomain.StreamEvent) error,
-) (string, string, []shareddomain.ProcessStep, error) {
+) (string, string, string, []shareddomain.ProcessStep, error) {
 	scanner := bufio.NewScanner(reader)
 	// Allow larger JSONL events for long model outputs.
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
 	emittedOutput := ""
 	threadID := ""
+	threadTitle := ""
 	processSteps := []shareddomain.ProcessStep{}
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -514,8 +529,11 @@ func collectStreamOutput(
 		if strings.TrimSpace(event.ThreadID) != "" {
 			threadID = strings.TrimSpace(event.ThreadID)
 		}
+		if title := externalThreadTitleFromCodexJSONEvent(event); title != "" {
+			threadTitle = title
+		}
 		if fatalMessage := fatalCodexEventMessage(event.Message); fatalMessage != "" {
-			return "", threadID, processSteps, fmt.Errorf("codex authentication failed: %s", fatalMessage)
+			return "", threadID, threadTitle, processSteps, fmt.Errorf("codex authentication failed: %s", fatalMessage)
 		}
 		if event.Item == nil || event.Item.Type != "agent_message" {
 			continue
@@ -523,7 +541,7 @@ func collectStreamOutput(
 		if processStep := codexRuntimeMessageProcessStep(event.Type, event.Item, len(processSteps)+1); processStep != nil {
 			processSteps = append(processSteps, *processStep)
 			if err := emitCodexProcessStep(emit, processStep); err != nil {
-				return "", threadID, processSteps, err
+				return "", threadID, threadTitle, processSteps, err
 			}
 			continue
 		}
@@ -540,7 +558,7 @@ func collectStreamOutput(
 				continue
 			}
 			if err := emitStreamDelta(emit, delta); err != nil {
-				return "", threadID, processSteps, err
+				return "", threadID, threadTitle, processSteps, err
 			}
 			emittedOutput += delta
 		case "item.updated", "item.completed":
@@ -552,16 +570,16 @@ func collectStreamOutput(
 				continue
 			}
 			if err := emitStreamDelta(emit, nextDelta); err != nil {
-				return "", threadID, processSteps, err
+				return "", threadID, threadTitle, processSteps, err
 			}
 			emittedOutput += nextDelta
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", threadID, processSteps, fmt.Errorf("read codex stream output: %w", err)
+		return "", threadID, threadTitle, processSteps, fmt.Errorf("read codex stream output: %w", err)
 	}
-	return emittedOutput, threadID, processSteps, nil
+	return emittedOutput, threadID, threadTitle, processSteps, nil
 }
 
 func isFinalCodexRuntimeMessage(item *codexEventItem) bool {
@@ -626,6 +644,17 @@ func storeCodexProcessSteps(metadata map[string]string, steps []shareddomain.Pro
 	metadata[execdomain.ProcessStepsMetadataKey] = string(raw)
 }
 
+func storeRuntimeThreadTitle(metadata map[string]string, title string) {
+	if metadata == nil {
+		return
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return
+	}
+	metadata[execdomain.RuntimeThreadTitleMetadataKey] = title
+}
+
 func collectThreadIDFromOutput(output string) string {
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
@@ -641,6 +670,51 @@ func collectThreadIDFromOutput(output string) string {
 		}
 	}
 	return ""
+}
+
+func collectThreadTitleFromOutput(output string) string {
+	title := ""
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "{") {
+			continue
+		}
+		event := codexJSONEvent{}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		if nextTitle := externalThreadTitleFromCodexJSONEvent(event); nextTitle != "" {
+			title = nextTitle
+		}
+	}
+	return title
+}
+
+func externalThreadTitleFromCodexJSONEvent(event codexJSONEvent) string {
+	for _, candidate := range []string{
+		event.Title,
+		event.ThreadTitle,
+		event.ConversationTitle,
+		event.Name,
+		nestedCodexJSONThreadTitle(event.Thread),
+		nestedCodexJSONThreadTitle(event.Session),
+		nestedCodexJSONThreadTitle(event.Conversation),
+	} {
+		if title := strings.TrimSpace(candidate); title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func nestedCodexJSONThreadTitle(thread *codexJSONThread) string {
+	if thread == nil {
+		return ""
+	}
+	if title := strings.TrimSpace(thread.Title); title != "" {
+		return title
+	}
+	return strings.TrimSpace(thread.Name)
 }
 
 func fatalCodexEventMessage(message string) string {

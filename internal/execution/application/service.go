@@ -162,6 +162,7 @@ func (s *Service) executeAgent(
 			}
 			attachProcessMetadata(metadata, resultMetadata)
 			attachExecutionSourceMetadata(metadata, resultMetadata)
+			attachRuntimeThreadTitleMetadata(metadata, resultMetadata)
 			return output, resultMetadata, nil
 		}
 	}
@@ -172,6 +173,7 @@ func (s *Service) executeAgent(
 	}
 	attachProcessMetadata(metadata, resultMetadata)
 	attachExecutionSourceMetadata(metadata, resultMetadata)
+	attachRuntimeThreadTitleMetadata(metadata, resultMetadata)
 	if streamHandler != nil && strings.TrimSpace(output) != "" {
 		if err := streamHandler(execdomain.StreamEvent{
 			Type: execdomain.StreamEventTypeOutput,
@@ -197,6 +199,14 @@ func attachExecutionSourceMetadata(metadata map[string]string, resultMetadata ma
 		return
 	}
 	resultMetadata[execdomain.ExecutionSourceMetadataKey] = source
+}
+
+func attachRuntimeThreadTitleMetadata(metadata map[string]string, resultMetadata map[string]string) {
+	title := strings.TrimSpace(metadata[execdomain.RuntimeThreadTitleMetadataKey])
+	if title == "" {
+		return
+	}
+	resultMetadata[execdomain.RuntimeThreadTitleMetadataKey] = title
 }
 
 func parseProcessStepsMetadata(metadata map[string]string) []shareddomain.ProcessStep {

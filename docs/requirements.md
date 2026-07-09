@@ -51,7 +51,7 @@
 - Web 登录态下，Chat 会话历史统一进入服务端 Session history；历史运行时会话在读取阶段迁移为当前 Chat 会话结构，并统一通过 `route=chat` 进入列表与详情恢复。
 - `Chat` 运行页使用后端生成的短 canonical id 作为会话级引用、显式 URL 恢复参数与人工排障的稳定标识符；该 id 格式为 `c_` 加 16 位小写字母数字，并直接用于接口、持久化和工作区隔离。左侧会话列表不展示该 id。`Chat` 主入口在无显式 `session_id` 时默认打开最新 Chat 会话，主导航切回 Chat 时不得沿用旧 query 或浏览器上次活动会话锚点。
 - Web 入口稳定提供根路径到 Chat 的默认进入、`/chat`、`/settings`、`/login` 与 `/logout`。受保护页面、受保护预览工作区与 API 统一走同一登录态校验。访问工作台页面触发登录时，登录回跳只保留 canonical path，不携带会话级长 query。仅静态只读 host 保留匿名访问。
-- 新会话先使用统一占位标题 `New`，早期多轮内可根据更具体输入自动升级标题，避免长期保留“拉取仓库”“分析仓库”等低辨识度名称。
+- 新会话标题由底层 ChatRuntime session store 生成与维护；前端创建真实会话时不得把首条 prompt 作为 create title，也不得在本地乐观消息阶段改写标题。底层会话先使用统一占位标题 `New`；Codex/Claude 等外部 CLI Runtime 暴露自身 thread title 时，ChatRuntime 必须优先采用该 title，持久化为外部标题状态，并通过 `session.updated` 同步到前端。后续同一底层 thread 多次更新 title 时继续覆盖当前会话标题；未收到外部 thread title 时，早期多轮内可根据更具体输入自动升级标题，避免长期保留“拉取仓库”“分析仓库”等低辨识度名称。
 - 新对话空白会话保持唯一；已有空白会话时，`New` 复用并聚焦该会话。
 - `Chat` 左侧会话列表中，置顶会话固定进入 `Pinned / 置顶` 分组；距离 7 天不活跃清理阈值还剩不超过 2 天的未置顶会话进入 `Expiring Soon / 即将清理` 提醒分组；其余会话按内容更新时间归入 `Today / 今天`、`Yesterday / 昨天`、`Earlier / 更早`，缺少更新时间时才回退到创建时间。
 - 同一会话内请求保持顺序一致，由当前 Chat owner 的 runtime session 状态表达 `busy / ready / failed`。

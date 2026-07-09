@@ -38,6 +38,29 @@ func TestClaudeCodeProcessorProcessPreparesRuntimeAndProviderEnv(t *testing.T) {
 	assertClaudeFileContains(t, filepath.Join(sessionWorkspace, ".alter0", "claude-runtime", "skills", "summary", "references", "style.md"), "brief")
 }
 
+func TestClaudeCodeProcessorProcessStoresRuntimeThreadTitleFromStructuredOutput(t *testing.T) {
+	workspace := t.TempDir()
+	metadata := testRuntimeMetadata()
+	metadata[execdomain.ClaudeAPIKeyMetadataKey] = "sk-test"
+	metadata[execdomain.ClaudeBaseURLMetadataKey] = "https://claude-gateway.example/v1"
+	metadata[execdomain.LLMModelMetadataKey] = "claude-sonnet-4-6"
+	metadata[codexWorkspaceRootDirMetadataKey] = workspace
+	metadata[codexWorkspaceModeMetadataKey] = codexWorkspaceModeSession
+
+	processor := newTestClaudeProcessor("structured-title", "整理方案", filepath.Join("workspaces", "sessions", "session-default"))
+
+	output, err := processor.Process(context.Background(), "整理方案", metadata)
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	if output != "mock claude response" {
+		t.Fatalf("Process() output = %q, want mock claude response", output)
+	}
+	if metadata[execdomain.RuntimeThreadTitleMetadataKey] != "Claude internal thread title" {
+		t.Fatalf("runtime thread title metadata = %q, want Claude internal title", metadata[execdomain.RuntimeThreadTitleMetadataKey])
+	}
+}
+
 func mustMarshalClaudeTestSkillContext(t *testing.T, rootDir string) string {
 	t.Helper()
 	skillDir := filepath.Join(rootDir, "docs", "skills", "summary", "references")
@@ -128,6 +151,9 @@ func TestClaudeCodeProcessorHelperProcess(t *testing.T) {
 
 	switch os.Getenv("CLAUDE_HELPER_MODE") {
 	case "success":
+		_, _ = os.Stdout.WriteString("mock claude response\n")
+	case "structured-title":
+		_, _ = os.Stdout.WriteString("{\"type\":\"session.updated\",\"title\":\"Claude internal thread title\"}\n")
 		_, _ = os.Stdout.WriteString("mock claude response\n")
 	default:
 		_, _ = os.Stderr.WriteString("unexpected claude helper mode")

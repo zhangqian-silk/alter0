@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -93,10 +94,77 @@ func (p *ClaudeCodeProcessor) Process(ctx context.Context, content string, metad
 		return "", fmt.Errorf("claude command failed: %w: %s", err, details)
 	}
 	result := strings.TrimSpace(stdout.String())
+	threadTitle, result := normalizeClaudeCodeOutput(result)
+	storeRuntimeThreadTitle(metadata, threadTitle)
 	if result == "" {
 		return "", errors.New("claude returned empty output")
 	}
 	return result, nil
+}
+
+type claudeStructuredOutputEvent struct {
+	Type              string                  `json:"type"`
+	Title             string                  `json:"title,omitempty"`
+	Name              string                  `json:"name,omitempty"`
+	ThreadTitle       string                  `json:"thread_title,omitempty"`
+	ConversationTitle string                  `json:"conversation_title,omitempty"`
+	Thread            *claudeStructuredThread `json:"thread,omitempty"`
+	Session           *claudeStructuredThread `json:"session,omitempty"`
+	Conversation      *claudeStructuredThread `json:"conversation,omitempty"`
+}
+
+type claudeStructuredThread struct {
+	Title string `json:"title,omitempty"`
+	Name  string `json:"name,omitempty"`
+}
+
+func normalizeClaudeCodeOutput(output string) (string, string) {
+	threadTitle := ""
+	visibleLines := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "{") {
+			event := claudeStructuredOutputEvent{}
+			if err := json.Unmarshal([]byte(trimmed), &event); err == nil {
+				if title := externalThreadTitleFromClaudeStructuredEvent(event); title != "" {
+					threadTitle = title
+					continue
+				}
+			}
+		}
+		visibleLines = append(visibleLines, line)
+	}
+	return threadTitle, strings.TrimSpace(strings.Join(visibleLines, "\n"))
+}
+
+func externalThreadTitleFromClaudeStructuredEvent(event claudeStructuredOutputEvent) string {
+	for _, candidate := range []string{
+		event.Title,
+		event.ThreadTitle,
+		event.ConversationTitle,
+		event.Name,
+		nestedClaudeStructuredThreadTitle(event.Thread),
+		nestedClaudeStructuredThreadTitle(event.Session),
+		nestedClaudeStructuredThreadTitle(event.Conversation),
+	} {
+		if title := strings.TrimSpace(candidate); title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func nestedClaudeStructuredThreadTitle(thread *claudeStructuredThread) string {
+	if thread == nil {
+		return ""
+	}
+	if title := strings.TrimSpace(thread.Title); title != "" {
+		return title
+	}
+	return strings.TrimSpace(thread.Name)
 }
 
 func buildClaudeCodeArgs(prompt string, metadata map[string]string) []string {

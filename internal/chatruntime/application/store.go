@@ -15,17 +15,18 @@ import (
 const chatRuntimeStateDirectoryName = "state"
 
 type persistedSessionRecord struct {
-	Summary      chatruntimedomain.Session `json:"summary"`
-	TitleManual  *bool                     `json:"title_manual,omitempty"`
-	TitleAuto    *bool                     `json:"title_auto,omitempty"`
-	TitleScore   int                       `json:"title_score,omitempty"`
-	Entries      []chatruntimedomain.Entry `json:"entries,omitempty"`
-	Turns        []persistedTurnRecord     `json:"turns,omitempty"`
-	NextID       int                       `json:"next_id,omitempty"`
-	NextTurnID   int                       `json:"next_turn_id,omitempty"`
-	NextEventID  int                       `json:"next_event_id,omitempty"`
-	ThreadID     string                    `json:"thread_id,omitempty"`
-	ClosedByUser bool                      `json:"closed_by_user,omitempty"`
+	Summary       chatruntimedomain.Session `json:"summary"`
+	TitleManual   *bool                     `json:"title_manual,omitempty"`
+	TitleAuto     *bool                     `json:"title_auto,omitempty"`
+	TitleExternal *bool                     `json:"title_external,omitempty"`
+	TitleScore    int                       `json:"title_score,omitempty"`
+	Entries       []chatruntimedomain.Entry `json:"entries,omitempty"`
+	Turns         []persistedTurnRecord     `json:"turns,omitempty"`
+	NextID        int                       `json:"next_id,omitempty"`
+	NextTurnID    int                       `json:"next_turn_id,omitempty"`
+	NextEventID   int                       `json:"next_event_id,omitempty"`
+	ThreadID      string                    `json:"thread_id,omitempty"`
+	ClosedByUser  bool                      `json:"closed_by_user,omitempty"`
 }
 
 type persistedTurnRecord struct {
@@ -251,17 +252,18 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 	}
 
 	record := persistedSessionRecord{
-		Summary:      item.summary,
-		TitleManual:  boolPointer(item.titleManual),
-		TitleAuto:    boolPointer(item.titleAuto),
-		TitleScore:   item.titleScore,
-		Entries:      append([]chatruntimedomain.Entry{}, item.entries...),
-		NextID:       item.nextID,
-		NextTurnID:   item.nextTurnID,
-		NextEventID:  item.nextEventID,
-		ThreadID:     strings.TrimSpace(item.threadID),
-		ClosedByUser: item.closedByUser,
-		Turns:        make([]persistedTurnRecord, 0, len(item.turns)),
+		Summary:       item.summary,
+		TitleManual:   boolPointer(item.titleManual),
+		TitleAuto:     boolPointer(item.titleAuto),
+		TitleExternal: boolPointer(item.titleExternal),
+		TitleScore:    item.titleScore,
+		Entries:       append([]chatruntimedomain.Entry{}, item.entries...),
+		NextID:        item.nextID,
+		NextTurnID:    item.nextTurnID,
+		NextEventID:   item.nextEventID,
+		ThreadID:      strings.TrimSpace(item.threadID),
+		ClosedByUser:  item.closedByUser,
+		Turns:         make([]persistedTurnRecord, 0, len(item.turns)),
 	}
 	for _, turn := range item.turns {
 		if turn == nil {
@@ -351,6 +353,13 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	} else {
 		session.titleAuto, session.titleScore = inferAutoSessionTitleState(summary.Title, sessionID)
 	}
+	if record.TitleExternal != nil {
+		session.titleExternal = *record.TitleExternal
+		if session.titleExternal {
+			session.titleAuto = false
+			session.titleScore = 0
+		}
+	}
 	for _, turnRecord := range record.Turns {
 		turn := &runtimeTurn{
 			ID:          turnRecord.ID,
@@ -380,7 +389,7 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	}
 	if title, titleAuto, titleScore, changed := repairSupplementalConstraintAutoSessionTitle(
 		session.summary.Title,
-		session.titleManual,
+		session.titleManual || session.titleExternal,
 		session.turns,
 		sessionID,
 		64,

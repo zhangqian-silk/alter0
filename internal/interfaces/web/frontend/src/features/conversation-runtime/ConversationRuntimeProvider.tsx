@@ -2741,10 +2741,6 @@ export function ConversationRuntimeProvider({
         : message.role === "assistant" && isConversationBusyStatus(message.status)
           ? "local_running"
           : session.status,
-      title: session.titleAuto && message.role === "user"
-        ? (message.text.slice(0, 32) || session.title)
-        : session.title,
-      titleAuto: session.titleAuto && message.role !== "user",
       messages: [...session.messages, message],
     }));
   }, [patchSession]);
@@ -3133,7 +3129,7 @@ export function ConversationRuntimeProvider({
     }
     const session = currentActiveSession?.serverBacked
       ? currentActiveSession
-      : await createRuntimeBackedSession(route, content);
+      : await createRuntimeBackedSession(route);
     if (!session) {
       return;
     }
@@ -3146,10 +3142,6 @@ export function ConversationRuntimeProvider({
     patchSession(route, session.id, (currentSession) => ({
       ...currentSession,
       status: "local_running",
-      title: currentSession.titleAuto
-        ? (optimisticUserMessage.text.slice(0, 32) || currentSession.title)
-        : currentSession.title,
-      titleAuto: false,
       messagesLoaded: currentSession.messagesLoaded === true,
       messages: [
         ...currentSession.messages,
