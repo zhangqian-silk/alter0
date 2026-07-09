@@ -450,6 +450,32 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("data-runtime-submit", "chat");
   });
 
+  it("uses the session status instead of stale cached message status for the session signal", () => {
+    runtimeMock.activeSession = {
+      id: "session-1",
+      status: "ready",
+      title: "Ready session with stale cache",
+      messages: [{
+        id: "turn-1:assistant",
+        role: "assistant",
+        text: "Thinking...",
+        at: Date.parse("2026-04-23T09:00:00Z"),
+        status: "running",
+      }],
+    };
+    runtimeMock.sessions = [runtimeMock.activeSession];
+    runtimeMock.sessionItems = [{
+      ...runtimeMock.sessionItems[0],
+      title: "Ready session with stale cache",
+      draft: false,
+    }];
+
+    renderWorkspace({ route: "chat", isMobileViewport: false });
+
+    expect(document.querySelector("[data-runtime-session-card='session-1']")).toHaveAttribute("data-runtime-session-tone", "ready");
+    expect(document.querySelector("[data-runtime-header-signal-container]")).toHaveAttribute("data-runtime-header-signal-container", "ready");
+  });
+
   it("keeps the mobile composer visible but non-interactive while the primary navigation drawer is open", () => {
     const { unmount } = renderWorkspace({
       isMobileViewport: true,
