@@ -13897,3 +13897,50 @@ select:focus-visible,
     overflow: hidden;
   }
 }
+
+.chatRuntime-shell-detail {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.chatRuntime-shell-fragment {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.chatRuntime-shell-label {
+  color: var(--chatRuntime-text-tertiary, #64748b);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.chatRuntime-shell-pre {
+  max-width: 100%;
+  margin: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  color: var(--chatRuntime-text-primary, #0f172a);
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chatRuntime-shell-pre code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
+  color: inherit;
+  font: inherit;
+}

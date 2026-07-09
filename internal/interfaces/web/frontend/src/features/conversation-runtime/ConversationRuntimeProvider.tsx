@@ -1979,20 +1979,29 @@ function normalizeRuntimeTraceEventDetail(
   detail: RuntimeTraceEventDetail | undefined,
   fallback: RuntimeTraceEvent,
 ): RuntimeTraceEvent | null {
-  if (!detail?.event) {
+  const detailEvent = detail?.event || detail;
+  if (!detailEvent) {
     return null;
   }
-  const normalized = normalizeRuntimeTraceEvents([detail.event], {
+  const normalized = normalizeRuntimeTraceEvents([detailEvent], {
     sessionID: fallback.session_id,
     turnID: fallback.turn_id,
   })[0];
+  const detailBlocks = Array.isArray(detail?.blocks) ? detail.blocks : [];
   if (!normalized) {
-    return null;
+    if (detailBlocks.length === 0) {
+      return null;
+    }
+    return {
+      ...fallback,
+      blocks: detailBlocks,
+      raw: fallback.raw ? { ...fallback.raw, has_detail: false } : { has_detail: false },
+    };
   }
   const blocks = normalized.blocks.length > 0
     ? normalized.blocks
-    : Array.isArray(detail.blocks)
-      ? detail.blocks
+    : detailBlocks.length > 0
+      ? detailBlocks
       : fallback.blocks;
   return {
     ...fallback,
@@ -2783,7 +2792,7 @@ export function ConversationRuntimeProvider({
       const detail = await loadRuntimeEventDetail(session.id, turnID, detailID);
       const detailedEvent = normalizeRuntimeTraceEventDetail(detail as RuntimeTraceEventDetail | undefined, runtimeEvent);
       if (!detailedEvent) {
-        return;
+        throw new Error("missing process event detail");
       }
       patchSession(route, session.id, (currentSession) => ({
         ...currentSession,
@@ -2801,7 +2810,8 @@ export function ConversationRuntimeProvider({
           };
         }),
       }));
-    } catch {
+    } catch (error) {
+      throw error;
     } finally {
       processEventDetailLoadsRef.current.delete(requestKey);
     }

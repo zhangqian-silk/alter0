@@ -2201,4 +2201,20 @@ describe("shell layout stylesheet", () => {
       /\.modal-dialog,\s*\.workspace-details-panel,\s*\.runtime-restart-panel\s*\{[\s\S]*?animation:\s*surface-enter calc\(260ms \* var\(--motion-scale\)\) var\(--ease-out-expo\) both;/,
     );
   });
+
+  it("styles shell process details as explicit command and output fragments", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toMatch(
+      /\.chatRuntime-shell-detail\s*\{[\s\S]*?display:\s*grid;[\s\S]*?gap:\s*10px;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.chatRuntime-shell-pre\s*\{[\s\S]*?overflow-x:\s*auto;[\s\S]*?white-space:\s*pre;/,
+    );
+    expect(stylesheet).toMatch(
+      /\.chatRuntime-shell-pre code\s*\{[\s\S]*?width:\s*max-content;[\s\S]*?min-width:\s*100%;[\s\S]*?white-space:\s*inherit;/,
+    );
+  });
+
 });
