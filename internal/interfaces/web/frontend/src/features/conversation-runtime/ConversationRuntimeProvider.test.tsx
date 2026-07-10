@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { memo } from "react";
 import {
   CHAT_RUNTIME_CACHE_SESSION_TTL_MS,
+  buildRuntimeSessionUpdateAckManifest,
   ConversationRuntimeProvider,
   mergeRuntimeSessions,
   normalizeRuntimeSession,
@@ -535,6 +536,43 @@ describe("ConversationRuntimeProvider", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("runtime-event-filter")).toHaveTextContent("important_text|reasoning"));
+  });
+
+  it("acks canonical runtime event ids without converting them to numbers", () => {
+    const session = chatSessionFixture({
+      id: "c_ackchat00000000",
+      messages: [{
+        id: "turn-1:assistant",
+        role: "assistant",
+        text: "",
+        attachments: [],
+        route: "chat",
+        source: "runtime",
+        error: false,
+        status: "running",
+        at: 1,
+        processEvents: [{
+          id: "event-3",
+          turn_id: "turn-1",
+          seq: 3,
+          source: "adapter",
+          provider: { engine: "codex", adapter: "codex_cli_json" },
+          role: "assistant",
+          kind: "reasoning",
+          lifecycle: "completed",
+          status: "completed",
+          title: "Thinking",
+          summary: "Thinking",
+          blocks: [],
+          visibility: "collapsed",
+        }],
+      }],
+    });
+
+    expect(buildRuntimeSessionUpdateAckManifest([session], [session.id])).toEqual([{
+      id: session.id,
+      turns: [{ id: "turn-1", event_ids: ["event-3"] }],
+    }]);
   });
 
   it("keeps a locally running runtime session busy when a stale list summary returns ready", () => {
@@ -1342,7 +1380,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(merged[0]?.status).toBe("ready");
     expect(merged[0]?.freshnessAt).toBe(Date.parse("2026-04-23T03:33:00Z"));
     expect(merged[0]?.detailFreshnessAt).toBe(Date.parse("2026-04-23T03:33:00Z"));
-    expect(merged[0]?.messages.map((message) => message.text)).toContain("new answer remains visible");
+    expect(merged[0]?.messages.map((message) => message.text)).toEqual(["new answer remains visible"]);
   });
 
   it("uses updatedAt rather than legacy freshnessAt when merging newer Chat session detail", () => {
@@ -1992,7 +2030,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions/alter0-chat");
   });
 
-  it("keeps cached Chat messages visible when the session list briefly returns empty after refresh", async () => {
+  it("shows cached Chat messages immediately, then accepts an authoritative empty session list", async () => {
     const cachedTurnCount = 3;
     window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({ chat: "c_51jttwiv4yggqagk" }));
     window.localStorage.setItem(
@@ -2068,9 +2106,8 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(screen.getByTestId("active-session-title")).toHaveTextContent("Cached resilient chat");
-    expect(screen.getByTestId("message-texts")).toHaveTextContent("resilient answer 1");
-    expect(screen.getByTestId("message-texts")).toHaveTextContent(`resilient answer ${cachedTurnCount}`);
+    expect(screen.getByTestId("active-session-title")).toHaveTextContent("");
+    expect(screen.getByTestId("message-texts")).toHaveTextContent("");
   });
 
   it("keeps cached Chat messages loaded when a newer summary arrives without turns", async () => {
@@ -2192,7 +2229,17 @@ describe("ConversationRuntimeProvider", () => {
             },
           };
         case "/api/chat/sessions/c_stalechat0000000":
-          throw new Error("summary-only refresh should not force stale chat detail hydration");
+          return {
+            session: {
+              id: "c_stalechat0000000",
+              title: "Stale chat",
+              status: "ready",
+              created_at: "2026-04-23T03:20:00Z",
+              updated_at: "2026-04-23T03:40:00Z",
+              turns: [],
+              turns_paging: { has_more_before: false },
+            },
+          };
         case "/api/control/llm/providers":
         case "/api/control/skills":
         case "/api/control/mcps":
@@ -2217,7 +2264,7 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("active-session-id")).toHaveTextContent("c_stalechat0000000"));
     expect(screen.getByTestId("message-texts")).toHaveTextContent("old cached answer");
-    expect(apiClientMock.get).not.toHaveBeenCalledWith("/api/chat/sessions/c_stalechat0000000");
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/c_stalechat0000000"));
   });
 
   it("merges Chat event turn patches without marking detail messages loaded", () => {
@@ -3130,6 +3177,37 @@ describe("ConversationRuntimeProvider", () => {
       );
     });
     expect(screen.getByTestId("sessions")).toHaveTextContent("unpinned");
+  });
+
+  it("keeps the confirmed pin state when the pin request fails", async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path === "/api/chat/sessions") {
+        return {
+          items: [{
+            id: "c_51jttwiv4yggqagk",
+            title: "Pinned session",
+            created_at: "2026-04-23T03:30:00Z",
+            pinned: true,
+          }],
+        };
+      }
+      return { items: [] };
+    });
+    apiClientMock.post.mockRejectedValueOnce(new Error("pin failed"));
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <SessionListHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("sessions")).toHaveTextContent("Pinned session:pinned"));
+    fireEvent.click(screen.getByRole("button", { name: "unpin active" }));
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      "/api/chat/sessions/c_51jttwiv4yggqagk/pin",
+      { pinned: false },
+    ));
+    expect(screen.getByTestId("sessions")).toHaveTextContent("Pinned session:pinned");
   });
 
   it("moves pinned Chat sessions ahead of newer unpinned sessions", async () => {
@@ -5601,7 +5679,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer");
   });
 
-  it("merges paged Chat session detail refreshes into existing messages", async () => {
+  it("rejects a stale paged detail before applying a newer latest-page refresh", async () => {
     let detailReads = 0;
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
@@ -5690,13 +5768,12 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer"));
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer"));
 
     fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
 
     await waitFor(() => expect(screen.getByTestId("message-texts")).toHaveTextContent("newer answer refreshed"));
-    expect(screen.getByTestId("message-texts")).toHaveTextContent("older answer");
+    expect(screen.getByTestId("message-texts")).not.toHaveTextContent("older answer");
   });
 
   it("refreshes the active Chat session on demand so paged history can continue loading", async () => {
@@ -6080,7 +6157,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("sessions")).toHaveTextContent("Info cached chat");
   });
 
-  it("loads Chat runtime process event details on demand and keeps them in the message cache", async () => {
+  it("loads Chat runtime process event details on demand without persisting heavy detail blocks", async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
         case "/api/chat/sessions":
@@ -6177,8 +6254,6 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "refresh active" }));
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions/c_51jttwiv4yggqagk"));
     expect(screen.getByTestId("assistant-process-blocks")).toHaveTextContent("full thinking detail");
-    await waitFor(() =>
-      expect(window.localStorage.getItem("alter0.web.session.long_term_snapshot.v1")).toContain("full thinking detail"),
-    );
+    expect(window.localStorage.getItem("alter0.web.session.long_term_snapshot.v1")).not.toContain("full thinking detail");
   });
 });

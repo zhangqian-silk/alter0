@@ -161,7 +161,7 @@ The application service produces summary, `updated_at`, turns, and paging bounda
 
 `session.deleted` removes the canonical session and both persistence layers immediately. Runtime update filtering may omit unselected process events while still advancing the cursor. When a user explicitly enables a previously hidden process category, the frontend refreshes the active latest detail once to recover omitted event summaries.
 
-Periodic detail fallback after a fixed number of empty update responses is removed. Empty responses use polling backoff; detail is fetched for explicit resync, an incomplete terminal payload, active-session switching rules, foreground calibration, or manual refresh.
+Empty responses use polling backoff. After several consecutive no-progress update responses, a sparse detail calibration remains as a UX safety net for long-running agent tasks; detail is also fetched for explicit resync, an incomplete terminal payload, active-session switching rules, foreground calibration, or manual refresh.
 
 ### 6.4 Canonical IDs
 

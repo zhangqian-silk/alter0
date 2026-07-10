@@ -17,6 +17,7 @@ import { usePageActivation } from "../../shared/visibility/usePageActivation";
 import {
   resolveRuntimeSessionPollPlan,
   useRuntimeSessionController,
+  type RuntimeSessionControllerOptions,
   type RuntimeSessionNormalizeContext,
   type RuntimeSessionPayload,
 } from "../shell/components/runtimeSessionController";
@@ -35,6 +36,13 @@ import {
   isComposerImageAttachment,
   type ComposerAttachment,
 } from "./composerImageAttachments";
+import {
+  createConversationRequestGate,
+  filterConversationUpdatesAfter,
+  resolveConversationResumePlan,
+  selectConversationContentCacheSessionIDs,
+  shouldRequestConversationDetailOnSwitch,
+} from "./conversationSyncPolicy";
 import {
   DEFAULT_RUNTIME_EVENT_FILTER,
   RUNTIME_EVENT_FILTER_OPTIONS,
@@ -270,7 +278,7 @@ type RuntimeSessionUpdatePollResult = {
 
 type RuntimeSessionUpdateAckTurn = {
   id: string;
-  event_ids?: number[];
+  event_ids?: string[];
 };
 
 type RuntimeSessionUpdateAckSession = {
@@ -290,6 +298,7 @@ type RuntimeSessionTurnPagingPayload = RuntimeSessionTurnPaging;
 
 type RuntimeSessionTurnPayload = {
   id?: string;
+  client_request_id?: string;
   prompt?: string;
   attachments?: RuntimeSessionAttachmentPayload[];
   status?: string;
@@ -818,20 +827,31 @@ function messageTurnID(messageID: string): string {
   return separatorIndex > 0 ? normalized.slice(0, separatorIndex) : "";
 }
 
-function runtimeEventIDs(events: RuntimeTraceEvent[]): number[] {
-  const ids: number[] = [];
+function canonicalRuntimeEventID(value: unknown): string {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return "";
+  }
+  if (/^\d+$/.test(normalized)) {
+    return `event-${Number(normalized)}`;
+  }
+  const matched = normalized.match(/^event[-_:](\d+)$/i);
+  return matched ? `event-${Number(matched[1])}` : normalized;
+}
+
+function runtimeEventIDs(events: RuntimeTraceEvent[]): string[] {
+  const ids: string[] = [];
   const seen = new Set<string>();
   for (const event of events) {
-    const id = Number(runtimeTraceEventDetailID(event));
-    if (!Number.isFinite(id) || id <= 0) {
+    const id = canonicalRuntimeEventID(runtimeTraceEventDetailID(event));
+    if (!id) {
       continue;
     }
-    const normalized = String(Math.floor(id));
-    if (seen.has(normalized)) {
+    if (seen.has(id)) {
       continue;
     }
-    seen.add(normalized);
-    ids.push(Math.floor(id));
+    seen.add(id);
+    ids.push(id);
     if (ids.length >= CHAT_SESSION_UPDATE_ACK_EVENT_ID_LIMIT) {
       break;
     }
@@ -839,7 +859,7 @@ function runtimeEventIDs(events: RuntimeTraceEvent[]): number[] {
   return ids;
 }
 
-function buildRuntimeSessionUpdateAckManifest(
+export function buildRuntimeSessionUpdateAckManifest(
   sessions: ChatSession[],
   sessionIDs: string[],
 ): RuntimeSessionUpdateAckSession[] {
@@ -1098,7 +1118,11 @@ function hasLocalRuntimeSyncIntent(session: ChatSession | null | undefined): boo
     return false;
   }
   const status = normalizeTaskStatus(session.status);
-  return status === "local_running" || status === "recovering";
+  if (status === "local_running" || status === "recovering") {
+    return true;
+  }
+  return hasRecoverableRuntimeState(session)
+    && session.messages.some((message) => message.role === "user" && Boolean(normalizeText(message.clientRequestID)));
 }
 
 function shouldPollRuntimeBackedSession(session: ChatSession): boolean {
@@ -1119,38 +1143,16 @@ function hasStableLatestRuntimeSessionCache(
     session
     && session.serverBacked === true
     && session.messagesLoaded === true
+    && !shouldRequestConversationDetailOnSwitch({
+      contentLoaded: session.messagesLoaded === true,
+      summaryUpdatedAt: session.updatedAt,
+      contentUpdatedAt: session.detailFreshnessAt,
+      malformedCache: !Array.isArray(session.messages),
+      unfinished: hasLocalRuntimeSyncIntent(session),
+      updateSyncActive: hasLocalRuntimeSyncIntent(session),
+      explicitRefresh: false,
+    })
     && (options.allowRecoverable === true || !hasRecoverableRuntimeState(session)),
-  );
-}
-
-function hasFullStableRuntimeSessionCache(session: ChatSession | null | undefined): session is ChatSession {
-  return Boolean(
-    hasStableLatestRuntimeSessionCache(session)
-    && session.turnsPaging?.has_more_before === false,
-  );
-}
-
-function shouldRefreshRuntimeRouteOnActivation(
-  activeSession: ChatSession | null | undefined,
-  sessions: ChatSession[],
-): boolean {
-  if (sessions.some(shouldPollRuntimeBackedSession)) {
-    return true;
-  }
-  if (!activeSession || activeSession.serverBacked !== true) {
-    return false;
-  }
-  return shouldHydrateRuntimeSessionOnActivation(activeSession);
-}
-
-function shouldHydrateRuntimeSessionOnActivation(session: ChatSession | null | undefined): boolean {
-  if (!session || session.serverBacked !== true) {
-    return false;
-  }
-  return (
-    hasLocalRuntimeSyncIntent(session)
-    || hasRecoverableRuntimeState(session)
-    || !hasStableLatestRuntimeSessionCache(session, { allowRecoverable: true })
   );
 }
 
@@ -1191,11 +1193,23 @@ function compactOptimisticUserMessagesForParsedTurn(previous: ChatMessage[], par
       .filter((message) => message.role === "user")
       .map((message) => normalizeText(message.text)),
   );
+  const parsedClientRequestIDs = new Set(
+    parsed
+      .filter((message) => message.role === "user")
+      .map((message) => normalizeText(message.clientRequestID))
+      .filter(Boolean),
+  );
   return previous.filter((message) => {
     if (!isOptimisticRuntimeUserMessage(message)) {
       return true;
     }
     if (parsedUserTexts.size === 0) {
+      return false;
+    }
+    if (
+      normalizeText(message.clientRequestID)
+      && parsedClientRequestIDs.has(normalizeText(message.clientRequestID))
+    ) {
       return false;
     }
     return !parsedUserTexts.has(normalizeText(message.text));
@@ -1209,11 +1223,21 @@ function previousMessageForIncomingRuntimeMessage(previous: ChatMessage[], incom
   }
   const incomingTurnID = messageTurnID(incoming.id);
   if (!incomingTurnID) {
-    return undefined;
+    return previous.find((message) =>
+      message.role === incoming.role
+      && message.role === "user"
+      && isOptimisticRuntimeUserMessage(message)
+      && normalizeText(message.text) === normalizeText(incoming.text),
+    );
   }
   return previous.find((message) =>
     message.role === incoming.role
     && messageTurnID(message.id) === incomingTurnID,
+  ) || previous.find((message) =>
+    message.role === incoming.role
+    && message.role === "user"
+    && isOptimisticRuntimeUserMessage(message)
+    && normalizeText(message.text) === normalizeText(incoming.text),
   );
 }
 
@@ -1295,7 +1319,11 @@ function incomingRuntimeMessageCarriesProcessPatch(previous: ChatMessage | undef
 
 function mergeIncomingRuntimeMessage(previous: ChatMessage[], incoming: ChatMessage): ChatMessage {
   if (incoming.role !== "assistant") {
-    return incoming;
+    const previousMessage = previousMessageForIncomingRuntimeMessage(previous, incoming);
+    return {
+      ...incoming,
+      clientRequestID: incoming.clientRequestID || previousMessage?.clientRequestID,
+    };
   }
   const previousMessage = previousMessageForIncomingRuntimeMessage(previous, incoming);
   const processEvents = incomingRuntimeMessageCarriesProcessPatch(previousMessage, incoming)
@@ -1410,6 +1438,7 @@ function normalizeStoredMessage(item: unknown): ChatMessage | null {
   );
   return {
     id,
+    clientRequestID: normalizeText(record.clientRequestID ?? record.client_request_id) || undefined,
     role,
     text: typeof record.text === "string" ? record.text : "",
     attachments: normalizeStoredAttachments(record.attachments),
@@ -1570,20 +1599,34 @@ function normalizeStoredSessionList(value: unknown): ChatSession[] {
 }
 
 function serializeStoredMessage(message: ChatMessage): Record<string, unknown> {
+  const serializeAttachment = (attachment: ComposerAttachment) => ({
+    ...attachment,
+    dataURL: undefined,
+    previewDataURL: undefined,
+  });
   return {
     id: message.id,
+    client_request_id: message.clientRequestID,
     role: message.role,
     text: message.text,
-    attachments: message.attachments,
+    attachments: message.attachments.map(serializeAttachment),
     prompt_text: message.promptText,
-    prompt_attachments: message.promptAttachments,
+    prompt_attachments: message.promptAttachments?.map(serializeAttachment),
     assistant_text_derived_from_prompt: message.assistantTextDerivedFromPrompt,
     route: message.route,
     source: message.source,
     error: message.error,
     status: message.status,
     at: message.at,
-    runtime_trace_events: message.processEvents,
+    runtime_trace_events: message.processEvents.map((event) => ({
+      ...event,
+      blocks: [],
+      raw: event.raw
+        ? { ...event.raw, has_detail: event.raw.has_detail || event.blocks.length > 0 }
+        : event.blocks.length > 0
+          ? { has_detail: true }
+          : undefined,
+    })),
     runtime_trace_events_partial: message.processEventsPartial,
     process_collapsed: message.processCollapsed,
   };
@@ -1840,6 +1883,10 @@ function writeLongTermConversationRuntimeCache(
 ) {
   const cachedAt = Date.now();
   (route ? [route] : CONVERSATION_ROUTES).forEach((routeKey) => {
+    const contentSessionIDs = selectConversationContentCacheSessionIDs(
+      normalizeChatSessionID(activeSessionByRoute[routeKey]),
+      sessionsByRoute[routeKey] || [],
+    );
     writeJSONLocalStorage(longTermSessionSnapshotStorageKey(routeKey), {
       cachedAt,
       activeSessionByRoute: {
@@ -1848,7 +1895,12 @@ function writeLongTermConversationRuntimeCache(
       },
       sessionsByRoute: {
         ...emptySessionsState(),
-        [routeKey]: normalizeRouteSessions(routeKey, (sessionsByRoute[routeKey] || []).map(cloneChatSession)).map(serializeStoredSession),
+        [routeKey]: normalizeRouteSessions(
+          routeKey,
+          (sessionsByRoute[routeKey] || []).map((session) =>
+            contentSessionIDs.has(session.id) ? cloneChatSession(session) : trimSessionForInfoCache(session),
+          ),
+        ).map(serializeStoredSession),
       },
     });
   });
@@ -2052,7 +2104,8 @@ export function normalizeRuntimeSession(
     && (context.source !== "summary" || item.turns.length > 0);
   const hasAuthoritativeTurnDetail = hasTurnPayload && context.source !== "event";
   const createdAt = normalizeOptionalDateValue(item.created_at) || previous?.createdAt || Date.now();
-  const updatedAt = normalizeOptionalDateValue(item.updated_at);
+  const parsedUpdatedAt = normalizeOptionalDateValue(item.updated_at);
+  const updatedAt = parsedUpdatedAt || (context.source === "event" ? previous?.updatedAt || 0 : 0);
   const incomingSummaryAt = latestTimestamp(updatedAt, createdAt);
   const rawParsedMessages = hasTurnPayload
     ? item.turns.flatMap((turn) => normalizeRuntimeTurnMessages(id, turn, sourceRoute))
@@ -2279,14 +2332,16 @@ export function mergeRuntimeSessions(remote: ChatSession[], existing: ChatSessio
       && !hasRecoverableRuntimeState(previous)
       && isConversationBusyStatus(normalizedSession.status),
     );
-    const messages = incomingStaleSummaryAgainstStableDetail
+    const messages = incomingOlderThanPrevious
+      ? previous?.messages || []
+      : incomingStaleSummaryAgainstStableDetail
       ? previous?.messages || []
       : previous && normalizedSession.messagesLoaded === true
       ? mergePagedMessages(previous.messages, normalizedSession.messages)
       : normalizedSession.messages.length > 0
         ? normalizedSession.messages
         : previous?.messages || [];
-    const compactedMessages = normalizedSession.messages.length > 0
+    const compactedMessages = !incomingOlderThanPrevious && normalizedSession.messages.length > 0
       ? compactOptimisticUserMessagesForParsedTurn(messages, normalizedSession.messages)
       : messages;
     const mergedSession = {
@@ -2521,6 +2576,9 @@ export function ConversationRuntimeProvider({
   const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   const pollTimerRef = useRef<number>(0);
+  const pageHiddenAtRef = useRef(pageHidden ? Date.now() : 0);
+  const requestGateRef = useRef(createConversationRequestGate());
+  const localSyncSessionIDsRef = useRef(new Set<string>());
   const updateCursorByRouteRef = useRef<Record<ConversationRoute, string>>({ chat: "0" });
   const recoveryPromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
   const hydratePromisesRef = useRef(new Map<string, Promise<ChatSession | null>>());
@@ -2531,7 +2589,7 @@ export function ConversationRuntimeProvider({
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
   const [fallbackPollAttempt, setFallbackPollAttempt] = useState(0);
-  const runtimeSessionControllerOptions = useMemo(() => ({
+  const runtimeSessionControllerOptions = useMemo<RuntimeSessionControllerOptions<ChatSession>>(() => ({
     route,
     initialSessions: initialSessionsByRoute[route],
     initialActiveSessionID: initialActiveSessionByRoute[route],
@@ -2553,7 +2611,7 @@ export function ConversationRuntimeProvider({
       && session.messagesLoaded === true
       && !hasRecoverableRuntimeState(session),
     enableProgressiveHistory: false,
-    preserveMissingSessionsOnRefresh: true,
+    preserveMissingSessionsOnRefresh: false,
   }), [initialActiveSessionByRoute, initialSessionsByRoute, route]);
   const runtimeSessionController = useRuntimeSessionController<ChatSession>(runtimeSessionControllerOptions);
   const {
@@ -2583,13 +2641,7 @@ export function ConversationRuntimeProvider({
     [initialActiveSessionByRoute, route, runtimeSessionController.activeSessionID],
   );
   const setSessionsByRoute = useCallback((updater: SessionsState | ((current: SessionsState) => SessionsState)) => {
-    const currentRouteSessions = normalizeRouteSessions(
-      route,
-      mergeRuntimeSessions(
-        sessionsByRouteRef.current[route] || [],
-        runtimeSessionController.sessionsRef.current || [],
-      ),
-    );
+    const currentRouteSessions = normalizeRouteSessions(route, runtimeSessionController.sessionsRef.current || []);
     const current = {
       ...sessionsByRouteRef.current,
       [route]: currentRouteSessions,
@@ -2720,7 +2772,8 @@ export function ConversationRuntimeProvider({
     text: string,
     patch: Partial<ChatMessage> = {},
   ): ChatMessage => ({
-    id: makeID("msg"),
+    id: patch.id || makeID("msg"),
+    clientRequestID: patch.clientRequestID,
     role,
     text,
     attachments: patch.attachments || [],
@@ -2833,7 +2886,9 @@ export function ConversationRuntimeProvider({
     try {
       await deleteRuntimeSession(normalizedSessionID);
     } catch {
+      return;
     }
+    localSyncSessionIDsRef.current.delete(normalizedSessionID);
     const nextSessionsByRoute: SessionsState = {
       ...sessionsByRoute,
       [route]: sessionsByRoute[route].filter((session) => session.id !== normalizedSessionID),
@@ -2874,7 +2929,6 @@ export function ConversationRuntimeProvider({
       await setRuntimeSessionPinned(normalizedSessionID, pinned);
       applyPinnedState();
     } catch {
-      applyPinnedState();
     } finally {
       setPinningSessionIDs((current) => ({ ...current, [normalizedSessionID]: false }));
     }
@@ -2970,13 +3024,33 @@ export function ConversationRuntimeProvider({
       String(Number(options.turnLimit) || 0),
     ].join(":");
     const inFlight = hydratePromisesRef.current.get(requestKey);
-    if (inFlight) {
+    if (inFlight && options.force !== true) {
       return inFlight;
     }
-    const hydratePromise = refreshRuntimeSession(normalizedSessionID, options);
+    const freshnessRequestKey = `${routeKey}:${normalizedSessionID}:latest`;
+    const requestGeneration = isProgressiveHistoryRequest
+      ? 0
+      : requestGateRef.current.begin(freshnessRequestKey);
+    const hydratePromise = refreshRuntimeSession(normalizedSessionID, options).then((session) => {
+      if (
+        !isProgressiveHistoryRequest
+        && !requestGateRef.current.isLatest(freshnessRequestKey, requestGeneration)
+      ) {
+        return null;
+      }
+      if (session) {
+        if (!isConversationBusyStatus(session.status) && !hasRecoverableRuntimeState(session)) {
+          localSyncSessionIDsRef.current.delete(session.id);
+        }
+        upsertRuntimeSession(routeKey, session);
+      }
+      return session;
+    });
     hydratePromisesRef.current.set(requestKey, hydratePromise);
     return hydratePromise.finally(() => {
-      hydratePromisesRef.current.delete(requestKey);
+      if (hydratePromisesRef.current.get(requestKey) === hydratePromise) {
+        hydratePromisesRef.current.delete(requestKey);
+      }
     });
   };
 
@@ -2986,6 +3060,7 @@ export function ConversationRuntimeProvider({
       return;
     }
     try {
+      await loadRuntimeSessions(route);
       const hydrated = await hydrateRuntimeSession(route, sessionID, { force: true });
       if (hydrated) {
         upsertRuntimeSession(route, hydrated);
@@ -3029,6 +3104,9 @@ export function ConversationRuntimeProvider({
         }),
       );
       if (!payload.session) {
+        return false;
+      }
+      if (payload.session.turns_paging?.before_turn_found === false) {
         return false;
       }
       const latestSession = sessionsByRouteRef.current[route].find((item) => item.id === session.id) || session;
@@ -3133,7 +3211,10 @@ export function ConversationRuntimeProvider({
     if (!session) {
       return;
     }
+    localSyncSessionIDsRef.current.add(session.id);
+    const clientRequestID = makeID("request");
     const optimisticUserMessage = createMessage("user", content || (attachments.length > 0 ? "Attached files" : ""), {
+      clientRequestID,
       attachments,
       route,
       source: "runtime",
@@ -3152,6 +3233,7 @@ export function ConversationRuntimeProvider({
       attachments = await uploadDraftAttachments(session.id, attachments);
       const hydrated = await sendRuntimeInput(session.id, {
         input: content,
+        client_request_id: clientRequestID,
         attachments: attachments.map(serializeMessageAttachment),
         ...runtimeSelectionInputPayload(selection),
         tool_ids: normalizeSelectionIDs(activeRuntimeConfig.toolIDs),
@@ -3175,6 +3257,7 @@ export function ConversationRuntimeProvider({
       persistComposerDrafts(route, nextDrafts);
       persistComposerAttachmentDrafts(route, nextAttachmentDrafts);
     } catch (error) {
+      localSyncSessionIDsRef.current.delete(session.id);
       patchSession(route, session.id, (currentSession) => ({
         ...currentSession,
         status: "failed",
@@ -3239,8 +3322,13 @@ export function ConversationRuntimeProvider({
     ];
   };
 
-  const loadRuntimeSessions = async (routeKey: ConversationRoute) => {
+  async function loadRuntimeSessions(routeKey: ConversationRoute) {
+    const requestKey = `${routeKey}:list`;
+    const requestGeneration = requestGateRef.current.begin(requestKey);
     const remoteSessions = await refreshRuntimeSessions();
+    if (!requestGateRef.current.isLatest(requestKey, requestGeneration)) {
+      return sessionsByRouteRef.current[routeKey];
+    }
     const normalizedRemoteSessions = normalizeRouteSessions(routeKey, remoteSessions);
     setSessionsByRoute((current) => ({
       ...current,
@@ -3251,7 +3339,7 @@ export function ConversationRuntimeProvider({
     }));
     setSessionsLoadedByRoute((current) => ({ ...current, [routeKey]: true }));
     return normalizedRemoteSessions;
-  };
+  }
 
   const refreshCurrentRouteOnPageActive = useCallback(async () => {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") {
@@ -3264,7 +3352,15 @@ export function ConversationRuntimeProvider({
     const latestActiveSession = latestActiveSessionID
       ? latestSessions.find((session) => session.id === latestActiveSessionID) || activeSession || null
       : activeSession || null;
-    if (!shouldRefreshRuntimeRouteOnActivation(latestActiveSession, latestSessions)) {
+    const resumePlan = resolveConversationResumePlan({
+      hiddenAt: pageHiddenAtRef.current,
+      now: Date.now(),
+      hasLocallyUnfinishedSession: latestSessions.some((session) => (
+        shouldPollRuntimeBackedSession(session) || localSyncSessionIDsRef.current.has(session.id)
+      )),
+    });
+    pageHiddenAtRef.current = 0;
+    if (!resumePlan.refreshList) {
       return;
     }
 
@@ -3277,10 +3373,7 @@ export function ConversationRuntimeProvider({
     const refreshedActiveSession = latestActiveSessionID
       ? refreshedSessions.find((session) => session.id === latestActiveSessionID) || latestActiveSession
       : latestActiveSession;
-    const shouldHydrateActiveSession = Boolean(
-      refreshedActiveSession?.id
-      && shouldHydrateRuntimeSessionOnActivation(refreshedActiveSession),
-    );
+    const shouldHydrateActiveSession = Boolean(refreshedActiveSession?.id && resumePlan.refreshActiveDetail);
     if (refreshedActiveSession?.id && shouldHydrateActiveSession) {
       try {
         const hydrated = await hydrateRuntimeSession(route, refreshedActiveSession.id, { force: true, allowRecoverableCache: true });
@@ -3294,18 +3387,6 @@ export function ConversationRuntimeProvider({
   }, [activeSession, activeSessionByRoute, hydrateRuntimeSession, loadRuntimeSessions, route, upsertRuntimeSession]);
 
   useEffect(() => {
-    const nextSessionsByRoute: SessionsState = {
-      chat: normalizeRouteSessions(
-        "chat",
-        mergeRuntimeSessions(sessionsByRoute.chat, sessionsByRouteRef.current.chat || []),
-      ),
-    };
-    sessionsByRouteRef.current = nextSessionsByRoute;
-    runtimeSessionController.sessionsRef.current = nextSessionsByRoute[route];
-    writeConversationRuntimeCaches(activeSessionByRoute, nextSessionsByRoute, route);
-  }, [activeSessionByRoute, route, runtimeSessionController.sessionsRef, sessionsByRoute]);
-
-  useEffect(() => {
     const syncViewport = () => setCompact(isCompactViewport());
     window.addEventListener("resize", syncViewport);
     return () => window.removeEventListener("resize", syncViewport);
@@ -3313,7 +3394,12 @@ export function ConversationRuntimeProvider({
 
   usePageActivation({
     debounceMs: PAGE_ACTIVE_REFRESH_DEBOUNCE_MS,
-    onVisibilityChange: setPageHidden,
+    onVisibilityChange: (hidden) => {
+      if (hidden) {
+        pageHiddenAtRef.current = Date.now();
+      }
+      setPageHidden(hidden);
+    },
     onActive: refreshCurrentRouteOnPageActive,
   });
 
@@ -3439,8 +3525,9 @@ export function ConversationRuntimeProvider({
     if (
       !activeSession?.id
       || activeSession.serverBacked !== true
-      || isConversationBusyStatus(activeSession.status)
-      || hasStableLatestRuntimeSessionCache(activeSession, { allowRecoverable: true })
+      || localSyncSessionIDsRef.current.has(activeSession.id)
+      || (isConversationBusyStatus(activeSession.status) && shouldPollRuntimeBackedSession(activeSession))
+      || hasStableLatestRuntimeSessionCache(activeSession)
     ) {
       return;
     }
@@ -3490,13 +3577,24 @@ export function ConversationRuntimeProvider({
       sessions: buildRuntimeSessionUpdateAckManifest(sessionsByRouteRef.current[routeKey], recoverableSessionIDs),
     };
     const response = await apiClient.post<RuntimeSessionUpdatesResponse>(`/api/${routeKey}/sessions/updates`, body);
-    const responseUpdates = Array.isArray(response.updates) ? response.updates : [];
+    const responseUpdates = filterConversationUpdatesAfter(
+      afterUpdateID,
+      Array.isArray(response.updates) ? response.updates : [],
+    );
     const latestUpdateID = responseUpdates.reduce((latest, event) => {
       const id = Number(event.update_id);
       return Number.isFinite(id) && id > latest ? id : latest;
     }, 0);
-    const nextCursor = normalizeText(response.latest_update_id)
-      || (latestUpdateID > 0 ? String(latestUpdateID) : "");
+    const serverCursor = Number(response.latest_update_id);
+    const currentCursor = Number(afterUpdateID);
+    const nextCursorNumber = response.resync_required === true && Number.isFinite(serverCursor)
+      ? serverCursor
+      : Math.max(
+          Number.isFinite(currentCursor) ? currentCursor : 0,
+          Number.isFinite(serverCursor) ? serverCursor : 0,
+          latestUpdateID,
+        );
+    const nextCursor = String(Math.max(0, nextCursorNumber));
     if (nextCursor) {
       updateCursorByRouteRef.current[routeKey] = nextCursor;
     }
@@ -3527,14 +3625,21 @@ export function ConversationRuntimeProvider({
       if (normalized) {
         upsertRuntimeSession(routeKey, normalized);
         const current = sessionsByRouteRef.current[routeKey].find((session) => session.id === normalized.id) || normalized;
+        if (!isConversationBusyStatus(current.status) && !hasRecoverableRuntimeState(current)) {
+          localSyncSessionIDsRef.current.delete(current.id);
+        }
         const appliedRecoverableProgress = recoverableIDSet.has(normalized.id)
-          && runtimeSessionUpdateMadeProgress(previous, normalized);
+          && runtimeSessionUpdateMadeProgress(previous, current);
         result = {
           appliedAny: true,
           appliedRecoverableProgress: result.appliedRecoverableProgress || appliedRecoverableProgress,
           appliedRecoverable:
             result.appliedRecoverable
-            || (recoverableIDSet.has(normalized.id) && !shouldPollRuntimeBackedSession(current)),
+            || (
+              recoverableIDSet.has(normalized.id)
+              && !isConversationBusyStatus(current.status)
+              && !hasRecoverableRuntimeState(current)
+            ),
         };
       }
     }
@@ -3543,7 +3648,9 @@ export function ConversationRuntimeProvider({
 
   useEffect(() => {
     window.clearTimeout(pollTimerRef.current);
-    const recoverableSessions = sessionsByRoute[route].filter(shouldPollRuntimeBackedSession);
+    const recoverableSessions = sessionsByRoute[route].filter((session) => (
+      shouldPollRuntimeBackedSession(session) || localSyncSessionIDsRef.current.has(session.id)
+    ));
     if (!recoverableSessions.length) {
       return;
     }
@@ -3561,7 +3668,7 @@ export function ConversationRuntimeProvider({
       const latestSessions = sessionsByRouteRef.current[route];
       const pollSessionIDSet = new Set(
         latestSessions
-          .filter(shouldPollRuntimeBackedSession)
+          .filter((session) => shouldPollRuntimeBackedSession(session) || localSyncSessionIDsRef.current.has(session.id))
           .map((session) => session.id),
       );
       const pollSessionIDs = Array.from(pollSessionIDSet);
@@ -3585,7 +3692,8 @@ export function ConversationRuntimeProvider({
                 return false;
               }
               upsertRuntimeSession(route, hydrated);
-              return !shouldPollRuntimeBackedSession(hydrated);
+              return !shouldPollRuntimeBackedSession(hydrated)
+                && !localSyncSessionIDsRef.current.has(hydrated.id);
             } catch {
               return false;
             }
