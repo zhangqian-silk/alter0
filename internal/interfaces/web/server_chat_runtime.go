@@ -27,9 +27,10 @@ type chatRuntimeSessionCreateRequest struct {
 }
 
 type chatRuntimeSessionInputRequest struct {
-	Input       string                     `json:"input"`
-	Attachments []messageAttachmentRequest `json:"attachments,omitempty"`
-	SkillIDs    *[]string                  `json:"skill_ids,omitempty"`
+	Input           string                     `json:"input"`
+	ClientRequestID string                     `json:"client_request_id,omitempty"`
+	Attachments     []messageAttachmentRequest `json:"attachments,omitempty"`
+	SkillIDs        *[]string                  `json:"skill_ids,omitempty"`
 }
 
 type chatRuntimeSessionPinRequest struct {
@@ -63,6 +64,7 @@ type chatRuntimeTurnPagingEnvelope struct {
 	OldestTurnID     string `json:"oldest_turn_id,omitempty"`
 	NewestTurnID     string `json:"newest_turn_id,omitempty"`
 	NextBeforeTurnID string `json:"next_before_turn_id,omitempty"`
+	BeforeTurnFound  bool   `json:"before_turn_found"`
 }
 
 type chatRuntimeEventDetailEnvelope struct {
@@ -70,7 +72,12 @@ type chatRuntimeEventDetailEnvelope struct {
 	Blocks []chatruntimeapp.RuntimeBlock `json:"blocks,omitempty"`
 }
 
+func disableConversationHTTPResponseCaching(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+}
+
 func (s *Server) chatRuntimeSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	disableConversationHTTPResponseCaching(w)
 	if s.chatRuntimes == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatRuntime service unavailable"})
 		return
@@ -114,6 +121,7 @@ func (s *Server) chatRuntimeSessionCollectionHandler(w http.ResponseWriter, r *h
 }
 
 func (s *Server) chatRuntimeSessionRecoverHandler(w http.ResponseWriter, r *http.Request) {
+	disableConversationHTTPResponseCaching(w)
 	if s.chatRuntimes == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatRuntime service unavailable"})
 		return
@@ -178,6 +186,7 @@ func withChatRuntimeClientID(r *http.Request, clientID string) *http.Request {
 }
 
 func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Request) {
+	disableConversationHTTPResponseCaching(w)
 	if s.chatRuntimes == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatRuntime service unavailable"})
 		return
@@ -323,11 +332,12 @@ func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Re
 			input = defaultAttachmentContent(attachments)
 		}
 		session, err := s.chatRuntimes.InputWithAttachments(chatruntimeapp.InputRequest{
-			OwnerID:      ownerID,
-			SessionID:    sessionID,
-			Input:        input,
-			Attachments:  attachments,
-			SkillContext: s.resolveChatRuntimeSkillContext(req.SkillIDs),
+			OwnerID:         ownerID,
+			SessionID:       sessionID,
+			Input:           input,
+			ClientRequestID: strings.TrimSpace(req.ClientRequestID),
+			Attachments:     attachments,
+			SkillContext:    s.resolveChatRuntimeSkillContext(req.SkillIDs),
 		})
 		if err != nil {
 			s.writeChatRuntimeError(w, err)
@@ -353,8 +363,23 @@ func (s *Server) buildChatRuntimeSessionDetail(ownerID string, session any, r *h
 	if sessionID == "" {
 		return session
 	}
-	turns, err := s.chatRuntimes.ListTurns(ownerID, sessionID)
-	if err == nil {
+	turns := []chatruntimeapp.TurnSummary(nil)
+	if snapshotService, ok := s.chatRuntimes.(chatRuntimeDetailSnapshotService); ok {
+		if snapshot, found := snapshotService.GetDetail(ownerID, sessionID); found {
+			if snapshotMap, mapped := chatRuntimeSessionMap(snapshot.Session); mapped {
+				sessionMap = snapshotMap
+				applyChatRuntimeSessionAPIFields(sessionMap)
+			}
+			turns = snapshot.Turns
+		}
+	}
+	if turns == nil {
+		items, err := s.chatRuntimes.ListTurns(ownerID, sessionID)
+		if err == nil {
+			turns = items
+		}
+	}
+	if turns != nil {
 		items, paging := pageChatRuntimeTurns(turns, r)
 		sessionMap["turns"] = buildChatRuntimeTurnDTOs(items)
 		sessionMap["turns_paging"] = paging
@@ -368,8 +393,15 @@ func buildChatRuntimeSessionSummary(session any) any {
 		return session
 	}
 	applyChatRuntimeSessionAPIFields(sessionMap)
-	delete(sessionMap, "turns")
-	delete(sessionMap, "turns_paging")
+	allowed := map[string]struct{}{
+		"id": {}, "title": {}, "status": {}, "pinned": {},
+		"created_at": {}, "updated_at": {},
+	}
+	for key := range sessionMap {
+		if _, ok := allowed[key]; !ok {
+			delete(sessionMap, key)
+		}
+	}
 	return sessionMap
 }
 
@@ -447,10 +479,13 @@ func buildChatRuntimeTurnDTOs(turns []chatruntimeapp.TurnSummary) []map[string]a
 
 func buildChatRuntimeTurnDTO(turn chatruntimeapp.TurnSummary, fallbackID int) map[string]any {
 	item := map[string]any{
-		"id":          numericChatRuntimeID(turn.ID, "turn", fallbackID),
+		"id":          canonicalChatRuntimeID(turn.ID, "turn", fallbackID),
 		"prompt":      turn.Prompt,
 		"attachments": turn.Attachments,
 		"status":      turn.Status,
+	}
+	if clientRequestID := strings.TrimSpace(turn.ClientRequestID); clientRequestID != "" {
+		item["client_request_id"] = clientRequestID
 	}
 	if !turn.StartedAt.IsZero() {
 		item["started_at"] = unixMillis(turn.StartedAt)
@@ -481,9 +516,9 @@ func buildChatRuntimeEventDTOs(events []chatruntimeapp.RuntimeTraceEvent) []map[
 }
 
 func buildChatRuntimeEventDTO(event chatruntimeapp.RuntimeTraceEvent, fallbackID int) map[string]any {
-	id := event.Seq
-	if id <= 0 {
-		id = numericChatRuntimeID(event.ID, "event", fallbackID)
+	id := canonicalChatRuntimeID(event.ID, "event", event.Seq)
+	if id == "" {
+		id = canonicalChatRuntimeID("", "event", fallbackID)
 	}
 	text := strings.TrimSpace(event.Summary)
 	if text == "" {
@@ -549,6 +584,28 @@ func numericChatRuntimeID(value string, prefix string, fallback int) int {
 	return fallback
 }
 
+func canonicalChatRuntimeID(value string, prefix string, fallback int) string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		if fallback <= 0 {
+			return ""
+		}
+		return fmt.Sprintf("%s-%d", prefix, fallback)
+	}
+	if numeric, err := strconv.Atoi(normalized); err == nil && numeric > 0 {
+		return fmt.Sprintf("%s-%d", prefix, numeric)
+	}
+	for _, marker := range []string{prefix + "-", prefix + "_", prefix + ":"} {
+		if strings.HasPrefix(normalized, marker) {
+			suffix := strings.TrimSpace(strings.TrimPrefix(normalized, marker))
+			if numeric, err := strconv.Atoi(suffix); err == nil && numeric > 0 {
+				return fmt.Sprintf("%s-%d", prefix, numeric)
+			}
+		}
+	}
+	return normalized
+}
+
 func chatRuntimeAPIEventKind(kind string) string {
 	switch strings.TrimSpace(strings.ToLower(kind)) {
 	case "assistant_commentary", "important_text", "message":
@@ -585,12 +642,22 @@ func pageChatRuntimeTurns(turns []chatruntimeapp.TurnSummary, r *http.Request) (
 	}
 	total := len(turns)
 	end := total
+	beforeTurnFound := beforeTurnID == ""
 	if beforeTurnID != "" {
 		for index, turn := range turns {
 			if strings.TrimSpace(turn.ID) == beforeTurnID {
 				end = index
+				beforeTurnFound = true
 				break
 			}
+		}
+	}
+	if !beforeTurnFound {
+		return []chatruntimeapp.TurnSummary{}, chatRuntimeTurnPagingEnvelope{
+			Limit:           limit,
+			Total:           total,
+			ByteLimit:       maxChatRuntimeTurnDetailBytes,
+			BeforeTurnFound: false,
 		}
 	}
 	if end < 0 {
@@ -615,12 +682,13 @@ func pageChatRuntimeTurns(turns []chatruntimeapp.TurnSummary, r *http.Request) (
 	}
 	items := append([]chatruntimeapp.TurnSummary{}, turns[start:end]...)
 	paging := chatRuntimeTurnPagingEnvelope{
-		Limit:         limit,
-		Total:         total,
-		ByteLimit:     maxChatRuntimeTurnDetailBytes,
-		ApproxBytes:   approxBytes,
-		HasMoreBefore: start > 0,
-		HasMoreAfter:  end < total,
+		Limit:           limit,
+		Total:           total,
+		ByteLimit:       maxChatRuntimeTurnDetailBytes,
+		ApproxBytes:     approxBytes,
+		HasMoreBefore:   start > 0,
+		HasMoreAfter:    end < total,
+		BeforeTurnFound: true,
 	}
 	if len(items) > 0 {
 		paging.OldestTurnID = items[0].ID

@@ -80,11 +80,12 @@ type RecoverRequest struct {
 }
 
 type InputRequest struct {
-	OwnerID      string
-	SessionID    string
-	Input        string
-	Attachments  []execdomain.UserAttachment
-	SkillContext *execdomain.SkillContext
+	OwnerID         string
+	SessionID       string
+	Input           string
+	ClientRequestID string
+	Attachments     []execdomain.UserAttachment
+	SkillContext    *execdomain.SkillContext
 }
 
 type EntryPage struct {
@@ -198,14 +199,15 @@ type runtimeSession struct {
 }
 
 type runtimeTurn struct {
-	ID          string
-	Prompt      string
-	Attachments []TurnAttachment
-	Status      string
-	StartedAt   time.Time
-	FinishedAt  time.Time
-	FinalOutput string
-	events      []*runtimeEventRecord
+	ID              string
+	ClientRequestID string
+	Prompt          string
+	Attachments     []TurnAttachment
+	Status          string
+	StartedAt       time.Time
+	FinishedAt      time.Time
+	FinalOutput     string
+	events          []*runtimeEventRecord
 }
 
 type runtimeEventRecord struct {
@@ -219,6 +221,19 @@ type runtimeEventRecord struct {
 	FinishedAt time.Time
 	Blocks     []RuntimeDetailBlock
 	Searchable bool
+}
+
+func nextSessionContentUpdatedAt(previous time.Time, now time.Time) time.Time {
+	previous = previous.UTC().Truncate(time.Millisecond)
+	candidate := now.UTC().Truncate(time.Millisecond)
+	if !previous.IsZero() && !candidate.After(previous) {
+		return previous.Add(time.Millisecond)
+	}
+	return candidate
+}
+
+func (s *runtimeSession) advanceContentUpdatedAtLocked(now time.Time) {
+	s.summary.UpdatedAt = nextSessionContentUpdatedAt(s.summary.UpdatedAt, now)
 }
 
 func NewService(ctx context.Context, idGenerator sharedapp.IDGenerator, logger *slog.Logger, options Options) *Service {
@@ -510,6 +525,26 @@ func (s *Service) Get(ownerID string, sessionID string) (chatruntimedomain.Sessi
 	return item.snapshot(), true
 }
 
+func (s *Service) GetDetail(ownerID string, sessionID string) (SessionDetail, bool) {
+	item, err := s.getOrRestoreOwnedSession(ownerID, sessionID)
+	if err != nil {
+		return SessionDetail{}, false
+	}
+	s.reconcileOrphanedRuntimeSession(item)
+
+	item.mu.RLock()
+	defer item.mu.RUnlock()
+	turns := make([]TurnSummary, 0, len(item.turns))
+	for _, turn := range item.turns {
+		if turn != nil {
+			turns = append(turns, turn.summary(item.summary.ID))
+		}
+	}
+	snapshot := item.summary
+	snapshot.Status = chatruntimedomain.NormalizeSessionStatus(snapshot.Status)
+	return SessionDetail{Session: snapshot, Turns: turns}, true
+}
+
 func (s *Service) SetPinned(ownerID string, sessionID string, pinned bool) (chatruntimedomain.Session, error) {
 	item, err := s.getOwnedSession(ownerID, sessionID)
 	if err != nil {
@@ -674,14 +709,13 @@ func (s *Service) InputWithAttachments(req InputRequest) (chatruntimedomain.Sess
 		item.titleScore = nextScore
 	}
 	item.summary.Status = chatruntimedomain.SessionStatusBusy
-	item.summary.UpdatedAt = now
 	item.summary.FinishedAt = time.Time{}
 	item.summary.ErrorMessage = ""
 	item.summary.ExitCode = nil
 	item.closedByUser = false
 	item.turnRunning = true
 	item.turnCancel = turnCancel
-	turn := item.beginTurnLocked(prompt, attachments, now)
+	turn := item.beginTurnLocked(prompt, strings.TrimSpace(req.ClientRequestID), attachments, now)
 	item.appendEntryLocked("input", prompt)
 	snapshot := item.summary
 	item.mu.Unlock()
@@ -977,7 +1011,7 @@ func nestedCodexThreadTitle(thread *codexExecThread) string {
 	return strings.TrimSpace(thread.Name)
 }
 
-func applyExternalThreadTitleLocked(item *runtimeSession, title string, now time.Time) bool {
+func applyExternalThreadTitleLocked(item *runtimeSession, title string, _ time.Time) bool {
 	title = strings.TrimSpace(title)
 	if item == nil || title == "" {
 		return false
@@ -986,7 +1020,6 @@ func applyExternalThreadTitleLocked(item *runtimeSession, title string, now time
 		return false
 	}
 	item.summary.Title = title
-	item.summary.UpdatedAt = now
 	item.titleAuto = false
 	item.titleScore = 0
 	item.titleExternal = true
@@ -1004,7 +1037,6 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 			if item.threadID != threadID || item.summary.RuntimeSessionID != threadID {
 				item.threadID = threadID
 				item.summary.RuntimeSessionID = threadID
-				item.summary.UpdatedAt = now
 				threadChanged = true
 			}
 			titleChanged = applyExternalThreadTitleLocked(item, externalThreadTitleFromCodexEvent(event), now)
@@ -1041,6 +1073,7 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 		sessionEventType := ""
 		runtimeEventID := ""
 		item.mu.Lock()
+		contentChanged := false
 
 		turn := item.turnByIDLocked(turnID)
 		if turn == nil {
@@ -1063,6 +1096,10 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 				sessionEventType = SessionEventTurnEventUpdated
 			}
 			item.appendEntryLocked("system", "running command: "+command)
+			contentChanged = true
+		}
+		if contentChanged {
+			item.advanceContentUpdatedAtLocked(time.Now().UTC())
 		}
 		item.mu.Unlock()
 		s.persistSession(item)
@@ -1075,6 +1112,7 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 		sessionEventType := ""
 		runtimeEventID := ""
 		item.mu.Lock()
+		contentChanged := false
 
 		turn := item.turnByIDLocked(turnID)
 		if turn == nil {
@@ -1108,6 +1146,7 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 				runtimeEventID = step.ID
 				sessionEventType = SessionEventTurnEventAppended
 			}
+			contentChanged = true
 		case "reasoning", "plan":
 			text := normalizeChunk(event.Item.Text)
 			if strings.TrimSpace(text) == "" {
@@ -1127,6 +1166,7 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 			step.Searchable = true
 			runtimeEventID = step.ID
 			sessionEventType = SessionEventTurnEventAppended
+			contentChanged = true
 		case "command_execution":
 			command := strings.TrimSpace(event.Item.Command)
 			step, created := item.ensureCommandEventResultLocked(turn, event.Item.ID, command, now)
@@ -1158,6 +1198,10 @@ func (s *Service) applyCodexEvent(item *runtimeSession, turnID string, event cod
 			} else {
 				sessionEventType = SessionEventTurnEventUpdated
 			}
+			contentChanged = true
+		}
+		if contentChanged {
+			item.advanceContentUpdatedAtLocked(now)
 		}
 		item.mu.Unlock()
 		s.persistSession(item)
@@ -1189,7 +1233,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	}
 
 	if item.closedByUser {
-		item.summary.UpdatedAt = now
+		item.advanceContentUpdatedAtLocked(now)
 		item.summary.FinishedAt = now
 		item.summary.Status = chatruntimedomain.SessionStatusExited
 		if turn != nil && turn.FinishedAt.IsZero() {
@@ -1203,7 +1247,7 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		return
 	}
 
-	item.summary.UpdatedAt = now
+	item.advanceContentUpdatedAtLocked(now)
 	item.summary.ExitCode = nil
 
 	if turnErr == nil {
@@ -1311,15 +1355,16 @@ func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtime
 	turn.promoteFinalOutput()
 }
 
-func (s *runtimeSession) beginTurnLocked(prompt string, attachments []TurnAttachment, now time.Time) *runtimeTurn {
+func (s *runtimeSession) beginTurnLocked(prompt string, clientRequestID string, attachments []TurnAttachment, now time.Time) *runtimeTurn {
 	s.nextTurnID++
 	turn := &runtimeTurn{
-		ID:          fmt.Sprintf("turn-%d", s.nextTurnID),
-		Prompt:      prompt,
-		Attachments: cloneTurnAttachments(attachments),
-		Status:      "running",
-		StartedAt:   now,
-		events:      []*runtimeEventRecord{},
+		ID:              fmt.Sprintf("turn-%d", s.nextTurnID),
+		ClientRequestID: strings.TrimSpace(clientRequestID),
+		Prompt:          prompt,
+		Attachments:     cloneTurnAttachments(attachments),
+		Status:          "running",
+		StartedAt:       now,
+		events:          []*runtimeEventRecord{},
 	}
 	s.turns = append(s.turns, turn)
 	s.activeTurnID = turn.ID
@@ -1477,6 +1522,7 @@ func (t *runtimeTurn) summary(sessionID string) TurnSummary {
 	}
 	return TurnSummary{
 		ID:                 t.ID,
+		ClientRequestID:    t.ClientRequestID,
 		Prompt:             t.Prompt,
 		Attachments:        cloneTurnAttachments(t.Attachments),
 		Status:             normalizeFallbackStatus(t.Status),
@@ -2427,7 +2473,7 @@ func (s *runtimeSession) appendEntryLocked(stream string, text string) {
 	if isChatRuntimeOutputStream(stream) {
 		s.summary.LastOutputAt = now
 	}
-	s.summary.UpdatedAt = now
+	s.advanceContentUpdatedAtLocked(now)
 }
 
 func (s *runtimeSession) markInterruptedLocked(turn *runtimeTurn, now time.Time, message string) {
@@ -2441,9 +2487,7 @@ func (s *runtimeSession) markInterruptedLocked(turn *runtimeTurn, now time.Time,
 	s.summary.Status = chatruntimedomain.SessionStatusInterrupted
 	s.summary.ErrorMessage = reason
 	s.summary.FinishedAt = now
-	if s.summary.UpdatedAt.Before(now) {
-		s.summary.UpdatedAt = now
-	}
+	s.advanceContentUpdatedAtLocked(now)
 	if !alreadyRecorded {
 		s.appendEntryLocked("system", summaryText)
 	}

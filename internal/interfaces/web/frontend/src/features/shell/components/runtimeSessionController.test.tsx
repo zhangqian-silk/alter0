@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { useRuntimeSessionController, type RuntimeSessionPayload } from "./runtimeSessionController";
@@ -66,6 +66,8 @@ function RuntimeSessionControllerHarness() {
       >
         refresh list
       </button>
+      <button type="button" onClick={() => void controller.refreshActiveSession("chat-1")}>refresh detail</button>
+      <button type="button" onClick={() => void controller.createSession()}>create session</button>
       <output data-testid="session-ids">{controller.sessions.map((session) => session.id).join("|")}</output>
       <output data-testid="refresh-result-ids">{refreshResultIDs}</output>
       <output data-testid="active-session-id">{controller.activeSessionID}</output>
@@ -88,5 +90,51 @@ describe("useRuntimeSessionController", () => {
     expect(screen.getByTestId("refresh-result-ids")).toHaveTextContent("chat-1");
     expect(screen.getByTestId("active-session-id")).toHaveTextContent("chat-1");
     expect(screen.getByTestId("active-session-title")).toHaveTextContent("Cached chat");
+  });
+
+  it("does not let an older detail request overwrite a newer response", async () => {
+    let resolveFirst: (value: unknown) => void = () => undefined;
+    let resolveSecond: (value: unknown) => void = () => undefined;
+    const first = new Promise((resolve) => { resolveFirst = resolve; });
+    const second = new Promise((resolve) => { resolveSecond = resolve; });
+    apiClientMock.get
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second);
+
+    render(<RuntimeSessionControllerHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "refresh detail" }));
+    fireEvent.click(screen.getByRole("button", { name: "refresh detail" }));
+
+    await act(async () => {
+      resolveSecond({ session: { id: "chat-1", title: "Newest detail", status: "ready" } });
+      await second;
+    });
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Newest detail"));
+
+    await act(async () => {
+      resolveFirst({ session: { id: "chat-1", title: "Older detail", status: "ready" } });
+      await first;
+    });
+    expect(screen.getByTestId("active-session-title")).toHaveTextContent("Newest detail");
+  });
+
+  it("does not let a list requested before a mutation overwrite the mutation result", async () => {
+    let resolveList: (value: unknown) => void = () => undefined;
+    const pendingList = new Promise((resolve) => { resolveList = resolve; });
+    apiClientMock.get.mockReturnValueOnce(pendingList);
+    apiClientMock.post.mockResolvedValueOnce({
+      session: { id: "chat-1", title: "Created detail", status: "ready" },
+    });
+
+    render(<RuntimeSessionControllerHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "refresh list" }));
+    fireEvent.click(screen.getByRole("button", { name: "create session" }));
+    await waitFor(() => expect(screen.getByTestId("active-session-title")).toHaveTextContent("Created detail"));
+
+    await act(async () => {
+      resolveList({ items: [{ id: "chat-1", title: "Older list", status: "ready" }] });
+      await pendingList;
+    });
+    expect(screen.getByTestId("active-session-title")).toHaveTextContent("Created detail");
   });
 });

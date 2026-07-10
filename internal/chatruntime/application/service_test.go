@@ -16,6 +16,86 @@ import (
 	execdomain "alter0/internal/execution/domain"
 )
 
+func TestNextSessionContentUpdatedAtIsStrictlyMonotonicAtMillisecondPrecision(t *testing.T) {
+	previous := time.Date(2026, time.July, 10, 9, 30, 0, 123_000_000, time.UTC)
+
+	tests := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{
+			name: "same millisecond",
+			now:  previous.Add(400 * time.Microsecond),
+			want: previous.Add(time.Millisecond),
+		},
+		{
+			name: "clock moved backwards",
+			now:  previous.Add(-time.Minute),
+			want: previous.Add(time.Millisecond),
+		},
+		{
+			name: "later millisecond",
+			now:  previous.Add(7*time.Millisecond + 800*time.Microsecond),
+			want: previous.Add(7 * time.Millisecond),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := nextSessionContentUpdatedAt(previous, tt.now)
+			if !got.Equal(tt.want) {
+				t.Fatalf("expected %s, got %s", tt.want.Format(time.RFC3339Nano), got.Format(time.RFC3339Nano))
+			}
+		})
+	}
+}
+
+func TestApplyExternalThreadTitleDoesNotInvalidateConversationContent(t *testing.T) {
+	contentUpdatedAt := time.Date(2026, time.July, 10, 9, 30, 0, 123_000_000, time.UTC)
+	session := &runtimeSession{
+		summary: chatruntimedomain.Session{
+			Title:     "Old title",
+			UpdatedAt: contentUpdatedAt,
+		},
+	}
+
+	if !applyExternalThreadTitleLocked(session, "New title", contentUpdatedAt.Add(time.Minute)) {
+		t.Fatal("expected title to change")
+	}
+	if !session.summary.UpdatedAt.Equal(contentUpdatedAt) {
+		t.Fatalf("title-only change invalidated conversation content: got %s", session.summary.UpdatedAt)
+	}
+}
+
+func TestServiceGetDetailReturnsSessionAndTurnsFromOneSnapshot(t *testing.T) {
+	service := newTestService("success")
+	session, err := service.Create(CreateRequest{OwnerID: "owner-detail-snapshot"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := service.InputWithAttachments(InputRequest{
+		OwnerID:         "owner-detail-snapshot",
+		SessionID:       session.ID,
+		Input:           "hello",
+		ClientRequestID: "request-123",
+	}); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	_, _ = waitForSessionEntries(t, service, "owner-detail-snapshot", session.ID, 2)
+
+	detail, ok := service.GetDetail("owner-detail-snapshot", session.ID)
+	if !ok {
+		t.Fatal("expected detail snapshot")
+	}
+	if detail.Session.ID != session.ID || len(detail.Turns) != 1 {
+		t.Fatalf("unexpected detail snapshot: %+v", detail)
+	}
+	if detail.Turns[0].ClientRequestID != "request-123" {
+		t.Fatalf("expected client request id in snapshot, got %+v", detail.Turns[0])
+	}
+}
+
 func TestResolveCodexCommandUsesDefaultCommand(t *testing.T) {
 	command := resolveCodexCommand(Options{})
 

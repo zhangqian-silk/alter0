@@ -30,6 +30,7 @@ export type RuntimeSessionTurnPaging = {
   oldest_turn_id?: string;
   newest_turn_id?: string;
   next_before_turn_id?: string;
+  before_turn_found?: boolean;
 };
 
 export type RuntimeSessionPayload = {
@@ -218,35 +219,31 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
   const [sessions, setSessionsState] = useState<TSession[]>(options.initialSessions);
   const [activeSessionID, setActiveSessionIDState] = useState(options.initialActiveSessionID);
   const sessionsRef = useRef<TSession[]>(sessions);
+  const activeSessionIDRef = useRef(activeSessionID);
   const deletedSessionIDsRef = useRef<Set<string>>(new Set());
+  const requestGenerationRef = useRef<Map<string, number>>(new Map());
   const progressiveHistoryLoadsRef = useRef<Set<string>>(new Set());
   const progressiveHistoryLoadedRef = useRef<Set<string>>(new Set());
 
   const setSessions = useCallback<Dispatch<SetStateAction<TSession[]>>>((updater) => {
-    setSessionsState((current) => {
-      const next = typeof updater === "function"
-        ? (updater as (value: TSession[]) => TSession[])(current)
-        : updater;
-      sessionsRef.current = next;
-      options.onSessionsChange?.(next);
-      return next;
-    });
+    const current = sessionsRef.current;
+    const next = typeof updater === "function"
+      ? (updater as (value: TSession[]) => TSession[])(current)
+      : updater;
+    sessionsRef.current = next;
+    options.onSessionsChange?.(next);
+    setSessionsState(next);
   }, [options]);
 
   const setActiveSessionID = useCallback<Dispatch<SetStateAction<string>>>((updater) => {
-    setActiveSessionIDState((current) => {
-      const next = typeof updater === "function"
-        ? (updater as (value: string) => string)(current)
-        : updater;
-      options.onActiveSessionIDChange?.(next);
-      return next;
-    });
+    const current = activeSessionIDRef.current;
+    const next = typeof updater === "function"
+      ? (updater as (value: string) => string)(current)
+      : updater;
+    activeSessionIDRef.current = next;
+    options.onActiveSessionIDChange?.(next);
+    setActiveSessionIDState(next);
   }, [options]);
-
-  useEffect(() => {
-    sessionsRef.current = sessions;
-    options.onSessionsChange?.(sessions);
-  }, [options, sessions]);
 
   useEffect(() => {
     options.onActiveSessionIDChange?.(activeSessionID);
@@ -257,8 +254,23 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
     [activeSessionID, sessions],
   );
 
+  const beginRequest = useCallback((key: string) => {
+    const generation = (requestGenerationRef.current.get(key) || 0) + 1;
+    requestGenerationRef.current.set(key, generation);
+    return generation;
+  }, []);
+
+  const isLatestRequest = useCallback((key: string, generation: number) => (
+    requestGenerationRef.current.get(key) === generation
+  ), []);
+
   const refreshList = useCallback(async () => {
+    const requestKey = `list:${options.route}`;
+    const requestGeneration = beginRequest(requestKey);
     const payload = await apiClient.get<RuntimeSessionsResponse>(runtimeSessionCollectionEndpoint(options.route));
+    if (!isLatestRequest(requestKey, requestGeneration)) {
+      return sessionsRef.current;
+    }
     const currentMap = new Map(sessionsRef.current.map((session) => [session.id, session]));
     const nextSessions = (Array.isArray(payload.items) ? payload.items : [])
       .filter((item) => !deletedSessionIDsRef.current.has(normalizeRuntimeSessionText(item.id)))
@@ -278,7 +290,7 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
       return nextVisibleSessions;
     }
     return nextSessions;
-  }, [apiClient, manageState, options, setActiveSessionID, setSessions]);
+  }, [apiClient, beginRequest, isLatestRequest, manageState, options, setActiveSessionID, setSessions]);
 
   const refreshActiveSession = useCallback(async (
     sessionID: string,
@@ -288,9 +300,14 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
     if (!normalizedSessionID || deletedSessionIDsRef.current.has(normalizedSessionID)) {
       return null;
     }
+    const requestKey = `content:${options.route}:${normalizedSessionID}`;
+    const requestGeneration = beginRequest(requestKey);
     const payload = await apiClient.get<RuntimeSessionResponse>(
       runtimeSessionDetailEndpoint(options.route, normalizedSessionID, requestOptions),
     );
+    if (!isLatestRequest(requestKey, requestGeneration)) {
+      return null;
+    }
     if (!payload.session) {
       return null;
     }
@@ -309,9 +326,10 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
       });
     }
     return normalized;
-  }, [apiClient, manageState, options, setSessions]);
+  }, [apiClient, beginRequest, isLatestRequest, manageState, options, setSessions]);
 
   const createSession = useCallback(async (body: Record<string, unknown> = {}) => {
+    beginRequest(`list:${options.route}`);
     const payload = await apiClient.post<RuntimeSessionResponse>(runtimeSessionCollectionEndpoint(options.route), body);
     if (!payload.session) {
       return null;
@@ -327,7 +345,7 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
       setActiveSessionID(normalized.id);
     }
     return normalized;
-  }, [apiClient, manageState, options, setActiveSessionID, setSessions]);
+  }, [apiClient, beginRequest, manageState, options, setActiveSessionID, setSessions]);
 
   const deleteSession = useCallback(async (sessionID: string) => {
     const normalizedSessionID = normalizeRuntimeSessionText(sessionID);
@@ -335,6 +353,8 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
       return;
     }
     await apiClient.delete(runtimeSessionDetailEndpoint(options.route, normalizedSessionID));
+    beginRequest(`content:${options.route}:${normalizedSessionID}`);
+    beginRequest(`list:${options.route}`);
     if (manageState) {
       deletedSessionIDsRef.current.add(normalizedSessionID);
       setSessions((items) => {
@@ -343,10 +363,11 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
         return next;
       });
     }
-  }, [apiClient, manageState, options.route, setActiveSessionID, setSessions]);
+  }, [apiClient, beginRequest, manageState, options.route, setActiveSessionID, setSessions]);
 
   const setSessionPinned = useCallback(async (sessionID: string, pinned: boolean) => {
     const normalizedSessionID = normalizeRuntimeSessionText(sessionID);
+    beginRequest(`list:${options.route}`);
     const payload = await apiClient.post<RuntimeSessionResponse>(
       runtimeSessionPinEndpoint(options.route, normalizedSessionID),
       { pinned },
@@ -366,13 +387,19 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
       );
     }
     return normalized;
-  }, [apiClient, manageState, options, setSessions]);
+  }, [apiClient, beginRequest, manageState, options, setSessions]);
 
   const sendInput = useCallback(async (sessionID: string, body: Record<string, unknown>) => {
+    const requestKey = `content:${options.route}:${sessionID}`;
+    const requestGeneration = beginRequest(requestKey);
+    beginRequest(`list:${options.route}`);
     const payload = await apiClient.post<RuntimeSessionResponse>(
       runtimeSessionInputEndpoint(options.route, sessionID),
       body,
     );
+    if (!isLatestRequest(requestKey, requestGeneration)) {
+      return null;
+    }
     if (!payload.session) {
       return null;
     }
@@ -389,7 +416,7 @@ export function useRuntimeSessionController<TSession extends { id: string }>(
       );
     }
     return normalized;
-  }, [apiClient, manageState, options, setSessions]);
+  }, [apiClient, beginRequest, isLatestRequest, manageState, options, setSessions]);
 
   const uploadAttachments = useCallback(async (sessionID: string, body: Record<string, unknown>) => {
     return apiClient.post<RuntimeSessionAttachmentUploadResponse>(

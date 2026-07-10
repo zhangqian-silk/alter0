@@ -15,6 +15,7 @@ export type RuntimeSessionAttachment = {
 
 export type RuntimeSessionTurn = {
   id: string | number;
+  client_request_id?: string;
   prompt: string;
   attachments?: RuntimeSessionAttachment[];
   status: string;
@@ -36,10 +37,12 @@ export type RuntimeSessionTurnPaging = {
   oldest_turn_id?: string;
   newest_turn_id?: string;
   next_before_turn_id?: string;
+  before_turn_found?: boolean;
 };
 
 export type RuntimeSessionTimelineMessage = {
   id: string;
+  clientRequestID?: string;
   role: "user" | "assistant";
   text: string;
   attachments: ComposerAttachment[];
@@ -289,6 +292,7 @@ export function runtimeSessionTurnsToTimelineMessages({
     const runtimeEvents = runtimeSessionTurnEvents(sessionID, turn);
     const attachments = Array.isArray(turn.attachments) ? turn.attachments : [];
     const status = normalizeRuntimeSessionText(turn.status || "");
+    const clientRequestID = normalizeRuntimeSessionText(turn.client_request_id);
     const promptText = normalizeRuntimeSessionText(turn.prompt) === "-" ? "" : turn.prompt;
     const finalOutput = normalizeRuntimeSessionText(turn.final_output) === "-" ? "" : turn.final_output || "";
     const hasAssistantPayload =
@@ -308,6 +312,7 @@ export function runtimeSessionTurnsToTimelineMessages({
     if (normalizeRuntimeSessionText(promptText) || promptAttachments.length > 0) {
       messages.push({
         id: `${turnID}:user`,
+        clientRequestID: clientRequestID || undefined,
         role: "user",
         text: promptText,
         attachments: promptAttachments,

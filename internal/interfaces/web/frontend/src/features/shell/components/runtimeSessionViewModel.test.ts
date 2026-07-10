@@ -2,6 +2,22 @@ import { describe, expect, it } from "vitest";
 import { runtimeSessionTurnsToTimelineMessages } from "./runtimeSessionViewModel";
 
 describe("runtimeSessionTurnsToTimelineMessages", () => {
+  it("uses client_request_id to reconcile an optimistic user message", () => {
+    const messages = runtimeSessionTurnsToTimelineMessages({
+      turns: [{
+        id: "turn-7",
+        client_request_id: "request-123",
+        prompt: "hello",
+        status: "running",
+      }],
+      route: "chat",
+      source: "runtime",
+    });
+
+    expect(messages[0]?.id).toBe("turn-7:user");
+    expect(messages[0]?.clientRequestID).toBe("request-123");
+  });
+
   it("splits a runtime turn into separate user and assistant timeline messages", () => {
     const messages = runtimeSessionTurnsToTimelineMessages({
       sessionID: "session-1",

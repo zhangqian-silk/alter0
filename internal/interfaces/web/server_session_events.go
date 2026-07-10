@@ -38,7 +38,8 @@ type sessionUpdateAPIUpdate struct {
 	UpdateID  int64          `json:"update_id"`
 	Type      string         `json:"type"`
 	SessionID string         `json:"session_id,omitempty"`
-	TurnID    int            `json:"turn_id,omitempty"`
+	TurnID    string         `json:"turn_id,omitempty"`
+	CreatedAt int64          `json:"created_at"`
 	Payload   map[string]any `json:"payload,omitempty"`
 }
 
@@ -57,7 +58,7 @@ type sessionUpdateKnownSession struct {
 
 type sessionUpdateKnownTurn struct {
 	ID       any   `json:"id"`
-	EventIDs []int `json:"event_ids,omitempty"`
+	EventIDs []any `json:"event_ids,omitempty"`
 }
 
 type sessionUpdateAckManifest struct {
@@ -279,6 +280,7 @@ func (s *Server) chatSessionUpdatesHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) chatRuntimeSessionUpdatesHandler(w http.ResponseWriter, r *http.Request) {
+	disableConversationHTTPResponseCaching(w)
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
@@ -324,10 +326,9 @@ func buildSessionUpdateAPIUpdates(events []sessionUpdateEvent) []sessionUpdateAP
 			UpdateID:  event.EventID,
 			Type:      event.EventType,
 			SessionID: event.SessionID,
+			TurnID:    canonicalChatRuntimeID(event.TurnID, "turn", 0),
+			CreatedAt: unixMillis(event.CreatedAt),
 			Payload:   event.Payload,
-		}
-		if turnID := numericChatRuntimeID(event.TurnID, "turn", 0); turnID > 0 {
-			update.TurnID = turnID
 		}
 		updates = append(updates, update)
 	}
@@ -373,26 +374,26 @@ func newSessionUpdateAckManifest(items []sessionUpdateKnownSession) sessionUpdat
 				continue
 			}
 			turn.ID = turnID
-			turn.EventIDs = compactIntSet(turn.EventIDs)
+			turn.EventIDs = compactCanonicalRuntimeIDSet(turn.EventIDs, "event")
 			turns[turnID] = turn
 		}
 	}
 	return manifest
 }
 
-func compactIntSet(values []int) []int {
+func compactCanonicalRuntimeIDSet(values []any, prefix string) []any {
 	seen := map[string]struct{}{}
-	out := make([]int, 0, len(values))
+	out := make([]any, 0, len(values))
 	for _, value := range values {
-		if value <= 0 {
+		normalized := canonicalChatRuntimeID(fmtAny(value), prefix, 0)
+		if normalized == "" {
 			continue
 		}
-		normalized := strconv.Itoa(value)
 		if _, ok := seen[normalized]; ok {
 			continue
 		}
 		seen[normalized] = struct{}{}
-		out = append(out, value)
+		out = append(out, normalized)
 	}
 	return out
 }
@@ -542,20 +543,21 @@ func runtimeTraceEventCategory(event map[string]any) string {
 	}
 }
 
-func knownRuntimeTraceEventIDSet(ids []int) map[int]struct{} {
-	idSet := make(map[int]struct{}, len(ids))
+func knownRuntimeTraceEventIDSet(ids []any) map[string]struct{} {
+	idSet := make(map[string]struct{}, len(ids))
 	for _, id := range ids {
-		if id <= 0 {
+		normalized := canonicalChatRuntimeID(fmtAny(id), "event", 0)
+		if normalized == "" {
 			continue
 		}
-		idSet[id] = struct{}{}
+		idSet[normalized] = struct{}{}
 	}
 	return idSet
 }
 
-func runtimeTraceEventKnown(event map[string]any, idSet map[int]struct{}) bool {
-	eventID, ok := flexibleInt(event["id"])
-	if !ok || eventID <= 0 {
+func runtimeTraceEventKnown(event map[string]any, idSet map[string]struct{}) bool {
+	eventID := canonicalChatRuntimeID(fmtAny(event["id"]), "event", 0)
+	if eventID == "" {
 		return false
 	}
 	_, known := idSet[eventID]

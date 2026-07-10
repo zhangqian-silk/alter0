@@ -30,14 +30,15 @@ type persistedSessionRecord struct {
 }
 
 type persistedTurnRecord struct {
-	ID            string                        `json:"id"`
-	Prompt        string                        `json:"prompt,omitempty"`
-	Attachments   []TurnAttachment              `json:"attachments,omitempty"`
-	Status        string                        `json:"status,omitempty"`
-	StartedAt     time.Time                     `json:"started_at,omitempty"`
-	FinishedAt    time.Time                     `json:"finished_at,omitempty"`
-	FinalOutput   string                        `json:"final_output,omitempty"`
-	RuntimeEvents []persistedRuntimeEventRecord `json:"runtime_events,omitempty"`
+	ID              string                        `json:"id"`
+	ClientRequestID string                        `json:"client_request_id,omitempty"`
+	Prompt          string                        `json:"prompt,omitempty"`
+	Attachments     []TurnAttachment              `json:"attachments,omitempty"`
+	Status          string                        `json:"status,omitempty"`
+	StartedAt       time.Time                     `json:"started_at,omitempty"`
+	FinishedAt      time.Time                     `json:"finished_at,omitempty"`
+	FinalOutput     string                        `json:"final_output,omitempty"`
+	RuntimeEvents   []persistedRuntimeEventRecord `json:"runtime_events,omitempty"`
 }
 
 type persistedRuntimeEventRecord struct {
@@ -270,14 +271,15 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 			continue
 		}
 		persistedTurn := persistedTurnRecord{
-			ID:            turn.ID,
-			Prompt:        turn.Prompt,
-			Attachments:   cloneTurnAttachments(turn.Attachments),
-			Status:        turn.Status,
-			StartedAt:     turn.StartedAt,
-			FinishedAt:    turn.FinishedAt,
-			FinalOutput:   turn.FinalOutput,
-			RuntimeEvents: make([]persistedRuntimeEventRecord, 0, len(turn.events)),
+			ID:              turn.ID,
+			ClientRequestID: turn.ClientRequestID,
+			Prompt:          turn.Prompt,
+			Attachments:     cloneTurnAttachments(turn.Attachments),
+			Status:          turn.Status,
+			StartedAt:       turn.StartedAt,
+			FinishedAt:      turn.FinishedAt,
+			FinalOutput:     turn.FinalOutput,
+			RuntimeEvents:   make([]persistedRuntimeEventRecord, 0, len(turn.events)),
 		}
 		for _, step := range turn.events {
 			if step == nil {
@@ -362,14 +364,15 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	}
 	for _, turnRecord := range record.Turns {
 		turn := &runtimeTurn{
-			ID:          turnRecord.ID,
-			Prompt:      turnRecord.Prompt,
-			Attachments: cloneTurnAttachments(turnRecord.Attachments),
-			Status:      turnRecord.Status,
-			StartedAt:   turnRecord.StartedAt,
-			FinishedAt:  turnRecord.FinishedAt,
-			FinalOutput: turnRecord.FinalOutput,
-			events:      make([]*runtimeEventRecord, 0, len(turnRecord.RuntimeEvents)),
+			ID:              turnRecord.ID,
+			ClientRequestID: turnRecord.ClientRequestID,
+			Prompt:          turnRecord.Prompt,
+			Attachments:     cloneTurnAttachments(turnRecord.Attachments),
+			Status:          turnRecord.Status,
+			StartedAt:       turnRecord.StartedAt,
+			FinishedAt:      turnRecord.FinishedAt,
+			FinalOutput:     turnRecord.FinalOutput,
+			events:          make([]*runtimeEventRecord, 0, len(turnRecord.RuntimeEvents)),
 		}
 		for _, stepRecord := range turnRecord.RuntimeEvents {
 			turn.events = append(turn.events, &runtimeEventRecord{
@@ -462,9 +465,7 @@ func normalizeRestoredSessionState(session *runtimeSession, now time.Time) {
 		if session.summary.FinishedAt.IsZero() {
 			session.summary.FinishedAt = now
 		}
-		if session.summary.UpdatedAt.Before(now) {
-			session.summary.UpdatedAt = now
-		}
+		session.advanceContentUpdatedAtLocked(now)
 	}
 	session.summary.Status = chatruntimedomain.NormalizeSessionStatus(session.summary.Status)
 	session.turnRunning = false

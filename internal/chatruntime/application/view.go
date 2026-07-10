@@ -4,10 +4,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 )
 
 type TurnSummary struct {
 	ID                 string              `json:"id"`
+	ClientRequestID    string              `json:"client_request_id,omitempty"`
 	Prompt             string              `json:"prompt"`
 	Attachments        []TurnAttachment    `json:"attachments,omitempty"`
 	Status             string              `json:"status"`
@@ -16,6 +19,11 @@ type TurnSummary struct {
 	DurationMS         int64               `json:"duration_ms,omitempty"`
 	FinalOutput        string              `json:"final_output,omitempty"`
 	RuntimeTraceEvents []RuntimeTraceEvent `json:"runtime_trace_events,omitempty"`
+}
+
+type SessionDetail struct {
+	Session chatruntimedomain.Session
+	Turns   []TurnSummary
 }
 
 type TurnAttachment struct {
