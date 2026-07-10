@@ -601,17 +601,6 @@ func forceLoopbackListenAddr(raw string) string {
 	return addr
 }
 
-func resolveConfiguredCodexCommand(raw string) string {
-	command := strings.TrimSpace(raw)
-	if command != "" {
-		return command
-	}
-	if isExecutableFile(defaultPublicCodexCommand) {
-		return defaultPublicCodexCommand
-	}
-	return "codex"
-}
-
 func isExecutableFile(path string) bool {
 	info, err := os.Stat(strings.TrimSpace(path))
 	if err != nil || info.IsDir() {

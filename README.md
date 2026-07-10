@@ -422,6 +422,8 @@ go run ./cmd/alter0 \
 
 `Codex Runtime` 固定读取当前活动 `CODEX_HOME` 下的 `auth.json` 与 `config.toml`；未显式设置 `CODEX_HOME` 时，对应目录即 `$HOME/.codex/`。Runtime 页面通过 Codex app-server 读取真实运行时能力与配置来源，并通过用户配置写接口更新当前活动配置中的 `model` 与 `model_reasoning_effort`。
 
+Codex CLI 命令默认使用 `auto` 模式解析。每个 alter0 运行实例启动时会比较服务运行账户 `$HOME/.local/bin/codex`、`$HOME/.nvm/current/bin/codex`、`$HOME/.nvm/versions/node/*/bin/codex`、`ALTER0_CODEX_COMMAND`、`/usr/local/bin/codex` 与当前 `PATH` 中可执行文件报告的版本，选择语义版本最高的一项；相同版本优先保留运行账户 `.local/bin` 或 NVM `current` 这类稳定入口。历史环境中即使 `ALTER0_CODEX_COMMAND` 仍指向某个具体 Node 版本目录，也不会再压住更新后的 CLI。只有明确设置 `ALTER0_CODEX_COMMAND_MODE=pinned` 时，服务才严格使用 `ALTER0_CODEX_COMMAND` 或 `-codex-command` 指定的路径。
+
 若服务需要自行提交签名 commit、创建 PR 或执行合并，还需在 root 下额外执行一次：
 
 ```bash
@@ -448,8 +450,8 @@ sudo install -d -m 750 /etc/alter0
 sudo sh -c "printf 'ALTER0_WEB_LOGIN_PASSWORD=请替换为强密码\nALTER0_RUNTIME_ROOT=/root/.alter0\nHOME=/root\n' > /etc/alter0/alter0.env"
 sudo chmod 600 /etc/alter0/alter0.env
 
-# 2. 确保公共路径可见 codex / node / gh
-which /usr/local/bin/codex
+# 2. 确保运行账户至少安装一个 codex，并检查可见版本
+codex --version || /root/.nvm/current/bin/codex --version || /usr/local/bin/codex --version
 which /usr/local/bin/node || which node
 which /usr/bin/gh
 
@@ -519,8 +521,8 @@ go run ./cmd/alter0
 
 ### Chat Runtime
 
-- Linux / macOS 默认优先使用公共路径 `/usr/local/bin/codex`；若该路径不存在，则回退为 `codex`。
-- 如需统一指定 Codex CLI 路径，可通过环境变量 `ALTER0_CODEX_COMMAND` 或启动参数 `-codex-command` 设置。
+- Codex CLI 默认采用 `ALTER0_CODEX_COMMAND_MODE=auto`：服务启动时从运行账户 `.local/bin`、NVM `current`、全部 NVM Node 版本、显式候选、公共路径与 `PATH` 中自动选择已安装的最高语义版本，避免具体 Node 版本目录长期固化。
+- `ALTER0_CODEX_COMMAND` 或 `-codex-command` 在自动模式下作为候选参与版本比较；确需锁定版本时，同时设置 `ALTER0_CODEX_COMMAND_MODE=pinned`。
 - 运行时会补齐 `$HOME/.local/bin`、`$HOME/.local/share/pnpm`、`/usr/local/bin`、`/usr/bin` 等标准 PATH，确保服务内 `codex`、`node`、`npm`、`npx` 与运行账户自带的 `gh` 包装器可见。
 - Chat 会话退出或中断后不会清空历史或线程标识；用户继续发送输入时，系统优先复用已持久化的 Codex CLI 线程。
 - 若 Codex CLI 在线程续写阶段返回远端 compact 失败，Chat 会保留原会话历史与工作区，清空失效线程标识，并在下一次输入时在同一会话下启动新的 Codex 线程。

@@ -1,6 +1,6 @@
 # Unit Test Cases
 
-> Last update: 2026-04-26
+> Last update: 2026-07-10
 
 本文件维护 Go 单元测试的领域覆盖口径。测试文件按 DDD 边界放置在对应包路径下：领域规则放在 `domain`，用例编排放在 `application`，CLI/Web 入口契约放在 `interfaces`，外部适配和基础设施契约放在 `infrastructure`。
 
@@ -267,6 +267,7 @@
 - 内置 Skill 注册：`memory`、`preview-publish`、`frontend-design`、`travel` 等默认 Skill 的描述、guide 与 file-backed 路径，并验证 `memory-maintenance` 为系统维护专用私有 Skill。
 - 启动阶段 file-backed Skill 文件校验，确保 `docs/skills/preview-publish/SKILL.md`、`docs/skills/frontend-design/SKILL.md`、`docs/skills/memory-maintenance/SKILL.md` 与 `docs/skills/travel/SKILL.md` 可被当前仓库解析。
 - 运行时 PATH、NO_PROXY、Web 登录密码环境变量与内部启动参数过滤。
+- Codex CLI 自动版本解析：从运行账户托管路径、NVM 稳定入口和历史版本候选中选择最高语义版本；相同版本优先稳定路径；显式 pinned 模式保持指定命令。
 - supervisor client 重启错误、结构化重启错误码透传、探活地址归一、空响应错误，以及 `sync_remote_master` 遇到 tracked 改动时要求二次确认，确认后才丢弃 tracked 改动。
 - Runtime supervisor 候选二进制构建必须调用统一前端感知构建脚本，并通过 `ALTER0_BUILD_OUTPUT` 指定候选输出路径。
 

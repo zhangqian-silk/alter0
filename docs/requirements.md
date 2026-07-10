@@ -198,6 +198,7 @@
 - Settings 页面提供 Codex Runtime 面板，使用单一顶部面板承载当前服务运行账户的 Codex 身份快照、邮箱、计划、认证模式、hourly / weekly 额度、profile、LLM Provider 注册状态，以及基于 Codex app-server 真实能力返回值的活动 model / 思考深度切换。首屏加载时 Codex Runtime 状态与 LLM Provider 状态需并行读取。页面支持为当前运行账户启动 Codex device-code 登录，并展示验证链接、用户码、过期时间、轮询间隔与登录输出；登录成功后刷新 Runtime 身份与额度。页面同时支持通过 Claude Code Provider Console 连续注册与编辑多个 OpenAI-compatible Provider；桌面端 registry 与 editor 在同一容器内左右分栏，窄屏单列展开。字段包含 Provider 名称、base URL、API key 与 models；models 使用全宽多行编辑区，支持换行或逗号分隔，提交后写入 Model Provider 注册表，首个 model 作为默认模型，并刷新 Provider 状态。已注册 Provider 需展示名称、base URL、默认 model、模型数量、模型列表与启用/默认状态；编辑时 API key 留空表示保留已保存密钥。每次注册或更新成功后表单清空 base URL / API key / models，并自动准备下一个未占用的 `Claude Code N` 默认名称。页面不展示 Account ID / User ID、保存名称、多账号导入/切换入口、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。额度必须来自当前 `auth.json` 的实时 quota 刷新结果，model / 思考深度选择变更后仅实时写回当前用户配置中的 `model` 与 `model_reasoning_effort`。
 - 公网部署基线要求服务绑定 localhost、启用 Web 登录密码、显式配置 `ALTER0_RUNTIME_ROOT`，并通过 Nginx 做反向代理。
 - 服务内 GitHub 交付要求运行账户具备 GitHub App token helper、`gh` 包装器、SSH 提交签名、稳定 PATH 与 Codex CLI 可用认证。
+- Codex CLI 默认从运行账户托管目录、NVM 稳定入口与版本目录、显式候选、公共路径和 `PATH` 中自动选择已安装的最高语义版本；历史具体 Node 版本路径不得阻止服务切换到更新 CLI，只有显式 pinned 模式允许锁版。
 - Node/Playwright 测试链路通过运行账户级工具链初始化，保证 Codex CLI 可执行 `internal/interfaces/web/frontend` 的构建与单测，以及 `internal/interfaces/web` 的 Playwright E2E。
 - 研发流程遵循 TDD：功能新增、缺陷修复、行为调整与重构默认先以测试表达目标行为，再完成实现与重构；纯文档、注释、格式化、依赖元数据或无法自动化验证的变更需说明免测原因与替代验证。
 
