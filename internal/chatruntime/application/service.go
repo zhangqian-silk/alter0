@@ -1203,12 +1203,12 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		return
 	}
 
-	item.summary.Status = chatruntimedomain.SessionStatusReady
 	item.summary.UpdatedAt = now
-	item.summary.FinishedAt = time.Time{}
 	item.summary.ExitCode = nil
 
 	if turnErr == nil {
+		item.summary.Status = chatruntimedomain.SessionStatusReady
+		item.summary.FinishedAt = time.Time{}
 		item.summary.ErrorMessage = ""
 		if turn != nil {
 			turn.Status = "completed"
@@ -1230,6 +1230,8 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	}
 
 	if isCodexCompactionFailure(stderrText, turnErr) {
+		item.summary.Status = chatruntimedomain.SessionStatusFailed
+		item.summary.FinishedAt = now
 		item.summary.ErrorMessage = chatRuntimeCompactionRecoveryMessage
 		item.appendEntryLocked("system", "codex previous runtime thread retained after context compaction failure")
 		if turn != nil {
@@ -1245,6 +1247,8 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 	}
 
 	message := compactCodexError(stderrText, turnErr)
+	item.summary.Status = chatruntimedomain.SessionStatusFailed
+	item.summary.FinishedAt = now
 	item.summary.ErrorMessage = message
 	item.appendEntryLocked("system", "codex request failed: "+message)
 	if turn != nil {

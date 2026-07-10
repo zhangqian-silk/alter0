@@ -1375,6 +1375,12 @@ func TestServiceInputFailsFastOnCodexAuthError(t *testing.T) {
 	}
 
 	snapshot, entries := waitForSessionError(t, service, "owner-auth", session.ID)
+	if snapshot.Status != chatruntimedomain.SessionStatusFailed {
+		t.Fatalf("expected failed session status after auth failure, got %q", snapshot.Status)
+	}
+	if snapshot.FinishedAt.IsZero() {
+		t.Fatal("expected failed session to record finished_at")
+	}
 	if !strings.Contains(snapshot.ErrorMessage, "codex authentication failed") {
 		t.Fatalf("expected auth failure in session error, got %q", snapshot.ErrorMessage)
 	}
@@ -1390,6 +1396,17 @@ func TestServiceInputFailsFastOnCodexAuthError(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected auth failure entry, got %+v", entries)
+	}
+
+	if _, err := service.Input("owner-auth", session.ID, "retry after auth failure"); err != nil {
+		t.Fatalf("retry failed session: %v", err)
+	}
+	recovered, recoveredEntries := waitForSessionEntries(t, service, "owner-auth", session.ID, 4)
+	if recovered.Status != chatruntimedomain.SessionStatusReady {
+		t.Fatalf("expected retry to restore ready status, got %q", recovered.Status)
+	}
+	if got := recoveredEntries[len(recoveredEntries)-1].Text; got != "mock:retry after auth failure" {
+		t.Fatalf("expected retry output, got %q", got)
 	}
 }
 

@@ -1090,7 +1090,7 @@ function shouldBlockRuntimeInput(session: ChatSession): boolean {
     return false;
   }
   return isConversationBusyStatus(session.status)
-    || (hasRecoverableRuntimeState(session) && !hasAuthoritativeReadyRuntimeSummary(session));
+    || (hasBusyRuntimeMessageState(session.messages) && !hasAuthoritativeReadyRuntimeSummary(session));
 }
 
 function hasLocalRuntimeSyncIntent(session: ChatSession | null | undefined): boolean {
