@@ -42,4 +42,7 @@ func TestSessionOpenAndInputAvailability(t *testing.T) {
 	if CanSessionAcceptInput(SessionStatusBusy) {
 		t.Fatalf("expected busy session to reject input")
 	}
+	if !CanSessionAcceptInput(SessionStatusFailed) {
+		t.Fatalf("expected failed session to accept retry input")
+	}
 }

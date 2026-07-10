@@ -177,7 +177,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 页面刷新后，若当前活动会话存在本地失败态流式消息，前端需优先拉取服务端会话消息，并用已持久化结果覆盖本地失败态；即使服务端集合接口已经返回了该会话的摘要项，只要未附带完整消息，也必须继续补拉单会话详情。
 - 页面刷新、前后台恢复或集合接口刷新后，若服务端集合返回的当前会话消息数量短于浏览器侧已追加历史，且本地仍存在本轮用户消息、`Thinking...`、`streaming` assistant 或其他可恢复状态，前端必须继续保留本地时间线并等待单会话详情或后续集合结果确认，不得把刚发送的消息从 UI 中移除。
 - 若当前活动会话已经从服务端恢复出最新 `user` 消息，但该 user 之后尚无 assistant、任务或失败消息，运行页继续按待恢复会话处理并重试详情接口；只有拿到稳定 assistant 或明确失败态后，才停止本轮恢复。
-- `Chat` 的输入锁只由真实运行中状态触发：会话或消息处于 `busy / running / queued / in_progress / local_running / recovering` 时禁止重复提交；`failed / interrupted / exited` 以及无 assistant 输出的失败 turn 不得继续禁用 Composer。自动恢复轮询只覆盖本机产生的 `local_running / recovering` 同步意图；普通服务端 `busy / running` 摘要不触发后台 updates/detail，用户可通过页面激活补偿或手动刷新恢复跨设备变化，终态会话可直接发送下一条输入并复用原会话恢复运行态。
+- `Chat` 的输入锁只由真实运行中状态触发：会话或消息处于 `busy / running / queued / in_progress / local_running / recovering` 时禁止重复提交；`failed / interrupted / exited` 以及无 assistant 输出的失败 turn 不得继续禁用 Composer。请求失败时服务端 session 与 turn 必须同步收口为 `failed`，下一条输入可在同一 session 中重新进入 busy；历史数据即使仍为 `ready` summary，只要详情中的最新 turn/message 已明确进入 `failed / canceled / interrupted` 终态，也必须立即解锁，不依赖 `updated_at` 严格晚于 `finished_at`。自动恢复轮询只覆盖本机产生的 `local_running / recovering` 同步意图；普通服务端 `busy / running` 摘要不触发后台 updates/detail，用户可通过页面激活补偿或手动刷新恢复跨设备变化，终态会话可直接发送下一条输入并复用原会话恢复运行态。
 - 运行页恢复依赖会话详情快照补拉与 owner 增量轮询，不再通过后台 Task API 轮询任务状态。
 
 ### 渲染策略

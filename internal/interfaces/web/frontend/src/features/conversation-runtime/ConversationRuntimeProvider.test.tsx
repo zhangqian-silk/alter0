@@ -76,6 +76,12 @@ function RuntimeHarness() {
       </button>
       <output data-testid="user-text">{userMessage?.text || ""}</output>
       <output data-testid="assistant-text">{assistantMessage?.text || ""}</output>
+      <output data-testid="assistant-texts">
+        {runtime.activeSession?.messages
+          .filter((message) => message.role === "assistant")
+          .map((message) => message.text)
+          .join("|") || ""}
+      </output>
       <output data-testid="assistant-process-count">{assistantMessage?.processEvents.length || 0}</output>
       <output data-testid="assistant-process-ids">
         {assistantMessage?.processEvents.map((event) => event.id).join("|") || ""}
@@ -4912,8 +4918,32 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
   });
 
-  it("allows sending another Chat input after a ChatRuntime-backed session fails without assistant output", async () => {
+  it("allows sending another Chat input when a ready summary contains a terminal failed turn", async () => {
     vi.stubGlobal("fetch", vi.fn());
+    const failedAt = "2026-04-23T03:31:02Z";
+    const failedTurn = {
+      id: "turn-failed",
+      prompt: "previous prompt",
+      status: "failed",
+      started_at: "2026-04-23T03:31:00Z",
+      finished_at: failedAt,
+      runtime_trace_events: [{
+        id: "event-failed",
+        turn_id: "turn-failed",
+        seq: 1,
+        source: "adapter",
+        provider: { engine: "codex", adapter: "codex_cli_json" },
+        role: "assistant",
+        kind: "system_event",
+        lifecycle: "failed",
+        status: "failed",
+        title: "Request failed",
+        summary: "codex command failed",
+        blocks: [],
+        visibility: "developer",
+        completed_at: failedAt,
+      }],
+    };
     apiClientMock.get.mockImplementation(async (path: string) => {
       switch (path) {
         case "/api/chat/sessions":
@@ -4923,33 +4953,19 @@ describe("ConversationRuntimeProvider", () => {
               {
                 id: "c_51jttwiv4yggqagk",
                 title: "Failed session",
-                status: "failed",
+                status: "ready",
                 created_at: "2026-04-23T03:30:00Z",
-                turns: [
-                  {
-                    id: "turn-failed",
-                    prompt: "previous prompt",
-                    status: "failed",
-                    started_at: "2026-04-23T03:31:00Z",
-                    finished_at: "2026-04-23T03:31:02Z",
-                  },
-                ],
+                updated_at: failedAt,
+                turns: [failedTurn],
               },
             ],
             session: {
               id: "c_51jttwiv4yggqagk",
               title: "Failed session",
-              status: "failed",
+              status: "ready",
               created_at: "2026-04-23T03:30:00Z",
-              turns: [
-                {
-                  id: "turn-failed",
-                  prompt: "previous prompt",
-                  status: "failed",
-                  started_at: "2026-04-23T03:31:00Z",
-                  finished_at: "2026-04-23T03:31:02Z",
-                },
-              ],
+              updated_at: failedAt,
+              turns: [failedTurn],
             },
           };
         case "/api/control/llm/providers":
@@ -4968,6 +4984,7 @@ describe("ConversationRuntimeProvider", () => {
             title: "Failed session",
             status: "ready",
             created_at: "2026-04-23T03:30:00Z",
+            updated_at: "2026-04-23T03:32:02Z",
             turns: [
               {
                 id: "turn-recovered",
@@ -4990,7 +5007,7 @@ describe("ConversationRuntimeProvider", () => {
       </ConversationRuntimeProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("failed"));
+    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready"));
 
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
@@ -4998,7 +5015,7 @@ describe("ConversationRuntimeProvider", () => {
       "/api/chat/sessions/c_51jttwiv4yggqagk/input",
       expect.objectContaining({ input: "Inspect this image" }),
     ));
-    await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Recovered reply"));
+    await waitFor(() => expect(screen.getByTestId("assistant-texts")).toHaveTextContent("Recovered reply"));
   });
 
   it("allows clicking the active inspector tab again to collapse only that tab content", async () => {
