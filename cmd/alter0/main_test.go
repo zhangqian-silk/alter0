@@ -40,6 +40,76 @@ func TestBuildDefaultRuntimePathDeduplicatesEntries(t *testing.T) {
 	}
 }
 
+func TestResolveConfiguredCodexCommandSelectsNewestInstalledVersion(t *testing.T) {
+	home := t.TempDir()
+	oldCommand := writeFakeCodexCommand(t, filepath.Join(home, ".nvm", "versions", "node", "v22.22.0", "bin", "codex"), "0.141.0")
+	currentCommand := writeFakeCodexCommand(t, filepath.Join(home, ".nvm", "current", "bin", "codex"), "99.144.1")
+
+	t.Setenv("HOME", home)
+	t.Setenv(codexCommandModeEnvKey, codexCommandModeAuto)
+
+	if got := resolveConfiguredCodexCommand(oldCommand); got != currentCommand {
+		t.Fatalf("resolved codex command = %q, want newest installed %q", got, currentCommand)
+	}
+}
+
+func TestResolveConfiguredCodexCommandPrefersStableManagedPathForEqualVersion(t *testing.T) {
+	home := t.TempDir()
+	managedCommand := writeFakeCodexCommand(t, filepath.Join(home, ".local", "bin", "codex"), "99.144.1")
+	oldCommand := writeFakeCodexCommand(t, filepath.Join(home, ".nvm", "versions", "node", "v22.22.0", "bin", "codex"), "99.144.1")
+	writeFakeCodexCommand(t, filepath.Join(home, ".nvm", "current", "bin", "codex"), "99.144.1")
+
+	t.Setenv("HOME", home)
+	t.Setenv(codexCommandModeEnvKey, codexCommandModeAuto)
+
+	if got := resolveConfiguredCodexCommand(oldCommand); got != managedCommand {
+		t.Fatalf("resolved codex command = %q, want managed stable path %q", got, managedCommand)
+	}
+}
+
+func TestResolveConfiguredCodexCommandHonorsPinnedMode(t *testing.T) {
+	home := t.TempDir()
+	oldCommand := writeFakeCodexCommand(t, filepath.Join(home, ".nvm", "versions", "node", "v22.22.0", "bin", "codex"), "0.141.0")
+	writeFakeCodexCommand(t, filepath.Join(home, ".nvm", "current", "bin", "codex"), "99.144.1")
+
+	t.Setenv("HOME", home)
+	t.Setenv(codexCommandModeEnvKey, codexCommandModePinned)
+
+	if got := resolveConfiguredCodexCommand(oldCommand); got != oldCommand {
+		t.Fatalf("resolved codex command = %q, want pinned %q", got, oldCommand)
+	}
+}
+
+func TestCompareCodexVersionsUsesSemanticVersionOrder(t *testing.T) {
+	tests := []struct {
+		name  string
+		left  string
+		right string
+		want  int
+	}{
+		{name: "minor", left: "0.144.1", right: "0.141.0", want: 1},
+		{name: "numeric segment", left: "0.10.0", right: "0.9.9", want: 1},
+		{name: "release over prerelease", left: "1.0.0", right: "1.0.0-beta.1", want: 1},
+		{name: "equal", left: "0.144.1", right: "0.144.1", want: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			left, ok := parseCodexVersion(test.left)
+			if !ok {
+				t.Fatalf("parse left version %q", test.left)
+			}
+			right, ok := parseCodexVersion(test.right)
+			if !ok {
+				t.Fatalf("parse right version %q", test.right)
+			}
+			if got := compareCodexVersions(left, right); got != test.want {
+				t.Fatalf("compareCodexVersions(%q, %q) = %d, want %d", test.left, test.right, got, test.want)
+			}
+		})
+	}
+}
+
 func TestRuntimePathSeenKeyFollowsPlatformCaseRules(t *testing.T) {
 	left := runtimePathSeenKey(filepath.Join("A", "Bin"))
 	right := runtimePathSeenKey(filepath.Join("a", "bin"))
@@ -133,6 +203,18 @@ func countPathEntry(raw string, entry string) int {
 		}
 	}
 	return count
+}
+
+func writeFakeCodexCommand(t *testing.T, path string, version string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir fake codex dir: %v", err)
+	}
+	content := "#!/bin/sh\nprintf 'codex-cli %s\\n' " + version + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("write fake codex command: %v", err)
+	}
+	return path
 }
 
 func TestMergeNoProxyEntriesAppendsLocalhostWithoutDuplicates(t *testing.T) {

@@ -204,6 +204,13 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - 历史 `HOME=<runtime_root>/codex-home` 启动时归一到 `<runtime_root>`。
 - Codex 认证与服务账户工具链继续归属服务运行账户 HOME；alter0 自身运行态不得散落到源码仓库或历史 `/srv` 路径。
 
+### Codex CLI 版本解析
+
+- 默认 `ALTER0_CODEX_COMMAND_MODE=auto`。服务启动时比较 `$HOME/.local/bin/codex`、`$HOME/.nvm/current/bin/codex`、`$HOME/.nvm/versions/node/*/bin/codex`、显式 `ALTER0_CODEX_COMMAND`、`/usr/local/bin/codex` 与 `PATH` 中的候选版本，并选择可执行且语义版本最高的一项。
+- 相同版本优先使用运行账户 `.local/bin` 与 NVM `current` 稳定入口，避免服务状态继续绑定 `versions/node/<version>` 目录；Runtime supervisor 生成的新 child 必须重新执行同一解析，因此历史启动参数不会跨重启固化旧版本。
+- `ALTER0_CODEX_COMMAND` 与 `-codex-command` 在自动模式下只提供候选。确需回归验证或兼容性锁版时，必须显式设置 `ALTER0_CODEX_COMMAND_MODE=pinned`；pinned 模式只使用指定命令，不参与版本比较。
+- 自动模式只选择服务运行账户中已经安装的版本，不在服务启动主链路执行联网升级，避免 npm 或外部网络故障阻断 alter0 启动。
+
 ### 交付凭据
 
 - 服务内需要执行 `git commit`、`git push`、`gh pr create`、`gh pr merge` 时，运行账户必须具备 GitHub App token helper、`gh` 包装器、SSH signing key 与全局 Git 配置。
