@@ -1352,6 +1352,28 @@ func (s *Service) finishTurn(item *runtimeSession, turnID string, turnErr error,
 		return
 	}
 
+	if isCodexRolloutMissing(stderrText, turnErr) {
+		item.summary.Status = chatruntimedomain.SessionStatusFailed
+		item.summary.FinishedAt = now
+		if turn != nil {
+			turn.Status = "failed"
+			turn.FinishedAt = now
+			turn.promoteFinalOutput()
+		}
+		historyPath, exportErr := exportChatRuntimeHistoryLocked(s.options.WorkingDir, item, now)
+		message := missingCodexRolloutMessage(historyPath, exportErr)
+		item.summary.ErrorMessage = message
+		item.appendEntryLocked("system", message)
+		if turn != nil {
+			turn.FinalOutput = message
+			item.newSystemEventLocked(turn, "Thread history unavailable", message, now, "failed")
+		}
+		item.mu.Unlock()
+		s.persistSession(item)
+		s.publishTurnSessionEvent(item, SessionEventTurnFailed, turnID, "")
+		return
+	}
+
 	if isCodexCompactionFailure(stderrText, turnErr) {
 		item.summary.Status = chatruntimedomain.SessionStatusFailed
 		item.summary.FinishedAt = now
@@ -2197,6 +2219,23 @@ func isCodexCompactionFailure(stderrText string, turnErr error) bool {
 	default:
 		return false
 	}
+}
+
+func isCodexRolloutMissing(stderrText string, turnErr error) bool {
+	parts := []string{normalizeChunk(stderrText)}
+	if turnErr != nil {
+		parts = append(parts, turnErr.Error())
+	}
+	normalized := strings.ToLower(strings.Join(parts, "\n"))
+	return strings.Contains(normalized, "no rollout found for thread id")
+}
+
+func missingCodexRolloutMessage(historyPath string, exportErr error) string {
+	if exportErr != nil || strings.TrimSpace(historyPath) == "" {
+		return "底层 Codex 历史线程文件已丢失，当前会话无法继续，且历史消息文件导出失败。请新建会话后，从当前页面复制必要的历史消息。"
+	}
+	copyPrompt := "请读取 " + historyPath + " 中的历史会话消息，并在此基础上继续。"
+	return "底层 Codex 历史线程文件已丢失，当前会话无法继续。请新建会话，并复制发送以下内容：\n\n" + copyPrompt
 }
 
 func normalizeChunk(value string) string {

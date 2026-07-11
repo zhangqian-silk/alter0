@@ -516,6 +516,74 @@ func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
 	}
 }
 
+func TestServiceMissingCodexRolloutExportsHistoryAndDirectsUserToNewSession(t *testing.T) {
+	baseDir := t.TempDir()
+	service := newTestServiceWithBaseDir("missing-rollout", baseDir)
+
+	session, err := service.Create(CreateRequest{OwnerID: "owner-missing-rollout"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := service.Input("owner-missing-rollout", session.ID, "first prompt"); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	waitForSessionEntries(t, service, "owner-missing-rollout", session.ID, 2)
+
+	if _, err := service.Input("owner-missing-rollout", session.ID, "continue the work"); err != nil {
+		t.Fatalf("follow-up input: %v", err)
+	}
+	snapshot, entries := waitForSessionStatus(t, service, "owner-missing-rollout", session.ID, chatruntimedomain.SessionStatusFailed)
+
+	historyPath, err := resolveChatRuntimeHistoryExportPath(baseDir, session.ID)
+	if err != nil {
+		t.Fatalf("resolve history path: %v", err)
+	}
+	if !strings.Contains(snapshot.ErrorMessage, "请新建会话") || !strings.Contains(snapshot.ErrorMessage, historyPath) {
+		t.Fatalf("expected new-session recovery guidance, got %q", snapshot.ErrorMessage)
+	}
+	if !strings.Contains(snapshot.ErrorMessage, "请读取 "+historyPath+" 中的历史会话消息，并在此基础上继续") {
+		t.Fatalf("expected directly copyable history prompt, got %q", snapshot.ErrorMessage)
+	}
+	if got := entries[len(entries)-1].Text; !strings.Contains(got, historyPath) {
+		t.Fatalf("expected timeline error to include history path, got %q", got)
+	}
+	detail, ok := service.GetDetail("owner-missing-rollout", session.ID)
+	if !ok || len(detail.Turns) != 2 {
+		t.Fatalf("expected failed turn detail, got %+v", detail)
+	}
+	if !strings.Contains(detail.Turns[1].FinalOutput, historyPath) {
+		t.Fatalf("expected copyable guidance as failed assistant output, got %q", detail.Turns[1].FinalOutput)
+	}
+
+	history, err := os.ReadFile(historyPath)
+	if err != nil {
+		t.Fatalf("read exported history: %v", err)
+	}
+	for _, want := range []string{"# Alter0 会话历史", "first prompt", "mock:first prompt", "continue the work"} {
+		if !strings.Contains(string(history), want) {
+			t.Fatalf("expected exported history to contain %q, got:\n%s", want, history)
+		}
+	}
+
+	if _, err := service.Input("owner-missing-rollout", session.ID, "retry once more"); err != nil {
+		t.Fatalf("retry missing rollout input: %v", err)
+	}
+	_, retryEntries := waitForSessionStatus(t, service, "owner-missing-rollout", session.ID, chatruntimedomain.SessionStatusFailed)
+	if len(retryEntries) < 6 {
+		t.Fatalf("expected retry failure entries, got %d", len(retryEntries))
+	}
+	history, err = os.ReadFile(historyPath)
+	if err != nil {
+		t.Fatalf("read refreshed history: %v", err)
+	}
+	if strings.Contains(string(history), "底层 Codex 历史线程文件已丢失") {
+		t.Fatalf("expected recovery guidance to stay out of exported assistant history, got:\n%s", history)
+	}
+	if !strings.Contains(string(history), "retry once more") {
+		t.Fatalf("expected refreshed history to include the latest user retry, got:\n%s", history)
+	}
+}
+
 func TestServiceInputWithAttachmentsPassesImageFlagsAndPersistsTurnAttachments(t *testing.T) {
 	service := newTestService("success")
 
@@ -2364,6 +2432,10 @@ func TestChatRuntimeServiceHelperProcess(t *testing.T) {
 		}
 		threadID := chatRuntimeArgs[len(chatRuntimeArgs)-2]
 		prompt := chatRuntimeArgs[len(chatRuntimeArgs)-1]
+		if mode == "missing-rollout" {
+			fmt.Fprintf(os.Stderr, "Error: thread/resume: thread/resume failed: no rollout found for thread id %s (code -32600)\n", threadID)
+			os.Exit(24)
+		}
 		if mode == "external-title" {
 			fmt.Fprintf(os.Stdout, "{\"type\":\"thread.started\",\"thread_id\":%q,\"title\":\"Codex renamed thread title\"}\n", threadID)
 		} else {

@@ -196,6 +196,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时：
 - `Skill` 选项卡片在会话设置中使用短摘要展示：优先显示 Skill description，并限制在简短可扫读的卡片文案内；完整 system prompt 不直接出现在选择面板里。
 - `Chat` 使用后端生成的短 canonical id 作为运行页 URL query、接口 path、updates payload、持久化文件和工作区目录的同一会话标识；左侧会话列表不展示该 id。
 - `Chat` 的消息请求被服务端接受后会立即把本轮 `user` 消息写入 Session history，assistant 结果在执行完成后追加；浏览器刷新、关闭或请求断开不会让已发送的用户消息只停留在前端缓存里。
+- 若底层 Codex rollout 已丢失，原会话不会静默创建新 thread 或伪装恢复。服务端会把当前仍可用的用户消息和助手最终回复导出为 Markdown，并在失败消息中给出一段可直接复制到新会话的“读取历史文件并继续”指令。
 - 会话设置中连续勾选 `Skill / Tool / MCP` 时，当前滚动位置需保持稳定，不能在每次勾选后跳回顶部。
 - `Chat` 会话设置面板中的标题、说明与右侧标签在窄宽度下需保持可读：主标题按可用宽度截断，说明文案允许换行，避免发生重叠或互相覆盖。
 - Web 前端所有时间展示统一使用北京时间（`Asia/Shanghai`）与 24 小时制；Chat、Task、Cron 以及 Settings/Control 管理页都不再跟随浏览器本地时区漂移，Cron 表单默认时区固定为 `Asia/Shanghai`。接口中的业务时间字段统一为毫秒时间戳，展示层负责格式化。
@@ -441,7 +442,7 @@ sudo ./scripts/setup_alter0_runtime_auth.sh
 sudo ./scripts/setup_alter0_runtime_node.sh
 ```
 
-该脚本会把带 `npm`/`npx`/`corepack` 的 Node 运行时安装到运行账户的 `.local` 目录，并默认在 `internal/interfaces/web` 与 `internal/interfaces/web/frontend` 目录预装 `npm ci`，随后安装 Playwright Chromium 浏览器，使服务运行账户在非交互式环境中也能同时执行前端构建、单测与 E2E 测试。正式服务启动与重启使用 `scripts/build_alter0_service.sh`，因此运行账户需要能在 `PATH` 中找到这套 Node 工具链。
+该脚本会把带 `npm`/`npx`/`corepack` 的 Node 运行时安装到运行账户的 `.local` 目录，并默认在 `internal/interfaces/web` 与 `internal/interfaces/web/frontend` 目录预装 `npm ci`，随后安装 Playwright Chromium 浏览器，使服务运行账户在非交互式环境中也能同时执行前端构建、单测与 E2E 测试。Playwright WebServer 固定使用系统临时目录下的独立 runtime root，不继承正式服务的 `ALTER0_RUNTIME_ROOT`，并在子进程环境中显式清空 `ALTER0_STORAGE_DIR / ALTER0_CODEX_WORKSPACE_ROOT`；测试清理只作用于该临时实例。正式服务启动与重启使用 `scripts/build_alter0_service.sh`，因此运行账户需要能在 `PATH` 中找到这套 Node 工具链。
 
 Node 工具链属于服务运行账户自己的运行时依赖：既不会污染系统全局 `/usr/local/bin`，也不依赖宿主机预装 `npm`。脚本会把实际安装目录中的 `node`、`npm`、`npx`、`corepack` 软链接到运行账户的 `.local/bin`，再由服务启动时补齐该目录到 `PATH`，这样 `Codex CLI`、Web 子进程和手工切到服务账户执行时看到的都是同一套稳定工具链。
 
