@@ -1,7 +1,7 @@
 /* ============================================================
    theme.css — Visual design overrides ONLY
-   Does NOT touch layout properties (display, width, height,
-   padding, margin, flex, grid). Those stay in shell.css.
+   Only: color, background, border, box-shadow, opacity, backdrop-filter
+   Never: display, width, height, margin, padding, flex, grid, font-size
    ============================================================ */
 
 /* ============================================================
@@ -217,25 +217,11 @@ body::after {
   box-shadow: none;
 }
 
-.runtime-session-signal {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-
 .runtime-session-signal.is-ready { background: var(--status-success); }
-.runtime-session-signal.is-busy {
-  background: var(--status-info);
-  animation: signal-pulse 2s ease-in-out infinite;
-}
+.runtime-session-signal.is-busy { background: var(--status-info); }
 .runtime-session-signal.is-failed { background: var(--status-danger); }
 .runtime-session-signal.is-interrupted { background: var(--status-warning); }
 .runtime-session-signal.is-exited { background: var(--status-neutral); }
-
-@keyframes signal-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
 
 .runtime-workspace-button {
   color: var(--text-muted);
@@ -367,9 +353,35 @@ body::after {
   color: var(--text-quiet);
 }
 
-/* Message meta */
-.msg-meta {
+/* Message meta — colors only. Layout (display, gap, margin) lives in shell.css */
+.msg-meta-source {
   color: var(--text-quiet);
+}
+
+.msg-meta-time {
+  color: var(--text-quiet);
+}
+
+.msg-meta-source + .msg-meta-time::before {
+  display: none;
+}
+
+/* Copy button in msg-meta — colors only. Size/layout in shell.css */
+.msg-meta-copy {
+  background: transparent;
+  color: var(--text-quiet);
+  border: 0;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  cursor: pointer;
+}
+
+.msg-meta-copy:hover {
+  background: var(--bg-surface-active);
+  color: var(--text-secondary);
+}
+
+.msg-meta-copy.copied {
+  color: var(--status-success);
 }
 
 .status-pill {
@@ -440,19 +452,6 @@ body::after {
 .chat-md-table td {
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
-}
-
-/* Copy button */
-.message-markdown-copy {
-  background: var(--bg-surface);
-  color: var(--text-muted);
-  border: 0;
-  box-shadow: none;
-}
-
-.message-markdown-copy:hover {
-  background: var(--bg-surface-active);
-  color: var(--text-primary);
 }
 
 /* ============================================================
@@ -704,15 +703,7 @@ body::after {
 }
 
 /* ============================================================
-   15. SESSION PANEL (hidden — nav owns sessions)
-   ============================================================ */
-
-.runtime-workspace-session-pane {
-  display: none;
-}
-
-/* ============================================================
-   16. SETTINGS PAGE
+   15. SETTINGS PAGE
    ============================================================ */
 
 .settings-route-nav {
@@ -770,18 +761,7 @@ body::after {
 }
 
 /* ============================================================
-   18. MOBILE COLOR OVERRIDES ONLY
-   (Layout stays from shell.css + runtimeKeyboardIsolation.css)
-   ============================================================ */
-
-@media (max-width: 768px) {
-  .assistant-message-shell .message-markdown-toolbar {
-    opacity: 1;
-  }
-}
-
-/* ============================================================
-   19. REDUCED MOTION
+   18. REDUCED MOTION
    ============================================================ */
 
 @media (prefers-reduced-motion: reduce) {

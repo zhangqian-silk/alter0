@@ -198,9 +198,13 @@ describe("CSS architecture", () => {
       expect(theme).toContain("background: var(--status-danger)");
     });
 
-    it("defines signal pulse animation", () => {
-      expect(theme).toContain("@keyframes signal-pulse");
-      expect(theme).toContain("animation: signal-pulse");
+    it("styles status signals with token colors (animation handled by shell.css)", () => {
+      expect(theme).toContain(".runtime-session-signal.is-ready");
+      expect(theme).toContain("background: var(--status-success)");
+      expect(theme).toContain(".runtime-session-signal.is-busy");
+      expect(theme).toContain("background: var(--status-info)");
+      expect(theme).toContain(".runtime-session-signal.is-failed");
+      expect(theme).toContain("background: var(--status-danger)");
     });
 
     it("styles user message bubble with token colors", () => {
@@ -268,9 +272,10 @@ describe("CSS architecture", () => {
       expect(theme).toContain("color: var(--text-muted)");
     });
 
-    it("hides the right-side session pane (nav owns sessions)", () => {
-      expect(theme).toContain(".runtime-workspace-session-pane");
-      expect(theme).toContain("display: none");
+    it("does NOT hide session pane (that structural decision lives in shell.css)", () => {
+      // Session pane visibility is a layout concern — handled by
+      // .runtime-workspace-session-pane.is-navigation-owned in shell.css
+      expect(theme).not.toContain(".runtime-workspace-session-pane {\n  display: none");
     });
 
     it("styles settings page with tokens", () => {

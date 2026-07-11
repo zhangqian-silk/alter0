@@ -596,8 +596,10 @@ function useConversationWorkspaceController(
       processEventDetailStates,
       onToggleProcessEvent: toggleProcessStep,
       runtimeEventFilter: runtime.runtimeEventFilter,
+      modelProviderID: runtime.activeSession?.modelProviderID,
+      modelID: runtime.activeSession?.modelID,
     }),
-    [expandedProcessEvents, language, processEventDetailStates, runtime.runtimeEventFilter, timelineSessionID, toggleProcess, toggleProcessStep, visibleMessages],
+    [expandedProcessEvents, language, processEventDetailStates, runtime.activeSession?.modelID, runtime.activeSession?.modelProviderID, runtime.runtimeEventFilter, timelineSessionID, toggleProcess, toggleProcessStep, visibleMessages],
   );
   const loadEarlierMessages = useCallback(() => {
     if (!timelineSessionID || (hiddenMessageCount <= 0 && !hasRemoteEarlierMessages)) {

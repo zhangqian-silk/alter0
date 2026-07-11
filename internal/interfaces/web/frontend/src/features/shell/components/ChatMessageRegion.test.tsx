@@ -102,8 +102,9 @@ describe("ChatMessageRegion", () => {
     expect(article).toHaveClass("runtime-message-assistant");
     expect(article).toHaveClass("is-assistant");
     expect(article.querySelector(".message-markdown-shell")).toBeInTheDocument();
-    expect(article.querySelector(".message-markdown-toolbar")).toBeInTheDocument();
-    expect(article.querySelector(".message-markdown-copy")).toBeInTheDocument();
+    // Toolbar removed from MessageMarkdownShell — copy button lives in msg-meta footer
+    expect(article.querySelector(".message-markdown-toolbar")).not.toBeInTheDocument();
+    expect(article.querySelector(".msg-meta .msg-meta-copy")).toBeInTheDocument();
     expect(article.querySelector(".message-markdown-body")).toBeInTheDocument();
     expect(article.querySelector(".chatRuntime-final-output")).toBeInTheDocument();
     expect(article.querySelector(".msg-bubble")).toBeInTheDocument();
@@ -265,7 +266,7 @@ describe("ChatMessageRegion", () => {
     expect(output).toBeInTheDocument();
     expect(output.querySelector(".message-markdown-shell")).toBeInTheDocument();
     expect(output.querySelector(".message-markdown-body")).toBeInTheDocument();
-    expect(output.querySelector(".message-markdown-toolbar")).toBeInTheDocument();
+    expect(output.querySelector(".message-markdown-toolbar")).not.toBeInTheDocument();
     expect(output.querySelector(".message-markdown-rendered")).toBeInTheDocument();
     expect(output.querySelector(".chat-md-inline-code")).toHaveTextContent("selectable");
   });

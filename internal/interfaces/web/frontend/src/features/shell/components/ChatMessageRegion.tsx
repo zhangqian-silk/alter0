@@ -1,6 +1,7 @@
 import { memo, type ReactNode } from "react";
 import { resolveComposerAttachmentViewerURL } from "../../conversation-runtime/composerImageAttachments";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
+import { CopyValueButton } from "./RouteBodyPrimitives";
 import {
   RuntimeTimeline,
   type RuntimeTimelineItem,
@@ -132,6 +133,9 @@ export function buildRuntimeSessionTimelineItems({
   onToggleProcessEvent,
   runtimeEventFilter,
   renderProcessEventDetail,
+  modelProviderID,
+  modelID,
+  reasoningEffort,
 }: BuildRuntimeSessionTimelineItemsOptions) {
   const callbackCacheID = resolveCallbackCacheID(onToggleProcess);
   const stepCallbackCacheID = resolveCallbackCacheID(onToggleProcessEvent);
@@ -139,6 +143,9 @@ export function buildRuntimeSessionTimelineItems({
   const filter = runtimeEventFilter || DEFAULT_RUNTIME_EVENT_FILTER;
   const expandedStepMap = expandedProcessEvents || {};
   const detailStateMap = processEventDetailStates || {};
+  const modelInfo = (modelProviderID || modelID)
+    ? { providerID: modelProviderID || "", modelID: modelID || "", reasoningEffort }
+    : undefined;
   return messages.map((message) => {
     const cacheKey = `${cacheScope}\u0000${language}\u0000${callbackCacheID}\u0000${stepCallbackCacheID}\u0000${message.id}`;
     const signature = [
@@ -161,6 +168,7 @@ export function buildRuntimeSessionTimelineItems({
       onToggleProcessEvent,
       filter,
       renderProcessEventDetail,
+      modelInfo,
     );
     timelineItemCache.set(cacheKey, { signature, item });
     trimTimelineItemCache();
@@ -178,6 +186,9 @@ type BuildRuntimeSessionTimelineItemsOptions = {
   onToggleProcessEvent?: (messageID: string, stepID: string) => void;
   runtimeEventFilter?: RuntimeEventFilterID[];
   renderProcessEventDetail?: (messageID: string, event: RuntimeTraceEvent) => ReactNode;
+  modelProviderID?: string;
+  modelID?: string;
+  reasoningEffort?: string;
 };
 
 function resolveCallbackCacheID(callback?: Function) {
@@ -303,8 +314,9 @@ function buildChatTimelineItem(
   onToggleProcessEvent?: (messageID: string, stepID: string) => void,
   runtimeEventFilter: RuntimeEventFilterID[] = DEFAULT_RUNTIME_EVENT_FILTER,
   renderProcessEventDetail?: (messageID: string, event: RuntimeTraceEvent) => ReactNode,
+  modelInfo?: { providerID: string; modelID: string; reasoningEffort?: string },
 ): RuntimeTimelineItem {
-  const footer = buildMessageFooter(message, language);
+  const footer = buildMessageFooter(message, language, modelInfo);
 
   if (message.role === "user") {
     const blocks: RuntimeTimelineItem["blocks"] = [
@@ -358,8 +370,6 @@ function buildChatTimelineItem(
         ...(markdown.trim() && !promptOnlyTurn ? [{
           type: "markdown-shell" as const,
           markdown,
-          copyValue: message.status === "streaming" ? undefined : message.text,
-          copyLabel: copy.copyValue,
           wrapperClassName: [
             "chatRuntime-final-output",
             "chatRuntime-turn-output",
@@ -460,8 +470,6 @@ function buildChatTimelineItem(
         {
           type: "markdown-shell" as const,
           markdown: parsed.answer,
-          copyValue: message.text,
-          copyLabel: copy.copyValue,
           wrapperClassName: "chatRuntime-final-output chatRuntime-turn-output runtime-message runtime-message-assistant conversation-final-output",
           wrapperProps: {
             "data-conversation-final-output": message.id,
@@ -477,14 +485,18 @@ function buildChatTimelineItem(
   };
 }
 
-function buildMessageFooter(message: ChatMessageSnapshot, language: LegacyShellLanguage) {
+function buildMessageFooter(
+  message: ChatMessageSnapshot,
+  language: LegacyShellLanguage,
+  modelInfo?: { providerID: string; modelID: string; reasoningEffort?: string },
+) {
   if (message.status === "streaming") {
     return undefined;
   }
 
   const actor = message.role === "user"
     ? (language === "zh" ? "你" : "You")
-    : "Alter0";
+    : formatModelLabel(modelInfo, language);
   const time = message.at > 0 ? formatMessageTime(message.at, language) : "";
   const showStatus = message.role === "assistant" && shouldShowAssistantStatus(message);
 
@@ -492,8 +504,17 @@ function buildMessageFooter(message: ChatMessageSnapshot, language: LegacyShellL
     return undefined;
   }
 
+  const copyValue = message.role === "assistant" ? message.text : undefined;
+
   return (
     <div className="msg-meta">
+      {copyValue?.trim() ? (
+        <CopyValueButton
+          className="msg-meta-copy"
+          value={copyValue}
+          label={language === "zh" ? "复制" : "Copy"}
+        />
+      ) : null}
       <span className="msg-meta-source">{actor}</span>
       {time ? <span className="msg-meta-time">{time}</span> : null}
       {showStatus ? (
@@ -503,6 +524,24 @@ function buildMessageFooter(message: ChatMessageSnapshot, language: LegacyShellL
       ) : null}
     </div>
   );
+}
+
+function formatModelLabel(
+  modelInfo: { providerID: string; modelID: string; reasoningEffort?: string } | undefined,
+  language: LegacyShellLanguage,
+): string {
+  if (!modelInfo || (!modelInfo.providerID && !modelInfo.modelID)) {
+    return language === "zh" ? "Alter0" : "Alter0";
+  }
+  const parts: string[] = [];
+  if (modelInfo.providerID) parts.push(modelInfo.providerID);
+  if (modelInfo.modelID) {
+    const modelLabel = modelInfo.reasoningEffort
+      ? `${modelInfo.modelID} (${modelInfo.reasoningEffort})`
+      : modelInfo.modelID;
+    parts.push(modelLabel);
+  }
+  return parts.join(" · ");
 }
 
 function formatMessageTime(timestamp: number, language: LegacyShellLanguage) {

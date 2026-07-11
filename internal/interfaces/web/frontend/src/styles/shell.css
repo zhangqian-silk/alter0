@@ -512,11 +512,6 @@ body {
   white-space: pre;
 }
 
-[data-runtime-view="chatRuntime"] .message-markdown-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 10px;
-}
 
 [data-runtime-view="chatRuntime"] .message-markdown-copy {
   background: #ffffff;
@@ -1548,17 +1543,7 @@ body {
   border-bottom: 0;
 }
 
-[data-runtime-view="conversation"] .assistant-message-shell .message-markdown-toolbar {
-  margin-top: 8px;
-  margin-bottom: 0;
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
 
-[data-runtime-view="conversation"] .assistant-message-shell:hover .message-markdown-toolbar,
-[data-runtime-view="conversation"] .assistant-message-shell:focus-within .message-markdown-toolbar {
-  opacity: 1;
-}
 
 [data-runtime-view="conversation"] .message-markdown-copy {
   min-height: 32px;
@@ -1596,9 +1581,6 @@ body {
     padding: 12px 13px;
   }
 
-  [data-runtime-view="conversation"] .assistant-message-shell .message-markdown-toolbar {
-    opacity: 1;
-  }
 }
 
 @media (max-width: 760px) {
@@ -8998,6 +8980,7 @@ body::after {
 .runtime-message.runtime-message-assistant .msg-meta,
 .conversation-message.is-assistant .msg-meta {
   justify-content: flex-start;
+  margin-top: 4px;
 }
 
 .msg-meta-source,
@@ -9005,6 +8988,25 @@ body::after {
   display: inline-flex;
   align-items: center;
   min-width: 0;
+}
+
+/* Copy button in msg-meta row — base layout/sizing. Colors in theme.css */
+.msg-meta-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.msg-meta-copy svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  flex-shrink: 0;
 }
 
 .msg-meta-source + .msg-meta-time::before {
@@ -9058,10 +9060,6 @@ body::after {
   line-height: 1.62;
 }
 
-.assistant-message-shell .message-markdown-toolbar {
-  margin-top: 12px;
-  margin-bottom: 0;
-}
 
 .assistant-message-shell .message-markdown-shell {
   display: block;
@@ -11836,11 +11834,6 @@ body {
   white-space: pre;
 }
 
-[data-runtime-view="chatRuntime"] .message-markdown-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 10px;
-}
 
 [data-runtime-view="chatRuntime"] .message-markdown-copy {
   background: #ffffff;
@@ -13242,12 +13235,7 @@ select:focus-visible,
 [data-runtime-view="conversation"],
 [data-runtime-composer-view="conversation"] {
   --runtime-conversation-gutter: clamp(24px, 4vw, 42px);
-  --runtime-conversation-rail: min(100%, 960px);
-}
-
-[data-runtime-view="conversation"][data-runtime-empty-state="true"],
-[data-runtime-composer-view="conversation"][data-runtime-empty-state="true"] {
-  --runtime-conversation-rail: min(100%, 620px);
+  --runtime-conversation-rail: min(100%, 760px);
 }
 
 [data-runtime-view="conversation"] .runtime-workspace-head {
@@ -13303,7 +13291,7 @@ select:focus-visible,
   [data-runtime-view="conversation"],
   [data-runtime-composer-view="conversation"] {
     --runtime-conversation-gutter: clamp(16px, 3vw, 28px);
-    --runtime-conversation-rail: min(100%, 920px);
+    --runtime-conversation-rail: min(100%, 760px);
   }
 
   .workbench-mobile-overlay-portal {
@@ -14978,11 +14966,12 @@ select:focus-visible,
   padding-left: 0 !important;
   color: #aaa !important;
   font-size: 11px !important;
-  margin-top: 4px !important;
+  margin-top: 2px !important;
 }
 
 /* --- MARKDOWN --- */
-.message-markdown-rendered p { margin: 0 0 1em !important; }
+.message-markdown-rendered p { margin: 0 0 0.75em !important; }
+.message-markdown-rendered p:last-child { margin-bottom: 0 !important; }
 
 .message-markdown-rendered h1,
 .message-markdown-rendered h2,
@@ -15003,8 +14992,21 @@ select:focus-visible,
 
 .message-markdown-rendered ul,
 .message-markdown-rendered ol {
-  margin: 0.5em 0 1em !important;
+  margin: 0.5em 0 0.75em !important;
   padding-left: 1.4em !important;
+}
+
+.message-markdown-rendered ul:last-child,
+.message-markdown-rendered ol:last-child,
+.message-markdown-rendered pre:last-child,
+.message-markdown-rendered blockquote:last-child,
+.message-markdown-rendered h1:last-child,
+.message-markdown-rendered h2:last-child,
+.message-markdown-rendered h3:last-child,
+.message-markdown-rendered h4:last-child,
+.message-markdown-rendered h5:last-child,
+.message-markdown-rendered h6:last-child {
+  margin-bottom: 0 !important;
 }
 
 .message-markdown-rendered li { margin: 0.3em 0 !important; }
@@ -15085,18 +15087,7 @@ select:focus-visible,
   color: #333 !important;
 }
 
-/* Copy toolbar */
-.assistant-message-shell .message-markdown-toolbar,
-.message-markdown-toolbar {
-  margin-top: 8px !important;
-  opacity: 0 !important;
-  transition: opacity 0.15s ease !important;
-}
-
-.assistant-message-shell:hover .message-markdown-toolbar,
-.assistant-message-shell:focus-within .message-markdown-toolbar {
-  opacity: 1 !important;
-}
+/* Copy toolbar — hidden, copy button moved to msg-meta row */
 
 .message-markdown-copy {
   min-height: 28px !important;
@@ -15389,9 +15380,6 @@ select:focus-visible,
     max-width: min(85%, 640px) !important;
   }
 
-  .assistant-message-shell .message-markdown-toolbar {
-    opacity: 1 !important;
-  }
 
   .scroll-jump-strip,
   .chatRuntime-jump-cluster {

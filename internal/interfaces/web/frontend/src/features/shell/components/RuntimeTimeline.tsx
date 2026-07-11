@@ -41,15 +41,11 @@ export type RuntimeTimelineBlock =
   | {
       type: "markdown-shell";
       markdown: string;
-      copyValue?: string;
-      copyLabel?: string;
       wrapperClassName?: string;
       wrapperProps?: ComponentPropsWithoutRef<"div">;
       bubbleClassName?: string;
       bubbleProps?: ComponentPropsWithoutRef<"div">;
       className?: string;
-      toolbarClassName?: string;
-      copyButtonClassName?: string;
       bodyClassName?: string;
     }
   | {
@@ -164,11 +160,7 @@ function RuntimeTimelineBlockNode({ block }: { block: RuntimeTimelineBlock }) {
       const shell = (
         <MessageMarkdownShell
           markdown={block.markdown}
-          copyValue={block.copyValue}
-          copyLabel={block.copyLabel}
           className={block.className}
-          toolbarClassName={block.toolbarClassName}
-          copyButtonClassName={block.copyButtonClassName}
           bodyClassName={block.bodyClassName}
         />
       );
