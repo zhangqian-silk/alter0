@@ -819,14 +819,14 @@ test.describe("Chat composer", () => {
   });
 
   test("shows chat jump controls and jumps between visible messages", async ({ page }) => {
-    await page.setViewportSize({ width: 760, height: 720 });
+    await page.setViewportSize({ width: 393, height: 852 });
     const turns = Array.from({ length: 18 }, (_value, index) => ({
       id: `turn-jump-${index + 1}`,
       prompt: `Jump prompt ${index + 1}`,
       status: "success",
       started_at: `2026-04-23T03:${String(index).padStart(2, "0")}:00Z`,
       finished_at: `2026-04-23T03:${String(index).padStart(2, "0")}:01Z`,
-      final_output: (`Jump answer ${index + 1} `.repeat(80)).trim(),
+      final_output: (`Jump answer ${index + 1} `.repeat(240)).trim(),
     }));
     await mockRuntimeSession(page, {
       route: "chat",
@@ -851,6 +851,43 @@ test.describe("Chat composer", () => {
     const jumpBottomButton = page.locator("[data-scroll-jump-bottom='chat']");
 
     await expect.poll(async () => routeView.evaluate((node) => node.scrollHeight > node.clientHeight + 180)).toBe(true);
+
+    const expectAdjacentJumpControls = async () => {
+      const anchorGap = await routeView.evaluate((node) => {
+        const containerRect = node.getBoundingClientRect();
+        const anchors = Array.from(node.querySelectorAll<HTMLElement>(".runtime-message-user[data-message-id]"))
+          .map((anchor) => {
+            const rect = anchor.getBoundingClientRect();
+            return {
+              id: anchor.getAttribute("data-message-id") || "",
+              top: node.scrollTop + rect.top - containerRect.top,
+              bottom: node.scrollTop + rect.bottom - containerRect.top,
+            };
+          });
+        for (let index = 0; index < anchors.length - 1; index += 1) {
+          const previous = anchors[index];
+          const next = anchors[index + 1];
+          if (!previous || !next || next.top - previous.bottom <= node.clientHeight + 40) {
+            continue;
+          }
+          node.scrollTop = previous.bottom + Math.floor((next.top - previous.bottom - node.clientHeight) / 2);
+          node.dispatchEvent(new Event("scroll"));
+          return { previousID: previous.id, nextID: next.id };
+        }
+        return null;
+      });
+
+      expect(anchorGap).not.toBeNull();
+      await expect(jumpPrevButton).toHaveAttribute("data-scroll-jump-target", anchorGap?.previousID || "");
+      await expect(jumpNextButton).toHaveAttribute("data-scroll-jump-target", anchorGap?.nextID || "");
+      await expect(jumpPrevButton).toHaveClass(/is-visible/);
+      await expect(jumpNextButton).toHaveClass(/is-visible/);
+    };
+
+    await expectAdjacentJumpControls();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expectAdjacentJumpControls();
+    await page.setViewportSize({ width: 760, height: 720 });
 
     await routeView.evaluate((node) => {
       node.scrollTop = Math.max((node.scrollHeight - node.clientHeight) * 0.35, 0);
