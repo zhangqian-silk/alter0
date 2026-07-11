@@ -59,6 +59,24 @@ export function WorkbenchApp() {
   const [language, setLanguage] = useState<LegacyShellLanguage>(() =>
     normalizeLegacyShellLanguage(document.documentElement.lang),
   );
+
+  // Theme initialization — read from localStorage, default to "light"
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window === "undefined") return "light";
+    const stored = window.localStorage.getItem("alter0-theme");
+    if (stored === "light" || stored === "dark") return stored;
+    const prefersDark = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+      : false;
+    return prefersDark ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("alter0-theme", theme);
+    }
+  }, [theme]);
   const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());
   const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);
   const [runtimeSessionRail, setRuntimeSessionRailState] = useState<WorkbenchSessionRail | null>(null);

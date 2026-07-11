@@ -1,0 +1,208 @@
+/* ============================================================
+   Design Tokens — Single source of truth for all visual values
+   Import BEFORE shell.css in main.tsx
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   Theme: Light (default)
+   ------------------------------------------------------------ */
+:root,
+:root[data-theme="light"] {
+  /* --- Backgrounds --- */
+  --bg-page: #ffffff;
+  --bg-sidebar: #f9f9f9;
+  --bg-surface: #fafafa;
+  --bg-surface-hover: #ffffff;
+  --bg-surface-active: #f0f0f0;
+  --bg-code: #f7f7f7;
+  --bg-bubble-user: #f5f5f5;
+  --bg-overlay: rgba(255, 255, 255, 0.92);
+
+  /* --- Borders --- */
+  --border-subtle: #f0f0f0;
+  --border-default: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --border-focus: #a1a1aa;
+
+  /* --- Text --- */
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --text-quiet: #a1a1aa;
+  --text-inverse: #fafafa;
+
+  /* --- Accent --- */
+  --accent: #0a84ff;
+  --accent-hover: #0066cc;
+  --accent-soft: rgba(10, 132, 255, 0.08);
+
+  /* --- Status --- */
+  --status-success: #30d158;
+  --status-warning: #ff9500;
+  --status-danger: #ff3b30;
+  --status-info: #0a84ff;
+  --status-neutral: #8e8e93;
+
+  /* --- Typography --- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text",
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: "SF Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+
+  --leading-tight: 1.3;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.75;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* --- Spacing --- */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-8: 16px;
+  --space-10: 20px;
+  --space-12: 24px;
+  --space-16: 32px;
+  --space-20: 40px;
+
+  /* --- Radii --- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* --- Shadows --- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-focus: 0 0 0 3px rgba(161, 161, 170, 0.12);
+
+  /* --- Layout --- */
+  --sidebar-width: 260px;
+  --header-height: 48px;
+  --content-max-width: 880px;
+  --composer-max-width: 880px;
+  --page-padding-x: 24px;
+
+  /* --- Z-index layers --- */
+  --z-base: 1;
+  --z-header: 5;
+  --z-composer: 10;
+  --z-dropdown: 50;
+  --z-modal: 100;
+  --z-overlay: 200;
+
+  /* --- Motion --- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 0.1s;
+  --duration-normal: 0.15s;
+
+  /* --- Legacy aliases (for backward compat during transition) --- */
+  --shell-bg: var(--bg-page);
+  --shell-surface: var(--bg-overlay);
+  --shell-surface-strong: var(--bg-page);
+  --shell-line: var(--border-subtle);
+  --shell-ink: var(--text-primary);
+  --shell-muted: var(--text-muted);
+  --shell-accent: var(--accent);
+  --shell-radius-xl: var(--radius-lg);
+  --shell-radius-lg: var(--radius-md);
+  --shell-radius-md: var(--radius-sm);
+  --shell-radius-sm: var(--radius-xs);
+  --shell-shadow: var(--shadow-md);
+  --bg-nav: var(--bg-sidebar);
+  --bg-session: var(--bg-surface);
+  --bg-page: var(--bg-page);
+  --line-soft: var(--border-subtle);
+  --line-mid: var(--border-default);
+  --ink-strong: var(--text-primary);
+  --ink-body: var(--text-secondary);
+  --ink-muted: var(--text-muted);
+  --content-width: var(--content-max-width);
+}
+
+/* ------------------------------------------------------------
+   Theme: Dark
+   ------------------------------------------------------------ */
+:root[data-theme="dark"] {
+  /* --- Backgrounds --- */
+  --bg-page: #0f0f11;
+  --bg-sidebar: #18181b;
+  --bg-surface: #1c1c1f;
+  --bg-surface-hover: #232327;
+  --bg-surface-active: #2a2a2e;
+  --bg-code: #1a1a1d;
+  --bg-bubble-user: #27272a;
+  --bg-overlay: rgba(24, 24, 27, 0.92);
+
+  /* --- Borders --- */
+  --border-subtle: #27272a;
+  --border-default: #36363b;
+  --border-strong: #52525b;
+  --border-focus: #71717a;
+
+  /* --- Text --- */
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-quiet: #52525b;
+  --text-inverse: #18181b;
+
+  /* --- Accent --- */
+  --accent: #409cff;
+  --accent-hover: #6ab7ff;
+  --accent-soft: rgba(64, 156, 255, 0.12);
+
+  /* --- Status --- */
+  --status-success: #32d74b;
+  --status-warning: #ff9f0a;
+  --status-danger: #ff453a;
+  --status-info: #409cff;
+  --status-neutral: #6e6e73;
+
+  /* --- Shadows --- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-focus: 0 0 0 3px rgba(113, 113, 122, 0.2);
+
+  /* --- Legacy aliases --- */
+  --shell-bg: var(--bg-page);
+  --shell-surface: var(--bg-overlay);
+  --shell-surface-strong: var(--bg-page);
+  --shell-line: var(--border-subtle);
+  --shell-ink: var(--text-primary);
+  --shell-muted: var(--text-muted);
+  --shell-accent: var(--accent);
+  --bg-nav: var(--bg-sidebar);
+  --bg-session: var(--bg-surface);
+  --line-soft: var(--border-subtle);
+  --line-mid: var(--border-default);
+  --ink-strong: var(--text-primary);
+  --ink-body: var(--text-secondary);
+  --ink-muted: var(--text-muted);
+}
+
+/* ------------------------------------------------------------
+   Motion preferences
+   ------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0.01ms;
+    --duration-normal: 0.01ms;
+  }
+}
