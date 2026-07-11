@@ -46,14 +46,11 @@ type LegacyShellCopy = {
   runtimeServiceDefault: string;
   runtimeEmpty: string;
   runtimeHint: string;
-  runtimeToolsMcp: string;
-  runtimeToolsShort: string;
   runtimeSkills: string;
   runtimeSkillsShort: string;
   runtimeTargetHint: string;
   runtimeSkillHint: string;
   runtimeModelHint: string;
-  runtimeToolsHint: string;
   runtimeSkillsHint: string;
   runtimeMobile: string;
   runtimeMobileHint: string;
@@ -170,17 +167,14 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     runtimeServiceDefault: "Service Default",
     runtimeEmpty: "No enabled model provider is available yet. Configure one in Models to enable session-level model switching.",
     runtimeHint: "Applies to upcoming messages in the current chat session.",
-    runtimeToolsMcp: "Tools / MCP",
-    runtimeToolsShort: "Tools",
     runtimeSkills: "Skills",
     runtimeSkillsShort: "Skills",
     runtimeTargetHint: "Choose the execution target before the first message.",
     runtimeSkillHint: "Choose the Skill for this session before the first message.",
     runtimeModelHint: "Switches apply to upcoming messages in this session.",
-    runtimeToolsHint: "Select extra Tools and MCP integrations for upcoming messages.",
     runtimeSkillsHint: "Select extra Skills for upcoming messages.",
     runtimeMobile: "Session",
-    runtimeMobileHint: "Choose model, tools, and skills for upcoming messages.",
+    runtimeMobileHint: "Choose a model and skills for upcoming messages.",
     runtimeActive: "Active",
     runtimeAvailable: "Available",
     runtimeCategoryTools: "Tools",
@@ -292,17 +286,14 @@ const LEGACY_SHELL_COPY: Record<LegacyShellLanguage, LegacyShellCopy> = {
     runtimeServiceDefault: "服务默认",
     runtimeEmpty: "当前还没有可用的启用模型 Provider。请先在 Models 页面完成配置。",
     runtimeHint: "会作用于当前会话后续发送的消息。",
-    runtimeToolsMcp: "工具 / MCP",
-    runtimeToolsShort: "工具",
     runtimeSkills: "技能",
     runtimeSkillsShort: "技能",
     runtimeTargetHint: "请在发送第一条消息前确定当前会话目标。",
     runtimeSkillHint: "请在发送第一条消息前为当前会话选择 Skill。",
     runtimeModelHint: "切换后会作用于当前会话后续发送的消息。",
-    runtimeToolsHint: "为后续消息选择额外启用的工具与 MCP。",
     runtimeSkillsHint: "为后续消息选择额外启用的技能。",
     runtimeMobile: "会话设置",
-    runtimeMobileHint: "为后续消息集中选择模型、工具与技能。",
+    runtimeMobileHint: "为后续消息选择模型与技能。",
     runtimeActive: "已启用",
     runtimeAvailable: "可启用",
     runtimeCategoryTools: "工具",

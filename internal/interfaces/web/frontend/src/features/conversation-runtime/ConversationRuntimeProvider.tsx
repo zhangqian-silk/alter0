@@ -52,6 +52,7 @@ const LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY = "alter0.web.session.long_term_sna
 const SESSION_INFO_SNAPSHOT_STORAGE_KEY = "alter0.web.session.info_snapshot.v1";
 const COMPOSER_DRAFT_STORAGE_KEY = "alter0.web.composer.drafts.v1";
 const COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY = "alter0.web.composer.attachments.v1";
+const COMPOSER_REPOSITORY_DRAFT_STORAGE_KEY = "alter0.web.composer.repository.v1";
 const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
 const RUNTIME_CONFIG_STORAGE_KEY = "alter0.web.runtime.config.v1";
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
@@ -115,6 +116,24 @@ type ChatTarget = {
 
 export type ChatMessage = RuntimeSessionTimelineMessage;
 
+export type ChatRepository = {
+  id: string;
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  updatedAt: number;
+};
+
+export type ChatRepositoryBinding = ChatRepository & {
+  provider: "github";
+  branch: string;
+  headSHA: string;
+  status: "preparing" | "ready" | "failed";
+  workspacePath: "repo";
+  errorCode: string;
+  errorMessage: string;
+};
+
 export type ChatSession = {
   id: string;
   sourceRoute?: ConversationRoute;
@@ -140,6 +159,7 @@ export type ChatSession = {
   messagesLoaded?: boolean;
   serverBacked?: boolean;
   turnsPaging?: RuntimeSessionTurnPagingPayload;
+  repository?: ChatRepositoryBinding;
 };
 
 type ChatProviderModel = {
@@ -171,6 +191,7 @@ type ActiveSessionState = Record<ConversationRoute, string>;
 type SessionsState = Record<ConversationRoute, ChatSession[]>;
 type ComposerDraftMap = Record<string, string>;
 type ComposerAttachmentDraftMap = Record<string, ComposerAttachment[]>;
+type ComposerRepositoryDraftMap = Record<string, ChatRepository>;
 type RuntimeComposerConfig = {
   modelProviderID: string;
   modelID: string;
@@ -240,6 +261,26 @@ type RuntimeSessionDetailPayload = {
   mcp_ids?: string[];
   turns?: RuntimeSessionTurnPayload[];
   turns_paging?: RuntimeSessionTurnPagingPayload;
+  repository?: RuntimeRepositoryBindingPayload;
+};
+
+type RuntimeRepositoryBindingPayload = {
+  provider?: string;
+  id?: string | number;
+  full_name?: string;
+  private?: boolean;
+  default_branch?: string;
+  branch?: string;
+  head_sha?: string;
+  status?: string;
+  workspace_path?: string;
+  error_code?: string;
+  error_message?: string;
+};
+
+type RepositoryListResponse = {
+  repositories?: RuntimeRepositoryBindingPayload[];
+  next_cursor?: string;
 };
 
 type RuntimeSessionUpdateEventPayload = {
@@ -314,11 +355,13 @@ type RuntimeTraceEventDetail = {
   blocks?: RuntimeBlock[];
 };
 
+type RuntimeInspectorTab = "model" | "skills";
+
 type ConversationRuntimeContextValue = {
   route: ConversationRoute;
   compact: boolean;
   inspectorOpen: boolean;
-  inspectorTab: "model" | "capabilities" | "skills";
+  inspectorTab: RuntimeInspectorTab;
   inspectorTabOpen: boolean;
   sessions: ChatSession[];
   activeSession: ChatSession | null;
@@ -344,6 +387,9 @@ type ConversationRuntimeContextValue = {
   selectedModelSupportsVision: boolean;
   providers: RuntimeProvider[];
   draftAttachments: ComposerAttachment[];
+  draftRepository: ChatRepository | null;
+  repositoryBinding: ChatRepositoryBinding | null;
+  repositorySelectable: boolean;
   capabilities: RuntimeSelection[];
   skills: RuntimeSelection[];
   runtimeEventFilter: RuntimeEventFilterID[];
@@ -359,8 +405,11 @@ type ConversationRuntimeContextValue = {
   addDraftAttachments: (attachments: ComposerAttachment[]) => Promise<void>;
   removeDraftAttachment: (attachmentID: string) => void;
   clearDraftAttachments: () => void;
+  setDraftRepository: (repository: ChatRepository | null) => void;
+  listRepositories: (query?: string) => Promise<ChatRepository[]>;
+  retryRepository: () => Promise<void>;
   sendPrompt: (prompt?: string) => Promise<void>;
-  toggleInspector: (tab?: "model" | "capabilities" | "skills") => void;
+  toggleInspector: (tab?: RuntimeInspectorTab) => void;
   closeInspector: () => void;
   selectModel: (providerID: string, modelID: string) => void;
   toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => void;
@@ -374,10 +423,16 @@ type ConversationRuntimeWorkspaceContextValue = Omit<
   ConversationRuntimeContextValue,
   "draft"
   | "draftAttachments"
+  | "draftRepository"
+  | "repositoryBinding"
+  | "repositorySelectable"
   | "setDraft"
   | "addDraftAttachments"
   | "removeDraftAttachment"
   | "clearDraftAttachments"
+  | "setDraftRepository"
+  | "listRepositories"
+  | "retryRepository"
   | "sendPrompt"
 >;
 
@@ -389,6 +444,9 @@ type ConversationRuntimeComposerContextValue = Pick<
   | "inspectorTabOpen"
   | "draft"
   | "draftAttachments"
+  | "draftRepository"
+  | "repositoryBinding"
+  | "repositorySelectable"
   | "busy"
   | "selectedProviderId"
   | "selectedModelId"
@@ -401,6 +459,9 @@ type ConversationRuntimeComposerContextValue = Pick<
   | "addDraftAttachments"
   | "removeDraftAttachment"
   | "clearDraftAttachments"
+  | "setDraftRepository"
+  | "listRepositories"
+  | "retryRepository"
   | "sendPrompt"
   | "toggleInspector"
   | "closeInspector"
@@ -473,6 +534,11 @@ function composerDraftStorageKey(route: ConversationRoute): string {
 function composerAttachmentDraftStorageKey(route: ConversationRoute): string {
   void route;
   return COMPOSER_ATTACHMENT_DRAFT_STORAGE_KEY;
+}
+
+function composerRepositoryDraftStorageKey(route: ConversationRoute): string {
+  void route;
+  return COMPOSER_REPOSITORY_DRAFT_STORAGE_KEY;
 }
 
 function runtimeEventFilterStorageKey(route: ConversationRoute): string {
@@ -750,6 +816,7 @@ function cloneChatSession(session: ChatSession): ChatSession {
     mcpIDs: [...session.mcpIDs],
     messages: session.messages.map(cloneChatMessage),
     turnsPaging: session.turnsPaging ? { ...session.turnsPaging } : undefined,
+    repository: session.repository ? { ...session.repository } : undefined,
   };
 }
 
@@ -1488,6 +1555,45 @@ function normalizeStoredAttachments(value: unknown): ComposerAttachment[] {
     .filter((item): item is ComposerAttachment => item !== null);
 }
 
+function normalizeChatRepository(value: unknown): ChatRepository | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const id = normalizeText(record.id);
+  const fullName = normalizeText(record.full_name ?? record.fullName);
+  if (!id || !fullName) {
+    return null;
+  }
+  return {
+    id,
+    fullName,
+    private: record.private === true,
+    defaultBranch: normalizeText(record.default_branch ?? record.defaultBranch),
+    updatedAt: normalizeOptionalDateValue(record.updated_at ?? record.updatedAt),
+  };
+}
+
+function normalizeChatRepositoryBinding(value: unknown): ChatRepositoryBinding | undefined {
+  const repository = normalizeChatRepository(value);
+  if (!repository || !value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const rawStatus = normalizeText(record.status).toLowerCase();
+  const status = rawStatus === "ready" || rawStatus === "failed" ? rawStatus : "preparing";
+  return {
+    ...repository,
+    provider: "github",
+    branch: normalizeText(record.branch),
+    headSHA: normalizeText(record.head_sha ?? record.headSHA),
+    status,
+    workspacePath: "repo",
+    errorCode: normalizeText(record.error_code ?? record.errorCode),
+    errorMessage: normalizeText(record.error_message ?? record.errorMessage),
+  };
+}
+
 function normalizeStoredSession(item: unknown): ChatSession | null {
   if (!item || typeof item !== "object") {
     return null;
@@ -1541,6 +1647,7 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     messagesLoaded: typeof record.messagesLoaded === "boolean" ? record.messagesLoaded : undefined,
     serverBacked: typeof record.serverBacked === "boolean" ? record.serverBacked : undefined,
     turnsPaging: normalizeRuntimeSessionTurnPagingPayload(record.turnsPaging ?? record.turns_paging),
+    repository: normalizeChatRepositoryBinding(record.repository),
   };
 }
 
@@ -1616,6 +1723,7 @@ function serializeStoredSession(session: ChatSession): Record<string, unknown> {
     messagesLoaded: session.messagesLoaded,
     serverBacked: session.serverBacked,
     turnsPaging: session.turnsPaging,
+    repository: session.repository,
   };
 }
 
@@ -1939,6 +2047,22 @@ function persistComposerAttachmentDrafts(route: ConversationRoute, drafts: Compo
   writeJSONStorage(composerAttachmentDraftStorageKey(route), drafts);
 }
 
+function loadComposerRepositoryDrafts(route: ConversationRoute): ComposerRepositoryDraftMap {
+  const parsed = readJSONStorage<Record<string, unknown>>(composerRepositoryDraftStorageKey(route), {});
+  return Object.entries(parsed).reduce<ComposerRepositoryDraftMap>((acc, [key, value]) => {
+    const normalizedKey = normalizeText(key);
+    const repository = normalizeChatRepository(value);
+    if (normalizedKey && repository) {
+      acc[normalizedKey] = repository;
+    }
+    return acc;
+  }, {});
+}
+
+function persistComposerRepositoryDrafts(route: ConversationRoute, drafts: ComposerRepositoryDraftMap) {
+  writeJSONStorage(composerRepositoryDraftStorageKey(route), drafts);
+}
+
 function normalizeDateValue(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -2112,6 +2236,7 @@ export function normalizeRuntimeSession(
     messagesLoaded,
     serverBacked: true,
     turnsPaging: mergeRuntimeSessionTurnPagingPayload(previous, incomingPaging, messages),
+    repository: normalizeChatRepositoryBinding(item.repository) || previous?.repository,
   };
 }
 
@@ -2512,9 +2637,10 @@ export function ConversationRuntimeProvider({
   const mcps = runtimeCatalogs.mcps as ChatCapability[];
   const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts(route));
   const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts(route));
+  const [composerRepositoryDrafts, setComposerRepositoryDrafts] = useState<ComposerRepositoryDraftMap>(() => loadComposerRepositoryDrafts(route));
   const [compact, setCompact] = useState(() => isCompactViewport());
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<"model" | "capabilities" | "skills">("model");
+  const [inspectorTab, setInspectorTab] = useState<RuntimeInspectorTab>("model");
   const [inspectorTabOpen, setInspectorTabOpen] = useState(true);
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimeComposerConfigState>(() => loadRuntimeConfig(route));
   const [runtimeEventFilter, setRuntimeEventFilter] = useState<RuntimeEventFilterID[]>(() => loadRuntimeEventFilter(route));
@@ -2530,6 +2656,7 @@ export function ConversationRuntimeProvider({
   const sendPromptRef = useRef<(prompt?: string) => Promise<void>>(async () => undefined);
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
+  const latestComposerRepositoryDraftsRef = useRef<ComposerRepositoryDraftMap>(composerRepositoryDrafts);
   const [fallbackPollAttempt, setFallbackPollAttempt] = useState(0);
   const runtimeSessionControllerOptions = useMemo(() => ({
     route,
@@ -2634,6 +2761,8 @@ export function ConversationRuntimeProvider({
   }, [activeSessionID, activeSessions]);
   const activeDraftKey = activeSessionID || newDraftKeyForRoute(route);
   const activeDraftAttachments = composerAttachmentDrafts[activeDraftKey] || EMPTY_COMPOSER_ATTACHMENTS;
+  const activeDraftRepository = composerRepositoryDrafts[activeDraftKey] || null;
+  const activeSessionHasMessages = Boolean(activeSession?.messages.length);
   const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
   const availableSkillIDs = useMemo(
     () => skillCatalogLoaded ? defaultChatSkillIDs(skills) : null,
@@ -2675,11 +2804,17 @@ export function ConversationRuntimeProvider({
   }, [composerAttachmentDrafts]);
 
   useEffect(() => {
+    latestComposerRepositoryDraftsRef.current = composerRepositoryDrafts;
+    persistComposerRepositoryDrafts(route, composerRepositoryDrafts);
+  }, [composerRepositoryDrafts, route]);
+
+  useEffect(() => {
     const flushComposerDrafts = () => {
       window.clearTimeout(composerDraftPersistTimerRef.current);
       composerDraftPersistTimerRef.current = 0;
       persistComposerDrafts(route, latestComposerDraftsRef.current);
       persistComposerAttachmentDrafts(route, latestComposerAttachmentDraftsRef.current);
+      persistComposerRepositoryDrafts(route, latestComposerRepositoryDraftsRef.current);
     };
     window.addEventListener("pagehide", flushComposerDrafts);
     window.addEventListener("beforeunload", flushComposerDrafts);
@@ -2692,6 +2827,7 @@ export function ConversationRuntimeProvider({
   useEffect(() => () => {
     window.clearTimeout(composerDraftPersistTimerRef.current);
     persistComposerDrafts(route, latestComposerDraftsRef.current);
+    persistComposerRepositoryDrafts(route, latestComposerRepositoryDraftsRef.current);
   }, []);
 
   const patchSession = useCallback((
@@ -2847,14 +2983,18 @@ export function ConversationRuntimeProvider({
     };
     const nextDrafts = { ...latestComposerDraftsRef.current };
     const nextAttachmentDrafts = { ...latestComposerAttachmentDraftsRef.current };
+    const nextRepositoryDrafts = { ...latestComposerRepositoryDraftsRef.current };
     delete nextDrafts[normalizedSessionID];
     delete nextAttachmentDrafts[normalizedSessionID];
+    delete nextRepositoryDrafts[normalizedSessionID];
     setSessionsByRoute(nextSessionsByRoute);
     setActiveSessionByRoute(nextActiveState);
     setComposerDrafts(nextDrafts);
     setComposerAttachmentDrafts(nextAttachmentDrafts);
+    setComposerRepositoryDrafts(nextRepositoryDrafts);
     persistComposerDrafts(route, nextDrafts);
     persistComposerAttachmentDrafts(route, nextAttachmentDrafts);
+    persistComposerRepositoryDrafts(route, nextRepositoryDrafts);
     writeActiveSessionState(nextActiveState, route);
   }, [activeSessionByRoute, deleteRuntimeSession, route, sessionsByRoute]);
 
@@ -3118,6 +3258,7 @@ export function ConversationRuntimeProvider({
   const sendPromptImpl = async (prompt: string = composerDrafts[activeDraftKey] || "") => {
     const content = prompt.trim().slice(0, MAX_COMPOSER_CHARS);
     let attachments = activeDraftAttachments;
+    const repository = activeDraftRepository;
     if (!content && attachments.length === 0) {
       return;
     }
@@ -3157,6 +3298,13 @@ export function ConversationRuntimeProvider({
         tool_ids: normalizeSelectionIDs(activeRuntimeConfig.toolIDs),
         skill_ids: activeSkillIDs,
         mcp_ids: normalizeSelectionIDs(activeRuntimeConfig.mcpIDs),
+        ...(repository ? {
+          repository: {
+            provider: "github",
+            id: repository.id,
+            full_name: repository.fullName,
+          },
+        } : {}),
       });
       const latestSession = sessionsByRouteRef.current[route].find((item) => item.id === session.id) || session;
       const nextHydrated = hydrated
@@ -3170,10 +3318,16 @@ export function ConversationRuntimeProvider({
       const routeDraftKey = newDraftKeyForRoute(route);
       const nextDrafts = { ...composerDrafts, [session.id]: "", [routeDraftKey]: "" };
       const nextAttachmentDrafts = { ...composerAttachmentDrafts, [session.id]: [], [routeDraftKey]: [] };
+      const nextRepositoryDrafts = { ...composerRepositoryDrafts };
+      delete nextRepositoryDrafts[activeDraftKey];
+      delete nextRepositoryDrafts[session.id];
+      delete nextRepositoryDrafts[routeDraftKey];
       setComposerDrafts(nextDrafts);
       setComposerAttachmentDrafts(nextAttachmentDrafts);
+      setComposerRepositoryDrafts(nextRepositoryDrafts);
       persistComposerDrafts(route, nextDrafts);
       persistComposerAttachmentDrafts(route, nextAttachmentDrafts);
+      persistComposerRepositoryDrafts(route, nextRepositoryDrafts);
     } catch (error) {
       patchSession(route, session.id, (currentSession) => ({
         ...currentSession,
@@ -3192,6 +3346,33 @@ export function ConversationRuntimeProvider({
   sendPromptRef.current = sendPromptImpl;
 
   const sendPrompt = useCallback((prompt?: string) => sendPromptRef.current(prompt), []);
+
+  const listRepositories = useCallback(async (query: string = ""): Promise<ChatRepository[]> => {
+    const normalizedQuery = normalizeText(query);
+    const path = `/api/chat/repositories${normalizedQuery ? `?query=${encodeURIComponent(normalizedQuery)}` : ""}`;
+    const payload = await apiClient.get<RepositoryListResponse>(path);
+    return (payload.repositories || [])
+      .map(normalizeChatRepository)
+      .filter((item): item is ChatRepository => item !== null);
+  }, [apiClient]);
+
+  const retryRepository = useCallback(async () => {
+    const currentSession = sessionsByRouteRef.current[route].find((session) => session.id === activeSessionID) || null;
+    if (!currentSession?.repository || currentSession.repository.status !== "failed") {
+      return;
+    }
+    const payload = await apiClient.post<{ session?: RuntimeSessionDetailPayload }>(
+      `/api/chat/sessions/${encodeURIComponent(currentSession.id)}/repository/retry`,
+      {},
+    );
+    if (!payload.session) {
+      return;
+    }
+    const normalized = normalizeRuntimeSession(payload.session, currentSession, route, { source: "detail" });
+    if (normalized) {
+      upsertRuntimeSession(route, normalized);
+    }
+  }, [activeSessionID, apiClient, route, upsertRuntimeSession]);
 
   const uploadDraftAttachments = async (
     sessionID: string,
@@ -3662,7 +3843,7 @@ export function ConversationRuntimeProvider({
     }
     return sessionsByRouteRef.current[route].find((session) => session.id === activeSessionID) || null;
   }, [activeSessionID, route]);
-  const toggleInspector = useCallback((tab?: "model" | "capabilities" | "skills") => {
+  const toggleInspector = useCallback((tab?: RuntimeInspectorTab) => {
     if (!tab) {
       setInspectorOpen((current) => {
         const nextOpen = !current;
@@ -3890,6 +4071,9 @@ export function ConversationRuntimeProvider({
     inspectorTabOpen,
     draft: composerDrafts[activeDraftKey] || "",
     draftAttachments: activeDraftAttachments,
+    draftRepository: activeDraftRepository,
+    repositoryBinding: activeSession?.repository || null,
+    repositorySelectable: !activeSession?.repository && !activeSessionHasMessages,
     busy: activeSessionBusy,
     selectedProviderId: selection.providerID,
     selectedModelId: selection.modelID,
@@ -3945,6 +4129,22 @@ export function ConversationRuntimeProvider({
       setComposerAttachmentDrafts(nextDrafts);
       persistComposerAttachmentDrafts(route, nextDrafts);
     },
+    setDraftRepository: (repository: ChatRepository | null) => {
+      if (activeSession?.repository || activeSessionHasMessages) {
+        return;
+      }
+      const nextDrafts = { ...composerRepositoryDrafts };
+      if (repository) {
+        nextDrafts[activeDraftKey] = repository;
+      } else {
+        delete nextDrafts[activeDraftKey];
+      }
+      latestComposerRepositoryDraftsRef.current = nextDrafts;
+      setComposerRepositoryDrafts(nextDrafts);
+      persistComposerRepositoryDrafts(route, nextDrafts);
+    },
+    listRepositories,
+    retryRepository,
     sendPrompt,
     toggleInspector,
     closeInspector,
@@ -3960,6 +4160,9 @@ export function ConversationRuntimeProvider({
     activeDraftKey,
     composerDrafts,
     activeDraftAttachments,
+    activeDraftRepository,
+    activeSession?.repository,
+    activeSessionHasMessages,
     activeSessionBusy,
     selection.providerID,
     selection.modelID,
@@ -3969,10 +4172,13 @@ export function ConversationRuntimeProvider({
     runtimeSkillItems,
     runtimeEventFilter,
     composerAttachmentDrafts,
+    composerRepositoryDrafts,
     activeSessionID,
     readCurrentActiveSession,
     createRuntimeBackedSession,
     sendPrompt,
+    listRepositories,
+    retryRepository,
     toggleInspector,
     closeInspector,
     selectModel,

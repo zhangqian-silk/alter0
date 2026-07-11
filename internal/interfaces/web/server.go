@@ -136,6 +136,8 @@ type chatRuntimeService interface {
 	InputWithAttachments(req chatruntimeapp.InputRequest) (chatruntimedomain.Session, error)
 	SetPinned(ownerID string, sessionID string, pinned bool) (chatruntimedomain.Session, error)
 	Delete(ownerID string, sessionID string) (chatruntimedomain.Session, error)
+	ListRepositories(ctx context.Context, query string, cursor string) (chatruntimeapp.RepositoryPage, error)
+	RetryRepository(ownerID string, sessionID string) (chatruntimedomain.Session, error)
 }
 
 type chatRuntimeSessionEventHookSetter interface {
@@ -461,6 +463,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/llm/providers", s.llmProviderListHandler)
 	mux.HandleFunc("/api/control/llm/providers/", s.llmProviderItemHandler)
 	mux.HandleFunc("/api/chat/sessions", s.chatSessionCollectionHandler)
+	mux.HandleFunc("/api/chat/repositories", s.chatRepositoryCollectionHandler)
 	mux.HandleFunc("/api/chat/sessions/updates", s.chatSessionUpdatesHandler)
 	mux.HandleFunc("/api/chat/sessions/recover", s.chatSessionRecoverHandler)
 	mux.HandleFunc("/api/chat/sessions/", s.chatSessionItemHandler)

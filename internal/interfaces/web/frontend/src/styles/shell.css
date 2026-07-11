@@ -13944,3 +13944,236 @@ select:focus-visible,
   color: inherit;
   font: inherit;
 }
+
+/* GitHub repository context for the Chat composer */
+.runtime-composer-context {
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+}
+
+.conversation-repository-picker {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 520px);
+}
+
+.conversation-repository-search {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  background: #fff;
+  color: #475569;
+}
+
+.conversation-repository-search svg,
+.conversation-repository-option-icon svg,
+.conversation-repository-chip-icon svg {
+  display: block;
+  width: 19px;
+  height: 19px;
+}
+
+.conversation-repository-search input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  font-size: 14px;
+}
+
+.conversation-repository-results {
+  display: grid;
+  gap: 3px;
+  max-height: min(360px, 46vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.conversation-repository-option {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #1f2937;
+  text-align: left;
+}
+
+.conversation-repository-option:hover,
+.conversation-repository-option:focus-visible {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: #f1f5f9;
+  outline: none;
+}
+
+.conversation-repository-option-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.conversation-repository-option-copy strong,
+.conversation-repository-option-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-repository-option-copy strong {
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.conversation-repository-option-copy small,
+.conversation-repository-visibility {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.conversation-repository-visibility {
+  padding: 3px 6px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  background: #fff;
+  font-weight: 700;
+}
+
+.conversation-repository-state {
+  margin: 0;
+  padding: 18px 10px;
+  color: #64748b;
+  font-size: 12px;
+  text-align: center;
+}
+
+.conversation-repository-state.is-error {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: #b42318;
+}
+
+.conversation-repository-state.is-error p {
+  margin: 0;
+}
+
+.conversation-repository-state.is-error button,
+.conversation-repository-chip-retry {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(180, 35, 24, 0.2);
+  border-radius: 7px;
+  background: #fff;
+  color: #b42318;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.conversation-repository-chip {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  max-width: min(100%, 360px);
+  min-height: 34px;
+  padding: 5px 7px 5px 9px;
+  border: 1px solid rgba(36, 41, 47, 0.14);
+  border-radius: 9px;
+  background: #f6f8fa;
+  color: #24292f;
+}
+
+.conversation-repository-chip.is-preparing {
+  border-color: rgba(37, 99, 235, 0.22);
+  background: #eff6ff;
+}
+
+.conversation-repository-chip.is-failed {
+  border-color: rgba(180, 35, 24, 0.2);
+  background: #fff5f4;
+  color: #912018;
+}
+
+.conversation-repository-chip-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.conversation-repository-chip-copy strong,
+.conversation-repository-chip-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-repository-chip-copy strong {
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.conversation-repository-chip-copy small {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.conversation-repository-chip-action {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.conversation-repository-chip-action:hover {
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+
+[data-runtime-composer-utility="github"].is-active {
+  border-color: rgba(36, 41, 47, 0.18);
+  background: #f6f8fa;
+  color: #24292f;
+}
+
+@media (max-width: 760px) {
+  .runtime-composer-panel[data-runtime-config-surface="repository"] {
+    max-height: min(58vh, calc(100dvh - 154px));
+    border-color: rgba(15, 23, 42, 0.12);
+    background: #fff;
+  }
+
+  .conversation-repository-picker,
+  .conversation-repository-chip {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .conversation-repository-results {
+    max-height: min(42vh, 340px);
+  }
+}

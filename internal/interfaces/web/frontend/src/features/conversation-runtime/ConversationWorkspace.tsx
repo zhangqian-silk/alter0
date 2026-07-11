@@ -25,6 +25,7 @@ import {
   type ComposerAttachment,
 } from "./composerImageAttachments";
 import {
+  type ChatRepository,
   useConversationRuntimeComposer,
   useConversationRuntimeWorkspace,
 } from "./ConversationRuntimeProvider";
@@ -224,6 +225,14 @@ function RuntimeSessionControlIcon() {
       <circle cx="14" cy="6" r="2.25" stroke="currentColor" strokeWidth="1.7" />
       <circle cx="6" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
       <circle cx="14" cy="14" r="2.25" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  );
+}
+
+function GitHubRepositoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" focusable="false" aria-hidden="true">
+      <path d="M12 2.35a9.9 9.9 0 0 0-3.13 19.3c.5.1.68-.21.68-.48v-1.9c-2.78.61-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.72 1.02A9.45 9.45 0 0 1 12 7.06a9.4 9.4 0 0 1 2.48.33c1.89-1.29 2.72-1.02 2.72-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.56 4.93.36.31.68.92.68 1.86v2.69c0 .27.18.59.69.48A9.9 9.9 0 0 0 12 2.35Z" />
     </svg>
   );
 }
@@ -1044,6 +1053,12 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   const copy = getLegacyShellCopy(language);
   const [composerAttachmentError, setComposerAttachmentError] = useState("");
   const [previewAttachment, setPreviewAttachment] = useState<ComposerAttachment | null>(null);
+  const [repositoryPickerOpen, setRepositoryPickerOpen] = useState(false);
+  const [repositoryQuery, setRepositoryQuery] = useState("");
+  const [repositoryItems, setRepositoryItems] = useState<ChatRepository[]>([]);
+  const [repositoryLoading, setRepositoryLoading] = useState(false);
+  const [repositoryError, setRepositoryError] = useState("");
+  const [repositoryReloadKey, setRepositoryReloadKey] = useState(0);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const composerShellRef = useRef<HTMLElement | null>(null);
@@ -1054,6 +1069,8 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   const composerBusy = composerRuntime.busy;
   const runtimeComposerKind = "chat";
   const composerAddAttachmentLabel = language === "zh" ? "添加附件" : "Add attachment";
+  const repositorySelectLabel = language === "zh" ? "选择 GitHub 仓库" : "Select GitHub repository";
+  const repositoryRetryLabel = language === "zh" ? "重试仓库" : "Retry repository";
   const composerClosePreviewLabel = language === "zh" ? "关闭预览" : "Close preview";
   const composerPreviewPrefix = language === "zh" ? "预览" : "Preview";
   const composerRemovePrefix = language === "zh" ? "删除" : "Remove";
@@ -1066,14 +1083,11 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   const codexSlashCommandsLabel = language === "zh" ? "Codex 斜线命令" : "Codex slash commands";
   const inspectorTabOpen = composerRuntime.inspectorOpen && composerRuntime.inspectorTabOpen;
   const modelInspectorOpen = inspectorTabOpen && composerRuntime.inspectorTab === "model";
-  const capabilitiesInspectorOpen = inspectorTabOpen && composerRuntime.inspectorTab === "capabilities";
   const skillsInspectorOpen = inspectorTabOpen && composerRuntime.inspectorTab === "skills";
-  const capabilityGroups = useMemo(() => ({
-    activeCapabilities: composerRuntime.capabilities.filter((item) => item.active),
-    availableCapabilities: composerRuntime.capabilities.filter((item) => !item.active),
+  const skillGroups = useMemo(() => ({
     activeSkills: composerRuntime.skills.filter((item) => item.active),
     availableSkills: composerRuntime.skills.filter((item) => !item.active),
-  }), [composerRuntime.capabilities, composerRuntime.skills]);
+  }), [composerRuntime.skills]);
   const directCodexSelected = isDirectCodexModelSelection(
     composerRuntime.selectedProviderId,
     composerRuntime.selectedModelId,
@@ -1082,6 +1096,35 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   const codexSlashCommandCandidates = codexSlashQuery
     ? CODEX_SLASH_COMMANDS.filter((item) => item.command.startsWith(codexSlashQuery))
     : [];
+
+  useEffect(() => {
+    if (!repositoryPickerOpen) {
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setRepositoryLoading(true);
+      setRepositoryError("");
+      void composerRuntime.listRepositories(repositoryQuery).then((items) => {
+        if (!cancelled) {
+          setRepositoryItems(items);
+        }
+      }).catch((error) => {
+        if (!cancelled) {
+          setRepositoryItems([]);
+          setRepositoryError(error instanceof Error ? error.message : (language === "zh" ? "仓库列表加载失败。" : "Failed to load repositories."));
+        }
+      }).finally(() => {
+        if (!cancelled) {
+          setRepositoryLoading(false);
+        }
+      });
+    }, repositoryQuery ? 160 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [composerRuntime.listRepositories, language, repositoryPickerOpen, repositoryQuery, repositoryReloadKey]);
 
   const focusComposerInputWithoutScroll = () => {
     const node = composerInputRef.current;
@@ -1190,14 +1233,11 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
 
   const configPanelHint = modelInspectorOpen
       ? copy.runtimeModelHint
-      : capabilitiesInspectorOpen
-        ? copy.runtimeToolsHint
-        : skillsInspectorOpen
-          ? copy.runtimeSkillsHint
-          : undefined;
+      : skillsInspectorOpen
+        ? copy.runtimeSkillsHint
+        : undefined;
   const configPanelTabs = [
     { key: "model" as const, label: copy.runtimeModel },
-    { key: "capabilities" as const, label: copy.runtimeToolsShort },
     { key: "skills" as const, label: copy.runtimeSkillsShort },
   ];
   const runtimeEventDisclosureSection = (
@@ -1275,48 +1315,12 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
         </div>
       ) : null}
 
-      {capabilitiesInspectorOpen ? (
-        <div className="conversation-inspector-sections">
-          <section className="conversation-inspector-section">
-            <strong>{language === "zh" ? "已启用" : "Active"}</strong>
-            <div className="conversation-check-list">
-              {capabilityGroups.activeCapabilities.map((item) => (
-                <label key={item.id} className="conversation-check-item">
-                  <input
-                    type="checkbox"
-                    checked={item.active}
-                    onChange={(event) => composerRuntime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
-                  />
-                  <span><strong>{item.name}</strong><small>{item.description}</small></span>
-                </label>
-              ))}
-            </div>
-          </section>
-          <section className="conversation-inspector-section">
-            <strong>{language === "zh" ? "可选" : "Available"}</strong>
-            <div className="conversation-check-list">
-              {capabilityGroups.availableCapabilities.map((item) => (
-                <label key={item.id} className="conversation-check-item">
-                  <input
-                    type="checkbox"
-                    checked={item.active}
-                    onChange={(event) => composerRuntime.toggleCapability(item.id, item.kind === "tool" ? "tool" : "mcp", event.target.checked)}
-                  />
-                  <span><strong>{item.name}</strong><small>{item.description}</small></span>
-                </label>
-              ))}
-            </div>
-          </section>
-          {runtimeEventDisclosureSection}
-        </div>
-      ) : null}
-
       {skillsInspectorOpen ? (
         <div className="conversation-inspector-sections">
           <section className="conversation-inspector-section">
             <strong>{language === "zh" ? "已启用" : "Active"}</strong>
             <div className="conversation-check-list">
-              {capabilityGroups.activeSkills.map((item) => (
+              {skillGroups.activeSkills.map((item) => (
                 <label key={item.id} className="conversation-check-item">
                   <input
                     type="checkbox"
@@ -1336,7 +1340,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
           <section className="conversation-inspector-section">
             <strong>{language === "zh" ? "可选" : "Available"}</strong>
             <div className="conversation-check-list">
-              {capabilityGroups.availableSkills.map((item) => (
+              {skillGroups.availableSkills.map((item) => (
                 <label key={item.id} className="conversation-check-item">
                   <input type="checkbox" checked={item.active} onChange={(event) => composerRuntime.toggleSkill(item.id, event.target.checked)} />
                   <span><strong>{item.name}</strong><small>{item.description}</small></span>
@@ -1348,6 +1352,97 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
       ) : null}
 
     </div>
+  ) : null;
+  const repositoryPickerPanel = repositoryPickerOpen ? (
+    <div className="conversation-repository-picker" data-runtime-repository-picker="github">
+      <div className="runtime-composer-panel-head">
+        <strong>{language === "zh" ? "GitHub 仓库" : "GitHub repository"}</strong>
+        <button type="button" className="runtime-composer-panel-close" onClick={() => setRepositoryPickerOpen(false)}>
+          {language === "zh" ? "关闭" : "Close"}
+        </button>
+      </div>
+      <label className="conversation-repository-search">
+        <span className="sr-only">{language === "zh" ? "搜索仓库" : "Search repositories"}</span>
+        <GitHubRepositoryIcon />
+        <input
+          type="search"
+          value={repositoryQuery}
+          placeholder={language === "zh" ? "搜索 owner/repository" : "Search owner/repository"}
+          onChange={(event) => setRepositoryQuery(event.target.value)}
+          autoComplete="off"
+        />
+      </label>
+      <div className="conversation-repository-results" role="list">
+        {repositoryLoading ? (
+          <p className="conversation-repository-state">{language === "zh" ? "正在加载仓库…" : "Loading repositories…"}</p>
+        ) : repositoryError ? (
+          <div className="conversation-repository-state is-error">
+            <p>{repositoryError}</p>
+            <button type="button" onClick={() => setRepositoryReloadKey((value) => value + 1)}>
+              {language === "zh" ? "重试" : "Retry"}
+            </button>
+          </div>
+        ) : repositoryItems.length === 0 ? (
+          <p className="conversation-repository-state">{language === "zh" ? "没有匹配的仓库" : "No matching repositories"}</p>
+        ) : repositoryItems.map((repository) => (
+          <button
+            key={repository.id}
+            type="button"
+            className="conversation-repository-option"
+            aria-label={`${repository.fullName}${repository.private ? ` ${language === "zh" ? "私有" : "private"}` : ""}`}
+            onClick={() => {
+              composerRuntime.setDraftRepository(repository);
+              setRepositoryPickerOpen(false);
+            }}
+          >
+            <span className="conversation-repository-option-icon"><GitHubRepositoryIcon /></span>
+            <span className="conversation-repository-option-copy">
+              <strong>{repository.fullName}</strong>
+              <small>{repository.defaultBranch || (language === "zh" ? "默认分支" : "Default branch")}</small>
+            </span>
+            {repository.private ? <span className="conversation-repository-visibility">{language === "zh" ? "私有" : "Private"}</span> : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : null;
+  const composerRepository = composerRuntime.draftRepository || composerRuntime.repositoryBinding;
+  const repositoryContextContent = composerRepository ? (
+    <article
+      className={`conversation-repository-chip is-${composerRuntime.repositoryBinding?.status || "draft"}`}
+      data-runtime-repository-chip={composerRuntime.repositoryBinding ? "bound" : "draft"}
+    >
+      <span className="conversation-repository-chip-icon"><GitHubRepositoryIcon /></span>
+      <span className="conversation-repository-chip-copy">
+        <strong>{composerRepository.fullName}</strong>
+        <small>
+          {composerRuntime.repositoryBinding?.status === "preparing"
+            ? (language === "zh" ? "正在准备仓库…" : "Preparing repository…")
+            : composerRuntime.repositoryBinding?.status === "failed"
+              ? (composerRuntime.repositoryBinding.errorMessage || (language === "zh" ? "仓库准备失败" : "Repository preparation failed"))
+              : composerRuntime.repositoryBinding?.branch || composerRepository.defaultBranch}
+        </small>
+      </span>
+      {composerRuntime.draftRepository ? (
+        <button
+          type="button"
+          className="conversation-repository-chip-action"
+          aria-label={`${language === "zh" ? "移除" : "Remove"} ${composerRepository.fullName}`}
+          onClick={() => composerRuntime.setDraftRepository(null)}
+        >
+          ×
+        </button>
+      ) : composerRuntime.repositoryBinding?.status === "failed" ? (
+        <button
+          type="button"
+          className="conversation-repository-chip-retry"
+          aria-label={repositoryRetryLabel}
+          onClick={() => void composerRuntime.retryRepository()}
+        >
+          {language === "zh" ? "重试" : "Retry"}
+        </button>
+      ) : null}
+    </article>
   ) : null;
   const codexSlashCommandAssist = codexSlashCommandCandidates.length > 0 ? (
     <div
@@ -1393,6 +1488,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
       onFileChange={(event) => {
         void handleComposerAttachmentSelection(event.target.files);
       }}
+      contextContent={repositoryContextContent}
       attachments={composerRuntime.draftAttachments}
       attachmentStripProps={{ "data-runtime-attachments": "conversation" }}
       attachmentPreviewLabel={(attachment) => `${composerPreviewPrefix} ${attachment.name}`}
@@ -1420,13 +1516,30 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
           label: copy.runtimeMobile,
           icon: <RuntimeSessionControlIcon />,
           className: composerRuntime.inspectorOpen ? "is-active" : undefined,
-          onClick: () => composerRuntime.toggleInspector(),
+          onClick: () => {
+            setRepositoryPickerOpen(false);
+            composerRuntime.toggleInspector();
+          },
+        },
+        {
+          key: "github",
+          label: repositorySelectLabel,
+          icon: <GitHubRepositoryIcon />,
+          className: repositoryPickerOpen || composerRuntime.draftRepository || composerRuntime.repositoryBinding ? "is-active" : undefined,
+          disabled: composerBusy || !composerRuntime.repositorySelectable,
+          onClick: () => {
+            composerRuntime.closeInspector();
+            setRepositoryPickerOpen((open) => !open);
+          },
         },
       ]}
-      panelContent={conversationComposerPanel}
-      onPanelDismiss={() => composerRuntime.closeInspector()}
+      panelContent={repositoryPickerPanel || conversationComposerPanel}
+      onPanelDismiss={() => {
+        setRepositoryPickerOpen(false);
+        composerRuntime.closeInspector();
+      }}
       panelProps={{
-        "data-runtime-config-surface": "conversation",
+        "data-runtime-config-surface": repositoryPickerOpen ? "repository" : "conversation",
       }}
       metaContent={composerMetaLabel}
       addAttachmentLabel={composerAddAttachmentLabel}

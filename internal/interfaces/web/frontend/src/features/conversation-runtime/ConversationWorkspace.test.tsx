@@ -78,9 +78,34 @@ const runtimeMock = {
   refreshActiveSession: vi.fn().mockResolvedValue(undefined),
   setDraft: vi.fn(),
   draftAttachments: [],
+  draftRepository: null as null | {
+    id: string;
+    fullName: string;
+    private: boolean;
+    defaultBranch: string;
+    updatedAt: number;
+  },
+  repositoryBinding: null as null | {
+    provider: "github";
+    id: string;
+    fullName: string;
+    private: boolean;
+    defaultBranch: string;
+    updatedAt: number;
+    branch: string;
+    headSHA: string;
+    status: "preparing" | "ready" | "failed";
+    workspacePath: "repo";
+    errorCode: string;
+    errorMessage: string;
+  },
+  repositorySelectable: true,
   addDraftAttachments: vi.fn().mockResolvedValue(undefined),
   removeDraftAttachment: vi.fn(),
   clearDraftAttachments: vi.fn(),
+  setDraftRepository: vi.fn(),
+  listRepositories: vi.fn().mockResolvedValue([]),
+  retryRepository: vi.fn().mockResolvedValue(undefined),
   sendPrompt: vi.fn().mockResolvedValue(undefined),
   toggleInspector: vi.fn(),
   closeInspector: vi.fn(),
@@ -202,6 +227,9 @@ describe("ConversationWorkspace", () => {
     runtimeMock.busy = false;
     runtimeMock.draft = "";
     runtimeMock.draftAttachments = [];
+    runtimeMock.draftRepository = null;
+    runtimeMock.repositoryBinding = null;
+    runtimeMock.repositorySelectable = true;
     runtimeMock.createSession.mockClear();
     runtimeMock.focusSession.mockClear();
     runtimeMock.removeSession.mockClear();
@@ -210,6 +238,9 @@ describe("ConversationWorkspace", () => {
     runtimeMock.addDraftAttachments.mockClear();
     runtimeMock.removeDraftAttachment.mockClear();
     runtimeMock.clearDraftAttachments.mockClear();
+    runtimeMock.setDraftRepository.mockClear();
+    runtimeMock.listRepositories.mockReset().mockResolvedValue([]);
+    runtimeMock.retryRepository.mockClear();
     runtimeMock.sendPrompt.mockClear();
     runtimeMock.toggleInspector.mockClear();
     runtimeMock.closeInspector.mockClear();
@@ -1156,6 +1187,23 @@ describe("ConversationWorkspace", () => {
     expect(detailsPanel.querySelector("[data-runtime-config-panel='conversation-details']")).not.toBeInTheDocument();
   });
 
+  it("removes Tools selection from the mobile composer Session panel", () => {
+    runtimeMock.capabilities = [
+      { id: "filesystem", name: "Filesystem", description: "Read workspace files", kind: "mcp", active: true },
+    ];
+    runtimeMock.inspectorOpen = true;
+    runtimeMock.inspectorTab = "model";
+
+    renderWorkspace({ isMobileViewport: true });
+
+    const configPanel = document.querySelector("[data-runtime-config-panel='conversation']") as HTMLElement;
+    expect(configPanel).toBeInTheDocument();
+    expect(within(configPanel).getByRole("tab", { name: "Model" })).toBeInTheDocument();
+    expect(within(configPanel).getByRole("tab", { name: "Skills" })).toBeInTheDocument();
+    expect(within(configPanel).queryByRole("tab", { name: "Tools" })).not.toBeInTheDocument();
+    expect(within(configPanel).queryByText("Filesystem")).not.toBeInTheDocument();
+  });
+
   it("lets Chat composer Session update public skill selections", () => {
     runtimeMock.skills = [
       { id: "frontend-design", name: "Frontend Design", description: "UI guidance", kind: "skill", active: false },
@@ -1172,6 +1220,72 @@ describe("ConversationWorkspace", () => {
     fireEvent.click(within(configPanel).getByLabelText(/Frontend Design/));
 
     expect(runtimeMock.toggleSkill).toHaveBeenCalledWith("frontend-design", true);
+  });
+
+  it("uses a dedicated GitHub button and selects a repository without creating a session", async () => {
+    const repository = {
+      id: "123456789",
+      fullName: "owner/repository",
+      private: true,
+      defaultBranch: "main",
+      updatedAt: Date.parse("2026-07-11T10:00:00Z"),
+    };
+    runtimeMock.listRepositories.mockResolvedValue([repository]);
+    renderWorkspace({ isMobileViewport: false });
+
+    const githubButton = screen.getByRole("button", { name: "Select GitHub repository" });
+    const attachmentButton = screen.getByRole("button", { name: "Add attachment" });
+    expect(githubButton).not.toBe(attachmentButton);
+    expect(githubButton).toHaveAttribute("data-runtime-composer-utility", "github");
+    expect(attachmentButton).toHaveAttribute("data-runtime-composer-upload", "chat");
+
+    fireEvent.click(githubButton);
+    await waitFor(() => expect(runtimeMock.listRepositories).toHaveBeenCalledWith(""));
+    fireEvent.click(await screen.findByRole("button", { name: /owner\/repository/ }));
+
+    expect(runtimeMock.setDraftRepository).toHaveBeenCalledWith(repository);
+    expect(runtimeMock.createSession).not.toHaveBeenCalled();
+  });
+
+  it("renders a removable repository chip only while it is a draft selection", () => {
+    runtimeMock.draftRepository = {
+      id: "123456789",
+      fullName: "owner/repository",
+      private: true,
+      defaultBranch: "main",
+      updatedAt: Date.parse("2026-07-11T10:00:00Z"),
+    };
+    renderWorkspace({ isMobileViewport: false });
+
+    const chip = document.querySelector("[data-runtime-repository-chip='draft']") as HTMLElement;
+    expect(chip).toHaveTextContent("owner/repository");
+    fireEvent.click(within(chip).getByRole("button", { name: "Remove owner/repository" }));
+    expect(runtimeMock.setDraftRepository).toHaveBeenCalledWith(null);
+  });
+
+  it("keeps a failed session repository bound and exposes retry without a remove action", () => {
+    runtimeMock.repositorySelectable = false;
+    runtimeMock.repositoryBinding = {
+      provider: "github",
+      id: "123456789",
+      fullName: "owner/repository",
+      private: true,
+      defaultBranch: "main",
+      updatedAt: Date.parse("2026-07-11T10:00:00Z"),
+      branch: "",
+      headSHA: "",
+      status: "failed",
+      workspacePath: "repo",
+      errorCode: "repository_prepare_failed",
+      errorMessage: "Failed to prepare repository.",
+    };
+    renderWorkspace({ isMobileViewport: false });
+
+    const chip = document.querySelector("[data-runtime-repository-chip='bound']") as HTMLElement;
+    expect(chip).toHaveTextContent("owner/repository");
+    expect(within(chip).queryByRole("button", { name: /Remove/ })).not.toBeInTheDocument();
+    fireEvent.click(within(chip).getByRole("button", { name: "Retry repository" }));
+    expect(runtimeMock.retryRepository).toHaveBeenCalledTimes(1);
   });
 
   it("keeps Chat skill selections reachable from the mobile composer Session button", () => {

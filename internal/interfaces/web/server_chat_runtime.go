@@ -11,6 +11,7 @@ import (
 	"time"
 
 	chatruntimeapp "alter0/internal/chatruntime/application"
+	chatruntimedomain "alter0/internal/chatruntime/domain"
 	controldomain "alter0/internal/control/domain"
 	execdomain "alter0/internal/execution/domain"
 )
@@ -27,9 +28,10 @@ type chatRuntimeSessionCreateRequest struct {
 }
 
 type chatRuntimeSessionInputRequest struct {
-	Input       string                     `json:"input"`
-	Attachments []messageAttachmentRequest `json:"attachments,omitempty"`
-	SkillIDs    *[]string                  `json:"skill_ids,omitempty"`
+	Input       string                           `json:"input"`
+	Attachments []messageAttachmentRequest       `json:"attachments,omitempty"`
+	SkillIDs    *[]string                        `json:"skill_ids,omitempty"`
+	Repository  *chatruntimedomain.RepositoryRef `json:"repository,omitempty"`
 }
 
 type chatRuntimeSessionPinRequest struct {
@@ -68,6 +70,45 @@ type chatRuntimeTurnPagingEnvelope struct {
 type chatRuntimeEventDetailEnvelope struct {
 	Event  map[string]any                `json:"event"`
 	Blocks []chatruntimeapp.RuntimeBlock `json:"blocks,omitempty"`
+}
+
+func (s *Server) chatRepositoryCollectionHandler(w http.ResponseWriter, r *http.Request) {
+	if s.chatRuntimes == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error":      "repository service is unavailable",
+			"error_code": "repository_unavailable",
+		})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	page, err := s.chatRuntimes.ListRepositories(r.Context(), r.URL.Query().Get("query"), r.URL.Query().Get("cursor"))
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error":      "GitHub repositories are unavailable. Check the server GitHub login and retry.",
+			"error_code": "repository_unavailable",
+		})
+		return
+	}
+	items := make([]map[string]any, 0, len(page.Items))
+	for _, item := range page.Items {
+		repository := map[string]any{
+			"id":             strings.TrimSpace(item.ID),
+			"full_name":      strings.TrimSpace(item.FullName),
+			"private":        item.Private,
+			"default_branch": strings.TrimSpace(item.DefaultBranch),
+		}
+		if !item.UpdatedAt.IsZero() {
+			repository["updated_at"] = item.UpdatedAt.UTC()
+		}
+		items = append(items, repository)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"repositories": items,
+		"next_cursor":  strings.TrimSpace(page.NextCursor),
+	})
 }
 
 func (s *Server) chatRuntimeSessionCollectionHandler(w http.ResponseWriter, r *http.Request) {
@@ -302,6 +343,22 @@ func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Re
 		default:
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		}
+	case "repository":
+		if len(parts) != 3 || parts[2] != "retry" {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session action not found"})
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		session, err := s.chatRuntimes.RetryRepository(ownerID, sessionID)
+		if err != nil {
+			s.writeChatRuntimeError(w, err)
+			return
+		}
+		s.touchSessionActivity(sessionID)
+		writeJSON(w, http.StatusOK, map[string]any{"session": s.buildChatRuntimeSessionDetail(ownerID, session, r)})
 	case "input":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -328,6 +385,7 @@ func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Re
 			Input:        input,
 			Attachments:  attachments,
 			SkillContext: s.resolveChatRuntimeSkillContext(req.SkillIDs),
+			Repository:   req.Repository,
 		})
 		if err != nil {
 			s.writeChatRuntimeError(w, err)
@@ -798,6 +856,26 @@ func (s *Server) writeChatRuntimeError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error":      err.Error(),
 			"error_code": "chatRuntime_session_not_running",
+		})
+	case errors.Is(err, chatruntimeapp.ErrRepositoryBindingConflict):
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error":      err.Error(),
+			"error_code": "repository_binding_conflict",
+		})
+	case errors.Is(err, chatruntimeapp.ErrRepositoryUnavailable):
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error":      "GitHub repository is unavailable. Check the server GitHub login and retry.",
+			"error_code": "repository_unavailable",
+		})
+	case errors.Is(err, chatruntimeapp.ErrRepositoryInvalid):
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error":      err.Error(),
+			"error_code": "repository_invalid",
+		})
+	case errors.Is(err, chatruntimeapp.ErrRepositoryRetryUnavailable):
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error":      err.Error(),
+			"error_code": "repository_retry_unavailable",
 		})
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{

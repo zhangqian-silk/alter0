@@ -53,18 +53,19 @@ type Entry struct {
 }
 
 type Session struct {
-	ID               string        `json:"id"`
-	RuntimeSessionID string        `json:"runtime_session_id,omitempty"`
-	OwnerID          string        `json:"owner_id,omitempty"`
-	Title            string        `json:"title,omitempty"`
-	Shell            string        `json:"shell,omitempty"`
-	WorkingDir       string        `json:"working_dir,omitempty"`
-	Status           SessionStatus `json:"status"`
-	Pinned           bool          `json:"pinned"`
-	CreatedAt        time.Time     `json:"created_at,omitempty"`
-	LastOutputAt     time.Time     `json:"last_output_at,omitempty"`
-	UpdatedAt        time.Time     `json:"updated_at,omitempty"`
-	FinishedAt       time.Time     `json:"finished_at,omitempty"`
-	ExitCode         *int          `json:"exit_code,omitempty"`
-	ErrorMessage     string        `json:"error_message,omitempty"`
+	ID               string             `json:"id"`
+	RuntimeSessionID string             `json:"runtime_session_id,omitempty"`
+	OwnerID          string             `json:"owner_id,omitempty"`
+	Title            string             `json:"title,omitempty"`
+	Shell            string             `json:"shell,omitempty"`
+	WorkingDir       string             `json:"working_dir,omitempty"`
+	Status           SessionStatus      `json:"status"`
+	Pinned           bool               `json:"pinned"`
+	CreatedAt        time.Time          `json:"created_at,omitempty"`
+	LastOutputAt     time.Time          `json:"last_output_at,omitempty"`
+	UpdatedAt        time.Time          `json:"updated_at,omitempty"`
+	FinishedAt       time.Time          `json:"finished_at,omitempty"`
+	ExitCode         *int               `json:"exit_code,omitempty"`
+	ErrorMessage     string             `json:"error_message,omitempty"`
+	Repository       *RepositoryBinding `json:"repository,omitempty"`
 }

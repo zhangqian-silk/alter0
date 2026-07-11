@@ -10,6 +10,7 @@ import (
 	"time"
 
 	chatruntimedomain "alter0/internal/chatruntime/domain"
+	execdomain "alter0/internal/execution/domain"
 )
 
 const chatRuntimeStateDirectoryName = "state"
@@ -33,6 +34,7 @@ type persistedTurnRecord struct {
 	ID            string                        `json:"id"`
 	Prompt        string                        `json:"prompt,omitempty"`
 	Attachments   []TurnAttachment              `json:"attachments,omitempty"`
+	SkillContext  *execdomain.SkillContext      `json:"skill_context,omitempty"`
 	Status        string                        `json:"status,omitempty"`
 	StartedAt     time.Time                     `json:"started_at,omitempty"`
 	FinishedAt    time.Time                     `json:"finished_at,omitempty"`
@@ -251,8 +253,10 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 		return persistedSessionRecord{}, true
 	}
 
+	summary := item.summary
+	summary.Repository = cloneRepositoryBinding(item.summary.Repository)
 	record := persistedSessionRecord{
-		Summary:       item.summary,
+		Summary:       summary,
 		TitleManual:   boolPointer(item.titleManual),
 		TitleAuto:     boolPointer(item.titleAuto),
 		TitleExternal: boolPointer(item.titleExternal),
@@ -273,6 +277,7 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 			ID:            turn.ID,
 			Prompt:        turn.Prompt,
 			Attachments:   cloneTurnAttachments(turn.Attachments),
+			SkillContext:  cloneChatRuntimeSkillContext(turn.SkillContext),
 			Status:        turn.Status,
 			StartedAt:     turn.StartedAt,
 			FinishedAt:    turn.FinishedAt,
@@ -321,6 +326,7 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	summary := record.Summary
 	summary.OwnerID = normalizeChatRuntimeOwnerID(summary.OwnerID)
 	summary.Status = chatruntimedomain.NormalizeSessionStatus(summary.Status)
+	summary.Repository = normalizeRestoredRepositoryBinding(summary.Repository)
 	if workspaceDir, err := resolveSessionWorkspacePath(baseDir, sessionID); err == nil {
 		summary.WorkingDir = workspaceDir
 	}
@@ -362,14 +368,15 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 	}
 	for _, turnRecord := range record.Turns {
 		turn := &runtimeTurn{
-			ID:          turnRecord.ID,
-			Prompt:      turnRecord.Prompt,
-			Attachments: cloneTurnAttachments(turnRecord.Attachments),
-			Status:      turnRecord.Status,
-			StartedAt:   turnRecord.StartedAt,
-			FinishedAt:  turnRecord.FinishedAt,
-			FinalOutput: turnRecord.FinalOutput,
-			events:      make([]*runtimeEventRecord, 0, len(turnRecord.RuntimeEvents)),
+			ID:           turnRecord.ID,
+			Prompt:       turnRecord.Prompt,
+			Attachments:  cloneTurnAttachments(turnRecord.Attachments),
+			SkillContext: cloneChatRuntimeSkillContext(turnRecord.SkillContext),
+			Status:       turnRecord.Status,
+			StartedAt:    turnRecord.StartedAt,
+			FinishedAt:   turnRecord.FinishedAt,
+			FinalOutput:  turnRecord.FinalOutput,
+			events:       make([]*runtimeEventRecord, 0, len(turnRecord.RuntimeEvents)),
 		}
 		for _, stepRecord := range turnRecord.RuntimeEvents {
 			turn.events = append(turn.events, &runtimeEventRecord{
