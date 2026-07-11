@@ -1876,6 +1876,9 @@ func buildCodexTurnArgs(command codexCommand, threadID string, prompt string, im
 	for _, imagePath := range imagePaths {
 		args = append(args, "-i", imagePath)
 	}
+	if len(imagePaths) > 0 {
+		args = append(args, "--")
+	}
 	args = append(args, prompt)
 	return args
 }

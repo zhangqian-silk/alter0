@@ -134,6 +134,9 @@ func TestBuildCodexTurnArgsIncludesImageFlags(t *testing.T) {
 			t.Fatalf("expected image args to contain %q, got %v", part, args)
 		}
 	}
+	if len(args) < 2 || args[len(args)-2] != "--" || args[len(args)-1] != "inspect screenshot" {
+		t.Fatalf("expected end-of-options delimiter to keep prompt out of variadic image values, got %v", args)
+	}
 }
 
 func TestBuildCodexTurnPromptIncludesWorkspaceFiles(t *testing.T) {

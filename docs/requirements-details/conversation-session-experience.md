@@ -139,7 +139,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `event` 是会话、turn 或运行过程的增量事实。增量轮询里的 event 描述 session/turn 状态变化；`runtime_trace_events` 描述单个 turn 内的过程步骤，用于 `Thinking / 已思考` 披露。事件详情可通过 `/turns/{turn_id}/events/{event_id}` 懒加载，避免把大段 tool output、thinking 或日志放入轮询响应。
 - Chat 发送后由 Chat session 状态进入 `busy`；执行完成或失败后，用 input 返回结果或 Chat session 详情恢复当前消息区。
 - Chat 的过程展示统一消费 `RuntimeTraceEvent`。turn 摘要与 updates 中的轻量事件只保留 `id / kind / status / text / detail_available / created_at / completed_at / duration_ms`；`created_at / completed_at / duration_ms` 均为毫秒数值，未完成事件的 `completed_at` 为 `null`。轻量事件不得包含 `seq / session_id / turn_id / provider / source / role / lifecycle / title / summary / visibility / raw / action / blocks`；完整 `blocks` 只通过 `/turns/{turn_id}/events/{event_id}` 详情接口返回。`kind` 枚举固定为 `important_text / reasoning / plan / tools / commands / system`，前端只按 `RuntimeTraceEvent.kind` 过滤展示类型，不通过标题、正文、关键词或语言模式推断事件类型。
-- Chat 显式选择 `Codex` 且消息包含图片附件时，服务端需把已上传并落盘的原图路径传给 Codex CLI `-i` 参数；前端提示词不需要再描述“图片已存在”才能触发图片读取。
+- Chat 显式选择 `Codex` 且消息包含图片附件时，服务端需把已上传并落盘的原图路径传给 Codex CLI `-i` 参数；首次启动 Codex thread 时必须在图片参数后显式结束选项解析，再传入文本 prompt，避免可变长 `-i` 参数吞掉 prompt；前端提示词不需要再描述“图片已存在”才能触发图片读取。
 
 ### 执行不中断
 
