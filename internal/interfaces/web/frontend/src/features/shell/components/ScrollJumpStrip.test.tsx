@@ -431,6 +431,48 @@ describe("ScrollJumpStrip", () => {
     });
   });
 
+  it("keeps adjacent jump controls available while the viewport is between message anchors", async () => {
+    const containerRef = createRef<HTMLElement>();
+    const { container } = render(
+      <section ref={containerRef}>
+        <article data-message-id="message-1">message-1</article>
+        <article data-message-id="message-2">message-2</article>
+        <article data-message-id="message-3">message-3</article>
+        <ScrollJumpStrip
+          scope="chat"
+          language="zh"
+          containerRef={containerRef}
+          itemSelector="[data-message-id]"
+          itemAttribute="data-message-id"
+        />
+      </section>,
+    );
+
+    const scrollContainer = container.firstElementChild as HTMLElement;
+    const targets = [...scrollContainer.querySelectorAll<HTMLElement>("[data-message-id]")];
+    applyScrollableMetrics(scrollContainer, targets, [0, 900, 1800], {
+      clientHeight: 320,
+      scrollHeight: 2100,
+      scrollTop: 460,
+      targetHeights: [80, 80, 80],
+    });
+
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveAttribute(
+        "data-scroll-jump-target",
+        "message-1",
+      );
+      expect(container.querySelector("[data-scroll-jump-next='chat']")).toHaveAttribute(
+        "data-scroll-jump-target",
+        "message-2",
+      );
+      expect(container.querySelector("[data-scroll-jump-prev='chat']")).toHaveClass("is-visible");
+      expect(container.querySelector("[data-scroll-jump-next='chat']")).toHaveClass("is-visible");
+    });
+  });
+
   it("hides the downward jump controls once the last message is fully visible and only blank space remains below", async () => {
     const containerRef = createRef<HTMLElement>();
     const { container } = render(

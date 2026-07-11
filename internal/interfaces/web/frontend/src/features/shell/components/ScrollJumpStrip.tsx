@@ -186,9 +186,15 @@ function resolveChatRuntimeJumpState(
     }
   }
   if (!visibleEntries.length) {
+    const previousID = [...entries]
+      .reverse()
+      .find((entry) => entry.bottom <= scrollTop)?.id || "";
+    const nextID = suppressNextTarget
+      ? ""
+      : entries.find((entry) => entry.top >= viewportBottom)?.id || "";
     return {
-      previousID: "",
-      nextID: "",
+      previousID,
+      nextID,
       showTop: scrollTop > SCROLL_JUMP_TOP_THRESHOLD,
       showBottom: remaining > SCROLL_JUMP_BOTTOM_THRESHOLD,
     };
