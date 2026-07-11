@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,36 +18,56 @@ import (
 )
 
 type stubWebChatRuntimeService struct {
-	createReq      chatruntimeapp.CreateRequest
-	createResp     chatruntimedomain.Session
-	createErr      error
-	recoverReq     chatruntimeapp.RecoverRequest
-	recoverResp    chatruntimedomain.Session
-	recoverErr     error
-	listResp       []chatruntimedomain.Session
-	listByOwner    map[string][]chatruntimedomain.Session
-	getResp        chatruntimedomain.Session
-	getOK          bool
-	inputResp      chatruntimedomain.Session
-	inputErr       error
-	pinResp        chatruntimedomain.Session
-	pinErr         error
-	deleteResp     chatruntimedomain.Session
-	deleteErr      error
-	deleteIDs      []string
-	deleteOwnerIDs []string
-	turnsResp      []chatruntimeapp.TurnSummary
-	turnsErr       error
-	eventResp      chatruntimeapp.RuntimeTraceEventDetail
-	stepErr        error
-	entryPage      chatruntimeapp.EntryPage
-	entryErr       error
-	lastOwnerID    string
-	lastID         string
-	lastInput      string
-	lastPinned     bool
-	inputReq       chatruntimeapp.InputRequest
-	eventHook      chatruntimeapp.SessionEventHook
+	createReq        chatruntimeapp.CreateRequest
+	createResp       chatruntimedomain.Session
+	createErr        error
+	recoverReq       chatruntimeapp.RecoverRequest
+	recoverResp      chatruntimedomain.Session
+	recoverErr       error
+	listResp         []chatruntimedomain.Session
+	listByOwner      map[string][]chatruntimedomain.Session
+	getResp          chatruntimedomain.Session
+	getOK            bool
+	inputResp        chatruntimedomain.Session
+	inputErr         error
+	pinResp          chatruntimedomain.Session
+	pinErr           error
+	deleteResp       chatruntimedomain.Session
+	deleteErr        error
+	deleteIDs        []string
+	deleteOwnerIDs   []string
+	turnsResp        []chatruntimeapp.TurnSummary
+	turnsErr         error
+	eventResp        chatruntimeapp.RuntimeTraceEventDetail
+	stepErr          error
+	entryPage        chatruntimeapp.EntryPage
+	entryErr         error
+	lastOwnerID      string
+	lastID           string
+	lastInput        string
+	lastPinned       bool
+	inputReq         chatruntimeapp.InputRequest
+	eventHook        chatruntimeapp.SessionEventHook
+	repositoryPage   chatruntimeapp.RepositoryPage
+	repositoryErr    error
+	repositoryQuery  string
+	repositoryCursor string
+	retryResp        chatruntimedomain.Session
+	retryErr         error
+	retryOwnerID     string
+	retrySessionID   string
+}
+
+func (s *stubWebChatRuntimeService) ListRepositories(_ context.Context, query string, cursor string) (chatruntimeapp.RepositoryPage, error) {
+	s.repositoryQuery = query
+	s.repositoryCursor = cursor
+	return s.repositoryPage, s.repositoryErr
+}
+
+func (s *stubWebChatRuntimeService) RetryRepository(ownerID string, sessionID string) (chatruntimedomain.Session, error) {
+	s.retryOwnerID = ownerID
+	s.retrySessionID = sessionID
+	return s.retryResp, s.retryErr
 }
 
 func (s *stubWebChatRuntimeService) Create(req chatruntimeapp.CreateRequest) (chatruntimedomain.Session, error) {
@@ -266,6 +287,123 @@ func TestChatRuntimeSessionCollectionHandlerCreatesSession(t *testing.T) {
 		t.Fatalf("expected session payload to omit activity_at, got %v", session)
 	}
 	assertNoLegacyChatRuntimeAPIFields(t, rec.Body.String())
+}
+
+func TestChatRepositoryCollectionHandlerListsSanitizedRepositories(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		repositoryPage: chatruntimeapp.RepositoryPage{
+			Items: []chatruntimedomain.Repository{{
+				Provider:      chatruntimedomain.RepositoryProviderGitHub,
+				ID:            "123456789",
+				FullName:      "owner/repository",
+				Private:       true,
+				DefaultBranch: "main",
+				UpdatedAt:     time.Date(2026, 7, 11, 10, 0, 0, 0, time.UTC),
+			}},
+			NextCursor: "50",
+		},
+	}
+	server := &Server{chatRuntimes: service}
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/repositories?query=alter0&cursor=25", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatRepositoryCollectionHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if service.repositoryQuery != "alter0" || service.repositoryCursor != "25" {
+		t.Fatalf("expected query forwarding, got query=%q cursor=%q", service.repositoryQuery, service.repositoryCursor)
+	}
+	var payload struct {
+		Repositories []map[string]any `json:"repositories"`
+		NextCursor   string           `json:"next_cursor"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(payload.Repositories) != 1 || payload.Repositories[0]["id"] != "123456789" || payload.Repositories[0]["full_name"] != "owner/repository" {
+		t.Fatalf("expected sanitized repository, got %+v", payload)
+	}
+	if payload.NextCursor != "50" {
+		t.Fatalf("expected next cursor, got %+v", payload)
+	}
+	for _, forbidden := range []string{"token", "clone_url", "ssh_url", "workspace_path"} {
+		if strings.Contains(rec.Body.String(), forbidden) {
+			t.Fatalf("expected response to omit %q, got %s", forbidden, rec.Body.String())
+		}
+	}
+}
+
+func TestChatSessionInputPassesRepositoryReferenceAndReturnsBinding(t *testing.T) {
+	binding := chatruntimedomain.NewRepositoryBinding(chatruntimedomain.Repository{
+		Provider:      chatruntimedomain.RepositoryProviderGitHub,
+		ID:            "123456789",
+		FullName:      "owner/repository",
+		Private:       true,
+		DefaultBranch: "main",
+	})
+	service := &stubWebChatRuntimeService{
+		inputResp: chatruntimedomain.Session{
+			ID:         "chatRuntime-2",
+			OwnerID:    chatSessionOwnerID,
+			Status:     chatruntimedomain.SessionStatusBusy,
+			Repository: &binding,
+		},
+	}
+	server := &Server{chatRuntimes: service}
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", strings.NewReader(`{
+		"input":"Update retry behavior",
+		"repository":{"provider":"github","id":"123456789","full_name":"owner/repository"}
+	}`))
+	rec := httptest.NewRecorder()
+
+	server.chatSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if service.inputReq.Repository == nil || service.inputReq.Repository.ID != "123456789" || service.inputReq.Repository.Provider != chatruntimedomain.RepositoryProviderGitHub {
+		t.Fatalf("expected structured repository input, got %+v", service.inputReq.Repository)
+	}
+	var payload struct {
+		Session struct {
+			Repository *chatruntimedomain.RepositoryBinding `json:"repository"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload.Session.Repository == nil || payload.Session.Repository.FullName != "owner/repository" || payload.Session.Repository.WorkspacePath != "repo" {
+		t.Fatalf("expected sanitized session binding, got %+v", payload.Session.Repository)
+	}
+}
+
+func TestChatSessionRepositoryRetryResumesExistingTurn(t *testing.T) {
+	binding := chatruntimedomain.NewRepositoryBinding(chatruntimedomain.Repository{
+		Provider:      chatruntimedomain.RepositoryProviderGitHub,
+		ID:            "123456789",
+		FullName:      "owner/repository",
+		DefaultBranch: "main",
+	})
+	service := &stubWebChatRuntimeService{retryResp: chatruntimedomain.Session{
+		ID:         "chatRuntime-2",
+		OwnerID:    chatSessionOwnerID,
+		Status:     chatruntimedomain.SessionStatusBusy,
+		Repository: &binding,
+	}}
+	server := &Server{chatRuntimes: service}
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/repository/retry", nil)
+	rec := httptest.NewRecorder()
+
+	server.chatSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if service.retryOwnerID != chatSessionOwnerID || service.retrySessionID != "chatRuntime-2" {
+		t.Fatalf("expected retry on existing chat session, got owner=%q session=%q", service.retryOwnerID, service.retrySessionID)
+	}
 }
 
 func TestChatRuntimeSessionCollectionHandlerReturnsComparableSessionSummaries(t *testing.T) {

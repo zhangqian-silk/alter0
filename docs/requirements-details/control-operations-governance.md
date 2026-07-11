@@ -116,7 +116,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 ### 会话级选择
 
-- Chat 发送区支持 route 级 `Provider / Model`、Tools/MCP 与 Skills 选择，并把选择持久化到浏览器本地配置。
+- Chat 发送区支持 route 级 `Provider / Model` 与 Skills 选择，并把选择持久化到浏览器本地配置；Tools/MCP 由运行时与控制面配置注入，不在会话设置中暴露独立选择面板。
 - 当前消息默认选择 `Codex` 并进入 `Codex Direct`。
 - 当前消息选择具体 Provider / Model 时，Runtime Resolver 使用对应 Claude Code provider profile。
 - 未显式选择 Provider 时不回退到系统默认 Provider，直接进入 `Codex Direct`；显式 Provider 不可用时也回到 `Codex Direct`。

@@ -54,6 +54,7 @@ type RuntimeComposerProps = {
   fileInputRef?: Ref<HTMLInputElement>;
   fileInputAccept?: string;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  contextContent?: ReactNode;
   attachments: ComposerAttachment[];
   attachmentStripProps?: Omit<ComponentPropsWithoutRef<"div">, "children" | "className"> & {
     className?: string;
@@ -147,6 +148,7 @@ export function RuntimeComposer({
   fileInputRef,
   fileInputAccept,
   onFileChange,
+  contextContent,
   attachments,
   attachmentStripProps,
   attachmentPreviewLabel,
@@ -333,6 +335,11 @@ export function RuntimeComposer({
             multiple
             onChange={onFileChange}
           />
+          {contextContent ? (
+            <div className="runtime-composer-context" data-runtime-composer-context="true">
+              {contextContent}
+            </div>
+          ) : null}
           {attachments.length > 0 ? (
             <div
               className={joinClassNames(

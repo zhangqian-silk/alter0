@@ -58,10 +58,12 @@ var (
 const chatRuntimeOwnerID = "chat"
 
 type Options struct {
-	WorkingDir    string
-	Shell         string
-	ShellArgs     []string
-	ShellArgsLine string
+	WorkingDir         string
+	Shell              string
+	ShellArgs          []string
+	ShellArgsLine      string
+	RepositoryCatalog  RepositoryCatalog
+	RepositoryPreparer RepositoryWorkspacePreparer
 }
 
 type CreateRequest struct {
@@ -86,6 +88,7 @@ type InputRequest struct {
 	ClientRequestID string
 	Attachments     []execdomain.UserAttachment
 	SkillContext    *execdomain.SkillContext
+	Repository      *chatruntimedomain.RepositoryRef
 }
 
 type EntryPage struct {
@@ -120,13 +123,15 @@ type SessionEvent struct {
 }
 
 type Service struct {
-	rootCtx     context.Context
-	idGenerator sharedapp.IDGenerator
-	logger      *slog.Logger
-	options     Options
-	runner      commandRunner
-	hookMu      sync.RWMutex
-	eventHook   SessionEventHook
+	rootCtx            context.Context
+	idGenerator        sharedapp.IDGenerator
+	logger             *slog.Logger
+	options            Options
+	runner             commandRunner
+	repositoryCatalog  RepositoryCatalog
+	repositoryPreparer RepositoryWorkspacePreparer
+	hookMu             sync.RWMutex
+	eventHook          SessionEventHook
 
 	mu       sync.RWMutex
 	sessions map[string]*runtimeSession
@@ -203,6 +208,7 @@ type runtimeTurn struct {
 	ClientRequestID string
 	Prompt          string
 	Attachments     []TurnAttachment
+	SkillContext    *execdomain.SkillContext
 	Status          string
 	StartedAt       time.Time
 	FinishedAt      time.Time
@@ -243,13 +249,27 @@ func NewService(ctx context.Context, idGenerator sharedapp.IDGenerator, logger *
 	if logger == nil {
 		logger = slog.Default()
 	}
+	options = normalizeOptions(options)
+	repositoryCatalog := options.RepositoryCatalog
+	repositoryPreparer := options.RepositoryPreparer
+	if repositoryCatalog == nil || repositoryPreparer == nil {
+		githubRepositories := newGitHubRepositoryProvider()
+		if repositoryCatalog == nil {
+			repositoryCatalog = githubRepositories
+		}
+		if repositoryPreparer == nil {
+			repositoryPreparer = githubRepositories
+		}
+	}
 	service := &Service{
-		rootCtx:     ctx,
-		idGenerator: idGenerator,
-		logger:      logger,
-		options:     normalizeOptions(options),
-		runner:      exec.CommandContext,
-		sessions:    map[string]*runtimeSession{},
+		rootCtx:            ctx,
+		idGenerator:        idGenerator,
+		logger:             logger,
+		options:            options,
+		runner:             exec.CommandContext,
+		repositoryCatalog:  repositoryCatalog,
+		repositoryPreparer: repositoryPreparer,
+		sessions:           map[string]*runtimeSession{},
 	}
 	go func() {
 		<-ctx.Done()
@@ -285,6 +305,7 @@ func (s *Service) publishSessionEvent(item *runtimeSession, eventType string) {
 
 	item.mu.RLock()
 	session := item.summary
+	session.Repository = cloneRepositoryBinding(item.summary.Repository)
 	item.mu.RUnlock()
 
 	if strings.TrimSpace(session.OwnerID) == "" || strings.TrimSpace(session.ID) == "" {
@@ -306,6 +327,7 @@ func (s *Service) publishTurnSessionEvent(item *runtimeSession, eventType string
 
 	item.mu.RLock()
 	session := item.summary
+	session.Repository = cloneRepositoryBinding(item.summary.Repository)
 	var turnSummary *TurnSummary
 	var runtimeEvent *RuntimeTraceEvent
 	if turn := item.turnByIDLocked(turnID); turn != nil {
@@ -560,6 +582,7 @@ func (s *Service) SetPinned(ownerID string, sessionID string, pinned bool) (chat
 	item.mu.Lock()
 	item.summary.Pinned = pinned
 	snapshot := item.summary
+	snapshot.Repository = cloneRepositoryBinding(item.summary.Repository)
 	item.mu.Unlock()
 
 	s.persistSession(item)
@@ -682,6 +705,47 @@ func (s *Service) InputWithAttachments(req InputRequest) (chatruntimedomain.Sess
 		return chatruntimedomain.Session{}, ErrSessionInputRequired
 	}
 
+	var resolvedRepository *chatruntimedomain.Repository
+	if req.Repository != nil {
+		ref, refErr := normalizeRepositoryRef(*req.Repository)
+		if refErr != nil {
+			return chatruntimedomain.Session{}, refErr
+		}
+		item.mu.RLock()
+		existingBinding := cloneRepositoryBinding(item.summary.Repository)
+		hasTurns := len(item.turns) > 0
+		item.mu.RUnlock()
+		if existingBinding != nil {
+			if !existingBinding.Matches(ref) {
+				return chatruntimedomain.Session{}, ErrRepositoryBindingConflict
+			}
+		} else {
+			if hasTurns {
+				return chatruntimedomain.Session{}, ErrRepositoryBindingConflict
+			}
+			if s.repositoryCatalog == nil {
+				return chatruntimedomain.Session{}, ErrRepositoryUnavailable
+			}
+			resolved, resolveErr := s.repositoryCatalog.Resolve(s.rootCtx, ref)
+			if resolveErr != nil {
+				return chatruntimedomain.Session{}, fmt.Errorf("%w: %v", ErrRepositoryUnavailable, resolveErr)
+			}
+			resolvedRef, resolveErr := normalizeRepositoryRef(chatruntimedomain.RepositoryRef{
+				Provider: resolved.Provider,
+				ID:       resolved.ID,
+				FullName: resolved.FullName,
+			})
+			if resolveErr != nil || resolvedRef.ID != ref.ID || strings.TrimSpace(resolved.FullName) == "" {
+				return chatruntimedomain.Session{}, ErrRepositoryInvalid
+			}
+			resolved.Provider = resolvedRef.Provider
+			resolved.ID = resolvedRef.ID
+			resolved.FullName = strings.TrimSpace(resolved.FullName)
+			resolved.DefaultBranch = strings.TrimSpace(resolved.DefaultBranch)
+			resolvedRepository = &resolved
+		}
+	}
+
 	turnCtx, turnCancel := context.WithCancel(s.rootCtx)
 
 	item.mu.Lock()
@@ -694,6 +758,15 @@ func (s *Service) InputWithAttachments(req InputRequest) (chatruntimedomain.Sess
 		item.mu.Unlock()
 		turnCancel()
 		return chatruntimedomain.Session{}, ErrSessionNotRunning
+	}
+	if resolvedRepository != nil {
+		if item.summary.Repository != nil || len(item.turns) > 0 {
+			item.mu.Unlock()
+			turnCancel()
+			return chatruntimedomain.Session{}, ErrRepositoryBindingConflict
+		}
+		binding := chatruntimedomain.NewRepositoryBinding(*resolvedRepository)
+		item.summary.Repository = &binding
 	}
 	now := time.Now().UTC()
 	if nextTitle, nextAuto, nextScore, changed := nextAutoSessionTitle(
@@ -715,9 +788,10 @@ func (s *Service) InputWithAttachments(req InputRequest) (chatruntimedomain.Sess
 	item.closedByUser = false
 	item.turnRunning = true
 	item.turnCancel = turnCancel
-	turn := item.beginTurnLocked(prompt, strings.TrimSpace(req.ClientRequestID), attachments, now)
+	turn := item.beginTurnLocked(prompt, strings.TrimSpace(req.ClientRequestID), attachments, req.SkillContext, now)
 	item.appendEntryLocked("input", prompt)
 	snapshot := item.summary
+	snapshot.Repository = cloneRepositoryBinding(item.summary.Repository)
 	item.mu.Unlock()
 	s.persistSession(item)
 	s.publishTurnSessionEvent(item, SessionEventTurnStarted, turn.ID, "")
@@ -859,6 +933,11 @@ func (s *Service) reconcileOrphanedRuntimeSession(item *runtimeSession) {
 func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID string, prompt string, attachments []TurnAttachment, skillContext *execdomain.SkillContext) {
 	command := resolveCodexCommand(s.options)
 	threadID := item.thread()
+	repository, err := s.prepareRepositoryForTurn(item, ctx)
+	if err != nil {
+		s.finishTurn(item, turnID, err, "")
+		return
+	}
 	preparedAttachments, err := prepareTurnInputAttachments(item.workspaceDir(), turnID, attachments)
 	if err != nil {
 		s.finishTurn(item, turnID, fmt.Errorf("prepare input attachments: %w", err), "")
@@ -867,7 +946,7 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 	args := buildCodexTurnArgs(
 		command,
 		threadID,
-		buildCodexTurnPrompt(prompt, preparedAttachments),
+		buildCodexTurnPrompt(prompt, preparedAttachments, repository),
 		imagePathsFromPreparedTurnAttachments(preparedAttachments),
 	)
 	runner := s.runner
@@ -1355,13 +1434,14 @@ func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtime
 	turn.promoteFinalOutput()
 }
 
-func (s *runtimeSession) beginTurnLocked(prompt string, clientRequestID string, attachments []TurnAttachment, now time.Time) *runtimeTurn {
+func (s *runtimeSession) beginTurnLocked(prompt string, clientRequestID string, attachments []TurnAttachment, skillContext *execdomain.SkillContext, now time.Time) *runtimeTurn {
 	s.nextTurnID++
 	turn := &runtimeTurn{
 		ID:              fmt.Sprintf("turn-%d", s.nextTurnID),
 		ClientRequestID: strings.TrimSpace(clientRequestID),
 		Prompt:          prompt,
 		Attachments:     cloneTurnAttachments(attachments),
+		SkillContext:    cloneChatRuntimeSkillContext(skillContext),
 		Status:          "running",
 		StartedAt:       now,
 		events:          []*runtimeEventRecord{},
@@ -1778,7 +1858,7 @@ func buildCodexTurnArgs(command codexCommand, threadID string, prompt string, im
 	return args
 }
 
-func buildCodexTurnPrompt(prompt string, attachments []preparedTurnAttachment) string {
+func buildCodexTurnPrompt(prompt string, attachments []preparedTurnAttachment, repository *chatruntimedomain.RepositoryBinding) string {
 	files := make([]preparedTurnAttachment, 0, len(attachments))
 	for _, attachment := range attachments {
 		if attachment.IsImage {
@@ -1786,14 +1866,30 @@ func buildCodexTurnPrompt(prompt string, attachments []preparedTurnAttachment) s
 		}
 		files = append(files, attachment)
 	}
-	if len(files) == 0 {
-		return prompt
+	lines := []string{strings.TrimSpace(prompt)}
+	if len(files) > 0 {
+		lines = append(lines, "", "Attached files are available in the workspace:")
+		for _, attachment := range files {
+			lines = append(lines, fmt.Sprintf("- %s (%s): %s", attachment.Name, attachment.ContentType, attachment.PromptPath))
+		}
+		lines = append(lines, "Read the files directly from disk when needed.")
 	}
-	lines := []string{strings.TrimSpace(prompt), "", "Attached files are available in the workspace:"}
-	for _, attachment := range files {
-		lines = append(lines, fmt.Sprintf("- %s (%s): %s", attachment.Name, attachment.ContentType, attachment.PromptPath))
+	if repository != nil && repository.Status == chatruntimedomain.RepositoryPreparationStatusReady {
+		branch := strings.TrimSpace(repository.Branch)
+		if branch == "" {
+			branch = strings.TrimSpace(repository.DefaultBranch)
+		}
+		lines = append(lines,
+			"",
+			"Repository context:",
+			"- repository: "+strings.TrimSpace(repository.FullName),
+			"- path: "+strings.TrimSuffix(strings.TrimSpace(repository.WorkspacePath), "/")+"/",
+			"- branch: "+branch,
+			"- head: "+strings.TrimSpace(repository.HeadSHA),
+			"",
+			"This user message is associated with the repository above. Treat it as the default code target when the request relates to repository work.",
+		)
 	}
-	lines = append(lines, "Read the files directly from disk when needed.")
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
@@ -2554,6 +2650,7 @@ func (s *runtimeSession) snapshot() chatruntimedomain.Session {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	snapshot := s.summary
+	snapshot.Repository = cloneRepositoryBinding(s.summary.Repository)
 	snapshot.Status = chatruntimedomain.NormalizeSessionStatus(snapshot.Status)
 	return snapshot
 }

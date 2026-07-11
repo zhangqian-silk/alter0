@@ -149,7 +149,7 @@ func TestBuildCodexTurnPromptIncludesWorkspaceFiles(t *testing.T) {
 			PromptPath:  "input-attachments/turn-1/diagram.png",
 			IsImage:     true,
 		},
-	})
+	}, nil)
 
 	if !strings.Contains(prompt, "Attached files are available in the workspace:") {
 		t.Fatalf("expected file attachment note, got %q", prompt)
@@ -159,6 +159,34 @@ func TestBuildCodexTurnPromptIncludesWorkspaceFiles(t *testing.T) {
 	}
 	if strings.Contains(prompt, "diagram.png") {
 		t.Fatalf("expected image attachments to stay on CLI flags instead of prompt text, got %q", prompt)
+	}
+}
+
+func TestBuildCodexTurnPromptIncludesTrustedRepositoryContextSeparately(t *testing.T) {
+	binding := chatruntimedomain.NewRepositoryBinding(chatruntimedomain.Repository{
+		Provider:      chatruntimedomain.RepositoryProviderGitHub,
+		ID:            "123456789",
+		FullName:      "owner/repository",
+		DefaultBranch: "main",
+	})
+	binding.Status = chatruntimedomain.RepositoryPreparationStatusReady
+	binding.Branch = "main"
+	binding.HeadSHA = "abc123"
+
+	prompt := buildCodexTurnPrompt("Update the retry behavior", nil, &binding)
+
+	for _, want := range []string{
+		"Update the retry behavior",
+		"Repository context:",
+		"- repository: owner/repository",
+		"- path: repo/",
+		"- branch: main",
+		"- head: abc123",
+		"This user message is associated with the repository above.",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("expected repository prompt to contain %q, got:\n%s", want, prompt)
+		}
 	}
 }
 
@@ -424,6 +452,32 @@ func TestCreateStartsSessionReady(t *testing.T) {
 	}
 }
 
+func TestPersistedSessionSnapshotClonesRepositoryBinding(t *testing.T) {
+	binding := chatruntimedomain.NewRepositoryBinding(chatruntimedomain.Repository{
+		Provider:      chatruntimedomain.RepositoryProviderGitHub,
+		ID:            "123456789",
+		FullName:      "owner/repository",
+		DefaultBranch: "main",
+	})
+	item := &runtimeSession{summary: chatruntimedomain.Session{
+		ID:         "c_snapshot0000000",
+		OwnerID:    "owner-snapshot",
+		Status:     chatruntimedomain.SessionStatusBusy,
+		Repository: &binding,
+	}}
+
+	record, deleted := snapshotPersistedSession(item)
+	if deleted || record.Summary.Repository == nil {
+		t.Fatalf("expected repository in persisted snapshot, got %+v", record.Summary.Repository)
+	}
+	item.summary.Repository.Status = chatruntimedomain.RepositoryPreparationStatusReady
+	item.summary.Repository.HeadSHA = "changed-after-snapshot"
+
+	if record.Summary.Repository.Status != chatruntimedomain.RepositoryPreparationStatusPreparing || record.Summary.Repository.HeadSHA != "" {
+		t.Fatalf("expected immutable persisted snapshot, got %+v", record.Summary.Repository)
+	}
+}
+
 func TestServiceInputStartsAndResumesCodexSession(t *testing.T) {
 	service := newTestService("success")
 
@@ -501,6 +555,196 @@ func TestServiceInputWithAttachmentsPassesImageFlagsAndPersistsTurnAttachments(t
 	}
 	if turns[0].Attachments[0].DataURL != attachment.DataURL {
 		t.Fatalf("expected persisted attachment data url, got %+v", turns[0].Attachments[0])
+	}
+}
+
+func TestServiceInputWithRepositoryPreparesCheckoutBeforeCodexAndPersistsBinding(t *testing.T) {
+	baseDir := t.TempDir()
+	catalog := &stubRepositoryCatalog{
+		resolved: chatruntimedomain.Repository{
+			Provider:      chatruntimedomain.RepositoryProviderGitHub,
+			ID:            "123456789",
+			FullName:      "owner/repository",
+			Private:       true,
+			DefaultBranch: "main",
+		},
+	}
+	preparer := &stubRepositoryWorkspacePreparer{
+		checkout: RepositoryCheckout{Branch: "main", HeadSHA: "abc123"},
+	}
+	service := newTestServiceWithRepositorySupport("success", baseDir, catalog, preparer)
+	session, err := service.Create(CreateRequest{OwnerID: "owner-repository"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	started, err := service.InputWithAttachments(InputRequest{
+		OwnerID:   "owner-repository",
+		SessionID: session.ID,
+		Input:     "Update the retry behavior",
+		Repository: &chatruntimedomain.RepositoryRef{
+			Provider: chatruntimedomain.RepositoryProviderGitHub,
+			ID:       "123456789",
+			FullName: "untrusted/old-name",
+		},
+	})
+	if err != nil {
+		t.Fatalf("input with repository: %v", err)
+	}
+	if started.Repository == nil || started.Repository.Status != chatruntimedomain.RepositoryPreparationStatusPreparing {
+		t.Fatalf("expected preparing binding in immediate snapshot, got %+v", started.Repository)
+	}
+	if started.Repository.FullName != "owner/repository" {
+		t.Fatalf("expected trusted catalog metadata, got %+v", started.Repository)
+	}
+
+	finished, entries := waitForSessionEntries(t, service, "owner-repository", session.ID, 2)
+	if finished.Repository == nil || finished.Repository.Status != chatruntimedomain.RepositoryPreparationStatusReady {
+		t.Fatalf("expected ready repository binding, got %+v", finished.Repository)
+	}
+	if finished.Repository.Branch != "main" || finished.Repository.HeadSHA != "abc123" {
+		t.Fatalf("expected checkout metadata, got %+v", finished.Repository)
+	}
+	if preparer.calls != 1 || preparer.workspaceDir != session.WorkingDir {
+		t.Fatalf("expected one preparation in session workspace, got calls=%d dir=%q", preparer.calls, preparer.workspaceDir)
+	}
+	if !strings.Contains(entries[1].Text, "Repository context:") || !strings.Contains(entries[1].Text, "owner/repository") {
+		t.Fatalf("expected codex to receive repository context, got %q", entries[1].Text)
+	}
+
+	restarted := NewService(context.Background(), nil, nil, Options{
+		WorkingDir:         baseDir,
+		RepositoryCatalog:  catalog,
+		RepositoryPreparer: preparer,
+	})
+	restored, ok := restarted.Get("owner-repository", session.ID)
+	if !ok || restored.Repository == nil {
+		t.Fatalf("expected persisted repository binding after restart, got %+v", restored.Repository)
+	}
+	if restored.Repository.Status != chatruntimedomain.RepositoryPreparationStatusReady || restored.Repository.HeadSHA != "abc123" {
+		t.Fatalf("expected restored ready checkout metadata, got %+v", restored.Repository)
+	}
+}
+
+func TestServiceInputRejectsChangingRepositoryAfterBinding(t *testing.T) {
+	catalog := &stubRepositoryCatalog{resolved: chatruntimedomain.Repository{
+		Provider:      chatruntimedomain.RepositoryProviderGitHub,
+		ID:            "123456789",
+		FullName:      "owner/repository",
+		DefaultBranch: "main",
+	}}
+	preparer := &stubRepositoryWorkspacePreparer{checkout: RepositoryCheckout{Branch: "main", HeadSHA: "abc123"}}
+	service := newTestServiceWithRepositorySupport("success", t.TempDir(), catalog, preparer)
+	session, err := service.Create(CreateRequest{OwnerID: "owner-conflict"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := service.InputWithAttachments(InputRequest{
+		OwnerID:   "owner-conflict",
+		SessionID: session.ID,
+		Input:     "first",
+		Repository: &chatruntimedomain.RepositoryRef{
+			Provider: chatruntimedomain.RepositoryProviderGitHub,
+			ID:       "123456789",
+		},
+	}); err != nil {
+		t.Fatalf("first input: %v", err)
+	}
+	waitForSessionEntries(t, service, "owner-conflict", session.ID, 2)
+
+	_, err = service.InputWithAttachments(InputRequest{
+		OwnerID:   "owner-conflict",
+		SessionID: session.ID,
+		Input:     "second",
+		Repository: &chatruntimedomain.RepositoryRef{
+			Provider: chatruntimedomain.RepositoryProviderGitHub,
+			ID:       "987654321",
+		},
+	})
+	if !errors.Is(err, ErrRepositoryBindingConflict) {
+		t.Fatalf("expected repository binding conflict, got %v", err)
+	}
+	turns, listErr := service.ListTurns("owner-conflict", session.ID)
+	if listErr != nil || len(turns) != 1 {
+		t.Fatalf("expected rejected input not to create another turn, got turns=%+v err=%v", turns, listErr)
+	}
+}
+
+func TestServiceRetryRepositoryResumesPersistedTurnWithoutDuplicateInput(t *testing.T) {
+	baseDir := t.TempDir()
+	catalog := &stubRepositoryCatalog{resolved: chatruntimedomain.Repository{
+		Provider:      chatruntimedomain.RepositoryProviderGitHub,
+		ID:            "123456789",
+		FullName:      "owner/repository",
+		DefaultBranch: "main",
+	}}
+	failingPreparer := &stubRepositoryWorkspacePreparer{err: errors.New("credential helper detail must stay private")}
+	service := newTestServiceWithRepositorySupport("success", baseDir, catalog, failingPreparer)
+	session, err := service.Create(CreateRequest{OwnerID: "owner-retry"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	_, err = service.InputWithAttachments(InputRequest{
+		OwnerID:   "owner-retry",
+		SessionID: session.ID,
+		Input:     "Retry the checkout",
+		Repository: &chatruntimedomain.RepositoryRef{
+			Provider: chatruntimedomain.RepositoryProviderGitHub,
+			ID:       "123456789",
+		},
+		SkillContext: &execdomain.SkillContext{
+			Protocol: execdomain.SkillContextProtocolVersion,
+			Skills: []execdomain.SkillSpec{{
+				ID:    "repository-review",
+				Name:  "Repository Review",
+				Guide: "Review the selected repository carefully.",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("input with failing preparation: %v", err)
+	}
+	failed, _ := waitForSessionError(t, service, "owner-retry", session.ID)
+	if failed.Repository == nil || failed.Repository.Status != chatruntimedomain.RepositoryPreparationStatusFailed {
+		t.Fatalf("expected failed repository binding, got %+v", failed.Repository)
+	}
+	if strings.Contains(failed.Repository.ErrorMessage, "credential helper") {
+		t.Fatalf("expected sanitized repository failure, got %+v", failed.Repository)
+	}
+
+	successfulPreparer := &stubRepositoryWorkspacePreparer{checkout: RepositoryCheckout{Branch: "main", HeadSHA: "def456"}}
+	restarted := newTestServiceWithRepositorySupport("success", baseDir, catalog, successfulPreparer)
+	retrying, err := restarted.RetryRepository("owner-retry", session.ID)
+	if err != nil {
+		t.Fatalf("retry repository: %v", err)
+	}
+	if retrying.Repository == nil || retrying.Repository.Status != chatruntimedomain.RepositoryPreparationStatusPreparing {
+		t.Fatalf("expected retry to return preparing state, got %+v", retrying.Repository)
+	}
+
+	finished, entries := waitForSessionEntries(t, restarted, "owner-retry", session.ID, 3)
+	if finished.Repository == nil || finished.Repository.Status != chatruntimedomain.RepositoryPreparationStatusReady || finished.Repository.HeadSHA != "def456" {
+		t.Fatalf("expected successful retry checkout, got %+v", finished.Repository)
+	}
+	inputEntries := 0
+	for _, entry := range entries {
+		if entry.Stream == "input" {
+			inputEntries++
+		}
+	}
+	if inputEntries != 1 {
+		t.Fatalf("expected retry not to duplicate user input, got %+v", entries)
+	}
+	turns, err := restarted.ListTurns("owner-retry", session.ID)
+	if err != nil || len(turns) != 1 {
+		t.Fatalf("expected retry to reuse one turn, got turns=%+v err=%v", turns, err)
+	}
+	skillContext, err := os.ReadFile(filepath.Join(session.WorkingDir, ".alter0", "codex-runtime", "skills.md"))
+	if err != nil {
+		t.Fatalf("read retried skill context: %v", err)
+	}
+	if !strings.Contains(string(skillContext), "Review the selected repository carefully.") {
+		t.Fatalf("expected retry to preserve selected skill context, got:\n%s", skillContext)
 	}
 }
 
@@ -1852,6 +2096,63 @@ func newTestService(mode string) *Service {
 
 func newTestServiceWithBaseDir(mode string, baseDir string) *Service {
 	service := NewService(context.Background(), nil, nil, Options{WorkingDir: baseDir})
+	configureTestCodexRunner(service, mode)
+	return service
+}
+
+type stubRepositoryCatalog struct {
+	items      []chatruntimedomain.Repository
+	nextCursor string
+	listErr    error
+	resolved   chatruntimedomain.Repository
+	resolveErr error
+	resolveRef chatruntimedomain.RepositoryRef
+}
+
+func (s *stubRepositoryCatalog) List(_ context.Context, _ string, _ string) (RepositoryPage, error) {
+	if s.listErr != nil {
+		return RepositoryPage{}, s.listErr
+	}
+	return RepositoryPage{Items: append([]chatruntimedomain.Repository{}, s.items...), NextCursor: s.nextCursor}, nil
+}
+
+func (s *stubRepositoryCatalog) Resolve(_ context.Context, ref chatruntimedomain.RepositoryRef) (chatruntimedomain.Repository, error) {
+	s.resolveRef = ref
+	if s.resolveErr != nil {
+		return chatruntimedomain.Repository{}, s.resolveErr
+	}
+	return s.resolved, nil
+}
+
+type stubRepositoryWorkspacePreparer struct {
+	checkout     RepositoryCheckout
+	err          error
+	calls        int
+	repository   chatruntimedomain.Repository
+	workspaceDir string
+}
+
+func (s *stubRepositoryWorkspacePreparer) Prepare(_ context.Context, repository chatruntimedomain.Repository, workspaceDir string) (RepositoryCheckout, error) {
+	s.calls++
+	s.repository = repository
+	s.workspaceDir = workspaceDir
+	if s.err != nil {
+		return RepositoryCheckout{}, s.err
+	}
+	return s.checkout, nil
+}
+
+func newTestServiceWithRepositorySupport(mode string, baseDir string, catalog RepositoryCatalog, preparer RepositoryWorkspacePreparer) *Service {
+	service := NewService(context.Background(), nil, nil, Options{
+		WorkingDir:         baseDir,
+		RepositoryCatalog:  catalog,
+		RepositoryPreparer: preparer,
+	})
+	configureTestCodexRunner(service, mode)
+	return service
+}
+
+func configureTestCodexRunner(service *Service, mode string) {
 	service.runner = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		cmdArgs := append([]string{"-test.run=TestChatRuntimeServiceHelperProcess", "--", name}, args...)
 		cmd := exec.CommandContext(ctx, os.Args[0], cmdArgs...)
@@ -1862,7 +2163,6 @@ func newTestServiceWithBaseDir(mode string, baseDir string) *Service {
 		)
 		return cmd
 	}
-	return service
 }
 
 func insertOrphanedBusyRuntimeSession(t *testing.T, service *Service, ownerID string, sessionID string, now time.Time) {

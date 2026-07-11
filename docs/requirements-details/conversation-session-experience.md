@@ -46,7 +46,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 - `Chat` 面向通用对话入口，默认直接通过 Claude Code CLI 或 Codex CLI 执行。
 - `Chat` 不再绑定内置 `main` Skill，也不再默认调度内置专项 Skill。
-- `Provider / Model`、`Tools / MCP`、`Skills` 可在 Chat 会话过程中调整，并作用于后续发送的消息；`Chat` 的 `Provider / Model` 选择器额外暴露内置 `Codex` 项，允许用户不经过常规 LLM Provider 直接切到 `Codex CLI` 执行链。Web `Chat` 不再提供独立空态、Skill 选择器、私有 Skill 面板或会话级目标切换；旧 Chat 会话加载时仅迁移为 Chat 会话并保留目标 Skill 名称作为历史元数据。
+- `Provider / Model` 与 `Skills` 可在 Chat 会话过程中调整，并作用于后续发送的消息；Tools / MCP 继续由服务端运行配置注入，不再提供独立 Composer 控制面板。`Chat` 的 `Provider / Model` 选择器额外暴露内置 `Codex` 项，允许用户不经过常规 LLM Provider 直接切到 `Codex CLI` 执行链。Web `Chat` 不再提供独立空态、私有 Skill 面板或会话级目标切换；旧 Chat 会话加载时仅迁移为 Chat 会话并保留目标 Skill 名称作为历史元数据。
 
 ### Settings 页面
 
@@ -64,7 +64,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 会话清理不提供复杂配置项。`Settings > Schedules` 的内置会话清理任务只提供当前状态、上次/下次运行、手动触发、失败重试，以及删除数量、置顶跳过数量、任务保护数量和扫描数量。清理后续资源删除失败时，本次维护状态必须记录为 `failed` 并暴露失败原因。
 - 具备独立前端入口的 Skill 不进入通用 Settings 页面历史。
 - `Sessions` 系统页面可展示跨来源会话数据，但不作为 Chat 分栏依据。
-- 未发送文本草稿、附件草稿与当前浏览器中的临时空白会话允许继续本地保存；切换 Chat / Settings、切换会话或点击 New 时不得弹出丢弃草稿确认，原会话草稿按 route 与 session 继续缓存，返回后恢复。这些局部态不要求跨设备同步，但不能覆盖服务端已存在的会话摘要、配置与消息历史。
+- 未发送文本草稿、附件草稿、GitHub 仓库选择草稿与当前浏览器中的临时空白会话允许继续本地保存；切换 Chat / Settings、切换会话或点击 New 时不得弹出丢弃草稿确认，原会话草稿按 route 与 session 继续缓存，返回后恢复。这些局部态不要求跨设备同步，但不能覆盖服务端已存在的会话摘要、配置与消息历史。
 
 ## 接口边界
 
@@ -73,6 +73,9 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `GET /login` 与 `POST /login` 处理登录页和登录提交。
 - `GET /logout` 清理当前登录态。
 - `POST /api/chat/sessions/{session_id}/input` 处理 Chat owner 输入提交；`/api/chat/sessions` 不再作为 Web Shell 公开接口注册。
+- `GET /api/chat/repositories?query=&cursor=` 使用服务端当前个人 `gh` 登录列出可访问的 GitHub 仓库，只返回稳定 id、`owner/name`、私有标记、默认分支和更新时间；前端不得读取 GitHub token、clone URL 或凭据。input 可选携带结构化 `repository { provider, id, full_name }`，服务端必须按稳定 id 重新解析仓库，不信任前端 clone 地址。
+- `POST /api/chat/sessions/{session_id}/repository/retry` 只允许重试当前会话已失败的仓库准备任务；它复用原 turn、原用户输入与原 Skill 选择，不新增消息或 turn，也不得改变绑定仓库。
+- 会话集合与详情的脱敏 DTO 需携带仓库显示名、固定相对工作区路径、默认分支、准备状态、可用 head 与脱敏错误；不得返回 token、clone URL 或服务端绝对路径。
 - Web `Chat` 独立消息入口已移除；对话消息统一由 Chat owner 的 runtime session input 处理，运行页列表与详情由 `/api/chat/sessions` 接口恢复。
 - 上述消息接口在 `content` 之外还接受 `attachments[]`；当前稳定支持两种图片输入：首次上传时携带 `data_url`、文件名与 MIME 类型，或在同一 Session 内复用已上传的 `id + asset_url + preview_url` 资产引用。允许仅发送图片，服务端会补齐稳定占位文本并把图片载荷并入统一消息元数据。
 - `POST /api/sessions/{session_id}/attachments` 用于把会话图片提前写入当前 Session 工作区，并返回稳定 `asset_url / preview_url`。Conversation runtime 的草稿恢复、最近会话列表与已发送消息都应优先保存这组引用，不再长期持久化原始大图 `data_url`；其中 `preview_url` 只用于缩略图位，历史消息回显与预览弹层必须优先读取 `asset_url` 原图。
@@ -248,13 +251,14 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - Session 历史区的会话条目不展示 ready、failed、exited 或 interrupted 状态灯；只有处理中条目显示 loading，并为读屏输出当前忙碌状态文案。
 - Conversation workspace 头部的标题、状态按钮、会话详情入口和新会话入口需按当前路由与语言即时切换文案；状态按钮同时反映当前活动会话派生状态，但可见层只显示信号，不再展示固定 `Ready` 或其他状态文案；该信号固定排在当前会话标题左侧，会话详情入口并入当前标题按钮，不再额外渲染独立右侧详情按钮；这些壳层文案更新不得覆盖当前会话标题或消息内容。
 - `Chat` 的会话列表、工作区外壳、聊天滚动区和输入区需输出 `runtime-*` 主契约并保留必要的 `chat-* + conversation-*` 兼容 class，确保 `/chat` 共用同一工作台表面与细节皮肤，同时保留 `data-conversation-*` 钩子供样式和测试使用。
-- `Chat` 首页 Composer 采用单一胶囊式助手输入面板：主 textarea 透明无内边框，工具栏与输入区处在同一白色 surface 内；工具栏不再显示 `Session` 会话设置按钮，只保留附件与发送等直接对话动作。附件入口使用回形针图标，文字 label 仅保留给可访问语义；桌面端输入面板按主阅读宽度居中，移动端压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，除 Composer 胶囊外不使用额外胶囊按钮、卡片边框或厚圆角表达层级；会话列表项与 `Details` 面板保持同一浅色 runtime 质感。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
+- `Chat` 首页 Composer 采用单一胶囊式助手输入面板：主 textarea 透明无内边框，工具栏与输入区处在同一白色 surface 内；工具栏显示 `Session`、独立 GitHub 仓库入口、附件与发送动作。仓库入口使用 GitHub 图标，附件入口使用回形针图标，二者不得复用按钮或交互；文字 label 仅保留给可访问语义。桌面端输入面板按主阅读宽度居中，移动端压缩输入高度、外层留白与提交按钮体量，同时维持足够横向留白，避免输入区压窄；PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，除 Composer 胶囊外不使用额外胶囊按钮、卡片边框或厚圆角表达层级；会话列表项与 `Details` 面板保持同一浅色 runtime 质感。空态工作区需使用低对比网格与细弧线背景，并锁定为不可滚动表面，不允许通过空白区域拖拽把头部和输入区顶出可视区。
 - `Chat` 在页面重新变为前台可见或浏览器重新把当前页激活时，必须复用运行页共享的 page-activation 补偿刷新链路：刷新会话列表、按 owner `latest_update_id` 读取增量，并在 `resync_required` 或缓存不完整时补拉当前活动会话详情。页面隐藏时暂停高频轮询；恢复前台后立即做一次增量检查，避免后台标签页持续发起会话详情请求。
 - `Chat` 在 bfcache 恢复或网络恢复在线时复用 page-activation 入口，但只有本地仍处于 `local_running / recovering`、缓存不完整或存在可恢复占位时才发起补偿请求；Chat owner 的 session 详情默认按最新 `20` 个 turns 与约 `1MiB` 前端 API turn DTO 页预算分页返回，前端需用 `turns_paging.has_more_before` 识别分段结果。页面恢复、手动刷新、轮询或输入返回的轻量详情不得丢失本地已加载的更早消息，也不得在恢复阶段自动请求 `turn_before`、扩展当前可见窗口、强制滚动到底部或重建 Composer 输入状态与配置面板。
 - `Chat` 时间线到顶交互先展开本地已加载的隐藏消息批次；本地窗口已完全展开且服务端仍有更早历史时，才由 `ConversationRuntimeProvider.loadEarlierHistory()` 按 `turn_before` 显式请求下一页。分页结果按消息 id 与时间顺序合并进时间线，并在保持阅读锚点后展开下一批。
 - `Chat` 发送新消息后，服务端输入响应、后续详情刷新或分页片段只允许按 turn/message id 与时间顺序合并进现有时间线；即使响应只包含新 turn 或最新轻量页，也不得替换掉用户当前已加载的旧历史。若追加前当前渲染窗口已经覆盖全部已加载消息，追加后可见窗口需同步扩容，避免旧消息被最新一轮挤出视图。
 - `Chat` 的浏览器缓存分为短期运行态、完整消息快照与轻量会话信息快照：24 小时运行态缓存按 route 保留当前已加载会话的完整消息或 turns；24 小时 `localStorage` 完整快照使用 `chat` 独立 key 保存当前 route 会话、完整消息、分页边界、`updated_at` 与本地详情新鲜度，用于刷新、重开或 `sessionStorage` 丢失时首屏恢复；轻量会话信息快照只保存标题、状态、置顶、模型与能力选择、`updated_at` 等元数据，用于完整消息缓存写入失败或被清理时恢复会话列表。active session、文本草稿、附件草稿与过程披露过滤同样按 route 使用独立 key。旧 `active snapshot / recent snapshot` sessionStorage key 只在启动时清理，不读取、不迁移。缓存不得阻断首次进入和刷新时的服务端会话列表与当前 active 会话最新 bounded detail 回源；当服务端返回更新历史时继续按现有分页合并规则覆盖或补齐本地快照，并刷新缓存时间。page-activation 对稳定 `ready` 会话复用本地缓存，不强制读取 summary 或详情。
 - `Chat` Composer 支持最多 5 张图片附件；附件可通过附件按钮选择，也可在 PC 输入框内直接粘贴剪贴板图片。粘贴图片时仅拦截图片文件并进入附件草稿，普通文本粘贴继续保持 textarea 原生行为。附件在输入区以缩略图展示，可单张预览和移除，并按会话草稿持久化。缩略条继续使用预览图，但单张预览弹层必须优先显示原图。当前选中的模型若未声明视觉能力，带图发送必须直接阻止并提示切换模型。
+- GitHub 仓库选择与附件草稿分别持久化。用户在真正发送消息前搜索并勾选一个仓库时，只形成可移除的本地草稿 chip，不创建会话、不访问仓库也不拉取代码。首次消息发送时仓库引用与用户语义一起提交并绑定到该会话；一个会话最多绑定一个仓库，绑定后 chip 不可移除或替换。服务端在 Agent 启动前把仓库准备到会话工作区固定相对目录 `repo/`，只做首次 clone，不自动 pull/fetch/reset，也不自动 commit/push；失败状态允许原地重试。
 - 移动端 `Chat` 的左侧主导航抽屉与主工作区在 `1280px` 及以下需回落为静态表面，不保留模糊玻璃层或持续背景动效；性能优先级高于装饰层，确保真机滚动、抽屉开关和输入框聚焦不出现明显卡顿。
 - 根工作台仅在窄屏时使用主导航抽屉；Chat 会话列表由主导航统一承载，避免出现导航抽屉和会话浮层叠加。
 - 路由页头部的标题与副标题需按当前路由与语言即时切换文案；这些页头更新不得覆盖 route body 内已渲染的页面主体内容。Settings 路由页需复用 Chat 的主面板 frame 与紧凑工作台标题栏视觉节奏，标题栏只输出同规格标题标记和单行标题，不再使用与Chat 割裂的大号页面标题块、裸露页面标题区或标题副文案；Settings 移动端抽屉入口与运行页 `Menu` 使用一致的无边框图标按钮视觉，并保留可访问文本标签，窄屏下标题直接并入同一行 `Menu + Settings` 顶栏，不再叠加第二行标题；Settings 正文需作为 frame 内部滚动区，长内容不得被外层 frame 裁切。
@@ -312,7 +316,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 ### 会话设置
 
-- Chat 的会话设置入口统一位于底部 Composer 工具栏的 `Session` 按钮；发送按钮只负责提交当前草稿。
+- Chat 的会话设置入口统一位于底部 Composer 工具栏的 `Session` 按钮；同一工具栏另设独立 GitHub 仓库按钮与附件按钮。发送按钮只负责提交当前文本、附件与可选仓库草稿。
 - 移动端会话列表不再与正文上下堆叠，也不再使用Chat 内部独立抽屉；Chat都通过 `Menu` 打开左侧主导航抽屉。抽屉内的会话区左侧将会话标题与会话总数收敛为上下两行，右侧保留 `New` 入口并复用运行页紧凑按钮规格；列表项沿用标题-only 卡片与尾侧三点更多菜单结构，处理中会话显示 loading，并支持遮罩点击收起。
 - 左侧主导航内的会话条目统一采用工作台列表项语义：置顶会话进入独立分组；距离 7 天不活跃清理阈值还剩不超过 2 天的未置顶会话进入 `Expiring Soon / 即将清理` 提醒分组；其余列表先按内容更新时间分组，缺少更新时间时才回退到创建时间，再在条目内展示标题与尾侧三点更多菜单；菜单内承载置顶、详情、删除动作，删除需确认弹窗；列表容器需保留独立滚动能力并输出稳定 `role="list"` 语义，视觉层级保持克制，不使用多余胶囊装饰。
 - 会话设置展开后采用独立固定底部面板，带遮罩、关闭入口与内部滚动区。

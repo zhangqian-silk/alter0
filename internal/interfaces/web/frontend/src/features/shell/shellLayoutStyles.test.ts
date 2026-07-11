@@ -4,6 +4,18 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 describe("shell layout stylesheet", () => {
+  it("styles the dedicated GitHub repository picker and composer binding chip", () => {
+    const currentDirectory = dirname(fileURLToPath(import.meta.url));
+    const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");
+
+    expect(stylesheet).toContain(".runtime-composer-context {");
+    expect(stylesheet).toContain(".conversation-repository-picker {");
+    expect(stylesheet).toContain(".conversation-repository-search {");
+    expect(stylesheet).toContain(".conversation-repository-option {");
+    expect(stylesheet).toContain(".conversation-repository-chip {");
+    expect(stylesheet).toContain(".conversation-repository-chip.is-failed {");
+  });
+
   it("allows desktop shell panels to shrink within the grid", () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const stylesheet = readFileSync(resolve(currentDirectory, "../../styles/shell.css"), "utf8");

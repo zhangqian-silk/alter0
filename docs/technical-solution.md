@@ -104,13 +104,22 @@ CLI / Web / Cron
 - `ConversationWorkspace.tsx` 额外负责把 Conversation 会话态归一为共享 `statusTone`：当前 assistant 消息为 `streaming / queued / running / in_progress` 时输出 `busy`，显式错误、失败、取消或 `message.error` 输出 `failed`，其余稳定态输出 `ready`；同一派生结果驱动会话列表项和 workspace header。会话列表只消费 `busy` 并渲染 loading，其他状态不渲染行内状态灯；header 可见层只保留信号本身，状态名称仅通过无障碍名称与悬浮提示暴露，避免头部长期固定显示 `Ready`。
 - `ConversationRuntimeProvider.tsx` 的 24 小时缓存只服务个人单设备首屏恢复：summary 快照覆盖全部会话，内容快照按 `conversationSyncPolicy.ts` 选择当前会话与最近四个会话。序列化会移除附件 data URL 和按需 event detail blocks，只保留可重新请求详情所需的轻量事件标识；草稿与 optimistic `client_request_id` journal 独立保存。持久快照只在 bootstrap 时进入 live state，后续缓存写入是 controller state 的单向输出，不再由 effect 把缓存/ref 合并回运行态。
 
+### GitHub 仓库绑定
+
+- `internal/chatruntime/domain.RepositoryBinding` 只持久化 provider、稳定仓库 id、`owner/name`、默认分支、固定 workspace path、准备状态、head 与脱敏错误。应用层通过 `RepositoryCatalog` 和 `RepositoryWorkspacePreparer` 接口隔离目录解析与工作区准备；默认 GitHub adapter 使用服务端个人 `gh api` / `gh repo clone`，命令参数不携带 token 或带凭据 URL。
+- Web 注册 `GET /api/chat/repositories`、input 的可选 `repository` 字段和 `POST /api/chat/sessions/{session_id}/repository/retry`。目录响应与 session DTO 不返回 token、clone URL 或绝对路径。服务端按稳定仓库 id 重新解析授权仓库；clone 先落入会话工作区 staging 目录，校验 remote/branch/head 后原子改名为 `repo/`，已存在且 remote 匹配的 checkout 直接复用，不自动 pull/fetch/reset 或重写用户修改。
+- `ConversationRuntimeProvider.tsx` 为每个 route/session 维护独立 repository draft key；仓库搜索只调用脱敏目录接口，选择只更新本地草稿。`sendPrompt` 在首次 input payload 中附加 `{ provider: "github", id, full_name }`，成功响应后清除草稿并以服务端 `session.repository` 为事实源。`RuntimeComposer` 在附件 strip 之外渲染 repository context chip，`ConversationWorkspace` 提供独立 GitHub 图标、桌面 popover 与移动端 bottom sheet；已绑定 chip 不可移除，失败状态调用 retry API。
+- 仓库准备发生在 Agent 启动前。Agent prompt 使用单独的可信 repository context 段，只声明显示名、`repo/`、branch/head 与“默认在该仓库内工作”，不注入凭据。retry 只恢复同一失败 turn，保留原 `SkillContext`，不新增 user 消息或 turn。
+
 ### 实时更新通道
 
 `Chat` 会话更新采用 owner 级增量轮询，替代旧长连接与固定高频详情轮询。HTTP 快照仍是最终恢复入口，updates 只承载低成本增量：
 
 ```text
 POST /api/chat/sessions/{session_id}/input
+  -> 可选 repository ref 按稳定 GitHub id 重新解析并持久化 binding
   -> Chat session store 持久化 user turn + busy summary
+  -> 首次准备仓库到 <session-workspace>/repo
   -> application.SessionEventHook publish turn.started
   -> POST /api/chat/sessions/updates
      { after_update_id, limit, byte_limit, visible_event_kinds }
@@ -200,7 +209,7 @@ Web input
 - `src/app/routeState.ts` 负责运行页路由与会话 query 协调：路由只解析 canonical path，不再使用 hash fragment；`/chat` 统一识别 `session_id` 多会话恢复参数，写入时直接使用 canonical `chat_session_id`。主导航进入 `Chat` 时即使当前已经位于 `/chat`，也会删除旧 `session_id` 并派发路由同步事件；`ConversationRuntimeProvider.tsx` 监听该同步事件，在 query 缺失时切到当前会话列表第一项。Chat query 缺失或目标会话不存在时，运行页才回退到 Chat 独立 `sessionStorage` 快照与服务端列表默认项。
 - Markdown 渲染必须避免原始 HTML 透传；长路径、代码块和 diff 只在内容块内部滚动。`MessageMarkdown.ts` 作为 Web Shell 的共享安全 Markdown 渲染器，被 `ChatMessageRegion`、Chat 步骤/最终输出、`RouteFieldRow` 的正文模式、Memory 文档、Control 描述、Skill/Codex 说明与 Session Profile 非等宽字段共同复用；解析核心使用 `markdown-it`，禁用 raw HTML，开启自动链接与软换行，并通过 renderer rules 保持 `assistant-inline-image`、`chat-md-pre`、`chat-md-inline-code`、`chat-md-table-wrap` 与 `chat-md-table` 等既有 DOM class。渲染器在进入 `markdown-it` 前继续清理零宽字符、修正“每字一行”的异常段落、剥离任务列表 marker，并把危险 Markdown URL 降级为可读文本；列表解析保留原始行缩进，把缩进更深的同类或异类列表、引用与代码块保留在父级 `<li>` 内，避免把层级关系拍平成连续顶层条目；机器标识类字段继续走纯文本或等宽展示，不进入 Markdown 解析。`shell.css` 在 `[data-runtime-view="conversation"]` 作用域下维护 Chat 的无框阅读流与 Markdown 视觉节奏：工作区正文白底无框，助手消息透明输出，标题、段落、列表、链接、引用和代码块通过共享 class 做弱边界排版；Markdown 表格保留真实 table DOM 与列对齐，但视觉上只使用横向分割线，不使用卡片外框、圆角边界或表头灰底；表格使用 `width: 100%` 与 `min-width: 100%` 铺满消息宽度，普通单元格声明 `overflow-wrap: anywhere` 处理长中文和长说明，表格内 `a/code` 继续 `white-space: nowrap` 保持链接、URL 和代码可复制性，只有真实不可断内容超宽时才触发表格块内部滚动，不改变 `MessageMarkdownShell` 的 DOM 与安全解析边界。
 - `ChatMessageRegion.tsx` 统一负责 Conversation runtime 的消息正文与尾部元信息；已完成的 Chat 助手消息不渲染尾部元信息，运行中/排队/失败等瞬时状态才渲染紧凑状态标签，且不再附带逐条时间，避免在每条回复后重复输出 route/source/status/time 标签。
-- `shell.css` 通过 `.runtime-workspace-head.is-sticky`、`.workspace-header-status` 和标题按钮维护运行页共享的固定 workspace header 视觉状态：标题区吸顶、状态按钮按 `ready / busy / failed / interrupted / exited` 输出统一颜色反馈，但可见层只保留信号本身，并通过 `inline-flex` 信号槽直接复用会话列表 `.runtime-session-signal` 的中心点、描边与波纹规格；会话 `Details` 入口并入当前标题按钮，不再渲染独立右侧详情按钮。`.workspace-details-layer / .workspace-details-backdrop / .workspace-details-panel` 负责把详情面板挂到顶层浮层、限制最大可视区域、提供点击外部关闭与独立滚动容器，并通过更高层级、明确背景和 `dialog` 语义保证浮层稳定可见，`.workspace-details-content / .workspace-details-summary / .workspace-details-body` 则把首屏统一为紧凑摘要栅格、窄标签字段行与压缩复制控件，Conversation 与 Chat 只在详情内容内部保留差异化组件。`ConversationRuntimeProvider.tsx` 分离 `inspectorOpen` 与 `inspectorTabOpen`：`inspectorOpen` 只控制 Composer 配置面板，`inspectorTabOpen` 控制当前 `Model / Tools / MCP / Skills` 内容区；`toggleInspector(tab)` 在当前 tab 上再次触发时只切换内容区展开状态，不影响 workspace `Details` 浮层。
+- `shell.css` 通过 `.runtime-workspace-head.is-sticky`、`.workspace-header-status` 和标题按钮维护运行页共享的固定 workspace header 视觉状态：标题区吸顶、状态按钮按 `ready / busy / failed / interrupted / exited` 输出统一颜色反馈，但可见层只保留信号本身，并通过 `inline-flex` 信号槽直接复用会话列表 `.runtime-session-signal` 的中心点、描边与波纹规格；会话 `Details` 入口并入当前标题按钮，不再渲染独立右侧详情按钮。`.workspace-details-layer / .workspace-details-backdrop / .workspace-details-panel` 负责把详情面板挂到顶层浮层、限制最大可视区域、提供点击外部关闭与独立滚动容器，并通过更高层级、明确背景和 `dialog` 语义保证浮层稳定可见，`.workspace-details-content / .workspace-details-summary / .workspace-details-body` 则把首屏统一为紧凑摘要栅格、窄标签字段行与压缩复制控件，Conversation 与 Chat 只在详情内容内部保留差异化组件。`ConversationRuntimeProvider.tsx` 分离 `inspectorOpen` 与 `inspectorTabOpen`：`inspectorOpen` 只控制 Composer 配置面板，`inspectorTabOpen` 控制当前 `Model / Skills` 内容区；`toggleInspector(tab)` 在当前 tab 上再次触发时只切换内容区展开状态，不影响 workspace `Details` 浮层。Tools/MCP catalog 与会话 payload 能力继续保留，但不再由 Composer 配置面板直接切换。
 - `shell.css` 额外维护共享 header 状态信号样式：`.runtime-session-signal` 及其 `ready / busy / failed / interrupted / exited` 变体负责 workspace header 的微型中心点、双层波纹脉冲和红黄绿状态令牌，并在 `prefers-reduced-motion` 下回退为静态信号；会话列表不再使用该状态灯，改用 `.runtime-session-loading` 表达处理中状态。
 - `ScrollJumpStrip.tsx` 负责 Chat 的四键阅读定位条。目标计算以滚动容器内可见消息块或 Chat turn 为单位缓存测量结果，并在滚动、窗口 resize、DOM 变更、展开折叠和 watch key 变化时重算。`上一条` 在当前最上方可见块尚未对齐时先把该块对齐到顶部偏移；若该块已处在目标偏移位置，下一次点击直接指向它前一块，保证连续上跳不会卡在同一内容块。
 - `ConversationWorkspace.tsx` 在 Chat 时间线滚动容器上只监听 `scroll`：普通滚动到顶且本地仍有隐藏消息时展开下一批本地消息，已完全展开且服务端仍有更早 turns 时调用 `loadEarlierHistory()` 显式请求 `turn_before` 下一页，不再调用 `refreshActiveSession()`，也不注册额外触摸历史加载监听。Workspace 通过消息 id 顺序区分“旧消息前置”和“新消息追加”，显式分页前置旧消息只更新缓存与下一批历史，不触发回底，只有当前会话尾部真实追加用户消息时才按发送语义贴到底部。
@@ -211,6 +220,7 @@ Web input
 ### 验证策略
 
 - Web handler 测试覆盖会话创建、历史隔离、流式事件和取消语义。
+- 仓库绑定测试覆盖目录字段脱敏、结构化 input、会话级绑定冲突、准备状态持久化、重启恢复、clone 参数不含凭据、失败后同 turn 重试，以及前端独立 GitHub/附件按钮、草稿选择不创建会话、发送 payload、绑定 chip 与移动端选择面板。
 - Web handler 测试覆盖 `/api/chat/sessions/updates`：owner 隔离、`after_update_id` 续接、`latest_update_id` 推进、`limit / byte_limit` 传输预算、`visible_event_kinds` 过滤不可见 runtime steps 且 latest update 继续前进、更新 payload 不携带前端不消费运行元数据、轻量 `runtime_event` 不携带 `blocks`、事件窗口过期时返回 `resync_required`、HTTP input 断开不取消后端执行。
 - Chat application 测试覆盖 input 接受后先持久化 `busy` session 与 user turn，再通过 `SessionEventHook` 发布 `turn.started`；Codex runtime event 追加/更新、完成、失败和中断分别生成幂等 `turn.event.*` 与 turn 收口事件；服务重启或运行进程丢失后残留的孤儿 `busy / running` 会话必须在列表/详情读取和继续输入前校准为 `interrupted`，并持久化中断 entry 与 `Interrupted` runtime event。
 - 前端组件测试覆盖不创建浏览器长连接、重复 `update_id` 幂等丢弃、`resync_required` 触发单会话详情补拉、updates 命中时不对每个 `local_running / recovering` 会话固定周期拉完整详情、连续空 updates 或连续无相关进展只在第 6 次以及之后每 8 次触发 bounded detail 兜底，并覆盖推进 `updated_at` 的 busy update 不触发详情兜底、latest user-only 待水合状态继续短周期读取 owner updates、终态会话停止自动 updates/detail。

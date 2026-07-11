@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
   CHAT_RUNTIME_CACHE_SESSION_TTL_MS,
   buildRuntimeSessionUpdateAckManifest,
@@ -142,6 +142,39 @@ function RuntimeEventFilterHarness() {
   return <output data-testid="runtime-event-filter">{runtime.runtimeEventFilter.join("|")}</output>;
 }
 
+function RepositoryBindingHarness() {
+	const runtime = useConversationRuntimeComposer();
+	const [listed, setListed] = useState("");
+	return (
+		<div>
+			<button
+				type="button"
+				onClick={() => runtime.setDraftRepository({
+					id: "123456789",
+					fullName: "owner/repository",
+					private: true,
+					defaultBranch: "main",
+					updatedAt: Date.parse("2026-07-11T10:00:00Z"),
+				})}
+			>
+				select repository
+			</button>
+			<button type="button" onClick={() => void runtime.sendPrompt("Update retry behavior") }>
+				send repository prompt
+			</button>
+			<button
+				type="button"
+				onClick={() => void runtime.listRepositories("alter0").then((items) => setListed(items.map((item) => item.fullName).join("|")))}
+			>
+				list repositories
+			</button>
+			<output data-testid="draft-repository">{runtime.draftRepository?.fullName || ""}</output>
+			<output data-testid="bound-repository">{runtime.repositoryBinding?.fullName || ""}</output>
+			<output data-testid="listed-repositories">{listed}</output>
+		</div>
+	);
+}
+
 function SendMessageTextHarness() {
   const runtime = useConversationRuntime();
   return (
@@ -167,8 +200,8 @@ function InspectorHarness() {
       <button type="button" onClick={() => runtime.toggleInspector("model")}>
         model
       </button>
-      <button type="button" onClick={() => runtime.toggleInspector("capabilities")}>
-        capabilities
+      <button type="button" onClick={() => runtime.toggleInspector("skills")}>
+        skills
       </button>
       <output data-testid="inspector-state">
         {[
@@ -3769,6 +3802,88 @@ describe("ConversationRuntimeProvider", () => {
     ));
   });
 
+	it("keeps repository selection client-side until send and submits a structured reference", async () => {
+		apiClientMock.get.mockImplementation(async (path: string) => {
+			if (path === "/api/chat/repositories?query=alter0") {
+				return {
+					repositories: [{
+						id: "123456789",
+						full_name: "owner/repository",
+						private: true,
+						default_branch: "main",
+						updated_at: "2026-07-11T10:00:00Z",
+					}],
+				};
+			}
+			if (path === "/api/chat/sessions") {
+				return {
+					items: [{
+						id: "c_51jttwiv4yggqagk",
+						title: "Image session",
+						status: "ready",
+						created_at: "2026-04-23T03:30:00Z",
+						turns: [],
+					}],
+				};
+			}
+			return { items: [] };
+		});
+		apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+			if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
+				return {
+					session: {
+						id: "c_51jttwiv4yggqagk",
+						title: "Update retry behavior",
+						status: "busy",
+						created_at: "2026-04-23T03:30:00Z",
+						repository: {
+							provider: "github",
+							id: "123456789",
+							full_name: "owner/repository",
+							private: true,
+							default_branch: "main",
+							status: "preparing",
+							workspace_path: "repo",
+						},
+						turns: [{
+							id: "turn-1",
+							prompt: typeof body?.input === "string" ? body.input : "Update retry behavior",
+							status: "running",
+						}],
+					},
+				};
+			}
+			return {};
+		});
+
+		render(
+			<ConversationRuntimeProvider route="chat" language="en">
+				<RepositoryBindingHarness />
+			</ConversationRuntimeProvider>,
+		);
+
+		await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+		fireEvent.click(screen.getByRole("button", { name: "list repositories" }));
+		await waitFor(() => expect(screen.getByTestId("listed-repositories")).toHaveTextContent("owner/repository"));
+		fireEvent.click(screen.getByRole("button", { name: "select repository" }));
+		expect(screen.getByTestId("draft-repository")).toHaveTextContent("owner/repository");
+		expect(apiClientMock.post).not.toHaveBeenCalledWith("/api/chat/sessions", expect.anything());
+
+		fireEvent.click(screen.getByRole("button", { name: "send repository prompt" }));
+		await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+			"/api/chat/sessions/c_51jttwiv4yggqagk/input",
+			expect.objectContaining({
+				input: "Update retry behavior",
+				repository: {
+					provider: "github",
+					id: "123456789",
+					full_name: "owner/repository",
+				},
+			}),
+		));
+		await waitFor(() => expect(screen.getByTestId("bound-repository")).toHaveTextContent("owner/repository"));
+	});
+
   it("marks the chat session local-running without creating local stream process events after sending a prompt", async () => {
     vi.stubGlobal("fetch", vi.fn());
     apiClientMock.post.mockImplementation(async (path: string) => {
@@ -5111,8 +5226,8 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "model" }));
     expect(screen.getByTestId("inspector-state")).toHaveTextContent("model:details-open:tab-open");
 
-    fireEvent.click(screen.getByRole("button", { name: "capabilities" }));
-    expect(screen.getByTestId("inspector-state")).toHaveTextContent("capabilities:details-open:tab-open");
+    fireEvent.click(screen.getByRole("button", { name: "skills" }));
+    expect(screen.getByTestId("inspector-state")).toHaveTextContent("skills:details-open:tab-open");
   });
 
   it("adds a Codex option for Chat model selection and submits through ChatRuntime input", async () => {
