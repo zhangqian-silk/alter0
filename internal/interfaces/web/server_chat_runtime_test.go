@@ -174,6 +174,72 @@ func assertNoLegacyChatRuntimeAPIFields(t *testing.T, body string) {
 	}
 }
 
+func TestBuildChatRuntimeTurnDTOUsesCanonicalStringIDs(t *testing.T) {
+	turn := buildChatRuntimeTurnDTO(chatruntimeapp.TurnSummary{
+		ID:              "turn-7",
+		ClientRequestID: "request-123",
+		Prompt:          "hello",
+		Status:          "running",
+		RuntimeTraceEvents: []chatruntimeapp.RuntimeTraceEvent{{
+			ID:     "event-9",
+			Seq:    9,
+			Kind:   "reasoning",
+			Status: "completed",
+		}},
+	}, 1)
+
+	if turn["id"] != "turn-7" {
+		t.Fatalf("expected canonical turn id, got %#v", turn["id"])
+	}
+	if turn["client_request_id"] != "request-123" {
+		t.Fatalf("expected client request id, got %#v", turn["client_request_id"])
+	}
+	events := turn["runtime_trace_events"].([]map[string]any)
+	if events[0]["id"] != "event-9" {
+		t.Fatalf("expected canonical event id, got %#v", events[0]["id"])
+	}
+}
+
+func TestBuildSessionUpdateAPIUpdatesIncludesCanonicalTurnIDAndCreatedAt(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 10, 9, 30, 0, 123_000_000, time.UTC)
+	updates := buildSessionUpdateAPIUpdates([]sessionUpdateEvent{{
+		EventID:   42,
+		SessionID: "session-1",
+		TurnID:    "turn-7",
+		EventType: chatruntimeapp.SessionEventTurnStarted,
+		CreatedAt: createdAt,
+	}})
+	raw, err := json.Marshal(updates)
+	if err != nil {
+		t.Fatalf("marshal updates: %v", err)
+	}
+	var payload []map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("unmarshal updates: %v", err)
+	}
+	if payload[0]["turn_id"] != "turn-7" {
+		t.Fatalf("expected canonical turn id, got %#v", payload[0]["turn_id"])
+	}
+	if payload[0]["created_at"] != float64(createdAt.UnixMilli()) {
+		t.Fatalf("expected update creation time, got %#v", payload[0]["created_at"])
+	}
+}
+
+func TestPageChatRuntimeTurnsReturnsNoProgressForUnknownBeforeTurn(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/chat/sessions/session-1?turn_before=turn-missing", nil)
+	items, paging := pageChatRuntimeTurns([]chatruntimeapp.TurnSummary{
+		{ID: "turn-1"},
+		{ID: "turn-2"},
+	}, request)
+
+	if len(items) != 0 {
+		t.Fatalf("expected no page for invalid cursor, got %+v", items)
+	}
+	if paging.BeforeTurnFound {
+		t.Fatalf("expected invalid cursor metadata, got %+v", paging)
+	}
+}
+
 func TestChatRuntimeSessionCollectionHandlerCreatesSession(t *testing.T) {
 	service := &stubWebChatRuntimeService{
 		createResp: chatruntimedomain.Session{
@@ -381,6 +447,15 @@ func TestChatRuntimeSessionCollectionHandlerReturnsComparableSessionSummaries(t 
 		t.Fatalf("expected two session summaries, got %v", payload)
 	}
 	for _, session := range items {
+		allowed := map[string]bool{
+			"id": true, "title": true, "status": true, "pinned": true,
+			"created_at": true, "updated_at": true,
+		}
+		for key := range session {
+			if !allowed[key] {
+				t.Fatalf("expected lightweight list summary, found %q in %v", key, session)
+			}
+		}
 		if value, ok := session["updated_at"].(float64); !ok || value <= 0 {
 			t.Fatalf("expected updated_at in session summary, got %v", session)
 		}
@@ -510,8 +585,8 @@ func TestChatSessionUpdatesHandlerPrunesKnownRuntimeTraceEvents(t *testing.T) {
 	server := &Server{sessionEvents: newSessionUpdateBroker(8)}
 	server.sessionUpdateBroker().publishWithTurnID(chatSessionOwnerID, "chat-1", "turn-1", "turn.event.appended", map[string]any{
 		"session":       map[string]any{"id": "chat-1", "status": "busy"},
-		"turn":          map[string]any{"id": 1, "prompt": "hello", "status": "running"},
-		"runtime_event": map[string]any{"id": 3, "kind": "reasoning", "status": "running", "text": "missing 3"},
+		"turn":          map[string]any{"id": "turn-1", "prompt": "hello", "status": "running"},
+		"runtime_event": map[string]any{"id": "event-3", "kind": "reasoning", "status": "running", "text": "missing 3"},
 	})
 	body := strings.NewReader(`{
 		"after_update_id": 0,
@@ -520,8 +595,8 @@ func TestChatSessionUpdatesHandlerPrunesKnownRuntimeTraceEvents(t *testing.T) {
 		"sessions": [{
 			"id": "chat-1",
 			"turns": [{
-				"id": 1,
-				"event_ids": [1, 2]
+				"id": "turn-1",
+				"event_ids": ["event-1", "event-2"]
 			}]
 		}]
 	}`)
@@ -543,7 +618,7 @@ func TestChatSessionUpdatesHandlerPrunesKnownRuntimeTraceEvents(t *testing.T) {
 		t.Fatalf("expected one update, got %+v", payload.Updates)
 	}
 	event, ok := payload.Updates[0].Payload["runtime_event"].(map[string]any)
-	if !ok || event["id"] != float64(3) {
+	if !ok || event["id"] != "event-3" {
 		t.Fatalf("expected missing runtime_event 3, got %+v", payload.Updates[0].Payload)
 	}
 	session, _ := payload.Updates[0].Payload["session"].(map[string]any)
@@ -810,15 +885,15 @@ func TestChatRuntimeSessionEventHookPublishesMinimalTurnPatches(t *testing.T) {
 	if len(payload.Updates) != 2 {
 		t.Fatalf("expected two typed turn updates, got %+v", payload.Updates)
 	}
-	if payload.Updates[0].Type != chatruntimeapp.SessionEventTurnEventAppended || payload.Updates[0].TurnID != 1 {
+	if payload.Updates[0].Type != chatruntimeapp.SessionEventTurnEventAppended || payload.Updates[0].TurnID != "turn-1" {
 		t.Fatalf("expected first update to be turn event patch, got %+v", payload.Updates[0])
 	}
-	if payload.Updates[1].Type != chatruntimeapp.SessionEventTurnCompleted || payload.Updates[1].TurnID != 1 {
+	if payload.Updates[1].Type != chatruntimeapp.SessionEventTurnCompleted || payload.Updates[1].TurnID != "turn-1" {
 		t.Fatalf("expected second update to be turn completion, got %+v", payload.Updates[1])
 	}
 	firstRaw, _ := json.Marshal(payload.Updates[0].Payload)
 	firstBody := string(firstRaw)
-	if !strings.Contains(firstBody, `"runtime_event":`) || !strings.Contains(firstBody, `"id":2`) || !strings.Contains(firstBody, `"kind":"commands"`) {
+	if !strings.Contains(firstBody, `"runtime_event":`) || !strings.Contains(firstBody, `"id":"event-1"`) || !strings.Contains(firstBody, `"kind":"commands"`) {
 		t.Fatalf("expected one runtime event patch in update payload, got %q", firstBody)
 	}
 	if strings.Contains(firstBody, `"old-event"`) {
@@ -988,6 +1063,57 @@ func TestChatRuntimeSessionItemHandlerWritesInput(t *testing.T) {
 	events, _, _, _ := server.sessionUpdateBroker().poll(chatSessionOwnerID, 0, 10, 1024*1024)
 	if len(events) != 0 {
 		t.Fatalf("input handler must not publish a duplicate session.updated event; application turn.started owns runtime updates, got %+v", events)
+	}
+}
+
+func TestChatRuntimeSessionItemHandlerForwardsClientRequestID(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		inputResp: chatruntimedomain.Session{ID: "chatRuntime-2", OwnerID: chatSessionOwnerID},
+	}
+	server := &Server{chatRuntimes: service}
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", bytes.NewBufferString(`{"input":"pwd","client_request_id":"request-123"}`))
+	rec := httptest.NewRecorder()
+
+	server.chatSessionItemHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	encoded, err := json.Marshal(service.inputReq)
+	if err != nil {
+		t.Fatalf("marshal input request: %v", err)
+	}
+	if !strings.Contains(string(encoded), "request-123") {
+		t.Fatalf("expected client request id to be forwarded, got %s", encoded)
+	}
+}
+
+func TestChatSessionEndpointsDisableHTTPResponseCaching(t *testing.T) {
+	service := &stubWebChatRuntimeService{
+		getResp:   chatruntimedomain.Session{ID: "session-1", OwnerID: chatSessionOwnerID},
+		getOK:     true,
+		inputResp: chatruntimedomain.Session{ID: "session-1", OwnerID: chatSessionOwnerID},
+	}
+	server := &Server{chatRuntimes: service, sessionEvents: newSessionUpdateBroker(8)}
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		request *http.Request
+	}{
+		{name: "list", handler: server.chatSessionCollectionHandler, request: httptest.NewRequest(http.MethodGet, "/api/chat/sessions", nil)},
+		{name: "detail", handler: server.chatSessionItemHandler, request: httptest.NewRequest(http.MethodGet, "/api/chat/sessions/session-1", nil)},
+		{name: "input", handler: server.chatSessionItemHandler, request: httptest.NewRequest(http.MethodPost, "/api/chat/sessions/session-1/input", strings.NewReader(`{"input":"hello"}`))},
+		{name: "updates", handler: server.chatSessionUpdatesHandler, request: httptest.NewRequest(http.MethodPost, "/api/chat/sessions/updates", strings.NewReader(`{"after_update_id":0}`))},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			tt.handler(recorder, tt.request)
+			if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("expected Cache-Control no-store, got %q", got)
+			}
+		})
 	}
 }
 
@@ -1457,7 +1583,7 @@ func TestChatRuntimeSessionItemHandlerPagesTurnsInSessionDetail(t *testing.T) {
 	if len(turns) != 2 {
 		t.Fatalf("expected two turns, got %d", len(turns))
 	}
-	if turns[0].(map[string]any)["id"] != float64(3) || turns[1].(map[string]any)["id"] != float64(4) {
+	if turns[0].(map[string]any)["id"] != "turn-3" || turns[1].(map[string]any)["id"] != "turn-4" {
 		t.Fatalf("expected latest turn page, got %v", turns)
 	}
 	paging := session["turns_paging"].(map[string]any)
@@ -1509,7 +1635,7 @@ func TestChatRuntimeSessionItemHandlerUsesCompactDefaultTurnPage(t *testing.T) {
 	if len(page) != 20 {
 		t.Fatalf("expected compact default page of 20 turns, got %d", len(page))
 	}
-	if page[0].(map[string]any)["id"] != float64(26) || page[len(page)-1].(map[string]any)["id"] != float64(45) {
+	if page[0].(map[string]any)["id"] != "turn-26" || page[len(page)-1].(map[string]any)["id"] != "turn-45" {
 		t.Fatalf("expected latest compact turn page, got first=%v last=%v", page[0], page[len(page)-1])
 	}
 	paging := session["turns_paging"].(map[string]any)
@@ -1559,7 +1685,7 @@ func TestChatRuntimeSessionItemHandlerCapsTurnPageByApproximatePayloadSize(t *te
 	if len(page) >= len(turns) {
 		t.Fatalf("expected payload budget to return fewer turns than requested, got %d", len(page))
 	}
-	if page[len(page)-1].(map[string]any)["id"] != float64(5) {
+	if page[len(page)-1].(map[string]any)["id"] != "turn-5" {
 		t.Fatalf("expected capped page to keep the latest turn, got %v", page)
 	}
 	paging := session["turns_paging"].(map[string]any)
@@ -1604,7 +1730,7 @@ func TestChatRuntimeSessionItemHandlerDefaultTurnPageKeepsRecentLargeContext(t *
 	if len(page) != 2 {
 		t.Fatalf("expected default detail page to keep two recent large turns, got %d", len(page))
 	}
-	if page[0].(map[string]any)["id"] != float64(2) || page[1].(map[string]any)["id"] != float64(3) {
+	if page[0].(map[string]any)["id"] != "turn-2" || page[1].(map[string]any)["id"] != "turn-3" {
 		t.Fatalf("expected latest two large turns, got %v", page)
 	}
 	paging := session["turns_paging"].(map[string]any)
@@ -1726,7 +1852,7 @@ func TestChatRuntimeSessionItemHandlerReturnsRuntimeTraceEventDetail(t *testing.
 	if !ok {
 		t.Fatalf("expected event payload, got %v", payload)
 	}
-	if event["id"] != float64(1) || event["kind"] != "commands" || event["status"] != "completed" || event["text"] != "pwd" {
+	if event["id"] != "event-1" || event["kind"] != "commands" || event["status"] != "completed" || event["text"] != "pwd" {
 		t.Fatalf("expected lightweight runtime event detail, got %v", event)
 	}
 	if _, hasTurnID := event["turn_id"]; hasTurnID {

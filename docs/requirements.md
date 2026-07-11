@@ -1,6 +1,6 @@
 # Requirements
 
-> Last update: 2026-07-08
+> Last update: 2026-07-10
 
 `alter0` 的需求清单按领域模型维护。后续新增需求不再使用线性编号，也不按提交顺序堆叠；需求应落到对应领域、子域与能力项下，使用稳定领域路径表达，例如 `runtime.execution.cli-runtime`、`memory.files.injection`、`task.workspace.runtime`。
 
@@ -122,11 +122,12 @@
 - 窄屏主工作区按页面类型收口为贴顶起始区：普通 `page-mode` 路由页继续采用“两行头部 + 贴顶正文起始区”节奏，第一行承载抽屉入口与主操作，第二行承载当前标题；`Chat` 在真手机宽度下统一收敛为单层运行页 workbar，左侧保留 `Menu`，中间显示“状态信号 + 当前会话标题”的单行标题按钮，右侧固定承载 `New`，通过点击真实会话标题打开 `Details`，草稿/占位 `New` 标题不触发详情，不再把 `Details` 作为独立顶部按钮或再叠一层 header。所有页面都不得在顶部遗留额外大块留白。
 - 窄屏 `Chat` 工作区顶部固定保留统一运行页入口：Chat都通过 `Menu` 进入左侧主导航抽屉，`New` 直接创建当前路由对应的新会话；标题区需要稳定承载当前会话名和状态信号，并作为 `Details` 的直接触发入口，不再出现移动端无导航入口、标题缺席或只能依赖正文内按钮切换会话的状态。
 - `Chat` 工作区头部固定为共享单行 header：桌面与中宽度继续保留会话标题、状态按钮和 `Details` 入口；真手机宽度则把 `Details` 下沉到中间标题按钮。`Details` 只承载会话元信息；模型与 Skills 调整统一通过底部 Composer 工具栏的 `Session` 按钮进入，Tools / MCP 不再提供独立 Composer 面板；GitHub 仓库选择使用独立图标，不能复用附件按钮。Chat 模型区除常规 Provider / Model 外，稳定提供内置 `Codex` 直选项，选中后仅影响后续消息，并把执行链显式切到 `Codex Direct`。`/chat` 不再提供独立目标选择、Deliverables、Session Profile 或独立 Skill 配置面板。
-- `Chat` 在页面从后台恢复到前台、浏览器重新把当前页激活为可见页、bfcache 恢复或网络恢复在线时，只对仍处于 `local_running / recovering`、缓存不完整或存在可恢复占位的会话执行 page-activation 补偿；稳定 `ready` 会话不因 focus/pageshow/online 自动刷新 owner 列表、详情或 updates。若增量窗口过期、服务重启后要求 resync、用户显式刷新或本地缓存不完整，再补拉当前活动会话详情；运行中的 `local_running / recovering` 会话优先通过 owner updates 合并，只有 `resync_required`、显式详情恢复或 updates 未产生相关会话进展时才强制回源。页面隐藏时暂停高频轮询，不再通过后台 Task API 轮询 Chat 状态。
-- Chat 单会话详情默认只返回最新 `20` 个 turns，并按约 `1MiB` 的前端 API turn DTO 页预算控制单次响应体；长会话通过 `turn_limit` 与 `turn_before` 按批次读取。分页响应必须带 `turns_paging`，其中包含数量边界与 `byte_limit / approx_bytes`；前端刷新、轮询和恢复时按 turn/message id 合并新片段，不得因轻量响应覆盖已加载历史，也不得让后台补页改变当前阅读窗口或滚动位置。更早历史分页只能由用户点击 `Load earlier messages` 或滚到顶部触发；不得在会话进入稳定态后自动后台补页并实时更新当前时间线。集合接口属于轻量 summary 契约，只能用于列表、排序、状态和新鲜度判断，不得因摘要响应携带空 `turns` 推进本地详情新鲜度或判定详情已加载。
-- `Chat` 发送输入时必须先更新当前 route 的浏览器会话缓存，再提交 React 可见状态；用户消息、附件引用、busy 状态、当前活动会话和最近会话列表都应立即进入本地快照。服务端 input 响应、增量轮询事件、会话列表刷新和详情回源到达后，只按 session/turn/message id 追加或修正差异，不得整段清空后重建时间线，也不得用较旧摘要移除本地已追加但仍可恢复的消息。前端合并必须区分 `summary / detail / event` 来源：summary 不得替换 messages、不得降低本地详情新鲜度、不得清空已加载 step detail；detail 与 event 才能合并 turns 并推进详情新鲜度。
+- `Chat` 在页面隐藏时停止轮询。回到前台的后台时长不足 5 分钟时，稳定 `ready` 会话不得请求列表或详情，本机已提交但未完成的会话只恢复 owner updates；后台时长达到 5 分钟时，必须拉取一次轻量全量列表并补拉当前活动会话最新详情。首次进入先展示浏览器缓存，再拉轻量全量列表与当前详情；用户显式刷新同样同时刷新列表与当前详情。若增量窗口过期、服务重启要求 resync、缓存不完整或 updates 长期没有产生实际会话进展，再补拉必要详情。focus/pageshow/online 的重复事件需去抖，页面隐藏期间不得启动新请求。
+- Chat 单会话详情默认只返回最新 `20` 个 turns，并按约 `1MiB` 的前端 API turn DTO 页预算控制单次响应体；summary、turns 与分页边界必须来自应用层同一次原子快照。长会话通过 `turn_limit` 与 `turn_before` 按批次读取；无效 `turn_before` 必须显式返回 `before_turn_found=false` 和空页，不得静默回到最新页。分页响应必须带 `turns_paging`，其中包含数量边界与 `byte_limit / approx_bytes`；更早历史只允许添加未知 turn，不得修改已存在 turn、最新详情新鲜度或当前阅读窗口。集合接口固定只返回 `id / title / status / created_at / updated_at / pinned` 与可选的脱敏 repository binding，成功响应对服务端会话成员关系具有权威性，摘要不得携带或清空 turns。
+- `Chat` 发送输入时必须先把带 `client_request_id` 的 optimistic user message 写入当前 route 状态和浏览器缓存，再发起 input 请求；服务端对应 turn 必须回传同一 `client_request_id` 完成对账。会话运行态只能通过共享 runtime controller 的单一提交入口修改；React effect、ref 和持久缓存不得把旧副本再次合并回运行态。服务端 input、updates、列表和详情响应必须先校验目标 session、请求代次、`update_id` 与内容 `updated_at`，旧响应在任何 message/turn 合并前整体拒绝。summary 只更新列表字段，title/pin 变化不得推进内容 `updated_at` 或重写内容缓存；detail/event 才能推进内容。
+- 浏览器缓存按个人单设备首屏恢复设计：全部会话只持久化轻量 summary，完整内容最多保留当前会话与最近 4 个会话；附件 data URL、按需加载的 runtime event blocks 不得进入长期快照。会话切换不得拉列表；仅在内容缺失、缓存损坏、summary `updated_at` 新于内容时间、未完成会话没有活跃 updates，或用户显式刷新时拉详情。匹配 `updated_at` 的稳定已加载会话必须直接展示且不发详情请求。
 - `Chat` 是唯一对话运行时，工作台一级入口统一为 `/chat`、`/settings`；`/chat` 挂载 Conversation runtime UI，并使用单一 Chat owner、API、active session 与草稿缓存命名空间。当前活动会话稳定反映到 URL query，统一写入后端生成的短 canonical id，格式为 `session_id=c_<16位小写字母数字>`；典型入口为 `/chat?session_id=c_x8k4p9m2q7vd3n6a`，恢复对应 Chat 会话模型。该 id 同时作为列表、详情接口、updates、持久化文件和工作区路径的唯一会话标识，前端不再维护临时引用到完整 id 的映射。
-- `Chat` 首页 Composer、会话列表项与 `Details` 面板需维持同一套浅色 runtime 表面系统：Composer 采用单一胶囊式助手输入面板，主 textarea 无内边框并与底部工具行处在同一白色 surface 内；Chat 工具行不再显示 `Session` 设置入口，Chat 工具行左侧继续提供无边框会话设置、附件与必要 meta，右侧收口发送动作。桌面端按主阅读宽度居中，移动端控制输入高度、底部留白和发送按钮体量，并保持输入区具备足够横向留白；Chat 不得为 Composer 外壳覆盖更深背景、更低底部 padding 或外层状态 note 行，失败、退出与附件错误提示需进入共享工具栏 meta。PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，除 Composer 胶囊外不通过额外圆角、边框或厚阴影表达层级；详情面板需保留清晰标题栏、显式关闭按钮、紧凑摘要栅格和轻量字段分隔，会话列表项和详情面板不再退回旧式轻表单或松散卡片观感；空态工作区使用低对比网格与细弧线背景，同时禁止保留可拖拽滚动，不得把头部操作行或输入区顶出可视区。
+- `Chat` 首页 Composer、会话列表项与 `Details` 面板需维持同一套浅色 runtime 表面系统：Composer 采用单一胶囊式助手输入面板，主 textarea 无内边框并与底部工具行处在同一白色 surface 内；Chat 工具行左侧依次提供无边框 `Session`、独立 GitHub 仓库、附件与必要 meta，右侧收口发送动作，GitHub 与附件不得复用同一图标或按钮。桌面端按主阅读宽度居中，移动端控制输入高度、底部留白和发送按钮体量，并保持输入区具备足够横向留白；Chat 不得为 Composer 外壳覆盖更深背景、更低底部 padding 或外层状态 note 行，失败、退出与附件错误提示需进入共享工具栏 meta。PC 端上传、发送、状态、详情、流程入口与弹窗动作保持平面化，除 Composer 胶囊外不通过额外圆角、边框或厚阴影表达层级；详情面板需保留清晰标题栏、显式关闭按钮、紧凑摘要栅格和轻量字段分隔，会话列表项和详情面板不再退回旧式轻表单或松散卡片观感；空态工作区使用低对比网格与细弧线背景，同时禁止保留可拖拽滚动，不得把头部操作行或输入区顶出可视区。
 - `Chat` 的桌面端草稿输入必须保持低延迟：仅因未发送草稿变化时，不得同步重建整条消息时间线、Markdown 正文或 `Process` 结构；浏览器草稿缓存允许延迟落盘，但不得影响当前输入内容、会话切换后的草稿恢复与发送结果。
 - `1100px` 及以下的移动工作台需优先保证真机滚动与抽屉切换流畅度：主工作区、Conversation/Chat 抽屉遮罩、抽屉面板本体与运行页容器不得继续依赖大面积 `backdrop-filter`、持续背景光晕或其他会导致整页重绘的装饰层，统一保持静态浅色表面。
 - `Chat` 窄屏工作区头部不得重复输出内部会话入口；`Sessions` 入口统一由壳层头部提供并打开左侧主导航抽屉，工作区头部仅保留与当前会话直接相关的操作。
@@ -164,7 +165,7 @@
 - 直连 Codex 的 Chat 会话会在各自工作区下额外维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Chat 使用 `.alter0/codex-runtime/thread.json` 保存 Codex CLI thread id，Chat 使用 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json` 保存北京时间 05:00 归档日对应的 Codex CLI thread id；Chat 会话会在 `.alter0/workspaces/chat/sessions/<chat_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
 - Chat 是独立会话式运行时代理，持久化 Codex CLI 线程标识、会话状态、标题、工作区、日志与 `RuntimeTraceEvent` 视图索引。
 - Chat API 支持会话创建、列表、恢复、输入、删除、详情读取以及 turn/runtime event 明细读取，前端可按事件展开或检索执行细节。
-- Chat 会话态统一为 `ready / busy / exited / interrupted`，执行态在 turn/runtime event 维度维护 `running / completed / failed / interrupted`；运行态退出、失败或中断后保留历史，Composer 不得因失败占位或未回答的历史 user turn 长期锁定，继续发送即可恢复。
+- Chat 会话态统一为 `ready / busy / failed / exited / interrupted`，执行态在 turn/runtime event 维度维护 `running / completed / failed / interrupted`；请求失败时 session 与 turn 同步进入 `failed` 终态，但 failed session 仍可接受下一条输入并重新进入 busy。运行态退出、失败或中断后保留历史；Composer 只由真实 busy 状态锁定，不得因失败占位、未回答的历史 user turn，或历史 `ready` summary 与 failed turn 的同毫秒时间戳长期锁定，继续发送即可恢复。
 - Chat 恢复默认优先复用已持久化 Codex CLI 线程；若续写命中远端 compact 失败，则保留原会话历史、工作区和线程标识，下一次输入继续 resume 同一 Codex CLI 线程。
 - Chat 会话删除统一从左侧会话列表触发，`Delete` 会同步清理状态文件和独立工作区；工作区头部不再提供单独的 `Close` 入口。删除成功后，无论删除的是历史会话还是当前活动会话，当前会话列表所在的左侧导航抽屉都保持删除前的展开状态，便于继续清理其他会话；用户随后通过 `Menu` 或抽屉外部遮罩主动关闭时，抽屉必须正常收起。前端在后续列表刷新、轮询和 page-activation 补偿刷新中也不得把该会话重新补回，直到服务端列表稳定反映删除结果。
 - Chat 历史在同一 Web 登录态下跨设备共享，不按浏览器 client 标识隔离；不设置产品级会话数量上限或固定超时淘汰。

@@ -3,7 +3,7 @@
 ## 覆盖范围
 
 - Chat runtime session status 归一。
-- 会话 open 状态与输入可用性判断。
+- 会话 open 状态与输入可用性判断，覆盖 busy 拒绝与 failed 终态允许重试。
 
 ## 边界
 

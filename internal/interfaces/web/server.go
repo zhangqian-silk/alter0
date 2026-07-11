@@ -140,6 +140,10 @@ type chatRuntimeService interface {
 	RetryRepository(ownerID string, sessionID string) (chatruntimedomain.Session, error)
 }
 
+type chatRuntimeDetailSnapshotService interface {
+	GetDetail(ownerID string, sessionID string) (chatruntimeapp.SessionDetail, bool)
+}
+
 type chatRuntimeSessionEventHookSetter interface {
 	SetSessionEventHook(chatruntimeapp.SessionEventHook)
 }
