@@ -17,6 +17,23 @@ function resolveScopedTempPath(prefix, rootDir = __dirname) {
   return path.join(os.tmpdir(), `${prefix}-${scope}`);
 }
 
+function resolvePlaywrightRuntimeRoot(env = process.env, randomBytes = crypto.randomBytes) {
+  const explicitTestRoot = String(env.ALTER0_PLAYWRIGHT_RUNTIME_ROOT || "").trim();
+  if (explicitTestRoot) {
+    const resolvedRoot = path.resolve(explicitTestRoot);
+    const systemTempRoot = path.resolve(os.tmpdir());
+    if (
+      path.dirname(resolvedRoot) !== systemTempRoot
+      || !path.basename(resolvedRoot).startsWith("alter0-playwright-")
+    ) {
+      throw new Error("ALTER0_PLAYWRIGHT_RUNTIME_ROOT must be a direct alter0-playwright-* child of the system temp directory");
+    }
+    return resolvedRoot;
+  }
+  const isolatedSuffix = randomBytes(8).toString("hex");
+  return `${resolveScopedTempPath("alter0-playwright-runtime")}-${isolatedSuffix}`;
+}
+
 function readCachedPassword(filePath) {
   try {
     return String(fs.readFileSync(filePath, "utf8") || "").trim();
@@ -53,11 +70,8 @@ function buildPlaywrightEnv(env = process.env, randomBytes = crypto.randomBytes)
   const goCacheDir = String(env.GOCACHE || "").trim() || resolveScopedTempPath("alter0-playwright-go-build");
   const xdgCacheHome = String(env.XDG_CACHE_HOME || "").trim() || resolveScopedTempPath("alter0-playwright-cache");
   const browserCacheDir = String(env.ALTER0_PLAYWRIGHT_BROWSERS_PATH || "").trim() || resolveScopedTempPath("alter0-playwright-browsers");
-  const explicitRuntimeRoot = String(env.ALTER0_RUNTIME_ROOT || "").trim();
-  const runtimeRoot = explicitRuntimeRoot || resolveScopedTempPath("alter0-playwright-runtime");
-  if (!explicitRuntimeRoot) {
-    fs.rmSync(runtimeRoot, { recursive: true, force: true });
-  }
+  const runtimeRoot = resolvePlaywrightRuntimeRoot(env, randomBytes);
+  fs.rmSync(runtimeRoot, { recursive: true, force: true });
   fs.mkdirSync(goCacheDir, { recursive: true });
   fs.mkdirSync(xdgCacheHome, { recursive: true });
   fs.mkdirSync(browserCacheDir, { recursive: true });
@@ -65,6 +79,9 @@ function buildPlaywrightEnv(env = process.env, randomBytes = crypto.randomBytes)
   const resolvedEnv = {
     ...env,
     ALTER0_RUNTIME_ROOT: runtimeRoot,
+    ALTER0_STORAGE_DIR: "",
+    ALTER0_CODEX_WORKSPACE_ROOT: "",
+    ALTER0_PLAYWRIGHT_RUNTIME_ROOT: "",
     ALTER0_WEB_LOGIN_PASSWORD: loginPassword,
     ALTER0_PLAYWRIGHT_BROWSERS_PATH: browserCacheDir,
     ALTER0_PLAYWRIGHT_PASSWORD_FILE: cachePath,
@@ -72,7 +89,6 @@ function buildPlaywrightEnv(env = process.env, randomBytes = crypto.randomBytes)
     PLAYWRIGHT_BROWSERS_PATH: browserCacheDir,
     XDG_CACHE_HOME: xdgCacheHome,
   };
-  delete resolvedEnv.ALTER0_STORAGE_DIR;
   return resolvedEnv;
 }
 
@@ -80,6 +96,7 @@ module.exports = {
   buildPlaywrightEnv,
   generateRandomE2EPassword,
   resolvePasswordCachePath,
+  resolvePlaywrightRuntimeRoot,
   resolveScopedTempPath,
   resolveE2ELoginPassword,
 };

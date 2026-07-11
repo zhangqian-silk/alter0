@@ -13,7 +13,10 @@ import (
 	execdomain "alter0/internal/execution/domain"
 )
 
-const chatRuntimeStateDirectoryName = "state"
+const (
+	chatRuntimeStateDirectoryName   = "state"
+	chatRuntimeHistoryDirectoryName = "history"
+)
 
 type persistedSessionRecord struct {
 	Summary       chatruntimedomain.Session `json:"summary"`
@@ -542,6 +545,98 @@ func resolveChatRuntimeSessionStateFilePath(baseDir string, sessionID string) (s
 		return "", ErrSessionRecoverIDRequired
 	}
 	return filepath.Join(dir, sanitizedSessionID+".json"), nil
+}
+
+func resolveChatRuntimeHistoryExportPath(baseDir string, sessionID string) (string, error) {
+	stateDir, err := resolveChatRuntimeSessionStatePath(baseDir)
+	if err != nil {
+		return "", err
+	}
+	sanitizedSessionID := sanitizeWorkspaceSegment(sessionID)
+	if sanitizedSessionID == "" {
+		return "", ErrSessionRecoverIDRequired
+	}
+	return filepath.Join(filepath.Dir(stateDir), chatRuntimeHistoryDirectoryName, sanitizedSessionID+".md"), nil
+}
+
+func exportChatRuntimeHistoryLocked(baseDir string, item *runtimeSession, exportedAt time.Time) (string, error) {
+	if item == nil {
+		return "", ErrSessionNotFound
+	}
+	path, err := resolveChatRuntimeHistoryExportPath(baseDir, item.summary.ID)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("prepare chatRuntime history export: %w", err)
+	}
+	content := renderChatRuntimeHistoryMarkdownLocked(item, exportedAt)
+	tempPath := path + ".tmp"
+	if err := os.WriteFile(tempPath, []byte(content), 0o644); err != nil {
+		return "", fmt.Errorf("write chatRuntime history export: %w", err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		_ = os.Remove(tempPath)
+		return "", fmt.Errorf("commit chatRuntime history export: %w", err)
+	}
+	return path, nil
+}
+
+func renderChatRuntimeHistoryMarkdownLocked(item *runtimeSession, exportedAt time.Time) string {
+	title := strings.TrimSpace(item.summary.Title)
+	if title == "" {
+		title = item.summary.ID
+	}
+	lines := []string{
+		"# Alter0 会话历史",
+		"",
+		"- 会话：`" + item.summary.ID + "`",
+		"- 标题：" + title,
+		"- 导出时间：" + exportedAt.UTC().Format(time.RFC3339),
+		"",
+		"> 该文件保存 Alter0 已持久化的用户消息和助手最终回复。原 Codex thread 已丢失，不能恢复其隐藏上下文。",
+	}
+	for index, turn := range item.turns {
+		if turn == nil {
+			continue
+		}
+		lines = append(lines,
+			"",
+			fmt.Sprintf("## 第 %d 轮", index+1),
+			"",
+			"### 用户",
+			"",
+			strings.TrimSpace(turn.Prompt),
+		)
+		if len(turn.Attachments) > 0 {
+			lines = append(lines, "", "附件：")
+			for _, attachment := range turn.Attachments {
+				name := strings.TrimSpace(attachment.Name)
+				if name == "" {
+					name = "未命名附件"
+				}
+				lines = append(lines, "- "+name)
+			}
+		}
+		if output := strings.TrimSpace(turn.FinalOutput); output != "" && !isCodexRolloutRecoveryTurn(turn) {
+			lines = append(lines, "", "### 助手", "", output)
+		} else {
+			lines = append(lines, "", "### 助手", "", "（本轮未产生最终回复）")
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
+}
+
+func isCodexRolloutRecoveryTurn(turn *runtimeTurn) bool {
+	if turn == nil {
+		return false
+	}
+	for _, event := range turn.events {
+		if event != nil && strings.EqualFold(strings.TrimSpace(event.Title), "Thread history unavailable") {
+			return true
+		}
+	}
+	return false
 }
 
 func removeChatRuntimeSessionStateFile(path string) error {
