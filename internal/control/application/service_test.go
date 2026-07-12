@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	controldomain "alter0/internal/control/domain"
@@ -143,6 +145,47 @@ func TestUnifiedSkillAndMCPStorage(t *testing.T) {
 	mcps := service.ListMCPs()
 	if len(mcps) != 1 || mcps[0].Type != controldomain.CapabilityTypeMCP {
 		t.Fatalf("unexpected mcp list: %+v", mcps)
+	}
+}
+
+func TestCapabilityChangeHookRunsForSkillLifecycleAndRollsBackFailures(t *testing.T) {
+	service := NewService()
+	observed := make([][]controldomain.Capability, 0)
+	service.SetCapabilityChangeHook(func(items []controldomain.Capability) error {
+		observed = append(observed, items)
+		for _, item := range items {
+			if item.ID == "broken" {
+				return errors.New("native skill reconcile failed")
+			}
+		}
+		return nil
+	})
+
+	if err := service.UpsertSkill(controldomain.Skill{ID: "summary", Name: "Summary", Enabled: true, Scope: controldomain.CapabilityScopeGlobal}); err != nil {
+		t.Fatalf("upsert skill: %v", err)
+	}
+	if len(observed) != 1 || len(observed[0]) != 1 || observed[0][0].ID != "summary" {
+		t.Fatalf("unexpected hook snapshots: %+v", observed)
+	}
+	if _, err := service.SetCapabilityEnabled(controldomain.CapabilityTypeSkill, "summary", false); err != nil {
+		t.Fatalf("disable skill: %v", err)
+	}
+	if len(observed) != 2 || observed[1][0].Enabled {
+		t.Fatalf("expected disabled snapshot, got %+v", observed)
+	}
+	if err := service.UpsertMCP(controldomain.Capability{ID: "filesystem", Name: "Filesystem", Enabled: true, Scope: controldomain.CapabilityScopeGlobal}); err != nil {
+		t.Fatalf("upsert MCP: %v", err)
+	}
+	if len(observed) != 2 {
+		t.Fatalf("expected MCP lifecycle not to reconcile native skills, got %+v", observed)
+	}
+
+	err := service.UpsertSkill(controldomain.Skill{ID: "broken", Name: "Broken", Enabled: true, Scope: controldomain.CapabilityScopeGlobal})
+	if err == nil || !strings.Contains(err.Error(), "native skill reconcile failed") {
+		t.Fatalf("expected hook failure, got %v", err)
+	}
+	if _, ok := service.ResolveSkill("broken"); ok {
+		t.Fatal("expected failed lifecycle mutation rolled back")
 	}
 }
 

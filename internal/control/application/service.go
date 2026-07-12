@@ -30,11 +30,21 @@ type Store interface {
 }
 
 type Service struct {
-	mu           sync.RWMutex
-	channels     map[string]controldomain.Channel
-	capabilities map[string]controldomain.Capability
-	audits       []controldomain.CapabilityAudit
-	store        Store
+	mu                   sync.RWMutex
+	channels             map[string]controldomain.Channel
+	capabilities         map[string]controldomain.Capability
+	audits               []controldomain.CapabilityAudit
+	store                Store
+	capabilityChangeHook func([]controldomain.Capability) error
+}
+
+func (s *Service) SetCapabilityChangeHook(hook func([]controldomain.Capability) error) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.capabilityChangeHook = hook
 }
 
 func NewService() *Service {
@@ -170,6 +180,19 @@ func (s *Service) UpsertCapability(capability controldomain.Capability) error {
 		s.audits = s.audits[:previousAuditLen]
 		return err
 	}
+	if normalized.Type == controldomain.CapabilityTypeSkill {
+		if err := s.notifyCapabilityChangeLocked(); err != nil {
+			if existed {
+				s.capabilities[key] = previous
+			} else {
+				delete(s.capabilities, key)
+			}
+			s.audits = s.audits[:previousAuditLen]
+			_ = s.storeLocked()
+			_ = s.notifyCapabilityChangeLocked()
+			return err
+		}
+	}
 	return nil
 }
 
@@ -198,6 +221,15 @@ func (s *Service) DeleteCapability(capabilityType controldomain.CapabilityType, 
 		s.capabilities[key] = previous
 		s.audits = s.audits[:previousAuditLen]
 		return false
+	}
+	if capabilityType == controldomain.CapabilityTypeSkill {
+		if err := s.notifyCapabilityChangeLocked(); err != nil {
+			s.capabilities[key] = previous
+			s.audits = s.audits[:previousAuditLen]
+			_ = s.storeLocked()
+			_ = s.notifyCapabilityChangeLocked()
+			return false
+		}
 	}
 	return true
 }
@@ -228,6 +260,15 @@ func (s *Service) SetCapabilityEnabled(capabilityType controldomain.CapabilityTy
 		s.capabilities[key] = previous
 		s.audits = s.audits[:previousAuditLen]
 		return controldomain.Capability{}, err
+	}
+	if capabilityType == controldomain.CapabilityTypeSkill {
+		if err := s.notifyCapabilityChangeLocked(); err != nil {
+			s.capabilities[key] = previous
+			s.audits = s.audits[:previousAuditLen]
+			_ = s.storeLocked()
+			_ = s.notifyCapabilityChangeLocked()
+			return controldomain.Capability{}, err
+		}
 	}
 	return cloneCapability(capability), nil
 }
@@ -376,6 +417,16 @@ func (s *Service) storeLocked() error {
 		cloneAudits(s.audits),
 	); err != nil {
 		return fmt.Errorf("store control state: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) notifyCapabilityChangeLocked() error {
+	if s.capabilityChangeHook == nil {
+		return nil
+	}
+	if err := s.capabilityChangeHook(snapshotCapabilities(s.capabilities)); err != nil {
+		return fmt.Errorf("apply capability lifecycle: %w", err)
 	}
 	return nil
 }

@@ -64,8 +64,8 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 
 - 执行端口只表达执行契约，不直接绑定具体模型。
 - Runtime Resolver 按优先级执行：显式 `alter0.execution.engine=codex`、空执行器或 `auto` 均进入 `Codex Direct`；显式 `alter0.execution.engine=claude` 或携带 `alter0.llm.provider_id` 时解析对应 Provider 并进入 `Claude Code + provider profile`；Provider 不可用时回到 `Codex Direct`。Claude Code 执行失败时返回原始错误，不自动切换到 Codex。
-- Claude Code 运行时启动前需要注入 `CLAUDE.md`、provider profile、Skill、Memory、MCP 和工作区事实。
-- Codex Direct 运行时启动前需要注入 `AGENTS.md`、独立 `CODEX_HOME/config.toml`、Skill、Memory、MCP 和工作区事实。
+- Claude Code 运行时使用 provider profile 与工作区事实；不再接收 alter0 Markdown MemoryContext。
+- Codex Direct 使用共享活动 `CODEX_HOME`、原生 Skills 与原生 Memories。绑定仓库时直接从 `repo/` 启动并读取仓库自身 `AGENTS.md`，服务不生成会话级 Runtime Home 或注入文件。
 - 运行时执行结果统一回写 `OrchestrationResult`、Session history、Task 或 Cron run。
 - 执行错误需保留可诊断错误编码，供 Web、Task 与 Skill 收口使用。
 - 运行时过程事件统一归一为 `RuntimeTraceEvent`。事件必须保留 `source`、provider 引用、角色、类型、生命周期、状态、结构化 blocks 与可选 action；`source=provider` 表示底层 SDK/CLI 明确提供，`source=adapter` 表示工程 adapter 从稳定协议字段转换，`source=alter0` 表示 alter0 本地确定性生成。系统不得根据自然语言正文、标题、关键词或语言模式推断事件类型。
@@ -93,7 +93,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 - 默认存储后端为 `ALTER0_RUNTIME_ROOT` 派生的本地文件；业务 JSON 存储位于 `<runtime_root>/storage/`，执行工作区、Chat state、日志和运行输出从同一 runtime root 派生。
 - `ALTER0_STORAGE_DIR` 仅作为旧部署兼容入口保留；当它与 `ALTER0_RUNTIME_ROOT` 同时存在时，必须等于 `<runtime_root>/storage`。
 - Control 配置与 Scheduler 状态优先使用 JSON。
-- Memory 主存使用 Markdown，派生索引可按 Memory 领域策略重建。
+- 跨会话记忆由 Codex 原生 Memories 持有；alter0 通过 Runtime 全局配置原生开关，并只返回不含内容和路径的活动状态。
 
 ### 可替换性
 
@@ -118,7 +118,7 @@ Runtime & Orchestration 负责把所有触发源归一成稳定执行链路，�
 ## 依赖与边界
 
 - Conversation 领域消费 Runtime 的消息结果与结构化过程，不拥有编排路由规则。
-- Skill & Memory 领域提供 Skill 与 Memory 注入上下文，不直接改写通道模型。
+- Skill & Memory 领域负责原生 Skill 全局同步与原生 Memories 全局设置/状态，不向通道消息注入会话级选择或覆盖。
 - Task 领域可承接复杂度分流后的后台执行，但触发源仍来自统一消息。
 - 业务入口通过统一 CLI Runtime 接入执行链，不绕过 Orchestration。
 

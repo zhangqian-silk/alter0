@@ -26,12 +26,14 @@ func TestChatUsesRuntimeSessionController(t *testing.T) {
 	for _, marker := range []string{
 		"export function useRuntimeSessionCatalogs(",
 		`"/api/control/llm/providers"`,
-		`"/api/control/skills"`,
 		`"/api/control/mcps"`,
 	} {
 		if !strings.Contains(catalogs, marker) {
 			t.Fatalf("expected shared runtime catalog marker %q", marker)
 		}
+	}
+	if strings.Contains(catalogs, `"/api/control/skills"`) {
+		t.Fatal("did not expect Chat runtime catalogs to load session-selectable Skills")
 	}
 	for _, marker := range []string{
 		"export type RuntimeSessionViewSession",

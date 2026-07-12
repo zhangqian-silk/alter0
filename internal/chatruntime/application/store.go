@@ -10,7 +10,6 @@ import (
 	"time"
 
 	chatruntimedomain "alter0/internal/chatruntime/domain"
-	execdomain "alter0/internal/execution/domain"
 )
 
 const (
@@ -38,7 +37,7 @@ type persistedTurnRecord struct {
 	ClientRequestID string                        `json:"client_request_id,omitempty"`
 	Prompt          string                        `json:"prompt,omitempty"`
 	Attachments     []TurnAttachment              `json:"attachments,omitempty"`
-	SkillContext    *execdomain.SkillContext      `json:"skill_context,omitempty"`
+	SkillContext    json.RawMessage               `json:"skill_context,omitempty"`
 	Status          string                        `json:"status,omitempty"`
 	StartedAt       time.Time                     `json:"started_at,omitempty"`
 	FinishedAt      time.Time                     `json:"finished_at,omitempty"`
@@ -282,7 +281,6 @@ func snapshotPersistedSession(item *runtimeSession) (persistedSessionRecord, boo
 			ClientRequestID: turn.ClientRequestID,
 			Prompt:          turn.Prompt,
 			Attachments:     cloneTurnAttachments(turn.Attachments),
-			SkillContext:    cloneChatRuntimeSkillContext(turn.SkillContext),
 			Status:          turn.Status,
 			StartedAt:       turn.StartedAt,
 			FinishedAt:      turn.FinishedAt,
@@ -377,7 +375,6 @@ func restorePersistedSession(record persistedSessionRecord, now time.Time, baseD
 			ClientRequestID: turnRecord.ClientRequestID,
 			Prompt:          turnRecord.Prompt,
 			Attachments:     cloneTurnAttachments(turnRecord.Attachments),
-			SkillContext:    cloneChatRuntimeSkillContext(turnRecord.SkillContext),
 			Status:          turnRecord.Status,
 			StartedAt:       turnRecord.StartedAt,
 			FinishedAt:      turnRecord.FinishedAt,

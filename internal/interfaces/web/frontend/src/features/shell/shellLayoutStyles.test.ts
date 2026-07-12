@@ -1491,7 +1491,8 @@ describe("shell layout stylesheet", () => {
     expect(stylesheet).toContain("/* UI UX Pro Max full page states layer */");
     expect(stylesheet).toContain(".settings-route-content[data-settings-route-content=\"runtime\"] .settings-composite-section");
     expect(stylesheet).toContain(".settings-composite-section[data-settings-section=\"workspaces\"]");
-    expect(stylesheet).toContain(".memory-tabs");
+    expect(stylesheet).not.toContain(".memory-tabs");
+    expect(stylesheet).toContain(".codex-runtime-memory-switch");
     expect(stylesheet).toContain(".runtime-composer-command-list");
     expect(stylesheet).toContain(".runtime-composer-panel[data-runtime-config-surface=\"chatRuntime\"]");
     expect(stylesheet).toContain(".chatRuntime-skill-section .conversation-check-item:has(input:checked)");
@@ -1827,7 +1828,7 @@ describe("shell layout stylesheet", () => {
       /\.settings-route-content\s*\{[\s\S]*?width:\s*min\(100%, 1180px\);[\s\S]*?max-width:\s*1180px;[\s\S]*?justify-self:\s*start;/,
     );
     expect(alignmentLayer).toMatch(
-      /\.settings-route-content > \*,\s*\.settings-section-frame > \*,\s*\.settings-route-content \.memory-view,\s*\.settings-route-content \.route-card-grid,\s*\.settings-route-content \.control-route-grid,\s*\.settings-route-content \.memory-panel,\s*\.settings-route-content \.memory-tabs\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
+      /\.settings-route-content > \*,\s*\.settings-section-frame > \*,\s*\.settings-route-content \.route-card-grid,\s*\.settings-route-content \.control-route-grid\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?box-sizing:\s*border-box;/,
     );
     expect(alignmentLayer).toMatch(
       /\.settings-section-frame\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;[\s\S]*?min-height:\s*0;[\s\S]*?display:\s*grid;[\s\S]*?align-content:\s*start;/,
@@ -2121,10 +2122,13 @@ describe("shell layout stylesheet", () => {
       /@media \(max-width: 760px\) \{[\s\S]*?\.codex-runtime-usage-card\s*\{[\s\S]*?grid-area:\s*auto;[\s\S]*?order:\s*2;[\s\S]*?padding:\s*12px;/,
     );
     expect(shellLayer).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.codex-runtime-device-login\s*\{[\s\S]*?grid-area:\s*auto;[\s\S]*?order:\s*3;[\s\S]*?padding:\s*10px 12px;[\s\S]*?border-radius:\s*12px;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.codex-runtime-memories-card\s*\{[\s\S]*?grid-area:\s*auto;[\s\S]*?order:\s*3;[\s\S]*?padding:\s*12px;/,
     );
     expect(shellLayer).toMatch(
-      /@media \(max-width: 760px\) \{[\s\S]*?\.codex-runtime-provider-station\s*\{[\s\S]*?order:\s*4;/,
+      /@media \(max-width: 760px\) \{[\s\S]*?\.codex-runtime-device-login\s*\{[\s\S]*?grid-area:\s*auto;[\s\S]*?order:\s*4;[\s\S]*?padding:\s*10px 12px;[\s\S]*?border-radius:\s*12px;/,
+    );
+    expect(shellLayer).toMatch(
+      /@media \(max-width: 760px\) \{[\s\S]*?\.codex-runtime-provider-station\s*\{[\s\S]*?order:\s*5;/,
     );
     expect(shellLayer).toMatch(
       /@media \(max-width: 760px\) \{[\s\S]*?\.codex-runtime-device-login-head p\s*\{[\s\S]*?display:\s*none;/,
@@ -2137,13 +2141,16 @@ describe("shell layout stylesheet", () => {
     const shellLayer = stylesheet.slice(stylesheet.lastIndexOf("/* Final shared workbench shell alignment */"));
 
     expect(shellLayer).toMatch(
-      /\.codex-runtime-control-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(280px,\s*0\.78fr\) minmax\(420px,\s*1\.22fr\);[\s\S]*?grid-template-areas:\s*"identity usage" "device usage";[\s\S]*?align-items:\s*start;/,
+      /\.codex-runtime-control-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(280px,\s*0\.78fr\) minmax\(420px,\s*1\.22fr\);[\s\S]*?grid-template-areas:\s*"identity usage" "memories usage" "device usage";[\s\S]*?align-items:\s*start;/,
     );
     expect(shellLayer).toMatch(
       /\.codex-runtime-identity-card\s*\{[\s\S]*?grid-area:\s*identity;[\s\S]*?align-self:\s*start;/,
     );
     expect(shellLayer).toMatch(
       /\.codex-runtime-usage-card\s*\{[\s\S]*?grid-area:\s*usage;[\s\S]*?align-self:\s*stretch;/,
+    );
+    expect(shellLayer).toMatch(
+      /\.codex-runtime-memories-card\s*\{[\s\S]*?grid-area:\s*memories;[\s\S]*?align-self:\s*start;/,
     );
     expect(shellLayer).toMatch(
       /\.codex-runtime-device-login\s*\{[\s\S]*?grid-area:\s*device;[\s\S]*?align-self:\s*start;/,

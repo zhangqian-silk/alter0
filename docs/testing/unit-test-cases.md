@@ -264,8 +264,9 @@
 
 用例范围：
 
-- 内置 Skill 注册：`memory`、`preview-publish`、`frontend-design`、`travel` 等默认 Skill 的描述、guide 与 file-backed 路径，并验证 `memory-maintenance` 为系统维护专用私有 Skill。
-- 启动阶段 file-backed Skill 文件校验，确保 `docs/skills/preview-publish/SKILL.md`、`docs/skills/frontend-design/SKILL.md`、`docs/skills/memory-maintenance/SKILL.md` 与 `docs/skills/travel/SKILL.md` 可被当前仓库解析。
+- 内置 Skill 注册：校验所有默认公有 Skill 使用标准 `SKILL.md`，并验证历史 `memory` / `memory-maintenance` 条目会被清理。
+- 原生 Skill 同步：覆盖启用公有 Skill 的完整目录复制、可执行 mode、停用清理、非托管目标保护与内置 Skill 全量合法性。
+- 原生 Memories：覆盖 feature list 解析、缺失配置键默认初始化、显式值保留、Runtime 三开关批量写入、共享活动 `CODEX_HOME`、新建与 resume 无 per-turn 覆盖、状态路径隐藏，以及独立 Memory API/页面移除。
 - 运行时 PATH、NO_PROXY、Web 登录密码环境变量与内部启动参数过滤。
 - Codex CLI 自动版本解析：从运行账户托管路径、NVM 稳定入口和历史版本候选中选择最高语义版本；相同版本优先稳定路径；显式 pinned 模式保持指定命令。
 - supervisor client 重启错误、结构化重启错误码透传、探活地址归一、空响应错误，以及 `sync_remote_master` 遇到 tracked 改动时要求二次确认，确认后才丢弃 tracked 改动。

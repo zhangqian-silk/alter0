@@ -7,14 +7,12 @@ import {
 } from "../reactManagedRouteContract";
 import { ReactManagedCodexAccountsRouteBody } from "./ReactManagedCodexAccountsRouteBody";
 import { ReactManagedControlRouteBody } from "./ReactManagedControlRouteBody";
-import { ReactManagedMemoryRouteBody } from "./ReactManagedMemoryRouteBody";
 import { NavIcon } from "./NavIcon";
 
 type RouteBodyRenderer = (props: { language: LegacyShellLanguage }) => React.JSX.Element;
 
 const SETTINGS_ROUTE_BODY_RENDERERS: Record<string, RouteBodyRenderer> = {
   runtime: ({ language }) => <RuntimeSettingsSection language={language} />,
-  memory: ({ language }) => <ReactManagedMemoryRouteBody language={language} />,
   schedules: ({ language }) => <ReactManagedControlRouteBody route="cron-jobs" language={language} />,
   skills: ({ language }) => <ReactManagedControlRouteBody route="skills" language={language} />,
 };

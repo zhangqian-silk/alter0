@@ -820,12 +820,19 @@ func TestServiceUpdateRuntimeSettingsUsesAppServerBatchWrite(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(activeHome, "config.toml"), []byte("profile = \"auto-max\"\n"), 0o600); err != nil {
 		t.Fatalf("write config.toml: %v", err)
 	}
+	if err := os.MkdirAll(filepath.Join(activeHome, "memories"), 0o755); err != nil {
+		t.Fatalf("mkdir memories: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(activeHome, "memories", "raw_memories.md"), []byte("native memory"), 0o600); err != nil {
+		t.Fatalf("write native memory: %v", err)
+	}
 	currentModel := "gpt-5.4"
 	currentEffort := "high"
 	var gotEdits []map[string]any
 
 	service := codexapp.NewService(codexapp.ServiceOptions{
 		Command:           "codex",
+		NativeMemories:    codexapp.NativeMemoriesFeatureStatus{Available: true},
 		ResolveActiveHome: func() (string, error) { return activeHome, nil },
 		RunCommand: func(_ context.Context, name string, args []string, options codexapp.CommandOptions) error {
 			if name != "codex" {
@@ -840,6 +847,11 @@ func TestServiceUpdateRuntimeSettingsUsesAppServerBatchWrite(t *testing.T) {
 						"model":                  currentModel,
 						"model_reasoning_effort": currentEffort,
 						"profile":                "auto-max",
+						"features":               map[string]any{"memories": true},
+						"memories": map[string]any{
+							"generate_memories": false,
+							"use_memories":      true,
+						},
 					},
 					"origins": map[string]any{
 						"model": map[string]any{
@@ -847,6 +859,18 @@ func TestServiceUpdateRuntimeSettingsUsesAppServerBatchWrite(t *testing.T) {
 							"version": "sha256:before",
 						},
 						"model_reasoning_effort": map[string]any{
+							"name":    map[string]any{"type": "user", "file": filepath.Join(activeHome, "config.toml")},
+							"version": "sha256:before",
+						},
+						"features.memories": map[string]any{
+							"name":    map[string]any{"type": "user", "file": filepath.Join(activeHome, "config.toml")},
+							"version": "sha256:before",
+						},
+						"memories.generate_memories": map[string]any{
+							"name":    map[string]any{"type": "user", "file": filepath.Join(activeHome, "config.toml")},
+							"version": "sha256:before",
+						},
+						"memories.use_memories": map[string]any{
 							"name":    map[string]any{"type": "user", "file": filepath.Join(activeHome, "config.toml")},
 							"version": "sha256:before",
 						},
@@ -903,14 +927,26 @@ func TestServiceUpdateRuntimeSettingsUsesAppServerBatchWrite(t *testing.T) {
 		},
 	})
 
-	status, err := service.UpdateRuntimeSettings("gpt-5.4-mini", "medium")
+	status, err := service.UpdateRuntimeSettings(codexapp.RuntimeSettingsUpdate{
+		Model:           "gpt-5.4-mini",
+		ReasoningEffort: "medium",
+		Memories: &codexapp.RuntimeMemoriesUpdate{
+			Enabled:          true,
+			GenerateMemories: false,
+			UseMemories:      true,
+		},
+	})
 	if err != nil {
 		t.Fatalf("UpdateRuntimeSettings returned error: %v", err)
 	}
-	if len(gotEdits) != 2 {
-		t.Fatalf("gotEdits = %+v, want 2 edits", gotEdits)
+	if len(gotEdits) != 5 {
+		t.Fatalf("gotEdits = %+v, want 5 edits", gotEdits)
 	}
-	if gotEdits[0]["keyPath"] != "model" || gotEdits[1]["keyPath"] != "model_reasoning_effort" {
+	if gotEdits[0]["keyPath"] != "model" ||
+		gotEdits[1]["keyPath"] != "model_reasoning_effort" ||
+		gotEdits[2]["keyPath"] != "features.memories" ||
+		gotEdits[3]["keyPath"] != "memories.generate_memories" ||
+		gotEdits[4]["keyPath"] != "memories.use_memories" {
 		t.Fatalf("gotEdits keyPath = %+v", gotEdits)
 	}
 	if status.Model != "gpt-5.4-mini" {
@@ -921,6 +957,62 @@ func TestServiceUpdateRuntimeSettingsUsesAppServerBatchWrite(t *testing.T) {
 	}
 	if currentModel != "gpt-5.4-mini" || currentEffort != "medium" {
 		t.Fatalf("current settings = (%q, %q), want (gpt-5.4-mini, medium)", currentModel, currentEffort)
+	}
+	if status.Memories == nil || !status.Memories.Available || !status.Memories.Enabled {
+		t.Fatalf("status.Memories = %+v, want available and enabled", status.Memories)
+	}
+	if status.Memories.GenerateMemories || !status.Memories.UseMemories {
+		t.Fatalf("status.Memories switches = %+v", status.Memories)
+	}
+	if status.Memories.FileCount != 1 || !status.Memories.DirectoryExists {
+		t.Fatalf("status.Memories activity = %+v", status.Memories)
+	}
+}
+
+func TestServiceEnsureRuntimeMemoriesDefaultsWritesOnlyMissingNativeKeys(t *testing.T) {
+	activeHome := filepath.Join(t.TempDir(), ".codex")
+	var gotEdits []map[string]any
+	service := codexapp.NewService(codexapp.ServiceOptions{
+		Command:           "codex",
+		NativeMemories:    codexapp.NativeMemoriesFeatureStatus{Available: true},
+		ResolveActiveHome: func() (string, error) { return activeHome, nil },
+		RunCommand: func(_ context.Context, _ string, _ []string, options codexapp.CommandOptions) error {
+			reqs := decodeInteractiveAppServerRequests(t, options.Stdin, options.Stdout)
+			switch appServerMethod(reqs) {
+			case "config/read":
+				writeAppServerResponse(t, options.Stdout, 2, map[string]any{
+					"config": map[string]any{
+						"features": map[string]any{"memories": false},
+						"memories": map[string]any{"use_memories": false},
+					},
+					"origins": map[string]any{
+						"memories.use_memories": map[string]any{
+							"name": map[string]any{"type": "user", "file": filepath.Join(activeHome, "config.toml")},
+						},
+					},
+				})
+			case "config/batchWrite":
+				params := reqs[len(reqs)-1]["params"].(map[string]any)
+				gotEdits = anySliceToMaps(t, params["edits"])
+				writeAppServerResponse(t, options.Stdout, 2, map[string]any{"status": "ok"})
+			default:
+				t.Fatalf("unexpected app-server method %q", appServerMethod(reqs))
+			}
+			return nil
+		},
+	})
+
+	if err := service.EnsureRuntimeMemoriesDefaults(); err != nil {
+		t.Fatalf("EnsureRuntimeMemoriesDefaults returned error: %v", err)
+	}
+	if len(gotEdits) != 2 {
+		t.Fatalf("gotEdits = %+v, want 2 missing-key edits", gotEdits)
+	}
+	if gotEdits[0]["keyPath"] != "features.memories" || gotEdits[0]["value"] != true {
+		t.Fatalf("first edit = %+v, want enabled default", gotEdits[0])
+	}
+	if gotEdits[1]["keyPath"] != "memories.generate_memories" || gotEdits[1]["value"] != true {
+		t.Fatalf("second edit = %+v, want generation default", gotEdits[1])
 	}
 }
 

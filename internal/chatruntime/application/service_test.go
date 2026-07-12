@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -182,7 +183,7 @@ func TestBuildCodexTurnPromptIncludesTrustedRepositoryContextSeparately(t *testi
 		"Update the retry behavior",
 		"Repository context:",
 		"- repository: owner/repository",
-		"- path: repo/",
+		"- path: ./",
 		"- branch: main",
 		"- head: abc123",
 		"This user message is associated with the repository above.",
@@ -193,102 +194,6 @@ func TestBuildCodexTurnPromptIncludesTrustedRepositoryContextSeparately(t *testi
 	}
 }
 
-func TestRenderChatRuntimeSkillContextMarkdownIncludesSelectedSkills(t *testing.T) {
-	content := renderChatRuntimeSkillContextMarkdown(&execdomain.SkillContext{
-		Protocol: execdomain.SkillContextProtocolVersion,
-		Skills: []execdomain.SkillSpec{{
-			ID:          "summary",
-			Name:        "Summary",
-			Description: "Summarize chat work.",
-			Guide:       "Use concise structured summaries.",
-			FilePath:    ".alter0/skills/summary/SKILL.md",
-			Constraints: []string{"Keep output brief."},
-		}},
-	})
-
-	for _, want := range []string{
-		"# Skills",
-		"- protocol: alter0.skill-context/v1",
-		"## Summary",
-		"- id: summary",
-		"- file_path: .alter0/skills/summary/SKILL.md",
-		"Use concise structured summaries.",
-		"- Keep output brief.",
-	} {
-		if !strings.Contains(content, want) {
-			t.Fatalf("expected skill markdown to contain %q, got:\n%s", want, content)
-		}
-	}
-}
-
-func TestRenderChatRuntimeSkillContextMarkdownMarksEmptySelection(t *testing.T) {
-	content := renderChatRuntimeSkillContextMarkdown(nil)
-
-	if !strings.Contains(content, "No skills selected for this Chat turn.") {
-		t.Fatalf("expected empty skill selection marker, got:\n%s", content)
-	}
-}
-
-func TestPrepareChatRuntimeCodexRuntimeMaterializesSelectedSkillFiles(t *testing.T) {
-	rootDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(rootDir, "docs", "skills", "frontend-design", "scripts"), 0o755); err != nil {
-		t.Fatalf("mkdir skill dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(rootDir, "docs", "skills", "frontend-design", "SKILL.md"), []byte("# Frontend Design\n"), 0o644); err != nil {
-		t.Fatalf("write skill file: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(rootDir, "docs", "skills", "frontend-design", "scripts", "helper.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatalf("write skill helper: %v", err)
-	}
-	activeHome := t.TempDir()
-	t.Setenv("CODEX_HOME", activeHome)
-	previousWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(rootDir); err != nil {
-		t.Fatalf("chdir root: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(previousWD)
-	})
-
-	workspaceDir := filepath.Join(t.TempDir(), "workspace")
-	_, err = prepareChatRuntimeCodexRuntime(workspaceDir, &execdomain.SkillContext{
-		Protocol: execdomain.SkillContextProtocolVersion,
-		Skills: []execdomain.SkillSpec{{
-			ID:       "frontend-design",
-			Name:     "Frontend Design",
-			FilePath: "docs/skills/frontend-design/SKILL.md",
-		}},
-	})
-	if err != nil {
-		t.Fatalf("prepareChatRuntimeCodexRuntime() error = %v", err)
-	}
-
-	materializedPath := filepath.Join(workspaceDir, ".alter0", "codex-runtime", "skills", "frontend-design", "SKILL.md")
-	materialized, err := os.ReadFile(materializedPath)
-	if err != nil {
-		t.Fatalf("read materialized skill file: %v", err)
-	}
-	if string(materialized) != "# Frontend Design\n" {
-		t.Fatalf("unexpected materialized skill file: %q", string(materialized))
-	}
-	if _, err := os.Stat(filepath.Join(workspaceDir, ".alter0", "codex-runtime", "skills", "frontend-design", "scripts", "helper.sh")); err != nil {
-		t.Fatalf("expected skill helper directory to be materialized: %v", err)
-	}
-	skillsMarkdown, err := os.ReadFile(filepath.Join(workspaceDir, ".alter0", "codex-runtime", "skills.md"))
-	if err != nil {
-		t.Fatalf("read runtime skills markdown: %v", err)
-	}
-	if !strings.Contains(string(skillsMarkdown), "- file_path: .alter0/codex-runtime/skills/frontend-design/SKILL.md") {
-		t.Fatalf("expected runtime skill file_path to point inside workspace, got:\n%s", string(skillsMarkdown))
-	}
-	if strings.Contains(string(skillsMarkdown), "- file_path: docs/skills/frontend-design/SKILL.md") {
-		t.Fatalf("expected source-relative skill file_path to be rewritten, got:\n%s", string(skillsMarkdown))
-	}
-}
-
 func TestPrepareTurnInputAttachmentsUsesWorkspaceFilesWithoutDataURLs(t *testing.T) {
 	workspaceDir := t.TempDir()
 	sourcePath := filepath.Join(workspaceDir, "source-requirements.md")
@@ -296,7 +201,7 @@ func TestPrepareTurnInputAttachmentsUsesWorkspaceFilesWithoutDataURLs(t *testing
 		t.Fatalf("write source file: %v", err)
 	}
 
-	attachments, err := prepareTurnInputAttachments(workspaceDir, "turn-1", []TurnAttachment{
+	attachments, err := prepareTurnInputAttachments(workspaceDir, workspaceDir, "turn-1", []TurnAttachment{
 		{
 			Name:          "requirements.md",
 			ContentType:   "text/markdown",
@@ -318,6 +223,26 @@ func TestPrepareTurnInputAttachmentsUsesWorkspaceFilesWithoutDataURLs(t *testing
 	}
 	if string(data) != "# Requirements\n" {
 		t.Fatalf("unexpected prepared attachment content %q", string(data))
+	}
+}
+
+func TestPrepareTurnInputAttachmentsUsesRepositoryRelativePromptPath(t *testing.T) {
+	workspaceDir := t.TempDir()
+	repositoryDir := filepath.Join(workspaceDir, chatruntimedomain.RepositoryWorkspacePath)
+	if err := os.MkdirAll(repositoryDir, 0o755); err != nil {
+		t.Fatalf("mkdir repository: %v", err)
+	}
+	sourcePath := filepath.Join(workspaceDir, "source.txt")
+	if err := os.WriteFile(sourcePath, []byte("source"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	attachments, err := prepareTurnInputAttachments(workspaceDir, repositoryDir, "turn-1", []TurnAttachment{{Name: "source.txt", ContentType: "text/plain", WorkspacePath: sourcePath}})
+	if err != nil {
+		t.Fatalf("prepare attachment: %v", err)
+	}
+	want := filepath.ToSlash(filepath.Join("..", chatRuntimeTurnAttachmentDirName, "turn-1", "source.txt"))
+	if len(attachments) != 1 || attachments[0].PromptPath != want {
+		t.Fatalf("prompt path = %+v, want %q", attachments, want)
 	}
 }
 
@@ -413,7 +338,7 @@ func TestCreateAssignsDistinctWorkspacePerSession(t *testing.T) {
 	}
 }
 
-func TestChatRuntimeInputUsesSessionScopedCodexHome(t *testing.T) {
+func TestChatRuntimeInputUsesSharedActiveCodexHomeAndNativeMemories(t *testing.T) {
 	baseDir := t.TempDir()
 	activeHome := filepath.Join(t.TempDir(), "active-codex-home")
 	if err := os.MkdirAll(activeHome, 0o755); err != nil {
@@ -429,15 +354,104 @@ func TestChatRuntimeInputUsesSessionScopedCodexHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	t.Setenv("CHAT_RUNTIME_HELPER_EXPECT_CODEX_HOME_SUFFIX", filepath.Join(session.WorkingDir, chatRuntimeCodexHomeDirName))
+	t.Setenv("CHAT_RUNTIME_HELPER_EXPECT_CODEX_HOME_SUFFIX", activeHome)
 
 	if _, err := service.Input("owner-runtime-home", session.ID, "first prompt"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	waitForSessionEntries(t, service, "owner-runtime-home", session.ID, 2)
 
-	if _, err := os.Stat(filepath.Join(session.WorkingDir, chatRuntimeCodexHomeDirName, "auth.json")); err != nil {
-		t.Fatalf("expected session codex auth copy: %v", err)
+	if _, err := os.Stat(filepath.Join(session.WorkingDir, "codex-home")); !os.IsNotExist(err) {
+		t.Fatalf("expected no session-scoped codex home, got err=%v", err)
+	}
+}
+
+func TestChatRuntimeInputRetiresLegacyPerSessionCodexArtifacts(t *testing.T) {
+	baseDir := t.TempDir()
+	activeHome := t.TempDir()
+	t.Setenv("CODEX_HOME", activeHome)
+	service := newTestServiceWithBaseDir("success", baseDir)
+	session, err := service.Create(CreateRequest{OwnerID: "owner-legacy-artifacts"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	legacyPaths := []string{
+		filepath.Join(session.WorkingDir, "codex-home", "auth.json"),
+		filepath.Join(session.WorkingDir, ".alter0", "codex-runtime", "skills.md"),
+		filepath.Join(session.WorkingDir, ".alter0", "codex-runtime", "skills", "summary", "SKILL.md"),
+		filepath.Join(session.WorkingDir, ".alter0", "codex-runtime", "memory", "recall.md"),
+	}
+	for _, path := range legacyPaths {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir legacy path: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("legacy"), 0o600); err != nil {
+			t.Fatalf("write legacy path: %v", err)
+		}
+	}
+	agentsPath := filepath.Join(session.WorkingDir, "AGENTS.md")
+	if err := os.WriteFile(agentsPath, []byte("# User rules\n\n<!-- alter0:codex-runtime:start -->\nlegacy generated rules\n<!-- alter0:codex-runtime:end -->\n"), 0o644); err != nil {
+		t.Fatalf("write legacy AGENTS: %v", err)
+	}
+
+	if _, err := service.Input("owner-legacy-artifacts", session.ID, "continue"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	waitForSessionEntries(t, service, "owner-legacy-artifacts", session.ID, 2)
+	for _, path := range legacyPaths {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected legacy artifact removed at %s, got err=%v", path, err)
+		}
+	}
+	agents, err := os.ReadFile(agentsPath)
+	if err != nil {
+		t.Fatalf("read cleaned AGENTS: %v", err)
+	}
+	if strings.TrimSpace(string(agents)) != "# User rules" {
+		t.Fatalf("expected user AGENTS content preserved, got %q", agents)
+	}
+}
+
+func TestChatRuntimeRepositoryInputRunsFromRepositoryDirectory(t *testing.T) {
+	baseDir := t.TempDir()
+	activeHome := filepath.Join(t.TempDir(), "active-codex-home")
+	if err := os.MkdirAll(activeHome, 0o755); err != nil {
+		t.Fatalf("mkdir active home: %v", err)
+	}
+	t.Setenv("CODEX_HOME", activeHome)
+
+	catalog := &stubRepositoryCatalog{resolved: chatruntimedomain.Repository{
+		Provider:      chatruntimedomain.RepositoryProviderGitHub,
+		ID:            "123456789",
+		FullName:      "owner/repository",
+		DefaultBranch: "main",
+	}}
+	preparer := &stubRepositoryWorkspacePreparer{checkout: RepositoryCheckout{Branch: "main", HeadSHA: "abc123"}}
+	service := newTestServiceWithRepositorySupport("success", baseDir, catalog, preparer)
+	session, err := service.Create(CreateRequest{OwnerID: "owner-repository-cwd"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	repositoryDir := filepath.Join(session.WorkingDir, chatruntimedomain.RepositoryWorkspacePath)
+	if err := os.MkdirAll(repositoryDir, 0o755); err != nil {
+		t.Fatalf("mkdir repository: %v", err)
+	}
+	t.Setenv("CHAT_RUNTIME_HELPER_EXPECT_WORKING_DIR", repositoryDir)
+
+	if _, err := service.InputWithAttachments(InputRequest{
+		OwnerID:   "owner-repository-cwd",
+		SessionID: session.ID,
+		Input:     "inspect repository",
+		Repository: &chatruntimedomain.RepositoryRef{
+			Provider: chatruntimedomain.RepositoryProviderGitHub,
+			ID:       "123456789",
+		},
+	}); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	finished, _ := waitForSessionEntries(t, service, "owner-repository-cwd", session.ID, 2)
+	if finished.Status != chatruntimedomain.SessionStatusReady {
+		t.Fatalf("expected successful repository turn, got status=%q error=%q", finished.Status, finished.ErrorMessage)
 	}
 }
 
@@ -478,6 +492,31 @@ func TestPersistedSessionSnapshotClonesRepositoryBinding(t *testing.T) {
 
 	if record.Summary.Repository.Status != chatruntimedomain.RepositoryPreparationStatusPreparing || record.Summary.Repository.HeadSHA != "" {
 		t.Fatalf("expected immutable persisted snapshot, got %+v", record.Summary.Repository)
+	}
+}
+
+func TestLegacyPersistedSkillContextLoadsButIsNotWrittenAgain(t *testing.T) {
+	record, err := decodePersistedSessionRecord([]byte(`{
+		"summary":{"id":"c_1234567890abcdef","owner_id":"chat","status":"ready","title":"Legacy"},
+		"turns":[{"id":"turn-1","prompt":"legacy","status":"completed","skill_context":{"protocol":"alter0.skill-context/v1","skills":[{"id":"summary"}]}}]
+	}`))
+	if err != nil {
+		t.Fatalf("decode legacy record: %v", err)
+	}
+	session := restorePersistedSession(record, time.Now().UTC(), t.TempDir())
+	if session == nil || len(session.turns) != 1 {
+		t.Fatalf("expected legacy session restored, got %+v", session)
+	}
+	next, deleted := snapshotPersistedSession(session)
+	if deleted {
+		t.Fatal("expected restored session snapshot")
+	}
+	raw, err := json.Marshal(next)
+	if err != nil {
+		t.Fatalf("marshal next record: %v", err)
+	}
+	if strings.Contains(string(raw), "skill_context") {
+		t.Fatalf("expected new snapshot to retire legacy skill context, got %s", raw)
 	}
 }
 
@@ -763,14 +802,6 @@ func TestServiceRetryRepositoryResumesPersistedTurnWithoutDuplicateInput(t *test
 			Provider: chatruntimedomain.RepositoryProviderGitHub,
 			ID:       "123456789",
 		},
-		SkillContext: &execdomain.SkillContext{
-			Protocol: execdomain.SkillContextProtocolVersion,
-			Skills: []execdomain.SkillSpec{{
-				ID:    "repository-review",
-				Name:  "Repository Review",
-				Guide: "Review the selected repository carefully.",
-			}},
-		},
 	})
 	if err != nil {
 		t.Fatalf("input with failing preparation: %v", err)
@@ -810,12 +841,8 @@ func TestServiceRetryRepositoryResumesPersistedTurnWithoutDuplicateInput(t *test
 	if err != nil || len(turns) != 1 {
 		t.Fatalf("expected retry to reuse one turn, got turns=%+v err=%v", turns, err)
 	}
-	skillContext, err := os.ReadFile(filepath.Join(session.WorkingDir, ".alter0", "codex-runtime", "skills.md"))
-	if err != nil {
-		t.Fatalf("read retried skill context: %v", err)
-	}
-	if !strings.Contains(string(skillContext), "Review the selected repository carefully.") {
-		t.Fatalf("expected retry to preserve selected skill context, got:\n%s", skillContext)
+	if _, err := os.Stat(filepath.Join(session.WorkingDir, ".alter0", "codex-runtime", "skills.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected retry not to materialize per-session skill context, got err=%v", err)
 	}
 }
 
@@ -2210,6 +2237,9 @@ func (s *stubRepositoryWorkspacePreparer) Prepare(_ context.Context, repository 
 	if s.err != nil {
 		return RepositoryCheckout{}, s.err
 	}
+	if err := os.MkdirAll(filepath.Join(workspaceDir, chatruntimedomain.RepositoryWorkspacePath), 0o755); err != nil {
+		return RepositoryCheckout{}, err
+	}
 	return s.checkout, nil
 }
 
@@ -2397,6 +2427,19 @@ func TestChatRuntimeServiceHelperProcess(t *testing.T) {
 		expectedHome = filepath.Clean(expectedHome)
 		if actualHome != expectedHome {
 			os.Exit(2)
+		}
+	}
+	if expectedWorkingDir := strings.TrimSpace(os.Getenv("CHAT_RUNTIME_HELPER_EXPECT_WORKING_DIR")); expectedWorkingDir != "" {
+		actualWorkingDir, err := os.Getwd()
+		if err != nil || filepath.Clean(actualWorkingDir) != filepath.Clean(expectedWorkingDir) {
+			os.Exit(2)
+		}
+	}
+	for _, pair := range [][2]string{{"--enable", "memories"}, {"-c", "memories.generate_memories=true"}, {"-c", "memories.use_memories=true"}} {
+		for index := 0; index+1 < len(forwarded); index++ {
+			if forwarded[index] == pair[0] && forwarded[index+1] == pair[1] {
+				os.Exit(2)
+			}
 		}
 	}
 	if expectedImageCount := strings.TrimSpace(os.Getenv("CHAT_RUNTIME_HELPER_EXPECT_IMAGE_COUNT")); expectedImageCount != "" {

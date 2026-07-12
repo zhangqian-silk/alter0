@@ -168,6 +168,23 @@ func (m *Manager) RegisterBuiltinJobs(jobs []schedulerdomain.Job) error {
 	return m.storeLocked()
 }
 
+func (m *Manager) RetireBuiltinJobs(ids []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, id := range ids {
+		key := normalize(id)
+		job, ok := m.jobs[key]
+		if !ok || !job.Builtin {
+			continue
+		}
+		delete(m.jobs, key)
+		delete(m.handlers, key)
+		m.stopRunnerLocked(key)
+	}
+	return m.storeLocked()
+}
+
 func (m *Manager) RegisterJobHandler(jobID string, handler JobHandler) {
 	key := normalize(jobID)
 	if key == "" {

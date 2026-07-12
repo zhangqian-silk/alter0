@@ -1816,81 +1816,6 @@ body {
   border-radius: 8px;
 }
 
-.memory-view {
-  display: grid;
-  gap: 12px;
-}
-
-.memory-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 8px;
-  background: #fff;
-}
-
-.memory-tab {
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: #475467;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.memory-tab.active {
-  border-color: rgba(15, 159, 143, 0.16);
-  background: rgba(15, 159, 143, 0.1);
-  color: #087f73;
-}
-
-.memory-panel {
-  min-width: 0;
-  padding: 16px;
-}
-
-.memory-summary {
-  display: grid;
-  gap: 4px;
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid rgba(15, 159, 143, 0.12);
-  border-radius: 8px;
-  background: rgba(15, 159, 143, 0.08);
-}
-
-.memory-summary span {
-  color: #087f73;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.memory-summary strong {
-  color: #101828;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.memory-spec-sections,
-.memory-daily-list {
-  display: grid;
-  gap: 10px;
-}
-
-.memory-spec-section {
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 8px;
-  background: #fff;
-}
-
 .settings-route-content .route-data-table tbody tr.is-active {
   border-color: rgba(15, 159, 143, 0.18);
   background: rgba(15, 159, 143, 0.08);
@@ -3445,17 +3370,6 @@ body {
 
   .settings-route-content .route-data-table {
     min-width: 560px;
-  }
-
-  .memory-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .memory-tab {
-    flex: 0 0 auto;
-    min-width: 88px;
   }
 
   .runtime-composer-command-list {
@@ -12828,11 +12742,8 @@ select:focus-visible,
 
 .settings-route-content > *,
 .settings-section-frame > *,
-.settings-route-content .memory-view,
 .settings-route-content .route-card-grid,
-.settings-route-content .control-route-grid,
-.settings-route-content .memory-panel,
-.settings-route-content .memory-tabs {
+.settings-route-content .control-route-grid {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -12857,15 +12768,6 @@ select:focus-visible,
 .settings-route-content .control-route-grid .route-card {
   width: 100%;
   max-width: none;
-}
-
-.settings-route-content .memory-view {
-  display: grid;
-  gap: 18px;
-}
-
-.settings-route-content .memory-panel {
-  min-width: 0;
 }
 
 .route-view[data-route-family="settings"] .route-title-marker {
@@ -13069,7 +12971,7 @@ select:focus-visible,
 
 .codex-runtime-control-grid {
   grid-template-columns: minmax(280px, 0.78fr) minmax(420px, 1.22fr);
-  grid-template-areas: "identity usage" "device usage";
+  grid-template-areas: "identity usage" "memories usage" "device usage";
   align-items: start;
 }
 
@@ -13081,6 +12983,66 @@ select:focus-visible,
 .codex-runtime-usage-card {
   grid-area: usage;
   align-self: stretch;
+}
+
+.codex-runtime-memories-card {
+  grid-area: memories;
+  align-self: start;
+}
+
+.codex-runtime-memory-settings {
+  display: grid;
+  gap: 8px;
+}
+
+.codex-runtime-memory-switch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 9px 10px;
+  border: 1px solid rgba(226, 232, 240, 0.88);
+  border-radius: 10px;
+  background: rgba(248, 251, 255, 0.74);
+}
+
+.codex-runtime-memory-switch.is-disabled {
+  opacity: 0.58;
+}
+
+.codex-runtime-memory-switch-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.codex-runtime-memory-switch-copy strong {
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.codex-runtime-memory-switch-copy small,
+.codex-runtime-memory-activity,
+.codex-runtime-memory-unavailable {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.codex-runtime-memory-switch input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.codex-runtime-memory-activity {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 2px 2px 0;
 }
 
 .codex-runtime-device-login {
@@ -13151,9 +13113,15 @@ select:focus-visible,
     padding: 12px;
   }
 
-  .codex-runtime-device-login {
+  .codex-runtime-memories-card {
     grid-area: auto;
     order: 3;
+    padding: 12px;
+  }
+
+  .codex-runtime-device-login {
+    grid-area: auto;
+    order: 4;
     padding: 10px 12px;
     border: 1px solid rgba(226, 232, 240, 0.88);
     border-radius: 12px;
@@ -13161,7 +13129,7 @@ select:focus-visible,
   }
 
   .codex-runtime-provider-station {
-    order: 4;
+    order: 5;
   }
 
   .codex-runtime-control-card {

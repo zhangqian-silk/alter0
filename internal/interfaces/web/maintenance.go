@@ -14,16 +14,13 @@ import (
 	schedulerdomain "alter0/internal/scheduler/domain"
 	sessionapp "alter0/internal/session/application"
 	sharedapp "alter0/internal/shared/application"
-	shareddomain "alter0/internal/shared/domain"
 	taskapp "alter0/internal/task/application"
 	taskdomain "alter0/internal/task/domain"
 )
 
 const (
 	defaultMaintenanceInactiveDuration = 7 * 24 * time.Hour
-	defaultMemoryMaintenanceJobID      = "system-memory-maintenance"
 	defaultSessionCleanupJobID         = "system-session-cleanup"
-	defaultMemoryMaintenancePrompt     = "Summarize daily memory into durable memory candidates. Read today's and yesterday's daily memory, compare against long-term memory, promote only stable facts, preferences, decisions, workflows, and constraints. Do not copy raw transcript text. Merge duplicates, keep unresolved or one-off details in daily memory, and never promote secrets or credentials. Return changed files and skipped candidates."
 )
 
 type sessionMaintenanceService interface {
@@ -92,51 +89,8 @@ func (m *maintenanceService) Status(now time.Time) maintenanceStatusResponse {
 	defer m.mu.Unlock()
 
 	return maintenanceStatusResponse{Items: []maintenanceRunResponse{
-		m.statusItemLocked(defaultMemoryMaintenanceJobID, now),
 		m.statusItemLocked(defaultSessionCleanupJobID, now),
 	}}
-}
-
-func (m *maintenanceService) RunMemoryMaintenance(ctx context.Context, now time.Time) maintenanceRunResponse {
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	run := maintenanceRunResponse{
-		JobID:     defaultMemoryMaintenanceJobID,
-		Status:    "success",
-		StartedAt: now,
-		NextRunAt: nextDailyMaintenanceRun(now, 5, 10),
-	}
-	if m.server == nil || m.server.orchestrator == nil {
-		run.Status = "failed"
-		run.Error = "memory maintenance unavailable"
-		run.FinishedAt = time.Now().UTC()
-		m.storeRun(run)
-		return run
-	}
-	messageID := m.newID("maintenance-memory")
-	_, err := m.server.orchestrator.Handle(ctx, shareddomain.UnifiedMessage{
-		MessageID:   messageID,
-		SessionID:   "maintenance-memory-" + now.Format("20060102"),
-		ChannelID:   "scheduler-default",
-		ChannelType: shareddomain.ChannelTypeScheduler,
-		TriggerType: shareddomain.TriggerTypeSystem,
-		Content:     defaultMemoryMaintenancePrompt,
-		Metadata: map[string]string{
-			"alter0.skills.include":  `["memory-maintenance"]`,
-			"alter0.memory.include":  `["memory_long_term","memory_daily_today","memory_daily_yesterday","user_md","soul_md"]`,
-			"alter0.maintenance.job": defaultMemoryMaintenanceJobID,
-		},
-		TraceID:    m.newID("maintenance-trace"),
-		ReceivedAt: now,
-	})
-	if err != nil {
-		run.Status = "failed"
-		run.Error = err.Error()
-	}
-	run.FinishedAt = time.Now().UTC()
-	m.storeRun(run)
-	return run
 }
 
 func (m *maintenanceService) RunSessionCleanup(now time.Time) maintenanceRunResponse {
@@ -294,13 +248,9 @@ func (s *Server) registerMaintenanceSchedulerJobs() {
 		return
 	}
 	s.ensureMaintenanceService()
-	s.scheduler.RegisterJobHandler(defaultMemoryMaintenanceJobID, func(ctx context.Context, _ schedulerdomain.Job, firedAt time.Time) error {
-		result := s.maintenance.RunMemoryMaintenance(ctx, firedAt.UTC())
-		if result.Status == "failed" {
-			return errors.New(result.Error)
-		}
-		return nil
-	})
+	if err := s.scheduler.RetireBuiltinJobs([]string{"system-memory-maintenance"}); err != nil && s.logger != nil {
+		s.logger.Error("failed to retire legacy memory maintenance job", slog.String("error", err.Error()))
+	}
 	s.scheduler.RegisterJobHandler(defaultSessionCleanupJobID, func(_ context.Context, _ schedulerdomain.Job, firedAt time.Time) error {
 		result := s.maintenance.RunSessionCleanup(firedAt.UTC())
 		if result.Status == "failed" {
@@ -309,21 +259,6 @@ func (s *Server) registerMaintenanceSchedulerJobs() {
 		return nil
 	})
 	if err := s.scheduler.RegisterBuiltinJobs([]schedulerdomain.Job{
-		{
-			ID:             defaultMemoryMaintenanceJobID,
-			Name:           "Memory Maintenance",
-			Enabled:        true,
-			Timezone:       "Asia/Shanghai",
-			ScheduleMode:   schedulerdomain.ScheduleModeDaily,
-			CronExpression: "10 5 * * *",
-			ChannelID:      "scheduler-default",
-			Metadata: map[string]string{
-				"alter0.maintenance.job": defaultMemoryMaintenanceJobID,
-			},
-			TaskConfig: schedulerdomain.TaskConfig{
-				Input: defaultMemoryMaintenancePrompt,
-			},
-		},
 		{
 			ID:             defaultSessionCleanupJobID,
 			Name:           "Session Cleanup",
@@ -349,8 +284,6 @@ func (m *maintenanceService) storeRun(run maintenanceRunResponse) {
 	defer m.mu.Unlock()
 	if run.NextRunAt.IsZero() {
 		switch run.JobID {
-		case defaultMemoryMaintenanceJobID:
-			run.NextRunAt = nextDailyMaintenanceRun(time.Now().UTC(), 5, 10)
 		case defaultSessionCleanupJobID:
 			run.NextRunAt = nextDailyMaintenanceRun(time.Now().UTC(), 5, 20)
 		}
@@ -362,14 +295,10 @@ func (m *maintenanceService) statusItemLocked(jobID string, now time.Time) maint
 	if item, ok := m.lastRuns[jobID]; ok {
 		return item
 	}
-	minute := 10
-	if jobID == defaultSessionCleanupJobID {
-		minute = 20
-	}
 	return maintenanceRunResponse{
 		JobID:     jobID,
 		Status:    "idle",
-		NextRunAt: nextDailyMaintenanceRun(now, 5, minute),
+		NextRunAt: nextDailyMaintenanceRun(now, 5, 20),
 	}
 }
 
