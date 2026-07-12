@@ -70,7 +70,6 @@ export type RuntimeSessionViewSession = {
   model_provider_id?: string;
   model_id?: string;
   tool_ids?: string[];
-  skill_ids?: string[];
   mcp_ids?: string[];
   turns?: RuntimeSessionTurn[];
   turns_paging?: RuntimeSessionTurnPaging;

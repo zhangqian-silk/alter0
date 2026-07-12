@@ -321,7 +321,6 @@ func TestChatScriptUsesChatRuntimeSessionInput(t *testing.T) {
 	markers := []string{
 		`createRuntimeSession(`,
 		`sendRuntimeInput(session.id`,
-		`skill_ids: activeSkillIDs,`,
 		`useRuntimeSessionController`,
 	}
 	for _, marker := range markers {
@@ -330,6 +329,7 @@ func TestChatScriptUsesChatRuntimeSessionInput(t *testing.T) {
 		}
 	}
 	removedMarkers := []string{
+		`skill_ids: activeSkillIDs,`,
 		`sendMessageJSON`,
 		`MESSAGE_ENDPOINT`,
 		`/api/messages`,

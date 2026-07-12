@@ -83,7 +83,6 @@ type Server struct {
 	chatRuntimes      chatRuntimeService
 	runtime           runtimeRestarter
 	runtimeInfo       runtimeInfoProvider
-	memory            *memoryContextService
 	llm               llmService
 	logger            *slog.Logger
 	webLoginPassword  string
@@ -165,7 +164,7 @@ type codexAccountService interface {
 	StartLoginSession(ctx context.Context, request codexapp.LoginSessionStartRequest) (codexapp.LoginSession, error)
 	GetLoginSession(id string) (codexapp.LoginSession, bool)
 	RuntimeStatus() (*codexapp.RuntimeStatus, error)
-	UpdateRuntimeSettings(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error)
+	UpdateRuntimeSettings(update codexapp.RuntimeSettingsUpdate) (*codexapp.RuntimeStatus, error)
 }
 
 type RuntimeRestartOptions struct {
@@ -236,8 +235,9 @@ type codexAccountLoginSessionCreateRequest struct {
 }
 
 type codexRuntimeUpdateRequest struct {
-	Model           string `json:"model"`
-	ReasoningEffort string `json:"reasoning_effort"`
+	Model           string                          `json:"model"`
+	ReasoningEffort string                          `json:"reasoning_effort"`
+	Memories        *codexapp.RuntimeMemoriesUpdate `json:"memories,omitempty"`
 }
 
 type messageAttachmentRequest struct {
@@ -348,7 +348,6 @@ func NewServer(
 	sessions sessionHistoryService,
 	tasks taskService,
 	chatRuntimes chatRuntimeService,
-	memoryOptions MemoryContextOptions,
 	securityOptions WebSecurityOptions,
 	llm llmService,
 	logger *slog.Logger,
@@ -382,7 +381,6 @@ func NewServer(
 		sessions:          sessions,
 		tasks:             tasks,
 		chatRuntimes:      chatRuntimes,
-		memory:            newMemoryContextService(memoryOptions),
 		llm:               llm,
 		logger:            logger,
 		webLoginPassword:  resolvedPassword,
@@ -443,7 +441,6 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	mux.HandleFunc("/api/sessions", s.sessionListHandler)
 	mux.HandleFunc("/api/sessions/", s.sessionMessageListHandler)
-	mux.HandleFunc("/api/memory/context", s.memoryContextHandler)
 	mux.HandleFunc("/api/control/workspace-services", s.workspaceServiceCollectionHandler)
 	mux.HandleFunc("/api/control/workspace-services/", s.workspaceServiceItemHandler)
 	mux.HandleFunc("/api/control/runtime", s.runtimeInfoHandler)
@@ -1148,18 +1145,6 @@ func (s *Server) sessionMessageListHandler(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid session path"})
 		return
 	}
-}
-
-func (s *Server) memoryContextHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
-	if s.memory == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "memory context unavailable"})
-		return
-	}
-	writeJSON(w, http.StatusOK, s.memory.Snapshot())
 }
 
 func (s *Server) runtimeInfoHandler(w http.ResponseWriter, r *http.Request) {
@@ -1954,7 +1939,11 @@ func (s *Server) codexRuntimeHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 			return
 		}
-		runtimeStatus, err := s.codexAccounts.UpdateRuntimeSettings(strings.TrimSpace(req.Model), strings.TrimSpace(req.ReasoningEffort))
+		runtimeStatus, err := s.codexAccounts.UpdateRuntimeSettings(codexapp.RuntimeSettingsUpdate{
+			Model:           strings.TrimSpace(req.Model),
+			ReasoningEffort: strings.TrimSpace(req.ReasoningEffort),
+			Memories:        req.Memories,
+		})
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return

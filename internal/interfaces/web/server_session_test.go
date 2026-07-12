@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -461,45 +460,15 @@ func TestSessionCleanupHandlerDeletesInactiveChatRuntimeSessions(t *testing.T) {
 	}
 }
 
-func TestMaintenanceMemoryRunReportsUnavailableOrchestrator(t *testing.T) {
+func TestMaintenanceStatusOnlyIncludesSessionCleanup(t *testing.T) {
 	server := &Server{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	server.ensureMaintenanceService()
 
-	body := server.maintenance.RunMemoryMaintenance(context.Background(), time.Now().UTC())
-	if body.Status != "failed" || !strings.Contains(body.Error, "memory maintenance unavailable") {
-		t.Fatalf("expected unavailable memory maintenance failure, got %+v", body)
-	}
-}
-
-func TestMaintenanceMemoryRunUsesStructuredSummaryPrompt(t *testing.T) {
-	orchestrator := &stubOrchestrator{}
-	server := &Server{
-		orchestrator: orchestrator,
-		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-	server.ensureMaintenanceService()
-
-	body := server.maintenance.RunMemoryMaintenance(context.Background(), time.Now().UTC())
-	if body.Status != "success" {
-		t.Fatalf("expected successful memory maintenance, got %+v", body)
-	}
-	content := orchestrator.last.Content
-	for _, required := range []string{
-		"Summarize daily memory into durable memory candidates",
-		"Do not copy raw transcript text",
-		"Return changed files and skipped candidates",
-	} {
-		if !strings.Contains(content, required) {
-			t.Fatalf("expected maintenance prompt to contain %q, got %q", required, content)
-		}
-	}
-	if orchestrator.last.Metadata["alter0.skills.include"] != `["memory-maintenance"]` {
-		t.Fatalf("expected memory-maintenance skill, got %+v", orchestrator.last.Metadata)
-	}
-	if !strings.Contains(orchestrator.last.Metadata["alter0.memory.include"], "memory_daily_today") {
-		t.Fatalf("expected daily memory context, got %+v", orchestrator.last.Metadata)
+	status := server.maintenance.Status(time.Now().UTC())
+	if len(status.Items) != 1 || status.Items[0].JobID != defaultSessionCleanupJobID {
+		t.Fatalf("expected only session cleanup maintenance, got %+v", status.Items)
 	}
 }
 

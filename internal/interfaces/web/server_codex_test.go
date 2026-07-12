@@ -22,7 +22,7 @@ type stubCodexAccountService struct {
 	startLoginSession func(ctx context.Context, request codexapp.LoginSessionStartRequest) (codexapp.LoginSession, error)
 	getLoginSession   func(id string) (codexapp.LoginSession, bool)
 	runtimeStatus     func() (*codexapp.RuntimeStatus, error)
-	updateSettings    func(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error)
+	updateSettings    func(update codexapp.RuntimeSettingsUpdate) (*codexapp.RuntimeStatus, error)
 }
 
 func (s *stubCodexAccountService) ListStatuses(ctx context.Context) ([]codexapp.AccountStatus, *codexapp.CurrentStatus, error) {
@@ -67,9 +67,9 @@ func (s *stubCodexAccountService) RuntimeStatus() (*codexapp.RuntimeStatus, erro
 	return nil, nil
 }
 
-func (s *stubCodexAccountService) UpdateRuntimeSettings(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error) {
+func (s *stubCodexAccountService) UpdateRuntimeSettings(update codexapp.RuntimeSettingsUpdate) (*codexapp.RuntimeStatus, error) {
 	if s.updateSettings != nil {
-		return s.updateSettings(model, reasoningEffort)
+		return s.updateSettings(update)
 	}
 	return nil, nil
 }
@@ -318,40 +318,47 @@ func TestCodexAccountItemHandlerSwitchesAccount(t *testing.T) {
 	}
 }
 
-func TestCodexRuntimeHandlerUpdatesModel(t *testing.T) {
-	var gotModel string
-	var gotReasoningEffort string
+func TestCodexRuntimeHandlerUpdatesGlobalRuntimeAndMemoriesSettings(t *testing.T) {
+	var gotUpdate codexapp.RuntimeSettingsUpdate
 	server := &Server{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		codexAccounts: &stubCodexAccountService{
-			updateSettings: func(model string, reasoningEffort string) (*codexapp.RuntimeStatus, error) {
-				gotModel = model
-				gotReasoningEffort = reasoningEffort
+			updateSettings: func(update codexapp.RuntimeSettingsUpdate) (*codexapp.RuntimeStatus, error) {
+				gotUpdate = update
 				return &codexapp.RuntimeStatus{
 					Command:         "codex",
 					AuthPath:        "/var/lib/alter0/.codex/auth.json",
 					ConfigPath:      "/var/lib/alter0/.codex/config.toml",
 					HasAuth:         true,
 					HasConfig:       true,
-					Model:           model,
-					ReasoningEffort: reasoningEffort,
+					Model:           update.Model,
+					ReasoningEffort: update.ReasoningEffort,
+					Memories: &codexapp.RuntimeMemoriesStatus{
+						Available:        true,
+						Enabled:          update.Memories.Enabled,
+						GenerateMemories: update.Memories.GenerateMemories,
+						UseMemories:      update.Memories.UseMemories,
+					},
 				}, nil
 			},
 		},
 	}
 
-	req := httptest.NewRequest(http.MethodPut, "/api/control/codex/runtime", strings.NewReader(`{"model":"gpt-5.4","reasoning_effort":"high"}`))
+	req := httptest.NewRequest(http.MethodPut, "/api/control/codex/runtime", strings.NewReader(`{"model":"gpt-5.4","reasoning_effort":"high","memories":{"enabled":true,"generate_memories":false,"use_memories":true}}`))
 	rec := httptest.NewRecorder()
 	server.codexRuntimeHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if gotModel != "gpt-5.4" {
-		t.Fatalf("gotModel = %q, want gpt-5.4", gotModel)
+	if gotUpdate.Model != "gpt-5.4" {
+		t.Fatalf("got model = %q, want gpt-5.4", gotUpdate.Model)
 	}
-	if gotReasoningEffort != "high" {
-		t.Fatalf("gotReasoningEffort = %q, want high", gotReasoningEffort)
+	if gotUpdate.ReasoningEffort != "high" {
+		t.Fatalf("got reasoning effort = %q, want high", gotUpdate.ReasoningEffort)
+	}
+	if gotUpdate.Memories == nil || !gotUpdate.Memories.Enabled || gotUpdate.Memories.GenerateMemories || !gotUpdate.Memories.UseMemories {
+		t.Fatalf("got memories update = %+v", gotUpdate.Memories)
 	}
 	var payload codexapp.RuntimeStatus
 	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
@@ -362,5 +369,8 @@ func TestCodexRuntimeHandlerUpdatesModel(t *testing.T) {
 	}
 	if payload.ReasoningEffort != "high" {
 		t.Fatalf("payload.ReasoningEffort = %q, want high", payload.ReasoningEffort)
+	}
+	if payload.Memories == nil || !payload.Memories.Enabled || payload.Memories.GenerateMemories || !payload.Memories.UseMemories {
+		t.Fatalf("payload.Memories = %+v", payload.Memories)
 	}
 }

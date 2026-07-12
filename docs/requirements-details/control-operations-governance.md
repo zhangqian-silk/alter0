@@ -36,11 +36,11 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 ### Skill
 
 - 支持 Skill 创建、更新、删除与列表查询。
-- 默认提供 `memory`、`preview-publish`、`frontend-design`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review`、`brainstorming` 与 `travel` 公有 Skill；`memory-maintenance` 作为系统维护专用私有 Skill 保留。
-- 这些项目内置 file-backed Skill 都由源码仓库直接承载并在启动时校验文件存在；标准 skill 继续使用 `docs/skills/<skill_id>/SKILL.md`，附属脚本或参考文件与 skill 一同放在对应目录中；plugin-style 的 `code-simplifier` 与 `code-review` 保留 `.claude-plugin/plugin.json` 元数据，并分别以 `docs/skills/code-simplifier/SKILL.md`、`docs/skills/code-review/commands/code-review.md` 作为 alter0 的注入入口。CLI Runtime 会把本轮选中的可读 file-backed Skill 目录复制到当前会话工作区，Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，运行时上下文中的 `file_path` 指向工作区内副本。
+- 默认提供 `preview-publish`、`frontend-design`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review`、`brainstorming` 与 `travel` 等公有 Skill；启动时清理历史 `memory` 与 `memory-maintenance` 条目。
+- 项目内置 file-backed Skill 统一使用 `docs/skills/<skill_id>/SKILL.md`，附属脚本或参考文件与 Skill 一同同步到 Codex 用户级原生 Skill 目录。同步只管理带 alter0 标记的目标，保留用户自行安装的 Skill，并在无效来源或目标冲突时拒绝生命周期变更。
 - `preview-publish` 额外提供 `docs/skills/preview-publish/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>-<session_short_hash>.alter0.cn`。所有需要给用户浏览器查看的静态产物都必须通过该 skill 发布，不得返回服务器本地路径、工作区内部路径、`file://`、`localhost` 或 `127.0.0.1` 作为用户入口；需要完整 Web 应用或后端路由时同样使用 `preview-publish`。
 - Skill 协议支持文件路径与可写属性。
-- 服务不再注册内置业务编排；执行层只注入当前会话显式选择且控制面可见的 Skill。
+- 服务不再注册内置业务编排；Codex 通过原生描述匹配或 `$skill-name` 使用控制面启用的全局 Skill。
 
 ### Capability 与 MCP
 
@@ -55,7 +55,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 - 支持 Runtime Profile 的创建、更新、启用、禁用与查询。
 - Runtime Profile 作为历史配置模型保留，当前稳定 Chat 入口不再依赖内置 Runtime Profile 或内置业务编排。
-- 代码开发、旅行攻略、结构化写作等业务能力通过用户选择的 Skill 组合表达，不改变底层 CLI 执行链。
+- 代码开发、旅行攻略、结构化写作等业务能力通过原生 Skill 表达，不改变底层 CLI 执行链。
 - Runtime Profile 编辑页中的短字段优先采用并排栅格布局，`Enabled` 使用显式开关控件。
 
 ### Cron 与 Codex Runtime
@@ -66,7 +66,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - Codex Runtime 控制面负责展示服务运行账户当前 Codex 身份、额度、profile、活动 model、思考深度与 LLM Provider 注册状态，并允许直接更新当前 Codex 配置中的 model 与思考深度。首屏加载时，运行时状态与 LLM Provider 状态必须并行读取，避免互不依赖的接口串行拖慢 Settings Runtime 分区。
 - Codex Runtime 控制面支持启动 `device_auth` 登录会话；后端必须以独立登录目录运行 `codex login --device-auth`，并从登录输出中提取验证链接、完整验证链接、用户码、过期秒数、轮询秒数与原始日志。前端需在 Runtime 面板内展示这些关键信息并轮询会话状态，成功后刷新当前 Runtime 身份与额度。该能力仅辅助当前服务运行账户完成无头登录，不恢复多账号导入、切换或账号管理侧栏。
 - Codex Runtime 控制面支持通过 Claude Code Provider Console 连续注册和编辑多个 OpenAI-compatible Provider；桌面端 registry 与 editor 在同一容器内左右分栏，窄屏单列展开。前端收集 Provider 名称、base URL、API key 与 models，models 使用全宽多行编辑区，支持换行或逗号分隔并按输入顺序去重，提交到 `POST /api/control/llm/providers` 或 `PUT /api/control/llm/providers/{id}`，默认使用 `openai-completions` API type，写入启用状态、多个启用模型和首个默认模型，并在成功后刷新 LLM Provider 注册状态。已注册 Provider 列表需展示名称、base URL、默认 model、模型数量、模型列表与启用/默认状态；点击编辑时将 Provider 当前 base URL 与 models 载入表单，API key 输入留空表示保留已保存密钥。每次成功后表单清空 base URL、API key 与 models，并自动准备下一个未占用的 `Claude Code N` 默认名称；用户已手动填写的非空表单不会被后台刷新覆盖。该入口复用 Model Provider 注册表与凭据遮蔽语义，不单独维护 Claude Code 私有配置源。
-- Web Shell 由 `/settings` 单页承接 Runtime、Skills、Memory 与 Schedules 能力的读取、加载、空态与错误态渲染；这些能力不再作为一级侧栏入口或独立工作台 path 展示，而是在页内按 `Runtime / Skills / Memory / Schedules` 分区切换。桌面端分区切换作为左侧设置索引常驻，入口包含图标、短标识与活动态；真手机宽度下切换区使用双列按钮栅格，所有设置分区入口需直接可见且不依赖横向滚动。各分区正文需统一使用 Settings 作用域下的扁平 route surface：列表、表格、筛选表单、主从详情、空态与错误态共享白底、浅灰辅助层、必要分割线和紧凑字段行，不再默认使用外层卡片边框、厚圆角或重阴影表达层级。控制台页面中的描述、Cron 输入、Skill 说明与 Codex 运行时说明按安全 Markdown 渲染，ID、路径、密钥、配置值与时间戳保持纯文本或等宽字段展示。
+- Web Shell 由 `/settings` 单页承接 Runtime、Skills 与 Schedules；原生 Memories 总开关、生成、召回和活动状态归入 Runtime，不提供独立 Memory 分区。
 
 ## 接口边界
 
@@ -116,7 +116,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 ### 会话级选择
 
-- Chat 发送区支持 route 级 `Provider / Model` 与 Skills 选择，并把选择持久化到浏览器本地配置；Tools/MCP 由运行时与控制面配置注入，不在会话设置中暴露独立选择面板。
+- Chat 发送区支持 route 级 `Provider / Model` 选择；不提供分会话 Skill 选择，也不持久化或发送 `skill_ids`。
 - 当前消息默认选择 `Codex` 并进入 `Codex Direct`。
 - 当前消息选择具体 Provider / Model 时，Runtime Resolver 使用对应 Claude Code provider profile。
 - 未显式选择 Provider 时不回退到系统默认 Provider，直接进入 `Codex Direct`；显式 Provider 不可用时也回到 `Codex Direct`。

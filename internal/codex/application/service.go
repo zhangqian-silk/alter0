@@ -56,18 +56,31 @@ type CurrentStatus struct {
 }
 
 type RuntimeStatus struct {
-	Command         string               `json:"command,omitempty"`
-	AuthPath        string               `json:"auth_path,omitempty"`
-	ConfigPath      string               `json:"config_path,omitempty"`
-	HasAuth         bool                 `json:"has_auth"`
-	HasConfig       bool                 `json:"has_config"`
-	Profile         string               `json:"profile,omitempty"`
-	Model           string               `json:"model,omitempty"`
-	ReasoningEffort string               `json:"reasoning_effort,omitempty"`
-	ModelOrigin     *RuntimeConfigOrigin `json:"model_origin,omitempty"`
-	ReasoningOrigin *RuntimeConfigOrigin `json:"reasoning_origin,omitempty"`
-	Models          []RuntimeModel       `json:"models,omitempty"`
-	Current         *CurrentStatus       `json:"current,omitempty"`
+	Command         string                 `json:"command,omitempty"`
+	AuthPath        string                 `json:"auth_path,omitempty"`
+	ConfigPath      string                 `json:"config_path,omitempty"`
+	HasAuth         bool                   `json:"has_auth"`
+	HasConfig       bool                   `json:"has_config"`
+	Profile         string                 `json:"profile,omitempty"`
+	Model           string                 `json:"model,omitempty"`
+	ReasoningEffort string                 `json:"reasoning_effort,omitempty"`
+	ModelOrigin     *RuntimeConfigOrigin   `json:"model_origin,omitempty"`
+	ReasoningOrigin *RuntimeConfigOrigin   `json:"reasoning_origin,omitempty"`
+	Models          []RuntimeModel         `json:"models,omitempty"`
+	Current         *CurrentStatus         `json:"current,omitempty"`
+	Memories        *RuntimeMemoriesStatus `json:"memories,omitempty"`
+}
+
+type RuntimeSettingsUpdate struct {
+	Model           string
+	ReasoningEffort string
+	Memories        *RuntimeMemoriesUpdate
+}
+
+type RuntimeMemoriesUpdate struct {
+	Enabled          bool `json:"enabled"`
+	GenerateMemories bool `json:"generate_memories"`
+	UseMemories      bool `json:"use_memories"`
 }
 
 type RuntimeConfigOrigin struct {
@@ -164,6 +177,7 @@ type ServiceOptions struct {
 	NewID             func() string
 	Now               func() time.Time
 	LoginStdout       io.Writer
+	NativeMemories    NativeMemoriesFeatureStatus
 }
 
 type Service struct {
@@ -175,6 +189,7 @@ type Service struct {
 	newID             func() string
 	now               func() time.Time
 	loginStdout       io.Writer
+	nativeMemories    NativeMemoriesFeatureStatus
 
 	mu           sync.RWMutex
 	loginSession map[string]LoginSession
@@ -234,9 +249,20 @@ type appServerConfigReadResponse struct {
 }
 
 type appServerConfig struct {
-	Model                *string `json:"model"`
-	ModelReasoningEffort *string `json:"model_reasoning_effort"`
-	Profile              *string `json:"profile"`
+	Model                *string                  `json:"model"`
+	ModelReasoningEffort *string                  `json:"model_reasoning_effort"`
+	Profile              *string                  `json:"profile"`
+	Features             *appServerFeaturesConfig `json:"features"`
+	Memories             *appServerMemoriesConfig `json:"memories"`
+}
+
+type appServerFeaturesConfig struct {
+	Memories *bool `json:"memories"`
+}
+
+type appServerMemoriesConfig struct {
+	GenerateMemories *bool `json:"generate_memories"`
+	UseMemories      *bool `json:"use_memories"`
 }
 
 type appServerConfigOrigin struct {
@@ -294,6 +320,7 @@ func NewService(options ServiceOptions) *Service {
 		newID:             newID,
 		now:               now,
 		loginStdout:       options.LoginStdout,
+		nativeMemories:    options.NativeMemories,
 		loginSession:      map[string]LoginSession{},
 	}
 }
@@ -526,6 +553,7 @@ func (s *Service) RuntimeStatus() (*RuntimeStatus, error) {
 		ReasoningOrigin: runtimeOriginFromMap(configRead.Origins, "model_reasoning_effort"),
 		Models:          toRuntimeModels(models),
 		Current:         current,
+		Memories:        runtimeMemoriesStatus(activeHome, s.nativeMemories, configRead),
 	}, nil
 }
 
@@ -584,38 +612,106 @@ func (s *Service) Switch(name string) (*Record, string, error) {
 	return record, backupPath, nil
 }
 
-func (s *Service) UpdateRuntimeSettings(model string, reasoningEffort string) (*RuntimeStatus, error) {
-	model = strings.TrimSpace(model)
-	reasoningEffort = strings.TrimSpace(reasoningEffort)
-	if model == "" {
-		return nil, fmt.Errorf("model is required")
+func (s *Service) UpdateRuntimeSettings(update RuntimeSettingsUpdate) (*RuntimeStatus, error) {
+	model := strings.TrimSpace(update.Model)
+	reasoningEffort := strings.TrimSpace(update.ReasoningEffort)
+	if (model == "") != (reasoningEffort == "") {
+		return nil, fmt.Errorf("model and reasoning_effort must be updated together")
 	}
-	if reasoningEffort == "" {
-		return nil, fmt.Errorf("reasoning_effort is required")
+	if update.Memories != nil && !s.nativeMemories.Available {
+		return nil, fmt.Errorf("native Codex memories are unavailable")
 	}
-
+	if model == "" && update.Memories == nil {
+		return nil, fmt.Errorf("runtime settings update is empty")
+	}
 	activeHome, err := s.resolveActiveHome()
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	configRead, err := s.appServerConfigRead(ctx, activeHome)
-	if err != nil {
-		return nil, err
+	edits := make([]appServerConfigEdit, 0, 5)
+	if model != "" {
+		configRead, err := s.appServerConfigRead(ctx, activeHome)
+		if err != nil {
+			return nil, err
+		}
+		modelKeyPath := resolveRuntimeConfigKeyPath(runtimeOriginFromMap(configRead.Origins, "model"), normalizeTextPointer(configRead.Config.Profile), "model")
+		reasoningKeyPath := resolveRuntimeConfigKeyPath(runtimeOriginFromMap(configRead.Origins, "model_reasoning_effort"), normalizeTextPointer(configRead.Config.Profile), "model_reasoning_effort")
+		edits = append(edits,
+			appServerConfigEdit{KeyPath: modelKeyPath, MergeStrategy: "upsert", Value: model},
+			appServerConfigEdit{KeyPath: reasoningKeyPath, MergeStrategy: "upsert", Value: reasoningEffort},
+		)
 	}
-	modelKeyPath := resolveRuntimeConfigKeyPath(runtimeOriginFromMap(configRead.Origins, "model"), normalizeTextPointer(configRead.Config.Profile), "model")
-	reasoningKeyPath := resolveRuntimeConfigKeyPath(runtimeOriginFromMap(configRead.Origins, "model_reasoning_effort"), normalizeTextPointer(configRead.Config.Profile), "model_reasoning_effort")
+	if update.Memories != nil {
+		edits = append(edits,
+			appServerConfigEdit{KeyPath: "features.memories", MergeStrategy: "upsert", Value: update.Memories.Enabled},
+			appServerConfigEdit{KeyPath: "memories.generate_memories", MergeStrategy: "upsert", Value: update.Memories.GenerateMemories},
+			appServerConfigEdit{KeyPath: "memories.use_memories", MergeStrategy: "upsert", Value: update.Memories.UseMemories},
+		)
+	}
 	if err := s.appServerConfigBatchWrite(ctx, activeHome, appServerConfigBatchWriteParams{
-		Edits: []appServerConfigEdit{
-			{KeyPath: modelKeyPath, MergeStrategy: "upsert", Value: model},
-			{KeyPath: reasoningKeyPath, MergeStrategy: "upsert", Value: reasoningEffort},
-		},
+		Edits:            edits,
 		ReloadUserConfig: true,
 	}); err != nil {
 		return nil, err
 	}
 	return s.RuntimeStatus()
+}
+
+func (s *Service) EnsureRuntimeMemoriesDefaults() error {
+	if !s.nativeMemories.Available {
+		return nil
+	}
+	activeHome, err := s.resolveActiveHome()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	configRead, err := s.appServerConfigRead(ctx, activeHome)
+	if err != nil {
+		return err
+	}
+	defaults := []appServerConfigEdit{
+		{KeyPath: "features.memories", MergeStrategy: "upsert", Value: true},
+		{KeyPath: "memories.generate_memories", MergeStrategy: "upsert", Value: true},
+		{KeyPath: "memories.use_memories", MergeStrategy: "upsert", Value: true},
+	}
+	edits := make([]appServerConfigEdit, 0, len(defaults))
+	for _, edit := range defaults {
+		if _, configured := configRead.Origins[edit.KeyPath]; !configured {
+			edits = append(edits, edit)
+		}
+	}
+	if len(edits) == 0 {
+		return nil
+	}
+	return s.appServerConfigBatchWrite(ctx, activeHome, appServerConfigBatchWriteParams{
+		Edits:            edits,
+		ReloadUserConfig: true,
+	})
+}
+
+func runtimeMemoriesStatus(activeHome string, feature NativeMemoriesFeatureStatus, configRead *appServerConfigReadResponse) *RuntimeMemoriesStatus {
+	enabled := runtimeConfigBool(configRead, "features.memories", configRead.Config.Features != nil && boolValue(configRead.Config.Features.Memories), true)
+	generate := runtimeConfigBool(configRead, "memories.generate_memories", configRead.Config.Memories != nil && boolValue(configRead.Config.Memories.GenerateMemories), true)
+	use := runtimeConfigBool(configRead, "memories.use_memories", configRead.Config.Memories != nil && boolValue(configRead.Config.Memories.UseMemories), true)
+	return inspectRuntimeMemories(activeHome, feature, enabled, generate, use)
+}
+
+func runtimeConfigBool(configRead *appServerConfigReadResponse, key string, observed bool, defaultValue bool) bool {
+	if configRead == nil {
+		return defaultValue
+	}
+	if _, configured := configRead.Origins[key]; !configured {
+		return defaultValue
+	}
+	return observed
+}
+
+func boolValue(value *bool) bool {
+	return value != nil && *value
 }
 
 func (s *Service) StartLoginSession(ctx context.Context, request LoginSessionStartRequest) (LoginSession, error) {

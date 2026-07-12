@@ -200,6 +200,25 @@ func TestManagerProtectsBuiltinJobsFromDeletionAndAllowsDisable(t *testing.T) {
 	}
 }
 
+func TestManagerRetireBuiltinJobsRemovesOnlyNamedBuiltins(t *testing.T) {
+	manager := NewManager(nil, nil, nil, nil)
+	if err := manager.RegisterBuiltinJobs([]schedulerdomain.Job{
+		{ID: "system-memory-maintenance", Name: "Memory Maintenance", Enabled: true, ScheduleMode: schedulerdomain.ScheduleModeDaily, CronExpression: "10 5 * * *", TaskConfig: schedulerdomain.TaskConfig{Input: "maintain memory"}},
+		{ID: "system-session-cleanup", Name: "Session Cleanup", Enabled: true, ScheduleMode: schedulerdomain.ScheduleModeDaily, CronExpression: "20 5 * * *", TaskConfig: schedulerdomain.TaskConfig{Input: "clean sessions"}},
+	}); err != nil {
+		t.Fatalf("register builtins: %v", err)
+	}
+	if err := manager.RetireBuiltinJobs([]string{"system-memory-maintenance"}); err != nil {
+		t.Fatalf("retire builtin: %v", err)
+	}
+	if _, ok := findSchedulerJob(manager.List(), "system-memory-maintenance"); ok {
+		t.Fatal("expected retired builtin removed")
+	}
+	if _, ok := findSchedulerJob(manager.List(), "system-session-cleanup"); !ok {
+		t.Fatal("expected unrelated builtin preserved")
+	}
+}
+
 func findSchedulerJob(jobs []schedulerdomain.Job, id string) (schedulerdomain.Job, bool) {
 	for _, job := range jobs {
 		if job.ID == id {

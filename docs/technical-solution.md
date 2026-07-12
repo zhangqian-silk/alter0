@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | Runtime & Orchestration | `internal/interfaces`、`internal/shared`、`internal/orchestration`、`internal/execution/domain`、`internal/scheduler` | 统一消息、意图路由、Runtime Resolver、CLI Runtime、调度触发、观测与健康检查 |
 | Conversation & Session Experience | `internal/interfaces/web`、`internal/session`、Web static assets | Chat 会话、历史隔离、移动端视口、消息渲染 |
-| Skill & Memory | `internal/runtime`、`internal/execution`、`internal/orchestration`、`docs/skills`、`<runtime_root>/storage/memory` | CLI Runtime 上下文注入、Skill 仓库、Memory Context、会话摘要、长期记忆、记忆维护任务 |
+| Skill & Memory | `internal/codex/application`、`internal/control`、`internal/chatruntime/application`、`internal/execution/infrastructure`、`docs/skills` | 用户级原生 Skill 生命周期、共享 `CODEX_HOME` 与全局原生 Memories 配置 |
 | Task, Chat & Workspace | `internal/task`、`internal/tasksummary`、`internal/chatruntime`、`<runtime_root>/workspaces` | 异步任务、日志流、心跳、产物交付、Chat 会话、工作区隔离 |
 | Control, Operations & Governance | `internal/control`、`internal/codex`、`cmd/alter0`、`scripts`、`docs/deployment` | 控制面配置、Model Provider、Claude Code provider profile、Codex Runtime、运行时重启、部署凭据、测试与 TDD 约束 |
 
@@ -58,7 +58,7 @@ CLI / Web / Cron
 - Cron runs 接口通过 Session history 按 `trigger_type=cron` 与 `job_id` 查询触发会话，不另建独立运行记录存储。
 - `ExecutionPort` 是 Agent 执行能力的稳定边界；具体执行由 `RuntimeResolver` 选择 CLI Runtime。
 - `RuntimeResolver` 按优先级选择执行器：空执行器、`auto` 或显式 `alter0.execution.engine=codex` 进入 `Codex Direct`；显式 `alter0.execution.engine=claude` 或携带 `alter0.llm.provider_id` 时解析对应 Model Provider 并进入 `Claude Code + provider profile`；Provider 不可用时进入 `Codex Direct`；Claude 执行失败不自动回退。
-- Claude Code 运行前注入 `CLAUDE.md`、provider profile 环境、Skill、Memory、MCP 和工作区事实；Codex Direct 运行前注入 `AGENTS.md`、独立 `CODEX_HOME`、Skill、Memory、MCP 和工作区事实。
+- Claude Code 运行前准备 provider profile 与必要上下文；Codex Direct 使用共享活动 `CODEX_HOME`，从用户级目录发现 Skills、读取全局 Memories 配置并直接使用仓库自身 `AGENTS.md`。
 - `internal/execution/domain` 使用 `alter0.runtime.thread_title` 作为 CLI Runtime 外部 thread title 的统一元数据键。Codex JSONL 事件解析 `title / thread_title / conversation_title / name` 以及 `thread/session/conversation.title` 等字段并写入该 metadata；Claude Code 在不改变现有 text 输出模式的前提下，从 stdout 中可观测到的结构化 title 行提取同一 metadata，并把该元数据行从最终文本输出中过滤。`internal/execution/application.Service` 将该 metadata 透传到 `ExecutionResult.Metadata`，供上层会话标题同步或审计使用。
 - 运行过程统一归一为轻量 `RuntimeTraceEvent`：turn 摘要与 updates payload 只保留 `id / kind / status / text / detail_available / created_at / completed_at / duration_ms`。`kind` 枚举固定为 `important_text / reasoning / plan / tools / commands / system`，不通过自然语言正文、标题、关键词或语言模式推断；结构化 `blocks` 只在 event detail 接口返回，`seq / session_id / turn_id / provider / source / role / lifecycle / title / summary / visibility / raw / action` 不进入轻量协议。
 - trace、session、message、correlation 字段贯穿日志、指标、会话与任务。
@@ -94,7 +94,7 @@ CLI / Web / Cron
 - Chat 的 `ScrollJumpStrip` 只使用 `.runtime-message-user[data-message-id]` 作为跳转测量目标，保证 `上一条 / 下一条` 都按用户消息定位；assistant 消息、Thinking / Process 披露区和过程步骤不参与 Chat 阅读定位目标计算。Chat 仍按自身 turn/item selector 维持等宽输出定位。
 - `ConversationRuntimeProvider.tsx` 接受 `chat` conversation route：读取本地活动会话、当前 route 快照、服务端集合、单会话详情和用户手动 focus 时都会使用当前 route owner 的会话模型；`session_id` query 直接保存后端 canonical id，不做二次解析或迁移。`session_id` query 只作为显式恢复输入和用户手动 focus 的输出；当 `/chat` 没有显式 `session_id` 时，Provider 以当前 owner 的服务端集合与本地 canonical 快照合并后的第一条会话作为当前会话，不让其他 route 的活动会话覆盖最新入口。会话列表在前端按置顶优先、内容 `updatedAt` 时间排序与分组，缺少更新时间时回退到创建时间；对尚未进入 Session history 的空白本地会话，pin 请求失败时仍更新本地会话快照，保证当前工作区即时反馈不被 history 缺口吞掉。
 - `internal/session/application.Service` 在 Session summary 中输出 `last_active_at` 与 `pinned`。`SetSessionPinned` 持久化置顶 metadata，`TouchSession` 写入活跃时间 metadata，`CleanupInactiveSessions` 按固定阈值扫描会话并返回删除、置顶跳过和扫描统计；没有显式活跃时间的历史会话使用最后消息时间参与排序和清理判断。
-- `internal/interfaces/web/maintenance.go` 负责系统维护任务：服务启动时创建每日记忆维护与会话清理调度循环；`RunMemoryMaintenance` 通过编排入口发送系统消息并注入 `memory-maintenance` Skill；`RunSessionCleanup` 调用 Session application 清理超过 7 天不活跃且未置顶的会话，并同步删除任务关联与 Session workspace。
+- `internal/interfaces/web/maintenance.go` 只注册 Session Cleanup，并在启动时通过 Scheduler 显式退役历史 `system-memory-maintenance` 内置任务；会话清理继续移除超过 7 天不活跃且未置顶的会话及其任务、Runtime 和工作区数据。
 - `ConversationRuntimeProvider.tsx` 的恢复判定识别本地正在同步的 `local_running / recovering` 会话；恢复流程在要求稳定 assistant 时必须等到详情接口返回非占位 assistant 或失败态后才 upsert。Provider 将自动轮询条件与输入锁条件拆分：`shouldPollRuntimeBackedSession` 只接受前端本机产生的 `local_running / recovering` 同步意图，普通服务端 `busy / running` 摘要不触发后台 updates/detail 轮询；`shouldBlockRuntimeInput` 只检查会话或消息是否仍为 `busy / running / queued / in_progress / local_running / recovering`，不把用于详情补偿的 recoverable error/历史未回答 user 判定复用为输入锁。失败、中断或退出终态允许同一会话继续提交下一条输入；兼容历史 `ready` summary + failed turn 时直接以 turn/message 终态解锁，不使用 `updated_at > finished_at` 作为失败可重试的必要条件。ChatRuntime `finishTurn` 在请求失败时把 session 与 turn 同步标为 `failed` 并记录 `finished_at`，下一条 input 会清理失败摘要并重新进入 busy。
 - `internal/orchestration/application/SessionPersistenceService` 将非 Chat 入口的会话落库拆为请求开始与结果收口两段：`Handle` 进入下游执行前先追加本轮 `user` 记录，执行完成后追加 assistant 记录及 route、错误码和结构化过程。Chat 当前运行页以 Chat turn store 为恢复来源。
 - `internal/interfaces/web/server_chat.go` 对 Chat owner 的输入使用服务端请求生命周期控制 runtime turn；浏览器刷新或前端主动断开请求只结束当前 HTTP 回传，不取消已进入 runtime 的执行，前端恢复链路依赖当前 owner 的 session 详情补拉最终结果。
@@ -109,7 +109,7 @@ CLI / Web / Cron
 - `internal/chatruntime/domain.RepositoryBinding` 只持久化 provider、稳定仓库 id、`owner/name`、默认分支、固定 workspace path、准备状态、head 与脱敏错误。应用层通过 `RepositoryCatalog` 和 `RepositoryWorkspacePreparer` 接口隔离目录解析与工作区准备；默认 GitHub adapter 使用服务端个人 `gh api` / `gh repo clone`，命令参数不携带 token 或带凭据 URL。
 - Web 注册 `GET /api/chat/repositories`、input 的可选 `repository` 字段和 `POST /api/chat/sessions/{session_id}/repository/retry`。目录响应与 session DTO 不返回 token、clone URL 或绝对路径。服务端按稳定仓库 id 重新解析授权仓库；clone 先落入会话工作区 staging 目录，校验 remote/branch/head 后原子改名为 `repo/`，已存在且 remote 匹配的 checkout 直接复用，不自动 pull/fetch/reset 或重写用户修改。
 - `ConversationRuntimeProvider.tsx` 为每个 route/session 维护独立 repository draft key；仓库搜索只调用脱敏目录接口，选择只更新本地草稿。`sendPrompt` 在首次 input payload 中附加 `{ provider: "github", id, full_name }`，成功响应后清除草稿并以服务端 `session.repository` 为事实源。`RuntimeComposer` 在附件 strip 之外渲染 repository context chip，`ConversationWorkspace` 提供独立 GitHub 图标、桌面 popover 与移动端 bottom sheet；已绑定 chip 不可移除，失败状态调用 retry API。
-- 仓库准备发生在 Agent 启动前。Agent prompt 使用单独的可信 repository context 段，只声明显示名、`repo/`、branch/head 与“默认在该仓库内工作”，不注入凭据。retry 只恢复同一失败 turn，保留原 `SkillContext`，不新增 user 消息或 turn。
+- 仓库准备发生在 Agent 启动前。准备成功后 ChatRuntime 把 `repo/` 设为 Codex 的 `cmd.Dir`，使仓库 `AGENTS.md` 原生生效；retry 只恢复同一失败 turn 和原用户输入，不新增 user 消息或 turn。
 
 ### 实时更新通道
 
@@ -129,6 +129,7 @@ POST /api/chat/sessions/{session_id}/input
 ```
 
 - `internal/chatruntime/application.Service` 通过 `SetSessionEventHook` 在输入接受、runtime step 追加/更新、turn 收口三个语义点发布 `SessionEvent`；Web 不再依赖持久化后的整会话 snapshot 推断运行态差异。Codex JSON 解析必须读取 `item.channel`：`agent_message` 的 `commentary` 分支创建 message 型 runtime event 并发布 `turn.event.appended`，`final` 或空频道只参与 `promoteFinalOutput`，其他非最终频道被忽略。Web `sessionUpdateBroker` 作为 owner 级派生 update 日志，和 session JSON 使用同一 owner/session 事实源。单条 update 包含 `update_id`、`type`、`session_id`、可选 `turn_id`、毫秒 `created_at` 和最小 payload；`update_id` 在当前 owner 的可续接窗口内单调递增，session 新鲜度只使用 `updated_at`。
+- `finishTurn` 在通用 Codex 错误压缩前识别 `no rollout found for thread id`。命中后保留原 thread id 并把会话收敛为 `failed`，通过 `state/chat/history/<session-id>.md.tmp -> rename` 原子导出逐轮 `Prompt / Attachments / FinalOutput`，再把可直接复制到新会话的读取指令写入 `error_message`、system entry 与失败 runtime event；该分支不自动创建新 thread，也不把 command、reasoning 或 commentary 过程记录写入历史正文。
 - 查询路径为 `/api/chat/sessions/updates`，使用 Chat owner；客户端必须以 `POST` 携带 `after_update_id`、`limit`、默认/最大 `1MiB` 的 `byte_limit` 与 `visible_event_kinds`。响应为 JSON envelope：`latest_update_id / resync_required / has_more / updates[]`。无变化时返回空 `updates` 与最新 `latest_update_id`，不返回会话列表或完整历史。`after_update_id` 为空时从当前 owner 可续接窗口的最新位置读取；非空时只返回该 update 之后的可见变更。当不可见事件被过滤或其他 owner 事件穿插时，当前响应中的可见 `update_id` 可以不连续。
 - 事件 payload 严格控制体积：`session.created / session.updated / session.deleted` 只传会话摘要字段，包含标题、状态、置顶、更新时间和错误摘要，不携带 turns。`turn.started` 传 session 摘要与目标 turn patch；`turn.event.appended / updated` 传单个轻量 `runtime_event`；`turn.completed / failed / interrupted` 传当前 session 摘要和目标 turn 收口状态、毫秒时间戳、可用 `final_output`，不携带完整 runtime step 历史。Web 返回前根据 `visible_event_kinds` 裁剪 `runtime_event`，只保留当前可见的 runtime step；若某条 turn event 只包含被隐藏的 command/tool/system 等纯过程事件，服务端可跳过该事件但仍推进 `latest_update_id`。所有 updates payload 返回前移除 `owner_id / shell / working_dir / runtime_session_id` 等前端不消费运行元数据；`finished_at` 无值时在详情与 turn payload 中固定为 `null`。前端收到 `runtime_event` 后在本地映射为 message 级 partial step patch，按 `id` 合并 `processEvents`；同 turn 的详情快照或 turn 收口事件若未携带 runtime step，只补正文和状态，不清空本地已有 `processEvents`。附件原图、完整历史页、大段 thinking、结构化 `blocks` 和完整 event detail 不进入 updates。
 - 当 `after_update_id` 早于服务端保留窗口、服务重启后无法证明事件连续、或 session `updated_at` 低于服务端摘要时，updates 返回 `resync_required:true`。客户端按当前 owner 的本地会话列表筛出 `local_running / recovering` runtime-backed 会话并逐个补拉详情，再用后续 updates 继续增量更新。新进程恢复持久化 session 时，孤儿 `running` turn 会被收敛为 `interrupted`；正在服务进程内存中但已经没有 live worker 的残留 `busy / running` 会话，也会在列表、详情、turns、entries 和继续输入前通过 `reconcileOrphanedRuntimeSession` 懒校准为 `interrupted` 并写回 store。补拉详情必须覆盖本地旧 `busy` 快照。
@@ -180,14 +181,14 @@ Web input
 - 根路径 `/`、`/chat`、`/login`、`/logout` 是稳定 Web Shell 入口；页面、受保护预览工作区与 API 共享同一登录态校验，静态只读 host 保留匿名访问。
 - `/chat` 固定分发 `static/dist/index.html`，静态资源统一从 `static/dist/assets` 与 `static/dist/legacy` 提供；兼容层仅保留 legacy CSS，不再通过 legacy JS 启动 `/chat` 运行时。
 - `static/dist/index.html` 仅保留前端挂载容器、字体与 legacy 样式入口；React 在 `frontend-root` 内渲染当前 Web Shell 所需的 legacy DOM 节点，并在运行时追加 source-owned shell 样式，确保既有 `id`、`data-*` 与布局结构保持稳定。
-- React 壳层中的可变状态不得清空主工作区稳定实例；涉及 route body、消息区与 runtime panel/sheet host 需通过状态边界、结构化 snapshot store 与局部 DOM 更新把 React rerender 限定在安全壳层。会话列表、消息列表与 runtime panel/sheet 原生 DOM 由 React 直接消费并渲染自身状态；当前 React 托管入口集中在 `chat / settings`，Settings 内再切分 Runtime、Skills、Memory 与 Schedules。
+- React 托管入口集中在 `chat / settings`；Settings 切分 Runtime、Skills 与 Schedules，Memories 合并进 Runtime。
 - `ChatView` 采用“滚动内容区 + 固定底部 Composer”结构：欢迎区和消息区共享主内容栅格并各自独立滚动，Composer 独占底部行，避免空态欢迎区、消息流和输入面板相互覆盖。
 - `/chat` 与 `static/dist/legacy/*` 统一返回 `Cache-Control: no-cache`，保证桥接期 HTML 与固定文件名 runtime 资源总能拿到最新版本；`static/dist/assets/*` 基于 Vite 哈希文件名返回 `Cache-Control: public, max-age=31536000, immutable`。
 - 开发态可通过 `ALTER0_WEB_FRONTEND_DEV_ORIGIN` 启用 Go -> Vite dev server 反向代理：`/chat` 直接转发到前端开发服务器，`/@vite/*`、`/@react-refresh`、`/src/*`、`/node_modules/*` 等运行时资源也由同一代理提供；Vite 侧再通过 `ALTER0_WEB_BACKEND_ORIGIN` 把 `/api`、登录和健康检查路径代理回 Go。
 - Chat 请求只负责回传本轮结果，前端断连不得取消已被 Web 层接受的后端执行。
 - Skill 管理接口继续维护用户管理 Skill 的 `session_profile_fields`、`deliverables` 与 `completion_checks` 字段集，用于历史兼容和控制面编辑；服务启动时不再注册内置业务编排，Web 对话运行页也不再由 Chat 入口、Deliverables 面板或 Session Profile 面板驱动。
 - `travel` 作为内置 Skill 提供旅游攻略规则，不再对应内置业务编排。选择 `travel` Skill 后，当前 Chat 会话仍直接由 Claude Code CLI 或 Codex CLI 执行；HTML 攻略、路线卡、图片资产和 `travel` workspace service 发布要求由 Skill 文档与 `preview-publish` 共同约束。
-- `internal/execution/application.Service` 不再执行 Session Profile 抽取旁路；会话上下文只由用户消息、选中 Skill、Memory、MCP、模型配置和运行时事实共同组成。
+- `internal/execution/application.Service` 的活动主链只注入 MCP 与运行时事实；Codex Skills 和 Memories 由共享活动 Home 原生加载。
 - 读取本地缓存时先归一残留 `streaming` 消息，消息通过当前 route owner 的 session 详情恢复。
 - Chat Web 前端不再使用 Web 流式网关；`ConversationRuntimeProvider.tsx` 只通过 `POST /api/chat/sessions/{session_id}/input` 获取更新后的 runtime session，并通过 Chat session 详情恢复请求断开后的最终消息。
 - 请求异常收尾时，`ConversationRuntimeProvider.tsx` 会先调用 `/api/chat/sessions/{session_id}` 回补服务端已落库的最终 turn，再决定是否展示失败文案，避免把同一条 Chat 请求通过 fallback 端点重新提交一遍。只有在没有可用正文且回补失败时才渲染带刷新提示的失败文案。
@@ -207,11 +208,11 @@ Web input
 - `chat.js` 内所有前端时间展示统一走同一北京时间格式化器，固定 `timeZone=Asia/Shanghai`、`hourCycle=h23`；时间标签输出 `HH:mm`，绝对时间输出 `YYYY-MM-DD HH:mm:ss`；控制台与账户管理视图的分钟精度时间戳输出 `YYYY-MM-DD HH:mm`，同样由共享时间格式器负责。Web API 的业务时间字段统一使用毫秒时间戳，`finished_at / completed_at` 等可空结束时间无值时返回 `null`。
 - Cron 创建表单默认时区直接复用同一前端常量 `Asia/Shanghai`，不再依赖浏览器本地时区探测。
 - `src/app/routeState.ts` 负责运行页路由与会话 query 协调：路由只解析 canonical path，不再使用 hash fragment；`/chat` 统一识别 `session_id` 多会话恢复参数，写入时直接使用 canonical `chat_session_id`。主导航进入 `Chat` 时即使当前已经位于 `/chat`，也会删除旧 `session_id` 并派发路由同步事件；`ConversationRuntimeProvider.tsx` 监听该同步事件，在 query 缺失时切到当前会话列表第一项。Chat query 缺失或目标会话不存在时，运行页才回退到 Chat 独立 `sessionStorage` 快照与服务端列表默认项。
-- Markdown 渲染必须避免原始 HTML 透传；长路径、代码块和 diff 只在内容块内部滚动。`MessageMarkdown.ts` 作为 Web Shell 的共享安全 Markdown 渲染器，被 `ChatMessageRegion`、Chat 步骤/最终输出、`RouteFieldRow` 的正文模式、Memory 文档、Control 描述、Skill/Codex 说明与 Session Profile 非等宽字段共同复用；解析核心使用 `markdown-it`，禁用 raw HTML，开启自动链接与软换行，并通过 renderer rules 保持 `assistant-inline-image`、`chat-md-pre`、`chat-md-inline-code`、`chat-md-table-wrap` 与 `chat-md-table` 等既有 DOM class。渲染器在进入 `markdown-it` 前继续清理零宽字符、修正“每字一行”的异常段落、剥离任务列表 marker，并把危险 Markdown URL 降级为可读文本；列表解析保留原始行缩进，把缩进更深的同类或异类列表、引用与代码块保留在父级 `<li>` 内，避免把层级关系拍平成连续顶层条目；机器标识类字段继续走纯文本或等宽展示，不进入 Markdown 解析。`shell.css` 在 `[data-runtime-view="conversation"]` 作用域下维护 Chat 的无框阅读流与 Markdown 视觉节奏：工作区正文白底无框，助手消息透明输出，标题、段落、列表、链接、引用和代码块通过共享 class 做弱边界排版；Markdown 表格保留真实 table DOM 与列对齐，但视觉上只使用横向分割线，不使用卡片外框、圆角边界或表头灰底；表格使用 `width: 100%` 与 `min-width: 100%` 铺满消息宽度，普通单元格声明 `overflow-wrap: anywhere` 处理长中文和长说明，表格内 `a/code` 继续 `white-space: nowrap` 保持链接、URL 和代码可复制性，只有真实不可断内容超宽时才触发表格块内部滚动，不改变 `MessageMarkdownShell` 的 DOM 与安全解析边界。
+- Markdown 渲染必须避免原始 HTML 透传；长路径、代码块和 diff 只在内容块内部滚动。`MessageMarkdown.ts` 作为 Web Shell 的共享安全 Markdown 渲染器，被 `ChatMessageRegion`、Chat 步骤/最终输出、`RouteFieldRow` 的正文模式、Control 描述、Skill/Codex 说明与 Session Profile 非等宽字段共同复用；解析核心使用 `markdown-it`，禁用 raw HTML，开启自动链接与软换行，并通过 renderer rules 保持 `assistant-inline-image`、`chat-md-pre`、`chat-md-inline-code`、`chat-md-table-wrap` 与 `chat-md-table` 等既有 DOM class。渲染器在进入 `markdown-it` 前继续清理零宽字符、修正“每字一行”的异常段落、剥离任务列表 marker，并把危险 Markdown URL 降级为可读文本；列表解析保留原始行缩进，把缩进更深的同类或异类列表、引用与代码块保留在父级 `<li>` 内，避免把层级关系拍平成连续顶层条目；机器标识类字段继续走纯文本或等宽展示，不进入 Markdown 解析。`shell.css` 在 `[data-runtime-view="conversation"]` 作用域下维护 Chat 的无框阅读流与 Markdown 视觉节奏：工作区正文白底无框，助手消息透明输出，标题、段落、列表、链接、引用和代码块通过共享 class 做弱边界排版；Markdown 表格保留真实 table DOM 与列对齐，但视觉上只使用横向分割线，不使用卡片外框、圆角边界或表头灰底；表格使用 `width: 100%` 与 `min-width: 100%` 铺满消息宽度，普通单元格声明 `overflow-wrap: anywhere` 处理长中文和长说明，表格内 `a/code` 继续 `white-space: nowrap` 保持链接、URL 和代码可复制性，只有真实不可断内容超宽时才触发表格块内部滚动，不改变 `MessageMarkdownShell` 的 DOM 与安全解析边界。
 - `ChatMessageRegion.tsx` 统一负责 Conversation runtime 的消息正文与尾部元信息；已完成的 Chat 助手消息不渲染尾部元信息，运行中/排队/失败等瞬时状态才渲染紧凑状态标签，且不再附带逐条时间，避免在每条回复后重复输出 route/source/status/time 标签。
 - `shell.css` 通过 `.runtime-workspace-head.is-sticky`、`.workspace-header-status` 和标题按钮维护运行页共享的固定 workspace header 视觉状态：标题区吸顶、状态按钮按 `ready / busy / failed / interrupted / exited` 输出统一颜色反馈，但可见层只保留信号本身，并通过 `inline-flex` 信号槽直接复用会话列表 `.runtime-session-signal` 的中心点、描边与波纹规格；会话 `Details` 入口并入当前标题按钮，不再渲染独立右侧详情按钮。`.workspace-details-layer / .workspace-details-backdrop / .workspace-details-panel` 负责把详情面板挂到顶层浮层、限制最大可视区域、提供点击外部关闭与独立滚动容器，并通过更高层级、明确背景和 `dialog` 语义保证浮层稳定可见，`.workspace-details-content / .workspace-details-summary / .workspace-details-body` 则把首屏统一为紧凑摘要栅格、窄标签字段行与压缩复制控件，Conversation 与 Chat 只在详情内容内部保留差异化组件。`ConversationRuntimeProvider.tsx` 分离 `inspectorOpen` 与 `inspectorTabOpen`：`inspectorOpen` 只控制 Composer 配置面板，`inspectorTabOpen` 控制当前 `Model / Skills` 内容区；`toggleInspector(tab)` 在当前 tab 上再次触发时只切换内容区展开状态，不影响 workspace `Details` 浮层。Tools/MCP catalog 与会话 payload 能力继续保留，但不再由 Composer 配置面板直接切换。
 - `shell.css` 额外维护共享 header 状态信号样式：`.runtime-session-signal` 及其 `ready / busy / failed / interrupted / exited` 变体负责 workspace header 的微型中心点、双层波纹脉冲和红黄绿状态令牌，并在 `prefers-reduced-motion` 下回退为静态信号；会话列表不再使用该状态灯，改用 `.runtime-session-loading` 表达处理中状态。
-- `ScrollJumpStrip.tsx` 负责 Chat 的四键阅读定位条。目标计算以滚动容器内可见消息块或 Chat turn 为单位缓存测量结果，并在滚动、窗口 resize、DOM 变更、展开折叠和 watch key 变化时重算。`上一条` 在当前最上方可见块尚未对齐时先把该块对齐到顶部偏移；若该块已处在目标偏移位置，下一次点击直接指向它前一块，保证连续上跳不会卡在同一内容块。
+- `ScrollJumpStrip.tsx` 负责 Chat 的四键阅读定位条。目标计算以滚动容器内可见消息块或 Chat turn 为单位缓存测量结果，并在滚动、窗口 resize、DOM 变更、展开折叠和 watch key 变化时重算。`上一条` 在当前最上方可见块尚未对齐时先把该块对齐到顶部偏移；若该块已处在目标偏移位置，下一次点击直接指向它前一块，保证连续上跳不会卡在同一内容块。若视口落在两个测量锚点之间而没有锚点相交，则以 `entry.bottom <= scrollTop` 反向查找上方最近目标，并以 `entry.top >= viewportBottom` 正向查找下方最近目标，确保长 assistant 回复中间仍保留有效的相邻跳转。
 - `ConversationWorkspace.tsx` 在 Chat 时间线滚动容器上只监听 `scroll`：普通滚动到顶且本地仍有隐藏消息时展开下一批本地消息，已完全展开且服务端仍有更早 turns 时调用 `loadEarlierHistory()` 显式请求 `turn_before` 下一页，不再调用 `refreshActiveSession()`，也不注册额外触摸历史加载监听。Workspace 通过消息 id 顺序区分“旧消息前置”和“新消息追加”，显式分页前置旧消息只更新缓存与下一批历史，不触发回底，只有当前会话尾部真实追加用户消息时才按发送语义贴到底部。
 - `ConversationWorkspace.tsx` 的主输入框不在移动端 `pointerdown / touchstart` 捕获阶段取消默认行为，首次触摸输入框仍走浏览器原生软键盘手势；运行页不再对首触输入框调用 `focus({ preventScroll: true })`，也不安装 page scroll 锁或 workspace 背景滚动锁。兼容 Chat 组件保留同类输入恢复能力，但当前 `/chat` path 使用 Conversation runtime 输入链路和 Chat owner。
 - `shell.css` 在共享 runtime 作用域下继续叠加 workbench 精修：会话列表项保留左侧激活竖线与尾侧三点更多按钮，菜单浮层相对条目右侧定位，导航栏内动作列固定为单按钮宽度，避免移动抽屉里标题被多枚操作按钮压缩；`Pinned / 置顶` 分组与时间分组共用同一低噪音 group header 与列表项布局，保证置顶组插入后不改变 rail 宽度或 `Sessions / New` chrome 位置；`Details` 面板使用带标题栏、显式关闭按钮、轻量遮罩和紧凑字段行的浅色 surface，空态阅读区与 Composer 使用同一套浅色 surface，最终扁平 reset 不再抹掉 Details 面板的必要边界与圆角；会话态消息区在 Conversation 视图下退回白底无框正文面，避免在主工作区内继续出现嵌套边框、背景分界或卡片式助手回复；首页 Composer 固定为外层 form 适度圆角、内部 textarea 直角的助手输入面板，textarea 去除内层边框和 resize，工具栏左侧对齐工作区工具、附件与可选 meta，右侧单独保留 icon submit；桌面端 form 使用 `width: min(100%, 860px)` 居中，移动端 form 回落为满宽，并由最终覆盖层把 `.runtime-composer-shell` 收敛为安全区内边距、把 form 压缩为紧凑高度、把 textarea 与工具行白色留白压缩到稳定尺寸。`760px` 及以下的共享 `.runtime-composer-shell` 在Chat 工作区内使用 workspace grid footer，不使用 fixed bottom、`bottom: 0`、键盘 offset 或 `transform` 创建额外合成层，避免 iOS Safari 键盘动画期间复用旧阴影层造成灰色残影或覆盖时间线尾部消息。`ConversationWorkspace.tsx` 在空态为 console panel 与 chat screen 追加 `is-empty` class，`shell.css` 以内部滚动容器承接空态滚动，并通过低对比网格与细弧线背景提升空态画布层次，避免窄屏空页把头部操作行顶离可视区。
@@ -230,7 +231,7 @@ Web input
 - 前端组件测试需覆盖 React 工作台的稳定契约，至少校验 `WorkbenchApp` 的 canonical path 路由、语言切换、移动端导航收口、左侧主导航会话列表，以及 Conversation / Chat workspace 的固定 header、消息区、Composer 和 `Details` 面板未被回归破坏；Conversation 消息区还需覆盖轻量 IM 气泡 DOM 与样式契约、长历史最新优先渲染、加载更早批次和 Chat 运行态缓存的未过期恢复、接口回源更新、过期失效。
 - `legacyRouteLayoutStyles.test.ts` 需继续对 `chat-core.css` 的 `Process` 阅读契约做源码断言，至少覆盖步骤标题收缩、正文整列宽度和 `max-width: 760px` 下的移动端可读性约束。
 - 图片输入链路的最小稳定测试面包括：前端文件选择与剪贴板图片读取限制、Composer 附件预览与移除、Web 消息接口对附件元数据的编码、`RuntimeResolverProcessor` 对图片 part 的构造与禁回退约束、OpenAI Responses / Chat Completions 适配层对视觉内容的序列化。
-- `src/app/routeState.test.ts`、`src/app/WorkbenchApp.test.tsx`、`features/shell/legacyShellConfig.test.ts`、`features/shell/components/PrimaryNav.test.tsx`、`shellLayoutStyles.test.ts`、`legacyRouteLayoutStyles.test.ts` 与各 `ReactManaged*RouteBody.test.tsx` 共同覆盖路由解析、三入口主导航、Management 工具入口、Management 页族标记、语言切换、Conversation runtime 入口、Skill/Chat/Memory/Control/Tasks/Sessions 页面取数与窄屏布局契约；Go 侧 `internal/interfaces/web/server_*_test.go` 继续通过源码与嵌入资产断言校验 `WorkbenchApp`、`ConversationRuntimeProvider`、`ConversationWorkspace`、`ReactManagedRouteBody`、共享样式和静态资源分发策略。
+- 前端路由、Runtime、Skills、Schedules、Memories 控件与响应式布局由 React/Vitest 契约覆盖；Go Web 测试继续校验 API、嵌入资产与静态分发策略。
 - 图片输入链路的最小稳定测试面包括：前端文件选择与剪贴板图片读取限制、发送 payload 与会话恢复预览资产的分离、Composer 附件预览与移除、AI markdown 图片渲染、Web 消息接口对附件元数据的编码、`RuntimeResolverProcessor` 对图片 part 的构造与禁回退约束、OpenAI Responses / Chat Completions 适配层对视觉内容的序列化。
 - 回归测试优先覆盖空白会话重复、软键盘残留空白、整段列表重建、断流恢复与残留 `In Progress` 等高频问题。
 
@@ -238,45 +239,36 @@ Web input
 
 ### 包边界
 
-- `internal/runtime/application` 保留用户管理 Skill catalog 与历史兼容查询；内置业务编排 catalog 为空。
-- `internal/control/domain` 与 `internal/control/application` 负责 Runtime Profile、Skill、MCP、Model Provider 与 Codex Runtime 的控制面配置。
-- `internal/execution/application` 负责 Runtime Context 解析，包括 Skill、MCP、Memory、工作区事实和交付要求。
-- `internal/execution/infrastructure` 负责 Claude Code 启动、Codex Direct 启动、运行日志解析、线程/会话状态持久化和错误收口。
-- `internal/orchestration/application` 负责会话摘要、长期记忆、天级记忆、项目记忆和任务摘要召回。
-- `docs/skills` 承载 file-backed Skill 仓库。
+- `internal/codex/application` 负责 Codex app-server 配置读写、Memories feature 检测、原生活动状态扫描与用户级 Skill 同步。
+- `internal/control` 负责全局 Skill 生命周期；启用、停用、更新或删除后触发原生 Skill reconciliation。
+- `internal/chatruntime/application` 与 `internal/execution/infrastructure` 使用共享活动 `CODEX_HOME` 启动新建或续接 Turn，不生成会话级 Skill/Memory 配置。
+- `internal/interfaces/web` 的 `/api/control/codex/runtime` 统一返回并更新 Model、思考深度与原生 Memories 设置；前端 Runtime 面板消费同一接口。
 
 ### 调用链路
 
 ```text
-Natural language message
-  -> Runtime Profile / Skill selection
-  -> MemoryContext resolution
-  -> Workspace runtime injection
-  -> Claude Code + provider profile | Codex Direct
-  -> Final response + Process/logs
-  -> Session archive + memory maintenance inputs
+Settings > Runtime
+  -> PUT /api/control/codex/runtime
+  -> Codex app-server config/batchWrite
+  -> active CODEX_HOME/config.toml
+  -> next Codex exec/resume reads native settings
+  -> Codex native extraction / consolidation / recall
 ```
 
 ### 技术约束
 
-- 任务推理、工具调用和会话内压缩由 Claude Code 或 Codex CLI 自身完成；服务侧围绕运行时选择、上下文注入、日志解析、结果归档和记忆维护组织执行链路。
-- `internal/execution/application` 在启动前为当前会话生成 Runtime Context：选中 Skill、Memory 摘要、MCP、工作区路径、仓库路径、附件路径、产物路径、可写边界和交付要求。
-- Claude Code 路径在会话工作区生成 `.alter0/claude-runtime/`、`CLAUDE.md`、Skill 副本、Memory 注入摘要和 provider profile 环境。
-- Codex Direct 路径在会话工作区生成 `.alter0/codex-runtime/`、`AGENTS.md`、独立 `codex-home/`、Skill 副本、Memory 注入摘要和 thread id。
-- Web 上传的会话附件经 `internal/interfaces/web/server.go` 与 `session_attachment_store.go` 规范化后统一写入 `alter0.user_input.attachments`；图片附件额外保留兼容性的 `alter0.user_input.image_attachments`。`/api/sessions/{session_id}/attachments` 现在支持“原文件 + 可选预览”模型：图片仍落原图与预览图，普通文件只落原文件并让 `preview_url` 回退到 `asset_url`。Chat input 随后只携带 `id + asset_url + preview_url` 引用，服务端再解析出工作区内的原图路径写入元数据；前端渲染层再按场景分流，缩略位读取 `preview_url`，回显与预览弹层读取 `asset_url`。assistant 最终回复中的 markdown 外链图片则由 `internal/orchestration/application/session_output_image_assets.go` 在 SessionPersistenceService 中做结果后处理：仅对可下载的 `http(s)` 图片做抓取，写入同一 Session 附件目录，并把最终输出和结构化步骤里的图片地址改写为 `/api/sessions/{session_id}/attachments/{asset_id}/original`。Chat 输入与 Control Task follow-up 输入都会复用同一附件目录与交付 URL。图片附件进入 Claude Code 或 Codex CLI 时由对应 runtime processor 解析元数据；显式 Codex Direct 由 `internal/execution/infrastructure/codex_cli_processor.go` 从同一图片 metadata 读取 `workspace_path` 并生成 Codex CLI `-i <path>` 参数；Chat 侧普通文件则不进入多模态图片 part，而是在执行前写入 Chat 工作区并通过 prompt 注入稳定路径，交给 Codex 读盘。带图请求不会在模型链失败后静默回退到 Codex CLI，避免把视觉请求错误降级为纯文本执行。
-- Memory Files 注入需要携带路径、存在状态、可写性、内容摘要、召回片段和截断标记。
-- Memory 上下文路径由服务配置内置解析，并统一供 `internal/execution/application.MemoryContextOptions`、Web Memory 聚合服务、会话摘要读取链路与系统维护链路使用；启动命令不再暴露记忆路径覆盖参数。
-- Markdown 上下文主存结构固定为根级 `AGENTS.md`、`SOUL.md`、`memory/USER.md`、`memory/MEMORY.md`、`memory/daily/<YYYY-MM-DD>.md`、`memory/projects/<project>.md` 与 `memory/conversations/<conversation_id>/summary.md`。`AGENTS.md` 由 execution memory resolver 以 `root_instructions` selection 注入，定位为运行规则上下文；`SOUL.md` 由内置 mandatory context 路径解析为强约束上下文；其余文件承载事实型记忆。
-- 持久记忆 Markdown 由 CLI Runtime 维护；服务侧会话记忆只保留在运行态和 `ConversationSummary` 中，用于恢复、召回和维护任务输入，不把每轮会话、压缩片段或任务摘要直接写入天级记忆或长期候选 Markdown。
-- 用户可见 Markdown 不写入 confidence、source、status、sensitivity 等机器元数据；检索索引可作为派生文件重建。
-- 用户显式记忆写入由当前 CLI runtime 完成；会话归档由服务生成 `ConversationSummary`；任务摘要保留在 Task 领域对象与存储中，不再由 `RuntimeMarkdownStore` 直接追加到 Daily/Long-term Markdown；长期整理由系统维护任务启动 CLI runtime 并加载 `memory-maintenance` Skill 完成。维护任务入口 prompt 固定要求读取当日/昨日天级记忆、对照长期记忆、只提升稳定事实/偏好/决策/流程/约束、禁止复制原始 transcript、日志、密钥和一次性任务细节，合并重复项并报告变更文件与跳过候选。该维护任务状态由 Web `maintenanceService` 记录，并通过 Settings 的 Schedules 内置任务展示和触发。
-- Skill Memory Web 聚合接口只读返回 `AGENTS.md` root instructions、`SOUL.md` 强约束、长期记忆、天级记忆、项目记忆、会话摘要与说明文档；任务摘要刷新走 Task summary 子域接口。
+- 服务启动使用 `codex features list` 检测 `memories`。能力可用且 `features.memories`、`memories.generate_memories`、`memories.use_memories` 中任一键缺失时，仅为缺失键写入默认值 `true`，不覆盖用户显式配置。
+- Runtime PUT 使用结构化 `memories` 对象写回三个原生键；总开关关闭不删除 `CODEX_HOME/memories` 已有文件。
+- Codex 新建与 resume 命令不携带 `--enable memories` 或 `-c memories.*`，保证全局配置是唯一控制来源且不存在会话级覆盖。
+- Runtime 状态可递归统计原生 Memories 文件数与最近修改时间，但不得返回活动 Home、绝对路径、认证信息或记忆正文。
+- 独立 Memory 页面与 `/api/memory/context` 已移除；alter0 不解析 Codex 未公开 schema，不提供 Markdown fallback，也不运行记忆维护任务。
+- Codex Direct 使用共享活动 `CODEX_HOME` 和用户级原生 Skills；绑定仓库时直接以 `repo/` 为工作目录并读取仓库自身 `AGENTS.md`。
 
 ### 验证策略
 
-- Execution 应用测试覆盖 Runtime Resolver、Skill/MCP/Memory Context 注入、工作区文件生成和 Provider 选择错误收口。
-- Infrastructure 测试覆盖 Claude Code 启动参数、Codex Direct 运行目录、thread 状态持久化、日志解析和错误收口。
-- Memory 测试覆盖 Markdown 编解码、会话摘要、长期召回、系统维护整理输入和任务摘要深检索。
+- Codex application 测试覆盖缺失键默认初始化、显式值保留、三开关批量写入、可用性与生成活动状态。
+- ChatRuntime 与 Codex CLI processor 测试断言新建和 resume 只使用共享 Home，不追加 per-turn Memories 参数。
+- Web 与 React 测试覆盖 Runtime GET/PUT 契约、三开关交互、独立 Memory 分区/API 移除，以及桌面和移动端布局。
 
 ## Task, Chat & Workspace
 
@@ -319,12 +311,12 @@ Chat input
 - Task 产物列表响应需要过滤本地 URI；下载和预览由任务接口按 artifact id 读取并输出安全响应头。
 - Memory 任务视图读取 Task 与 task summary 数据，支持任务摘要重建；重建结果保留在 Task 存储与视图数据中，不直接写入记忆 Markdown，也不直接执行 retry/cancel。
 - 工作区按 Chat、Task、Chat 分层隔离，删除会话或 Chat 时同步清理对应目录；所有服务级工作区都从 `ALTER0_RUNTIME_ROOT` 派生，不写入源码仓库下的 `.alter0`。
-- 直连 Codex 的 Chat 会话在自身工作区下维护 `.alter0/codex-runtime/` 与 `.alter0/codex-runtime/codex-home/`；Chat 的 Codex thread id 写入 `.alter0/codex-runtime/thread.json`，Chat 的 Codex thread id 写入 `.alter0/codex-runtime/threads/<YYYY-MM-DD>.json`；Chat 会话在 `<runtime_root>/workspaces/chat/sessions/<chat_session_id>/codex-home/` 下维护独立 `CODEX_HOME`。
+- 所有直连 Codex 会话共享 `codexapp.ResolveActiveHome()` 返回的活动 Home；会话隔离由独立工作区、仓库 checkout、附件和 thread id 保证。删除会话只清理会话工作区，不触碰共享认证、配置、Skills、Memories 或其他线程。
 - Chat 会话态与 turn/runtime event 执行态分离，历史 `running / starting` 需要兼容归一。
 - Chat 会话详情聚合 turn 摘要；event 明细按 `session_id / turn_id / event_id` 单独读取，避免会话列表一次性加载大块执行日志。
 - Chat 应用层在 `ListTurns` / 单会话详情中直接输出轻量 `RuntimeTraceEvent`，并随 turn summary 输出 `runtime_trace_events`；Chat 前端装配 turn timeline 时直接消费该结构，把 `kind / status / detail_available` 写入稳定 DOM metadata。详情按展开时通过事件 id 对应的 `event_id` 懒加载，完整 `blocks` 只从 detail 接口进入消息缓存。
 - Chat session store 的恢复和读路径共同维护运行态事实：持久化状态加载时会把旧 `running` turn 收敛为 `interrupted`；服务进程存活但 CLI worker 丢失时，`List / Get / ListTurns / ListEntries / InputWithAttachments` 在读取或 busy 检查前调用同一中断收口逻辑，追加系统 entry 与 `Interrupted` runtime event 后写回 session JSON。`turnRunning=true` 或仍有 `turnCancel` 的当前进程内运行请求不会被该懒校准处理。
-- `internal/chatruntime/application/service.go` 在 `InputWithAttachments` 中把 Chat 附件规范化为 turn 附件、在工作区 `input-attachments/` 下写入本轮输入文件，并按类型拆分消费：图片继续通过 `codex exec -i <file>` 或 `codex resume -i <file>` 进入 Codex 视觉输入，普通文件则在同轮 prompt 中附上 `input-attachments/<turn_id>/<filename>` 形式的 workspace 相对路径，要求 Codex 按需直接读盘；turn 摘要与持久化快照同步保留附件元数据，供 Chat 输入草稿与图片历史回显复用。Chat 输入请求携带的 `SkillContext` 会在每轮执行前渲染到工作区 `.alter0/codex-runtime/skills.md`，并通过托管 `AGENTS.md` 指令要求 Codex 只应用本轮选择的 Skill；空选择也会写入“未选择”标记，避免旧轮次 Skill 指令残留。
+- `internal/chatruntime/application/service.go` 在 `InputWithAttachments` 中把 Chat 附件规范化为 turn 附件并写入会话工作区 `input-attachments/`。图片继续通过 `-i` 进入 Codex；普通文件提示路径相对实际 `cmd.Dir` 计算，因此绑定仓库时为 `../input-attachments/...`。输入请求不再解析 Skill 选择；历史 `skill_context` 使用 `json.RawMessage` 兼容解码，新快照不写回。
 - Chat 应用层在 Codex CLI 返回远端 compact 失败时，仅把当前 turn 标记为 failed，保留当前会话的运行线程指针、`chat_session_id`、原工作区与日志，并让后续输入继续 resume 同一 Codex CLI thread。
 - `MessageMarkdownSyntaxFixture.ts` 的构建预览样例覆盖 ATX/Setext 标题、删除线、自动链接、嵌套列表、任务项、列表内引用与代码块、对齐表格和 raw HTML 转义；其中表格样例覆盖短字符、长中文、长 URL/代码和混合内容场景，用于同时验证短表格铺满、普通长文本单元格内换行与不可断内容内部滚动；折叠示例把 `<details>` / `<summary>` 标签放入 `html` fenced code block，折叠内容按普通 Markdown 继续进入同一渲染器；`/chat?markdown_demo=1` 只注入该非持久化样例，不写入会话历史。
 - `internal/interfaces/web/server_chat.go` 的单会话详情默认返回最新 `20` 个 turns，`turn_limit` 上限为 `160`，并按约 `1MiB` 的前端 API turn DTO 页预算从最新 turn 向前装载；`turn_before=<turn_id>` 以目标 turn 为右开边界返回更早一页，并在 `turns_paging` 中输出 `total / byte_limit / approx_bytes / has_more_before / has_more_after / oldest_turn_id / newest_turn_id / next_before_turn_id`。集合接口继续只返回会话摘要，避免左侧会话列表拉取大体积 turns。
@@ -347,7 +339,7 @@ Chat input
 - `internal/codex/domain` 负责 `auth.json` 快照、身份识别与额度状态模型；`internal/codex/application` 负责读取当前活动 `auth.json`、刷新 quota，通过 Codex app-server 的 `model/list`、`config/read`、`config/batchWrite` 读取真实运行时能力并更新 `model` / `model_reasoning_effort`，以及编排独立 Codex 登录会话。`LoginSessionStartRequest.AuthMethod=device_auth` 会把命令参数收敛为 `codex login --device-auth`；登录进程使用 Store 分配的独立登录目录作为 `CODEX_HOME`，stdout/stderr 通过流式 capture 写回会话日志，并从输出中宽松解析 `verification_uri / verification_uri_complete / user_code / expires_in / interval`。
 - `internal/interfaces/web/maintenance.go` 仅作为系统维护任务执行器挂入 Scheduler；前端通过 Schedules 内置任务查看和触发维护，不再保留独立维护 route 或直接维护接口。会话置顶通过 `POST /api/sessions/{session_id}/pin` 更新。
 - `cmd/alter0` 管理启动、supervisor、重启、内置配置和运行时 metadata。
-- `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本；Node 初始化同时覆盖 `internal/interfaces/web` 与 `internal/interfaces/web/frontend`。
+- `scripts` 承载运行账户凭据、Node/Playwright 工具链和部署初始化脚本；Node 初始化同时覆盖 `internal/interfaces/web` 与 `internal/interfaces/web/frontend`。`playwright.config.shared.js` 忽略父进程继承的正式 `ALTER0_RUNTIME_ROOT`，每次运行生成系统临时目录下的独立 runtime root，并在 WebServer 环境中把 `ALTER0_STORAGE_DIR / ALTER0_CODEX_WORKSPACE_ROOT` 显式置空，避免 Playwright 的环境合并重新带回父进程值；仅允许通过 `ALTER0_PLAYWRIGHT_RUNTIME_ROOT` 指定系统临时目录的直接 `alter0-playwright-*` 子路径，其他覆盖直接拒绝。
 - `docs/deployment` 承载 Nginx 与部署权限说明。
 
 ### 调用链路
@@ -376,7 +368,7 @@ Runtime restart
 
 - Control 面只能管理运行时配置，不绕过编排层直接执行业务请求。
 - Schedules 控制面只管理系统内置维护任务的状态、启停和手动触发；每日自动运行时间、7 天不活跃阈值、置顶保护和 queued/running 任务保护规则固定在服务端，不作为用户配置暴露。维护任务不可执行或后续资源清理失败时写入 `failed` 状态，不使用空运行成功作为兜底。
-- `cmd/alter0/builtin_skills.go` 负责注册内置 Skill，并在启动阶段校验所有 file-backed 内置 Skill 文件存在；当前公有内置集合包含 `memory`、`preview-publish`、`frontend-design`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review`、`brainstorming` 与 `travel`，`memory-maintenance` 作为系统维护专用私有 Skill 注册。标准 skill 使用源码目录下的 `docs/skills/<skill_id>/SKILL.md`；plugin-style 的 `code-simplifier` 与 `code-review` 继续保留目录内 `.claude-plugin/plugin.json` 元数据，并分别以 `docs/skills/code-simplifier/SKILL.md`、`docs/skills/code-review/commands/code-review.md` 作为 alter0 的 file-backed 注入入口。`preview-publish` 的内置 guide 与 file-backed skill 共同要求静态用户可见产物和完整测试服务先发布到 `https://<service>-<short_hash>.alter0.cn`，避免把服务端路径、本地 URL 或工作区内部路径暴露为用户可访问链接。执行层不再合成或自动写入私有 Skill，Chat 直接按会话选择的 Skill 注入 CLI 运行时。
+- `cmd/alter0/builtin_skills.go` 注册标准 file-backed Skill，清理历史 `memory` / `memory-maintenance` 条目，并把控制面中的启用公有 Skill 映射为 `codexapp.NativeSkillSource`。`NativeSkillReconciler` 校验标准 frontmatter、拒绝 symlink、复制完整 Skill 目录并保留 mode，使用 staging + rename 更新 `$HOME/.agents/skills/alter0-<id>`；管理 marker 保证禁用和删除只清理 alter0 自有目标。Control capability lifecycle hook 在启用、停用、更新与删除后同步，失败时回滚控制状态。
 - Runtime Context 物化器负责在 CLI runtime 准备阶段复制 file-backed Skill：按当前服务进程工作目录向上查找可读的 skill 文件，定位 `docs/skills/<skill_id>/` 根目录，把整个目录复制到当前会话工作区。Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，并将注入上下文中的 `file_path` 改写为工作区内副本。
 - Codex Direct 的托管 `AGENTS.md` 由 `internal/codex/infrastructure/runtimeconfig` 生成，并固定包含工作区隔离、禁止把 `/srv/...`、运行根目录下的 `workspaces/...`、`file://`、`localhost`、`127.0.0.1` 作为用户链接返回，以及静态产物、完整服务与后端路由统一走 `preview-publish` 的交付约束。
 - 服务启动时不再注册任何内置业务编排；对应业务能力通过用户选择的 Skill 组合表达。

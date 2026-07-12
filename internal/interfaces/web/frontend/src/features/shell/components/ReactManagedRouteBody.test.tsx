@@ -31,16 +31,6 @@ describe("ReactManagedRouteBody", () => {
       if (url === "/api/control/runtime/restart") {
         return Promise.resolve(jsonResponse({ status: "idle" }));
       }
-      if (url === "/api/memory/context") {
-        return Promise.resolve(
-          jsonResponse({
-            long_term: { exists: false },
-            daily: { items: [] },
-            mandatory: { exists: false },
-            specification: { exists: false },
-          }),
-        );
-      }
       return Promise.resolve(jsonResponse({ items: [] }));
     });
 
@@ -60,7 +50,6 @@ describe("ReactManagedRouteBody", () => {
     expect(settingsTabs.map((button) => button.textContent?.trim())).toEqual([
       "RuntimeRU",
       "SkillsSK",
-      "MemoryME",
       "SchedulesSC",
       "GeneralGE",
     ]);
@@ -86,22 +75,9 @@ describe("ReactManagedRouteBody", () => {
     fireEvent.click(languageButton);
     expect(onToggleLanguage).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Memory" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Long-Term" })).toBeInTheDocument();
-    });
     expect(window.location.pathname).toBe("/settings");
-    expect(container.querySelector(".settings-route-body")).toHaveAttribute("data-settings-route", "memory");
-    expect(screen.getByRole("button", { name: "Memory" })).toHaveAttribute("aria-current", "page");
-    expect(container.querySelector(".settings-route-content")).toHaveAttribute("data-settings-route-content", "memory");
-    expect(container.querySelector(".settings-section-frame")).toHaveAttribute("data-settings-section-frame", "memory");
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/memory/context",
-      expect.objectContaining({ method: "GET" }),
-    );
-    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/memory/tasks"), expect.anything());
+    expect(screen.queryByRole("button", { name: "Memory" })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/memory/"), expect.anything());
   });
 
   it("keeps the service restart flow reachable from general settings", async () => {

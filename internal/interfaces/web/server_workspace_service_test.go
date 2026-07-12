@@ -26,7 +26,6 @@ func TestNewServerStoresWorkspaceServiceRegistryUnderRuntimeStorage(t *testing.T
 		nil,
 		nil,
 		nil,
-		MemoryContextOptions{},
 		WebSecurityOptions{
 			RuntimeRoot: runtimeRoot,
 			StorageDir:  storageDir,
@@ -512,7 +511,7 @@ func TestWorkspaceServiceTravelHostIsPublicReadOnlyAndUsesCertificateSafeSubdoma
 		t.Fatalf("expected frontend html body, got %q", rootRec.Body.String())
 	}
 
-	apiReq := httptest.NewRequest(http.MethodGet, "/api/memory/context", nil)
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/control/codex/runtime", nil)
 	apiReq.Host = entry.Host
 	apiRec := httptest.NewRecorder()
 	handler.ServeHTTP(apiRec, apiReq)

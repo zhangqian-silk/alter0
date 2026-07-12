@@ -36,7 +36,6 @@ import (
 	"alter0/internal/shared/infrastructure/observability"
 	localstorage "alter0/internal/storage/infrastructure/localfile"
 	taskapp "alter0/internal/task/application"
-	tasksummaryapp "alter0/internal/tasksummary/application"
 )
 
 type storageProfile struct {
@@ -177,9 +176,9 @@ func main() {
 	resolvedCodexCommand := resolveConfiguredCodexCommand(strings.TrimSpace(*codexCommand))
 	ensureDefaultCodexWorkspaceMode()
 	resolvedTaskChatRuntimeShell := resolvedCodexCommand
-	resolvedDailyMemoryDir := filepath.Join(storageProfile.Dir, "memory")
-	resolvedLongTermMemoryPath := filepath.Join(storageProfile.Dir, "memory", "long-term", "MEMORY.md")
-	resolvedMandatoryContextFile := "SOUL.md"
+	memoryFeatureCtx, cancelMemoryFeatureCheck := context.WithTimeout(rootCtx, 5*time.Second)
+	nativeMemoryStatus := codexapp.DetectNativeMemoriesFeature(memoryFeatureCtx, resolvedCodexCommand)
+	cancelMemoryFeatureCheck()
 
 	sessionHistory, err := newSessionHistory(rootCtx, sessionStore)
 	if err != nil {
@@ -206,6 +205,10 @@ func main() {
 		logger.Error("failed to initialize builtin skill files", slog.String("error", err.Error()))
 		os.Exit(2)
 	}
+	if err := configureNativeSkillReconciliation(control, logger); err != nil {
+		logger.Error("failed to initialize native Codex skills", slog.String("error", err.Error()))
+		os.Exit(2)
+	}
 	registry := orchinfra.NewInMemoryCommandRegistry()
 	helpHandler := orchinfra.NewHelpCommandHandler(registry)
 	mustRegister(registry, helpHandler)
@@ -224,36 +227,17 @@ func main() {
 		Codex:          codexProcessor,
 		Logger:         logger,
 	})
-	executor := execapp.NewServiceWithSkillsAndMemoryOptions(processor, control, logger, execapp.MemoryContextOptions{
-		DailyDir:          resolvedDailyMemoryDir,
-		LongTermPath:      resolvedLongTermMemoryPath,
-		MandatoryFilePath: resolvedMandatoryContextFile,
-	})
-	taskSummaryMemory := tasksummaryapp.NewStore(tasksummaryapp.Options{})
-	taskSummaryRuntime := tasksummaryapp.NewRuntimeMarkdownStore(tasksummaryapp.RuntimeMarkdownOptions{
-		DailyDir:    resolvedDailyMemoryDir,
-		LongTermDir: filepath.Join(resolvedDailyMemoryDir, "long-term"),
-	})
-	taskSummaryRecorder := tasksummaryapp.NewRecorderGroup(taskSummaryMemory, taskSummaryRuntime)
+	executor := execapp.NewServiceWithMCP(processor, control, logger)
 	baseOrchestrator := orchapp.NewServiceWithOptions(
 		classifier,
 		registry,
 		executor,
 		telemetry,
 		logger,
-		orchapp.WithLongTermMemoryOptions(orchapp.LongTermMemoryOptions{
-			PersistencePath: resolvedLongTermMemoryPath,
-		}),
-		orchapp.WithMandatoryContextOptions(orchapp.MandatoryContextOptions{
-			FilePath: resolvedMandatoryContextFile,
-		}),
-		orchapp.WithTaskSummaryMemory(taskSummaryMemory),
 	)
 	persistentOrchestrator := orchapp.NewSessionPersistenceService(baseOrchestrator, sessionHistory, idGen, logger, resolvedRuntimePaths.Root)
 	orchestrator := persistentOrchestrator
-	taskService, err := newTaskService(rootCtx, taskStore, taskapp.Options{
-		SummaryMemory: taskSummaryRecorder,
-	})
+	taskService, err := newTaskService(rootCtx, taskStore, taskapp.Options{})
 	if err != nil {
 		logger.Error("failed to initialize task service", slog.String("error", err.Error()))
 		os.Exit(2)
@@ -271,7 +255,13 @@ func main() {
 	}
 	scheduler.Start(rootCtx)
 
-	codexAccounts := newCodexAccountService(logger, resolvedCodexCommand)
+	codexAccounts := newCodexAccountService(logger, resolvedCodexCommand, nativeMemoryStatus)
+	if codexAccounts != nil {
+		if err := codexAccounts.EnsureRuntimeMemoriesDefaults(); err != nil {
+			logger.Error("failed to initialize native Codex memories defaults", slog.String("error", err.Error()))
+			os.Exit(2)
+		}
+	}
 
 	server := web.NewServer(
 		listenAddr,
@@ -283,12 +273,6 @@ func main() {
 		sessionHistory,
 		taskService,
 		chatRuntimeService,
-		web.MemoryContextOptions{
-			LongTermPath:         resolvedLongTermMemoryPath,
-			DailyDir:             resolvedDailyMemoryDir,
-			MandatoryContextPath: resolvedMandatoryContextFile,
-			TaskSummaryRuntime:   taskSummaryRuntime,
-		},
 		web.WebSecurityOptions{
 			LoginPassword: resolvedWebLoginPassword,
 			BindLocalhost: resolvedWebBindLocalhostOnly,
@@ -675,7 +659,7 @@ func newTaskService(
 	return taskapp.NewService(ctx, store, options)
 }
 
-func newCodexAccountService(logger *slog.Logger, command string) *codexapp.Service {
+func newCodexAccountService(logger *slog.Logger, command string, nativeMemories codexapp.NativeMemoriesFeatureStatus) *codexapp.Service {
 	activeHome, err := codexapp.ResolveActiveHome()
 	if err != nil {
 		if logger != nil {
@@ -691,7 +675,8 @@ func newCodexAccountService(logger *slog.Logger, command string) *codexapp.Servi
 		return nil
 	}
 	return codexapp.NewService(codexapp.ServiceOptions{
-		Store:   store,
-		Command: command,
+		Store:          store,
+		Command:        command,
+		NativeMemories: nativeMemories,
 	})
 }

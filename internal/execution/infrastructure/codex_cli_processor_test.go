@@ -153,7 +153,7 @@ func markTravelSkill(t *testing.T, metadata map[string]string) {
 	metadata[execdomain.SkillContextMetadataKey] = string(raw)
 }
 
-func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
+func TestCodexCLIProcessorProcessUsesSharedHomeWithoutSessionSkillOrMemoryAssets(t *testing.T) {
 	rootDir := t.TempDir()
 	activeHome := filepath.Join(t.TempDir(), "active-codex-home")
 	if err := os.MkdirAll(activeHome, 0o755); err != nil {
@@ -163,6 +163,7 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 		t.Fatalf("write auth: %v", err)
 	}
 	t.Setenv("CODEX_HOME", activeHome)
+	t.Setenv("CODEX_HELPER_EXPECT_SHARED_HOME", activeHome)
 
 	previousWD, err := os.Getwd()
 	if err != nil {
@@ -245,6 +246,22 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal mcp context: %v", err)
 	}
+	legacyWorkspace := filepath.Join(rootDir, "workspaces", "sessions", "session-default")
+	for _, path := range []string{
+		filepath.Join(legacyWorkspace, "codex-home", "auth.json"),
+		filepath.Join(legacyWorkspace, ".alter0", "codex-runtime", "skills.md"),
+		filepath.Join(legacyWorkspace, ".alter0", "codex-runtime", "memory", "recall.md"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir legacy runtime path: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("legacy"), 0o600); err != nil {
+			t.Fatalf("write legacy runtime path: %v", err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(legacyWorkspace, "AGENTS.md"), []byte("<!-- alter0:codex-runtime:start -->\nlegacy\n<!-- alter0:codex-runtime:end -->\n"), 0o644); err != nil {
+		t.Fatalf("write legacy AGENTS: %v", err)
+	}
 	processor := newTestProcessor("success", "reply: hello")
 
 	output, err := processor.Process(context.Background(), "reply: hello", map[string]string{
@@ -260,66 +277,16 @@ func TestCodexCLIProcessorProcessWithNativeRuntimeAssets(t *testing.T) {
 	if output != "mock response" {
 		t.Fatalf("Process() output = %q, want %q", output, "mock response")
 	}
-
-	sessionWorkspace := filepath.Join(rootDir, "workspaces", "sessions", "session-default")
-	configText, err := os.ReadFile(filepath.Join(sessionWorkspace, "codex-home", "config.toml"))
-	if err != nil {
-		t.Fatalf("read codex runtime config: %v", err)
-	}
-	for _, expected := range []string{
-		`[mcp_servers.filesystem]`,
-		`command = "npx"`,
-		`enabled_tools = ["read_file", "list_dir"]`,
+	runtimeWorkspace := filepath.Join(rootDir, "workspaces", "sessions", "session-default")
+	for _, retiredPath := range []string{
+		filepath.Join(runtimeWorkspace, "codex-home"),
+		filepath.Join(runtimeWorkspace, "AGENTS.md"),
+		filepath.Join(runtimeWorkspace, ".alter0", "codex-runtime", "skills.md"),
+		filepath.Join(runtimeWorkspace, ".alter0", "codex-runtime", "memory"),
 	} {
-		if !strings.Contains(string(configText), expected) {
-			t.Fatalf("expected config to contain %q, got:\n%s", expected, string(configText))
+		if _, err := os.Stat(retiredPath); !os.IsNotExist(err) {
+			t.Fatalf("expected no retired per-session runtime asset at %s, got err=%v", retiredPath, err)
 		}
-	}
-	rootInstructionsText, err := os.ReadFile(filepath.Join(sessionWorkspace, "AGENTS.md"))
-	if err != nil {
-		t.Fatalf("read runtime AGENTS: %v", err)
-	}
-	for _, expected := range []string{
-		".alter0/codex-runtime/runtime.md",
-		".alter0/codex-runtime/skills.md",
-		".alter0/codex-runtime/memory/",
-		"Stay inside the current workspace scope.",
-	} {
-		if !strings.Contains(string(rootInstructionsText), expected) {
-			t.Fatalf("expected AGENTS to contain %q, got:\n%s", expected, string(rootInstructionsText))
-		}
-	}
-	runtimeText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "runtime.md"))
-	if err != nil {
-		t.Fatalf("read runtime context: %v", err)
-	}
-	for _, expected := range []string{
-		"workspace_scope: current session only",
-		"do_not_modify_outside_scope: true",
-	} {
-		if !strings.Contains(string(runtimeText), expected) {
-			t.Fatalf("expected runtime context to contain %q, got:\n%s", expected, string(runtimeText))
-		}
-	}
-	skillText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "skills.md"))
-	if err != nil {
-		t.Fatalf("read runtime skills: %v", err)
-	}
-	if !strings.Contains(string(skillText), "Summary") || !strings.Contains(string(skillText), "review the memory files before editing") {
-		t.Fatalf("unexpected runtime skills:\n%s", string(skillText))
-	}
-	if !strings.Contains(string(skillText), "- file_path: .alter0/codex-runtime/skills/summary/SKILL.md") {
-		t.Fatalf("expected runtime skill file_path to point inside session workspace, got:\n%s", string(skillText))
-	}
-	if _, err := os.Stat(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "skills", "summary", "references", "style.md")); err != nil {
-		t.Fatalf("expected skill directory to be materialized into session workspace: %v", err)
-	}
-	memoryText, err := os.ReadFile(filepath.Join(sessionWorkspace, ".alter0", "codex-runtime", "memory", "user_md.md"))
-	if err != nil {
-		t.Fatalf("read runtime memory: %v", err)
-	}
-	if !strings.Contains(string(memoryText), "response_style: concise") {
-		t.Fatalf("unexpected runtime memory:\n%s", string(memoryText))
 	}
 }
 
@@ -485,6 +452,11 @@ func TestBuildCodexExecArgsIncludesWorkspaceImageAttachments(t *testing.T) {
 	}
 
 	args := buildCodexExecArgs(metadata, "", "", true)
+	for _, pair := range [][2]string{{"--enable", "memories"}, {"-c", "memories.generate_memories=true"}, {"-c", "memories.use_memories=true"}} {
+		if containsArgPair(args, pair[0], pair[1]) {
+			t.Fatalf("args = %+v, did not expect per-turn native memories override %v", args, pair)
+		}
+	}
 	assertArgPair(t, args, "-i", imagePath)
 
 	resumeArgs := buildCodexExecArgs(metadata, "thread-1", "", true)
@@ -965,6 +937,16 @@ func TestCodexCLIProcessorHelperProcess(t *testing.T) {
 	}
 	if !containsArgPair(forwarded, "--sandbox", defaultCodexSandboxMode) {
 		_, _ = os.Stderr.WriteString("missing sandbox flag")
+		os.Exit(2)
+	}
+	for _, pair := range [][2]string{{"--enable", "memories"}, {"-c", "memories.generate_memories=true"}, {"-c", "memories.use_memories=true"}} {
+		if containsArgPair(forwarded, pair[0], pair[1]) {
+			_, _ = os.Stderr.WriteString("unexpected per-turn native memories override")
+			os.Exit(2)
+		}
+	}
+	if expectedHome := strings.TrimSpace(os.Getenv("CODEX_HELPER_EXPECT_SHARED_HOME")); expectedHome != "" && filepath.Clean(os.Getenv("CODEX_HOME")) != filepath.Clean(expectedHome) {
+		_, _ = os.Stderr.WriteString("unexpected shared CODEX_HOME")
 		os.Exit(2)
 	}
 	mode := os.Getenv("CODEX_HELPER_MODE")

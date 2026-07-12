@@ -28,18 +28,14 @@ export type RuntimeSessionCapability = {
 
 export type RuntimeSessionCatalogs = {
   providers: RuntimeSessionProvider[];
-  skills: RuntimeSessionCapability[];
   mcps: RuntimeSessionCapability[];
-  skillsLoaded: boolean;
 };
 
 export function useRuntimeSessionCatalogs(
   apiClient: ReturnType<typeof createAPIClient>,
 ): RuntimeSessionCatalogs {
   const [providers, setProviders] = useState<RuntimeSessionProvider[]>([]);
-  const [skills, setSkills] = useState<RuntimeSessionCapability[]>([]);
   const [mcps, setMcps] = useState<RuntimeSessionCapability[]>([]);
-  const [skillsLoaded, setSkillsLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,16 +48,6 @@ export function useRuntimeSessionCatalogs(
       } catch {
       }
       try {
-        const skillPayload = await apiClient.get<{ items?: RuntimeSessionCapability[] }>("/api/control/skills");
-        if (!cancelled) {
-          setSkills(Array.isArray(skillPayload.items) ? skillPayload.items : []);
-        }
-      } catch {
-        if (!cancelled) {
-          setSkills([]);
-        }
-      }
-      try {
         const mcpPayload = await apiClient.get<{ items?: RuntimeSessionCapability[] }>("/api/control/mcps");
         if (!cancelled) {
           setMcps(Array.isArray(mcpPayload.items) ? mcpPayload.items : []);
@@ -69,10 +55,6 @@ export function useRuntimeSessionCatalogs(
       } catch {
         if (!cancelled) {
           setMcps([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setSkillsLoaded(true);
         }
       }
     };
@@ -82,5 +64,5 @@ export function useRuntimeSessionCatalogs(
     };
   }, [apiClient]);
 
-  return { providers, skills, mcps, skillsLoaded };
+  return { providers, mcps };
 }

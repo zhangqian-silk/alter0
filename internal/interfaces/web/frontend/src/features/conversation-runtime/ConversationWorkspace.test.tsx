@@ -55,21 +55,11 @@ const runtimeMock = {
     id: string;
     name: string;
     description: string;
-    kind: "tool" | "mcp" | "skill";
+    kind: "tool" | "mcp";
     active: boolean;
-  }>,
-  skills: [] as Array<{
-    id: string;
-    name: string;
-    description: string;
-    kind: "tool" | "mcp" | "skill";
-    active: boolean;
-    visibility?: "public" | "private";
-    locked?: boolean;
   }>,
   runtimeEventFilter: ["important_text"] as Array<"important_text" | "plan" | "reasoning" | "tools" | "commands" | "system">,
   toolCount: 0,
-  skillCount: 0,
   busy: false,
   createSession: vi.fn(),
   focusSession: vi.fn(),
@@ -111,7 +101,6 @@ const runtimeMock = {
   closeInspector: vi.fn(),
   selectModel: vi.fn(),
   toggleCapability: vi.fn(),
-  toggleSkill: vi.fn(),
   toggleRuntimeEventFilter: vi.fn(),
   toggleProcess: vi.fn(),
   loadProcessEventDetail: vi.fn().mockResolvedValue(undefined),
@@ -220,10 +209,8 @@ describe("ConversationWorkspace", () => {
     runtimeMock.selectedModelSupportsVision = true;
     runtimeMock.providers = [];
     runtimeMock.capabilities = [];
-    runtimeMock.skills = [];
     runtimeMock.runtimeEventFilter = ["important_text"];
     runtimeMock.toolCount = 0;
-    runtimeMock.skillCount = 0;
     runtimeMock.busy = false;
     runtimeMock.draft = "";
     runtimeMock.draftAttachments = [];
@@ -245,7 +232,6 @@ describe("ConversationWorkspace", () => {
     runtimeMock.toggleInspector.mockClear();
     runtimeMock.closeInspector.mockClear();
     runtimeMock.selectModel.mockClear();
-    runtimeMock.toggleSkill.mockClear();
     runtimeMock.toggleRuntimeEventFilter.mockClear();
     buildChatTimelineItemsMock.mockClear();
   });
@@ -1199,27 +1185,23 @@ describe("ConversationWorkspace", () => {
     const configPanel = document.querySelector("[data-runtime-config-panel='conversation']") as HTMLElement;
     expect(configPanel).toBeInTheDocument();
     expect(within(configPanel).getByRole("tab", { name: "Model" })).toBeInTheDocument();
-    expect(within(configPanel).getByRole("tab", { name: "Skills" })).toBeInTheDocument();
+    expect(within(configPanel).queryByRole("tab", { name: "Skills" })).not.toBeInTheDocument();
     expect(within(configPanel).queryByRole("tab", { name: "Tools" })).not.toBeInTheDocument();
     expect(within(configPanel).queryByText("Filesystem")).not.toBeInTheDocument();
   });
 
-  it("lets Chat composer Session update public skill selections", () => {
+  it("does not expose per-session skill selections", () => {
     runtimeMock.skills = [
       { id: "frontend-design", name: "Frontend Design", description: "UI guidance", kind: "skill", active: false },
     ];
+		runtimeMock.inspectorOpen = true;
+		runtimeMock.inspectorTab = "skills";
     renderWorkspace({ isMobileViewport: false });
 
-    fireEvent.click(screen.getByRole("button", { name: "Session" }));
-    expect(runtimeMock.toggleInspector).toHaveBeenCalledWith();
-    runtimeMock.inspectorOpen = true;
-    runtimeMock.inspectorTab = "skills";
-    renderWorkspace({ isMobileViewport: false });
     const configPanel = document.querySelector("[data-runtime-config-panel='conversation']") as HTMLElement;
     expect(configPanel).toBeInTheDocument();
-    fireEvent.click(within(configPanel).getByLabelText(/Frontend Design/));
-
-    expect(runtimeMock.toggleSkill).toHaveBeenCalledWith("frontend-design", true);
+		expect(within(configPanel).queryByRole("tab", { name: "Skills" })).not.toBeInTheDocument();
+		expect(within(configPanel).queryByText("Frontend Design")).not.toBeInTheDocument();
   });
 
   it("uses a dedicated GitHub button and selects a repository without creating a session", async () => {
@@ -1288,24 +1270,6 @@ describe("ConversationWorkspace", () => {
     expect(runtimeMock.retryRepository).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps Chat skill selections reachable from the mobile composer Session button", () => {
-    runtimeMock.skills = [
-      { id: "frontend-design", name: "Frontend Design", description: "UI guidance", kind: "skill", active: false },
-    ];
-    renderWorkspace({ isMobileViewport: true });
-
-    fireEvent.click(screen.getByRole("button", { name: "Session" }));
-    expect(runtimeMock.toggleInspector).toHaveBeenCalledWith();
-    runtimeMock.inspectorOpen = true;
-    runtimeMock.inspectorTab = "skills";
-    renderWorkspace({ isMobileViewport: true });
-    const configPanel = document.querySelector("[data-runtime-config-panel='conversation']") as HTMLElement;
-    expect(configPanel).toBeInTheDocument();
-    fireEvent.click(within(configPanel).getByLabelText(/Frontend Design/));
-
-    expect(runtimeMock.toggleSkill).toHaveBeenCalledWith("frontend-design", true);
-  });
-
   it("preserves the native mobile keyboard gesture when the Chat composer input is pressed", () => {
     renderWorkspace({ isMobileViewport: true });
 
@@ -1334,19 +1298,6 @@ describe("ConversationWorkspace", () => {
     expect(pointerEvent.defaultPrevented).toBe(false);
     expect(touchEvent.defaultPrevented).toBe(false);
     expect(focusMock).not.toHaveBeenCalled();
-  });
-
-  it("shows only public skill selections provided by the runtime context", () => {
-    runtimeMock.skills = [
-      { id: "frontend-design", name: "Frontend Design", description: "UI guidance", kind: "skill", active: true },
-    ];
-    runtimeMock.inspectorOpen = true;
-    runtimeMock.inspectorTab = "skills";
-
-    renderWorkspace({ isMobileViewport: false });
-
-    expect(screen.getByText("Frontend Design")).toBeInTheDocument();
-    expect(screen.queryByText("Writing Skill Skill")).not.toBeInTheDocument();
   });
 
   it("keeps legacy chat sessions as normal Chat session rows", () => {

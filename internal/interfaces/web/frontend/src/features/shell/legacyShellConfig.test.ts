@@ -38,7 +38,6 @@ describe("legacyShellConfig", () => {
     expect(SETTINGS_ROUTE_GROUPS[0].items.map((item) => item.route)).toEqual([
       "runtime",
       "skills",
-      "memory",
       "schedules",
       "general",
     ]);

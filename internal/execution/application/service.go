@@ -66,6 +66,18 @@ func NewServiceWithSkills(
 	}
 }
 
+func NewServiceWithMCP(
+	processor execdomain.AgentProcessor,
+	capabilitySource SkillCapabilitySource,
+	logger *slog.Logger,
+) *Service {
+	return &Service{
+		processor:   processor,
+		mcpResolver: newMCPContextResolver(capabilitySource),
+		logger:      logger,
+	}
+}
+
 func NewServiceWithSkillsAndMemoryOptions(
 	processor execdomain.AgentProcessor,
 	skillSource SkillCapabilitySource,
