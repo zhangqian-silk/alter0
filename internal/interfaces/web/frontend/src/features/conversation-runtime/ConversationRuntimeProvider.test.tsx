@@ -200,9 +200,6 @@ function InspectorHarness() {
       <button type="button" onClick={() => runtime.toggleInspector("model")}>
         model
       </button>
-      <button type="button" onClick={() => runtime.toggleInspector("skills")}>
-        skills
-      </button>
       <output data-testid="inspector-state">
         {[
           runtime.inspectorTab,
@@ -233,31 +230,9 @@ function ModelSelectionHarness() {
   );
 }
 
-function SkillSelectionHarness() {
-  const runtime = useConversationRuntime();
-  const memorySkill = runtime.skills.find((item) => item.id === "memory");
-
-  return (
-    <div>
-      <button type="button" onClick={() => runtime.toggleSkill("memory", true)}>
-        enable memory
-      </button>
-      <button type="button" onClick={() => runtime.toggleSkill("memory", false)}>
-        disable memory
-      </button>
-      <button type="button" onClick={() => void runtime.sendPrompt("Run with selected skills")}>
-        send with skills
-      </button>
-      <output data-testid="memory-skill-state">{memorySkill?.active ? "active" : "inactive"}</output>
-      <output data-testid="skill-count">{runtime.skillCount}</output>
-    </div>
-  );
-}
-
 function RuntimeConfigSelectionHarness() {
   const runtime = useConversationRuntime();
   const filesystemMCP = runtime.capabilities.find((item) => item.id === "filesystem");
-  const memorySkill = runtime.skills.find((item) => item.id === "memory");
 
   return (
     <div>
@@ -267,16 +242,12 @@ function RuntimeConfigSelectionHarness() {
       <button type="button" onClick={() => runtime.toggleCapability("filesystem", "mcp", true)}>
         enable filesystem
       </button>
-      <button type="button" onClick={() => runtime.toggleSkill("memory", false)}>
-        disable memory
-      </button>
       <button type="button" onClick={() => void runtime.sendPrompt("Run with stored config")}>
         send with stored config
       </button>
       <output data-testid="selected-provider">{runtime.selectedProviderId}</output>
       <output data-testid="selected-model">{runtime.selectedModelId}</output>
       <output data-testid="filesystem-state">{filesystemMCP?.active ? "active" : "inactive"}</output>
-      <output data-testid="memory-skill-state">{memorySkill?.active ? "active" : "inactive"}</output>
     </div>
   );
 }
@@ -412,8 +383,6 @@ function chatSessionFixture(overrides: Partial<ChatSession> = {}): ChatSession {
     modelProviderID: "",
     modelID: "",
     toolIDs: [],
-    skillIDs: [],
-    skillIDsExplicit: false,
     mcpIDs: [],
     messages: [],
     messagesLoaded: false,
@@ -3330,139 +3299,6 @@ describe("ConversationRuntimeProvider", () => {
     expect(screen.getByTestId("sessions")).toHaveTextContent(/^New:pinned$/);
   });
 
-  it("selects all public skills by default for a new blank Chat session", async () => {
-    window.sessionStorage.clear();
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      switch (path) {
-        case "/api/chat/sessions":
-        case "/api/control/llm/providers":
-        case "/api/control/mcps":
-          return { items: [] };
-        case "/api/control/skills":
-          return {
-            items: [
-              {
-                id: "memory",
-                name: "Memory",
-                description: "Use workspace memory",
-                enabled: true,
-              },
-              {
-                id: "frontend-design",
-                name: "Frontend Design",
-                description: "UI guidance",
-                enabled: true,
-              },
-              {
-                id: "private",
-                name: "Private",
-                description: "Private skill",
-                enabled: true,
-                metadata: { "alter0.skill.visibility": "private" },
-              },
-              {
-                id: "disabled-skill",
-                name: "Disabled Skill",
-                description: "Disabled",
-                enabled: false,
-              },
-            ],
-          };
-        default:
-          return { items: [] };
-      }
-    });
-
-    render(
-      <ConversationRuntimeProvider route="chat" language="en">
-        <SkillSelectionHarness />
-      </ConversationRuntimeProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent(/^active$/));
-    expect(screen.getByTestId("skill-count")).toHaveTextContent(/^2$/);
-  });
-
-  it("selects all public skills by default when a ChatRuntime-backed Chat session has no skill_ids field", async () => {
-    let requestBody: Record<string, unknown> | null = null;
-    apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
-        requestBody = body || null;
-        return {
-          session: {
-            id: "c_51jttwiv4yggqagk",
-            title: "Image session",
-            status: "ready",
-            created_at: "2026-04-23T03:30:00Z",
-            turns: [{ id: "turn-default-skills", prompt: "Run with selected skills", status: "success", final_output: "Done" }],
-          },
-        };
-      }
-      return {};
-    });
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      switch (path) {
-        case "/api/chat/sessions":
-          return {
-            items: [
-              {
-                id: "c_51jttwiv4yggqagk",
-                title: "Image session",
-                status: "ready",
-                created_at: "2026-04-23T03:30:00Z",
-                turns: [],
-              },
-            ],
-          };
-        case "/api/chat/sessions/c_51jttwiv4yggqagk":
-          return {
-            session: {
-              id: "c_51jttwiv4yggqagk",
-              title: "Image session",
-              status: "ready",
-              created_at: "2026-04-23T03:30:00Z",
-              turns: [],
-            },
-          };
-        case "/api/control/skills":
-          return {
-            items: [
-              {
-                id: "memory",
-                name: "Memory",
-                description: "Use workspace memory",
-                enabled: true,
-              },
-              {
-                id: "frontend-design",
-                name: "Frontend Design",
-                description: "UI guidance",
-                enabled: true,
-              },
-            ],
-          };
-        case "/api/control/llm/providers":
-        case "/api/control/mcps":
-          return { items: [] };
-        default:
-          return { items: [] };
-      }
-    });
-
-    render(
-      <ConversationRuntimeProvider route="chat" language="en">
-        <SkillSelectionHarness />
-      </ConversationRuntimeProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent(/^active$/));
-    expect(screen.getByTestId("skill-count")).toHaveTextContent(/^2$/);
-
-    fireEvent.click(screen.getByRole("button", { name: "send with skills" }));
-
-    await waitFor(() => expect(requestBody?.skill_ids).toEqual(["memory", "frontend-design"]));
-  });
-
   it("loads Chat sessions from the Chat route and hydrates them as Chat sessions", async () => {
     window.sessionStorage.setItem(
       ACTIVE_SESSION_STORAGE_KEY,
@@ -3480,7 +3316,6 @@ describe("ConversationRuntimeProvider", () => {
                 target_type: "skill",
                 target_id: "travel",
                 target_name: "Travel Skill",
-                skill_ids: ["travel-map"],
                 messages: [],
               },
             ],
@@ -3494,7 +3329,6 @@ describe("ConversationRuntimeProvider", () => {
               target_type: "skill",
               target_id: "travel",
               target_name: "Travel Skill",
-              skill_ids: ["travel-map"],
               messages: [
                 { id: "m-1", role: "user", content: "Plan Wuhan", created_at: "2026-04-23T09:00:00Z" },
               ],
@@ -5225,9 +5059,6 @@ describe("ConversationRuntimeProvider", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "model" }));
     expect(screen.getByTestId("inspector-state")).toHaveTextContent("model:details-open:tab-open");
-
-    fireEvent.click(screen.getByRole("button", { name: "skills" }));
-    expect(screen.getByTestId("inspector-state")).toHaveTextContent("skills:details-open:tab-open");
   });
 
   it("adds a Codex option for Chat model selection and submits through ChatRuntime input", async () => {
@@ -5332,12 +5163,6 @@ describe("ConversationRuntimeProvider", () => {
               },
             ],
           };
-        case "/api/control/skills":
-          return {
-            items: [
-              { id: "memory", name: "Memory", description: "Use workspace memory", enabled: true },
-            ],
-          };
         case "/api/control/mcps":
           return {
             items: [
@@ -5357,15 +5182,12 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("selected-provider")).toHaveTextContent("alter0-codex"));
     expect(screen.getByTestId("selected-model")).toHaveTextContent("codex");
-    expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("active");
 
     fireEvent.click(screen.getByRole("button", { name: "select openrouter" }));
     fireEvent.click(screen.getByRole("button", { name: "enable filesystem" }));
-    fireEvent.click(screen.getByRole("button", { name: "disable memory" }));
 
     await waitFor(() => expect(screen.getByTestId("selected-provider")).toHaveTextContent("openrouter"));
     expect(screen.getByTestId("filesystem-state")).toHaveTextContent("active");
-    expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("inactive");
 
     firstView.unmount();
 
@@ -5378,7 +5200,6 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("selected-provider")).toHaveTextContent("openrouter"));
     expect(screen.getByTestId("selected-model")).toHaveTextContent("anthropic/claude-sonnet");
     expect(screen.getByTestId("filesystem-state")).toHaveTextContent("active");
-    expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("inactive");
 
     fireEvent.click(screen.getByRole("button", { name: "send with stored config" }));
 
@@ -5386,325 +5207,7 @@ describe("ConversationRuntimeProvider", () => {
     expect(requestBody?.model_provider_id).toBe("openrouter");
     expect(requestBody?.model_id).toBe("anthropic/claude-sonnet");
     expect(requestBody?.mcp_ids).toEqual(["filesystem"]);
-    expect(requestBody?.skill_ids).toEqual([]);
-  });
-
-  it("persists Chat skill selections to the runtime session before the next message is sent", async () => {
-    let requestBody: Record<string, unknown> | null = null;
-    apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
-        requestBody = body || null;
-        return {
-          session: {
-            id: "c_51jttwiv4yggqagk",
-            title: "Configurable session",
-            status: "ready",
-            created_at: "2026-04-23T03:30:00Z",
-            skill_ids: ["memory"],
-            turns: [{ id: "turn-memory", prompt: "Run with selected skills", status: "success", final_output: "Done" }],
-          },
-        };
-      }
-      return {};
-    });
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      switch (path) {
-        case "/api/chat/sessions":
-          return {
-            items: [
-              {
-                id: "c_51jttwiv4yggqagk",
-                title: "Configurable session",
-                created_at: "2026-04-23T03:30:00Z",
-                target_type: "model",
-                target_id: "raw-model",
-                target_name: "Raw Model",
-                skill_ids: [],
-              },
-            ],
-          };
-        case "/api/chat/sessions/c_51jttwiv4yggqagk":
-          return {
-            session: {
-              id: "c_51jttwiv4yggqagk",
-              title: "Configurable session",
-              created_at: "2026-04-23T03:30:00Z",
-              target_type: "model",
-              target_id: "raw-model",
-              target_name: "Raw Model",
-              skill_ids: [],
-              messages: [],
-            },
-          };
-        case "/api/control/skills":
-          return {
-            items: [
-              {
-                id: "memory",
-                name: "Memory",
-                description: "Use workspace memory",
-                enabled: true,
-              },
-            ],
-          };
-        case "/api/control/llm/providers":
-        case "/api/control/mcps":
-          return { items: [] };
-        default:
-          return { items: [] };
-      }
-    });
-    apiClientMock.patch.mockResolvedValue({
-      session: {
-        id: "c_51jttwiv4yggqagk",
-        title: "Configurable session",
-        created_at: "2026-04-23T03:30:00Z",
-        target_type: "model",
-        target_id: "raw-model",
-        target_name: "Raw Model",
-        skill_ids: ["memory"],
-        messages: [],
-      },
-    });
-
-    render(
-      <ConversationRuntimeProvider route="chat" language="en">
-        <SkillSelectionHarness />
-      </ConversationRuntimeProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("inactive"));
-
-    fireEvent.click(screen.getByRole("button", { name: "enable memory" }));
-
-    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("active"));
-    expect(screen.getByTestId("skill-count")).toHaveTextContent("1");
-    expect(apiClientMock.patch).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "send with skills" }));
-
-    await waitFor(() => expect(requestBody?.skill_ids).toEqual(["memory"]));
-  });
-
-  it("keeps cleared Chat skill selections cleared after the runtime session patch response", async () => {
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      switch (path) {
-        case "/api/chat/sessions":
-        case "/api/chat/sessions/c_51jttwiv4yggqagk":
-          return {
-            session: {
-              id: "c_51jttwiv4yggqagk",
-              title: "Configurable session",
-              created_at: "2026-04-23T03:30:00Z",
-              target_type: "model",
-              target_id: "raw-model",
-              target_name: "Raw Model",
-              skill_ids: ["memory"],
-              messages: [],
-            },
-            items: [
-              {
-                id: "c_51jttwiv4yggqagk",
-                title: "Configurable session",
-                created_at: "2026-04-23T03:30:00Z",
-                target_type: "model",
-                target_id: "raw-model",
-                target_name: "Raw Model",
-                skill_ids: ["memory"],
-              },
-            ],
-          };
-        case "/api/control/skills":
-          return {
-            items: [
-              {
-                id: "memory",
-                name: "Memory",
-                description: "Use workspace memory",
-                enabled: true,
-              },
-            ],
-          };
-        case "/api/control/llm/providers":
-        case "/api/control/mcps":
-          return { items: [] };
-        default:
-          return { items: [] };
-      }
-    });
-    render(
-      <ConversationRuntimeProvider route="chat" language="en">
-        <SkillSelectionHarness />
-      </ConversationRuntimeProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("active"));
-
-    fireEvent.click(screen.getByRole("button", { name: "disable memory" }));
-
-    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent("inactive"));
-    expect(screen.getByTestId("skill-count")).toHaveTextContent("0");
-    expect(apiClientMock.patch).not.toHaveBeenCalled();
-  });
-
-  it("drops unavailable skills from historical Chat sessions before the next message is sent", async () => {
-    let requestBody: Record<string, unknown> | null = null;
-    apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
-        requestBody = body || null;
-        return {
-          session: {
-            id: "c_51jttwiv4yggqagk",
-            title: "Historical session",
-            status: "ready",
-            created_at: "2026-04-23T03:30:00Z",
-            skill_ids: ["memory"],
-            turns: [{ id: "turn-filtered-skill", prompt: "Run with selected skills", status: "success", final_output: "Done" }],
-          },
-        };
-      }
-      return {};
-    });
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      switch (path) {
-        case "/api/chat/sessions":
-          return {
-            items: [
-              {
-                id: "c_51jttwiv4yggqagk",
-                title: "Historical session",
-                created_at: "2026-04-23T03:30:00Z",
-                target_type: "model",
-                target_id: "raw-model",
-                target_name: "Raw Model",
-                skill_ids: ["memory", "deleted-skill"],
-              },
-            ],
-          };
-        case "/api/chat/sessions/c_51jttwiv4yggqagk":
-          return {
-            session: {
-              id: "c_51jttwiv4yggqagk",
-              title: "Historical session",
-              created_at: "2026-04-23T03:30:00Z",
-              target_type: "model",
-              target_id: "raw-model",
-              target_name: "Raw Model",
-              skill_ids: ["memory", "deleted-skill"],
-              messages: [],
-            },
-          };
-        case "/api/control/skills":
-          return {
-            items: [
-              {
-                id: "memory",
-                name: "Memory",
-                description: "Use workspace memory",
-                enabled: true,
-              },
-            ],
-          };
-        case "/api/control/llm/providers":
-        case "/api/control/mcps":
-          return { items: [] };
-        default:
-          return { items: [] };
-      }
-    });
-
-    render(
-      <ConversationRuntimeProvider route="chat" language="en">
-        <SkillSelectionHarness />
-      </ConversationRuntimeProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent(/^active$/));
-    expect(screen.getByTestId("skill-count")).toHaveTextContent(/^1$/);
-
-    fireEvent.click(screen.getByRole("button", { name: "send with skills" }));
-
-    await waitFor(() => expect(requestBody?.skill_ids).toEqual(["memory"]));
-  });
-
-  it("sends newly checked skills from historical Chat sessions without a reload", async () => {
-    let requestBody: Record<string, unknown> | null = null;
-    apiClientMock.post.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
-        requestBody = body || null;
-        return {
-          session: {
-            id: "c_51jttwiv4yggqagk",
-            title: "Historical session",
-            status: "ready",
-            created_at: "2026-04-23T03:30:00Z",
-            skill_ids: ["memory"],
-            turns: [{ id: "turn-new-skill", prompt: "Run with selected skills", status: "success", final_output: "Done" }],
-          },
-        };
-      }
-      return {};
-    });
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      switch (path) {
-        case "/api/chat/sessions":
-          return {
-            items: [
-              {
-                id: "c_51jttwiv4yggqagk",
-                title: "Historical session",
-                created_at: "2026-04-23T03:30:00Z",
-                target_type: "model",
-                target_id: "raw-model",
-                target_name: "Raw Model",
-                skill_ids: [],
-              },
-            ],
-          };
-        case "/api/chat/sessions/c_51jttwiv4yggqagk":
-          return {
-            session: {
-              id: "c_51jttwiv4yggqagk",
-              title: "Historical session",
-              created_at: "2026-04-23T03:30:00Z",
-              target_type: "model",
-              target_id: "raw-model",
-              target_name: "Raw Model",
-              skill_ids: [],
-              messages: [],
-            },
-          };
-        case "/api/control/skills":
-          return {
-            items: [
-              {
-                id: "memory",
-                name: "Memory",
-                description: "Use workspace memory",
-                enabled: true,
-              },
-            ],
-          };
-        case "/api/control/llm/providers":
-        case "/api/control/mcps":
-          return { items: [] };
-        default:
-          return { items: [] };
-      }
-    });
-    render(
-      <ConversationRuntimeProvider route="chat" language="en">
-        <SkillSelectionHarness />
-      </ConversationRuntimeProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent(/^inactive$/));
-    fireEvent.click(screen.getByRole("button", { name: "enable memory" }));
-    await waitFor(() => expect(screen.getByTestId("memory-skill-state")).toHaveTextContent(/^active$/));
-
-    fireEvent.click(screen.getByRole("button", { name: "send with skills" }));
-
-    await waitFor(() => expect(requestBody?.skill_ids).toEqual(["memory"]));
+    expect(requestBody).not.toHaveProperty("skill_ids");
   });
 
   it("keeps locally appended messages when a session collection refresh returns a shorter history", async () => {

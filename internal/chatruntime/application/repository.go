@@ -100,7 +100,6 @@ func (s *Service) RetryRepository(ownerID string, sessionID string) (chatruntime
 	turn.FinalOutput = ""
 	prompt := turn.Prompt
 	attachments := cloneTurnAttachments(turn.Attachments)
-	skillContext := cloneChatRuntimeSkillContext(turn.SkillContext)
 	turnID := turn.ID
 	snapshot := item.summary
 	snapshot.Repository = cloneRepositoryBinding(item.summary.Repository)
@@ -108,7 +107,7 @@ func (s *Service) RetryRepository(ownerID string, sessionID string) (chatruntime
 
 	s.persistSession(item)
 	s.publishTurnSessionEvent(item, SessionEventTurnStarted, turnID, "")
-	go s.runTurn(item, turnCtx, turnID, prompt, attachments, skillContext)
+	go s.runTurn(item, turnCtx, turnID, prompt, attachments)
 	return snapshot, nil
 }
 

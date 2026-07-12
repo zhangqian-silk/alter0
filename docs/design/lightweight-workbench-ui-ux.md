@@ -39,7 +39,7 @@ Product design:
 Settings is a compact control surface for the wrapper layer: Codex runtime, model providers, skill repository, memory, workspaces/cleanup, and schedules. It should not behave like a large operations suite.
 
 PC UI:
-The desktop settings page uses a narrow section index and a content area. Runtime combines Codex Direct health, model/reasoning configuration, provider registration state, readiness, and diagnostics. Skills, Memory, Workspaces, and Schedules are reachable from the same compact settings page.
+The desktop settings page uses a narrow section index and a content area. Runtime combines Codex Direct health, model/reasoning configuration, global native Memories switches, provider registration state, readiness, and diagnostics. Skills and Schedules remain separate compact settings sections.
 
 Mobile UI:
 The section index becomes a compact tab grid. Cards stack vertically, with short labels and visible health/status rows.

@@ -50,6 +50,15 @@ function runtimeFixture(overrides: Record<string, unknown> = {}) {
       file_path: "/var/lib/alter0/.codex/config.toml",
       version: "user",
     },
+    memories: {
+      available: true,
+      enabled: true,
+      generate_memories: true,
+      use_memories: true,
+      directory_exists: true,
+      file_count: 4,
+      last_updated_at: "2026-07-12T01:30:00Z",
+    },
     models: [
       {
         id: "gpt-5.4",
@@ -135,6 +144,10 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(statusQueries.getByText("2026-06-11 10:10")).toBeInTheDocument();
     expect(statusQueries.getByLabelText("Model")).toHaveValue("gpt-5.4");
     expect(statusQueries.getByLabelText("Reasoning Depth")).toHaveValue("high");
+    expect(statusQueries.getByRole("checkbox", { name: "Codex Memories" })).toBeChecked();
+    expect(statusQueries.getByRole("checkbox", { name: "Generate new memories" })).toBeChecked();
+    expect(statusQueries.getByRole("checkbox", { name: "Use existing memories" })).toBeChecked();
+    expect(statusQueries.getByText("4 memory files")).toBeInTheDocument();
     expect(statusQueries.getByRole("option", { name: "High" })).toBeInTheDocument();
     expect(statusQueries.queryByText("Balanced depth")).not.toBeInTheDocument();
     expect(statusQueries.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
@@ -200,6 +213,54 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       "/api/control/llm/providers",
       expect.objectContaining({ method: "GET" }),
     );
+  });
+
+  it("persists global native memories switches through Codex runtime settings", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/control/codex/runtime" && init?.method === "PUT") {
+        return Promise.resolve(jsonResponse(runtimeFixture({
+          memories: {
+            available: true,
+            enabled: true,
+            generate_memories: false,
+            use_memories: true,
+            directory_exists: true,
+            file_count: 4,
+          },
+        })));
+      }
+      if (url === "/api/control/codex/runtime") {
+        return Promise.resolve(jsonResponse(runtimeFixture()));
+      }
+      if (url === "/api/control/llm/providers") {
+        return Promise.resolve(jsonResponse({ items: [] }));
+      }
+      return Promise.resolve(jsonResponse({ status: "idle" }));
+    });
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    const generationSwitch = await screen.findByRole("checkbox", { name: "Generate new memories" });
+    fireEvent.click(generationSwitch);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/control/codex/runtime",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({
+            memories: {
+              enabled: true,
+              generate_memories: false,
+              use_memories: true,
+            },
+          }),
+        }),
+      );
+    });
+    expect(screen.getByRole("checkbox", { name: "Generate new memories" })).not.toBeChecked();
   });
 
   it("loads runtime status and provider state in parallel", async () => {

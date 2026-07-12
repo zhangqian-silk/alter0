@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	codexapp "alter0/internal/codex/application"
 	"alter0/internal/codex/infrastructure/runtimeconfig"
 	execdomain "alter0/internal/execution/domain"
 )
@@ -34,13 +35,16 @@ func prepareCodexInvocation(prompt string, metadata map[string]string, workspace
 	if strategy == execdomain.CodexRuntimeStrategyPlain {
 		return preparedCodexInvocation{Prompt: trimmedPrompt}, nil
 	}
-	env, err := prepareCodexNativeRuntime(metadata, workspaceDir)
+	if err := codexapp.RetireLegacySessionRuntimeArtifacts(workspaceDir); err != nil {
+		return preparedCodexInvocation{}, fmt.Errorf("retire legacy Codex runtime artifacts: %w", err)
+	}
+	activeHome, err := codexapp.ResolveActiveHome()
 	if err != nil {
-		return preparedCodexInvocation{}, err
+		return preparedCodexInvocation{}, fmt.Errorf("resolve active Codex home: %w", err)
 	}
 	return preparedCodexInvocation{
 		Prompt: trimmedPrompt,
-		Env:    env,
+		Env:    []string{"CODEX_HOME=" + filepath.Clean(activeHome)},
 	}, nil
 }
 

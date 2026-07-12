@@ -160,8 +160,6 @@ export type ChatSession = {
   modelProviderID: string;
   modelID: string;
   toolIDs: string[];
-  skillIDs: string[];
-  skillIDsExplicit?: boolean;
   mcpIDs: string[];
   messages: ChatMessage[];
   messagesLoaded?: boolean;
@@ -204,8 +202,6 @@ type RuntimeComposerConfig = {
   modelProviderID: string;
   modelID: string;
   toolIDs: string[];
-  skillIDs: string[];
-  skillIDsExplicit: boolean;
   mcpIDs: string[];
 };
 
@@ -234,10 +230,8 @@ type RuntimeSelection = {
   id: string;
   name: string;
   description: string;
-  kind: "tool" | "mcp" | "skill";
+  kind: "tool" | "mcp";
   active: boolean;
-  visibility?: "public";
-  locked?: boolean;
 };
 
 type RuntimeModel = {
@@ -265,7 +259,6 @@ type RuntimeSessionDetailPayload = {
   model_provider_id?: string;
   model_id?: string;
   tool_ids?: string[];
-  skill_ids?: string[];
   mcp_ids?: string[];
   turns?: RuntimeSessionTurnPayload[];
   turns_paging?: RuntimeSessionTurnPagingPayload;
@@ -364,7 +357,7 @@ type RuntimeTraceEventDetail = {
   blocks?: RuntimeBlock[];
 };
 
-type RuntimeInspectorTab = "model" | "skills";
+type RuntimeInspectorTab = "model";
 
 type ConversationRuntimeContextValue = {
   route: ConversationRoute;
@@ -400,10 +393,8 @@ type ConversationRuntimeContextValue = {
   repositoryBinding: ChatRepositoryBinding | null;
   repositorySelectable: boolean;
   capabilities: RuntimeSelection[];
-  skills: RuntimeSelection[];
   runtimeEventFilter: RuntimeEventFilterID[];
   toolCount: number;
-  skillCount: number;
   createSession: () => void;
   focusSession: (sessionID: string) => void;
   removeSession: (sessionID: string) => Promise<void>;
@@ -422,7 +413,6 @@ type ConversationRuntimeContextValue = {
   closeInspector: () => void;
   selectModel: (providerID: string, modelID: string) => void;
   toggleCapability: (id: string, kind: "tool" | "mcp", checked: boolean) => void;
-  toggleSkill: (id: string, checked: boolean) => void;
   toggleRuntimeEventFilter: (id: RuntimeEventFilterID, checked: boolean) => void;
   toggleProcess: (messageID: string) => void;
   loadProcessEventDetail: (messageID: string, eventID: string) => Promise<void>;
@@ -462,7 +452,6 @@ type ConversationRuntimeComposerContextValue = Pick<
   | "selectedModelSupportsVision"
   | "providers"
   | "capabilities"
-  | "skills"
   | "runtimeEventFilter"
   | "setDraft"
   | "addDraftAttachments"
@@ -476,7 +465,6 @@ type ConversationRuntimeComposerContextValue = Pick<
   | "closeInspector"
   | "selectModel"
   | "toggleCapability"
-  | "toggleSkill"
   | "toggleRuntimeEventFilter"
 >;
 
@@ -565,8 +553,6 @@ function emptyRuntimeComposerConfig(stored = false): RuntimeComposerConfigState 
     modelProviderID: "",
     modelID: "",
     toolIDs: [],
-    skillIDs: [],
-    skillIDsExplicit: false,
     mcpIDs: [],
     stored,
   };
@@ -581,8 +567,6 @@ function normalizeRuntimeComposerConfig(value: unknown, stored = false): Runtime
     modelProviderID: normalizeText(record.modelProviderID),
     modelID: normalizeText(record.modelID),
     toolIDs: normalizeSelectionIDs(record.toolIDs),
-    skillIDs: normalizeSelectionIDs(record.skillIDs),
-    skillIDsExplicit: record.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(record.mcpIDs),
     stored,
   };
@@ -612,8 +596,6 @@ function persistRuntimeConfig(route: ConversationRoute, config: RuntimeComposerC
     modelProviderID: normalized.modelProviderID,
     modelID: normalized.modelID,
     toolIDs: normalized.toolIDs,
-    skillIDs: normalized.skillIDs,
-    skillIDsExplicit: normalized.skillIDsExplicit,
     mcpIDs: normalized.mcpIDs,
   }));
 }
@@ -663,29 +645,6 @@ function emptyActiveSessionState(): ActiveSessionState {
   };
 }
 
-function isPublicSkillCapability(skill: ChatCapability): boolean {
-  const metadata = skill.metadata || {};
-  const visibility = normalizeText(metadata["alter0.skill.visibility"] || metadata["skill.visibility"]).toLowerCase();
-  return visibility !== "private" && visibility !== "private";
-}
-
-function defaultChatSkillIDs(skills: ChatCapability[]): string[] {
-  return normalizeSelectionIDs(
-    skills
-      .filter((item) => item.enabled !== false && isPublicSkillCapability(item))
-      .map((item) => normalizeText(item.id)),
-  );
-}
-
-function effectiveChatSkillIDs(selectedIDs: string[] | undefined, availableSkillIDs: string[] | null): string[] {
-  const normalized = normalizeSelectionIDs(selectedIDs || []);
-  if (availableSkillIDs === null) {
-    return normalized;
-  }
-  const available = new Set(availableSkillIDs);
-  return normalized.filter((item) => available.has(item));
-}
-
 function runtimeConfigFromSession(session: ChatSession | null | undefined): RuntimeComposerConfigState {
   if (!session) {
     return emptyRuntimeComposerConfig(false);
@@ -694,18 +653,9 @@ function runtimeConfigFromSession(session: ChatSession | null | undefined): Runt
     modelProviderID: normalizeText(session.modelProviderID),
     modelID: normalizeText(session.modelID),
     toolIDs: normalizeSelectionIDs(session.toolIDs),
-    skillIDs: normalizeSelectionIDs(session.skillIDs),
-    skillIDsExplicit: session.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(session.mcpIDs),
     stored: false,
   };
-}
-
-function effectiveRuntimeSkillIDs(config: RuntimeComposerConfigState, availableSkillIDs: string[] | null): string[] {
-  if (config.skillIDsExplicit === false) {
-    return availableSkillIDs === null ? [] : [...availableSkillIDs];
-  }
-  return effectiveChatSkillIDs(config.skillIDs, availableSkillIDs);
 }
 
 function makeID(prefix: string): string {
@@ -821,7 +771,6 @@ function cloneChatSession(session: ChatSession): ChatSession {
     ...session,
     target: { ...session.target },
     toolIDs: [...session.toolIDs],
-    skillIDs: [...session.skillIDs],
     mcpIDs: [...session.mcpIDs],
     messages: session.messages.map(cloneChatMessage),
     turnsPaging: session.turnsPaging ? { ...session.turnsPaging } : undefined,
@@ -1669,8 +1618,6 @@ function normalizeStoredSession(item: unknown): ChatSession | null {
     modelProviderID: normalizeText(record.modelProviderID),
     modelID: normalizeText(record.modelID),
     toolIDs: normalizeSelectionIDs(record.toolIDs),
-    skillIDs: normalizeSelectionIDs(record.skillIDs),
-    skillIDsExplicit: record.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(record.mcpIDs),
     messages,
     messagesLoaded: typeof record.messagesLoaded === "boolean" ? record.messagesLoaded : undefined,
@@ -1759,8 +1706,6 @@ function serializeStoredSession(session: ChatSession): Record<string, unknown> {
     modelProviderID: session.modelProviderID,
     modelID: session.modelID,
     toolIDs: session.toolIDs,
-    skillIDs: session.skillIDs,
-    skillIDsExplicit: session.skillIDsExplicit === true,
     mcpIDs: session.mcpIDs,
     messages: session.messages.map(serializeStoredMessage),
     messagesLoaded: session.messagesLoaded,
@@ -2251,7 +2196,6 @@ export function normalizeRuntimeSession(
         ? previousMessages
         : parsedMessages)
     : previousMessages;
-  const hasExplicitSkillIDs = Array.isArray(item.skill_ids);
   const latestMessageAt = latestTimestamp(...messages.map((message) => Number(message.at) || 0));
   const activityAt = latestTimestamp(updatedAt, latestMessageAt, createdAt);
   const inferredFreshnessAt = latestTimestamp(activityAt, updatedAt, latestMessageAt, createdAt, previous?.freshnessAt || 0);
@@ -2280,10 +2224,6 @@ export function normalizeRuntimeSession(
     modelProviderID: normalizeText(item.model_provider_id) || previous?.modelProviderID || "",
     modelID: normalizeText(item.model_id) || previous?.modelID || "",
     toolIDs: normalizeSelectionIDs(item.tool_ids || previous?.toolIDs || []),
-    skillIDs: hasExplicitSkillIDs
-      ? normalizeSelectionIDs(item.skill_ids)
-      : normalizeSelectionIDs(previous?.skillIDs || []),
-    skillIDsExplicit: hasExplicitSkillIDs ? true : previous?.skillIDsExplicit === true,
     mcpIDs: normalizeSelectionIDs(item.mcp_ids || previous?.mcpIDs || []),
     messages,
     messagesLoaded,
@@ -2687,8 +2627,6 @@ export function ConversationRuntimeProvider({
   });
   const runtimeCatalogs = useRuntimeSessionCatalogs(apiClient);
   const providers = runtimeCatalogs.providers as ChatProvider[];
-  const skills = runtimeCatalogs.skills as ChatCapability[];
-  const skillCatalogLoaded = runtimeCatalogs.skillsLoaded;
   const mcps = runtimeCatalogs.mcps as ChatCapability[];
   const [composerDrafts, setComposerDrafts] = useState<ComposerDraftMap>(() => loadComposerDrafts(route));
   const [composerAttachmentDrafts, setComposerAttachmentDrafts] = useState<ComposerAttachmentDraftMap>(() => loadComposerAttachmentDrafts(route));
@@ -2816,16 +2754,10 @@ export function ConversationRuntimeProvider({
   const activeDraftRepository = composerRepositoryDrafts[activeDraftKey] || null;
   const activeSessionHasMessages = Boolean(activeSession?.messages.length);
   const availableProviders = useMemo(() => runtimeProviders(providers), [providers]);
-  const availableSkillIDs = useMemo(
-    () => skillCatalogLoaded ? defaultChatSkillIDs(skills) : null,
-    [skillCatalogLoaded, skills],
-  );
   const activeSessionConfigKey = [
     activeSession?.modelProviderID || "",
     activeSession?.modelID || "",
     (activeSession?.toolIDs || []).join("\u0000"),
-    (activeSession?.skillIDs || []).join("\u0000"),
-    activeSession?.skillIDsExplicit === true ? "skills-explicit" : "skills-default",
     (activeSession?.mcpIDs || []).join("\u0000"),
   ].join("\u0001");
   const activeRuntimeConfig = useMemo(
@@ -2833,10 +2765,6 @@ export function ConversationRuntimeProvider({
     // activeSessionConfigKey intentionally keeps history/message merges out of Composer context.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeSessionConfigKey, runtimeConfig],
-  );
-  const activeSkillIDs = useMemo(
-    () => effectiveRuntimeSkillIDs(activeRuntimeConfig, availableSkillIDs),
-    [activeRuntimeConfig, availableSkillIDs],
   );
   useEffect(() => {
     setRuntimeConfig(loadRuntimeConfig(route));
@@ -3124,8 +3052,6 @@ export function ConversationRuntimeProvider({
       modelProviderID: session.modelProviderID,
       modelID: session.modelID,
       toolIDs: normalizeSelectionIDs(session.toolIDs),
-      skillIDs: normalizeSelectionIDs(session.skillIDs),
-      skillIDsExplicit: session.skillIDsExplicit === true,
       mcpIDs: normalizeSelectionIDs(session.mcpIDs),
     }));
   }, [patchSession, route]);
@@ -3378,8 +3304,7 @@ export function ConversationRuntimeProvider({
         attachments: attachments.map(serializeMessageAttachment),
         ...runtimeSelectionInputPayload(selection),
         tool_ids: normalizeSelectionIDs(activeRuntimeConfig.toolIDs),
-        skill_ids: activeSkillIDs,
-        mcp_ids: normalizeSelectionIDs(activeRuntimeConfig.mcpIDs),
+		mcp_ids: normalizeSelectionIDs(activeRuntimeConfig.mcpIDs),
         ...(repository ? {
           repository: {
             provider: "github",
@@ -3895,8 +3820,6 @@ export function ConversationRuntimeProvider({
   const activeSessionBusy = activeSession ? shouldBlockRuntimeInput(activeSession) : false;
   const selectedModelSupportsVision = selectedModel ? selectedModel.supports_vision !== false : true;
   const activeMcpIDKey = activeRuntimeConfig.mcpIDs.join("\u0000");
-  const activeSkillIDKey = activeSkillIDs.join("\u0000");
-  const availableSkillIDKey = availableSkillIDs === null ? "__loading__" : availableSkillIDs.join("\u0000");
   const runtimeProviderItems = useMemo(() => enabledProviders(availableProviders).map((provider) => ({
     id: normalizeText(provider.id),
     name: normalizeText(provider.name) || normalizeText(provider.id),
@@ -3926,25 +3849,6 @@ export function ConversationRuntimeProvider({
   // activeMcpIDKey intentionally decouples Composer from activeSession.messages changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMcpIDKey, activeRuntimeConfig.mcpIDs, mcps]);
-  const runtimeSkillItems = useMemo(() => {
-    const selectedSkillIDs = new Set(activeSkillIDs);
-    return [
-      ...skills
-        .filter((item) => item.enabled !== false && isPublicSkillCapability(item))
-        .map((item) => ({
-          id: normalizeText(item.id),
-          name: normalizeText(item.name) || normalizeText(item.id),
-          description: normalizeText(item.description) || normalizeText(item.scope) || "Skill",
-          kind: "skill" as const,
-          active: selectedSkillIDs.has(normalizeText(item.id)),
-          visibility: "public" as const,
-          locked: false,
-        }))
-        .filter((item) => item.id),
-    ].filter((item): item is RuntimeSelection => Boolean(item?.id));
-  // activeSkillIDKey intentionally decouples Composer from activeSession.messages changes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSkillIDKey, skills]);
   const readCurrentActiveSession = useCallback(() => {
     if (!activeSessionID) {
       return null;
@@ -4022,39 +3926,6 @@ export function ConversationRuntimeProvider({
     );
     void persistRuntimeSessionConfig(route, nextSession);
   }, [activeRuntimeConfig, commitRuntimeConfig, patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
-  const toggleSkill = useCallback((id: string, checked: boolean) => {
-    const session = readCurrentActiveSession();
-    const value = normalizeText(id);
-    if (!value) {
-      return;
-    }
-    if (availableSkillIDs !== null && !availableSkillIDs.includes(value)) {
-      return;
-    }
-    const currentSkillIDs = effectiveRuntimeSkillIDs(activeRuntimeConfig, availableSkillIDs);
-    const mutate = () =>
-      checked
-        ? normalizeSelectionIDs([...currentSkillIDs, value])
-        : currentSkillIDs.filter((item) => item !== value);
-    const nextConfig = normalizeRuntimeComposerConfig({
-      ...activeRuntimeConfig,
-      skillIDs: mutate(),
-      skillIDsExplicit: true,
-    }, true);
-    commitRuntimeConfig(nextConfig);
-    if (!session) {
-      return;
-    }
-    const nextSession = {
-      ...session,
-      skillIDs: nextConfig.skillIDs,
-      skillIDsExplicit: true,
-    };
-    patchSession(route, session.id, () => nextSession);
-    void persistRuntimeSessionConfig(route, nextSession);
-  // availableSkillIDKey intentionally decouples Composer from availableSkillIDs array identity.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRuntimeConfig, availableSkillIDKey, commitRuntimeConfig, patchSession, persistRuntimeSessionConfig, readCurrentActiveSession, route]);
   const toggleRuntimeEventFilter = useCallback((id: RuntimeEventFilterID, checked: boolean) => {
     const value = normalizeText(id) as RuntimeEventFilterID;
     const allowed = new Set(RUNTIME_EVENT_FILTER_OPTIONS.map((option) => option.id));
@@ -4099,10 +3970,8 @@ export function ConversationRuntimeProvider({
     selectedModelSupportsVision,
     providers: runtimeProviderItems,
     capabilities: runtimeCapabilityItems,
-    skills: runtimeSkillItems,
     runtimeEventFilter,
     toolCount: activeRuntimeConfig.toolIDs.length + activeRuntimeConfig.mcpIDs.length,
-    skillCount: activeSkillIDs.length,
     createSession: () => {
       void createRuntimeBackedSession(route);
     },
@@ -4115,7 +3984,6 @@ export function ConversationRuntimeProvider({
     closeInspector,
     selectModel,
     toggleCapability,
-    toggleSkill,
     toggleRuntimeEventFilter,
     toggleProcess: (messageID: string) => {
       if (!activeSession) {
@@ -4151,9 +4019,7 @@ export function ConversationRuntimeProvider({
     selectedModelSupportsVision,
     runtimeProviderItems,
     runtimeCapabilityItems,
-    runtimeSkillItems,
     runtimeEventFilter,
-    activeSkillIDs,
     activeRuntimeConfig.toolIDs.length,
     activeRuntimeConfig.mcpIDs.length,
     createRuntimeBackedSession,
@@ -4168,7 +4034,6 @@ export function ConversationRuntimeProvider({
     closeInspector,
     selectModel,
     toggleCapability,
-    toggleSkill,
     toggleRuntimeEventFilter,
   ]);
 
@@ -4188,7 +4053,6 @@ export function ConversationRuntimeProvider({
     selectedModelSupportsVision,
     providers: runtimeProviderItems,
     capabilities: runtimeCapabilityItems,
-    skills: runtimeSkillItems,
     runtimeEventFilter,
     setDraft: (value: string) => {
       const nextDrafts = { ...composerDrafts, [activeDraftKey]: value.slice(0, MAX_COMPOSER_CHARS) };
@@ -4258,7 +4122,6 @@ export function ConversationRuntimeProvider({
     closeInspector,
     selectModel,
     toggleCapability,
-    toggleSkill,
     toggleRuntimeEventFilter,
   }), [
     route,
@@ -4277,7 +4140,6 @@ export function ConversationRuntimeProvider({
     selectedModelSupportsVision,
     runtimeProviderItems,
     runtimeCapabilityItems,
-    runtimeSkillItems,
     runtimeEventFilter,
     composerAttachmentDrafts,
     composerRepositoryDrafts,
@@ -4291,7 +4153,6 @@ export function ConversationRuntimeProvider({
     closeInspector,
     selectModel,
     toggleCapability,
-    toggleSkill,
     toggleRuntimeEventFilter,
   ]);
 

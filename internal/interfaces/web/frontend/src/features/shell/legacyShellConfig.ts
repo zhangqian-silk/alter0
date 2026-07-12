@@ -20,7 +20,6 @@ export type PromptItem = {
 
 export type IconName =
   | "chat"
-  | "memory"
   | "skills"
   | "cron"
   | "models"
@@ -51,7 +50,6 @@ export const SETTINGS_ROUTE_GROUPS: NavGroup[] = [
     items: [
       { label: "Runtime", route: "runtime", abbr: "RU", icon: "models" },
       { label: "Skills", route: "skills", abbr: "SK", icon: "skills" },
-      { label: "Memory", route: "memory", abbr: "ME", icon: "memory" },
       { label: "Schedules", route: "schedules", abbr: "SC", icon: "cron" },
       { label: "General", route: "general", abbr: "GE", icon: "settings" }
     ]

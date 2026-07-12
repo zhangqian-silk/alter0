@@ -21,7 +21,7 @@ import (
 	"time"
 
 	chatruntimedomain "alter0/internal/chatruntime/domain"
-	"alter0/internal/codex/infrastructure/runtimeconfig"
+	codexapp "alter0/internal/codex/application"
 	execdomain "alter0/internal/execution/domain"
 	sharedapp "alter0/internal/shared/application"
 )
@@ -34,7 +34,6 @@ const (
 	workspaceChatRuntimeDirName          = "chat"
 	workspaceSessionsDirName             = "sessions"
 	chatRuntimeTurnAttachmentDirName     = "input-attachments"
-	chatRuntimeCodexHomeDirName          = "codex-home"
 	defaultChatRuntimeSessionTitle       = "New"
 	maxEntryPageLimit                    = 200
 	chatRuntimeHostUnavailableMessage    = "chatRuntime host unavailable"
@@ -87,7 +86,6 @@ type InputRequest struct {
 	Input           string
 	ClientRequestID string
 	Attachments     []execdomain.UserAttachment
-	SkillContext    *execdomain.SkillContext
 	Repository      *chatruntimedomain.RepositoryRef
 }
 
@@ -208,7 +206,6 @@ type runtimeTurn struct {
 	ClientRequestID string
 	Prompt          string
 	Attachments     []TurnAttachment
-	SkillContext    *execdomain.SkillContext
 	Status          string
 	StartedAt       time.Time
 	FinishedAt      time.Time
@@ -788,7 +785,7 @@ func (s *Service) InputWithAttachments(req InputRequest) (chatruntimedomain.Sess
 	item.closedByUser = false
 	item.turnRunning = true
 	item.turnCancel = turnCancel
-	turn := item.beginTurnLocked(prompt, strings.TrimSpace(req.ClientRequestID), attachments, req.SkillContext, now)
+	turn := item.beginTurnLocked(prompt, strings.TrimSpace(req.ClientRequestID), attachments, now)
 	item.appendEntryLocked("input", prompt)
 	snapshot := item.summary
 	snapshot.Repository = cloneRepositoryBinding(item.summary.Repository)
@@ -796,7 +793,7 @@ func (s *Service) InputWithAttachments(req InputRequest) (chatruntimedomain.Sess
 	s.persistSession(item)
 	s.publishTurnSessionEvent(item, SessionEventTurnStarted, turn.ID, "")
 
-	go s.runTurn(item, turnCtx, turn.ID, prompt, attachments, cloneChatRuntimeSkillContext(req.SkillContext))
+	go s.runTurn(item, turnCtx, turn.ID, prompt, attachments)
 
 	return snapshot, nil
 }
@@ -930,7 +927,7 @@ func (s *Service) reconcileOrphanedRuntimeSession(item *runtimeSession) {
 	s.persistSession(item)
 }
 
-func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID string, prompt string, attachments []TurnAttachment, skillContext *execdomain.SkillContext) {
+func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID string, prompt string, attachments []TurnAttachment) {
 	command := resolveCodexCommand(s.options)
 	threadID := item.thread()
 	repository, err := s.prepareRepositoryForTurn(item, ctx)
@@ -938,7 +935,13 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 		s.finishTurn(item, turnID, err, "")
 		return
 	}
-	preparedAttachments, err := prepareTurnInputAttachments(item.workspaceDir(), turnID, attachments)
+	if err := codexapp.RetireLegacySessionRuntimeArtifacts(item.workspaceDir()); err != nil {
+		s.finishTurn(item, turnID, fmt.Errorf("retire legacy Codex runtime artifacts: %w", err), "")
+		return
+	}
+	workspaceDir := item.workspaceDir()
+	workingDir := resolveChatRuntimeTurnWorkingDir(workspaceDir, repository)
+	preparedAttachments, err := prepareTurnInputAttachments(workspaceDir, workingDir, turnID, attachments)
 	if err != nil {
 		s.finishTurn(item, turnID, fmt.Errorf("prepare input attachments: %w", err), "")
 		return
@@ -957,9 +960,9 @@ func (s *Service) runTurn(item *runtimeSession, ctx context.Context, turnID stri
 	defer runCancel()
 
 	cmd := runner(runCtx, command.path, args...)
-	if workspaceDir := item.workspaceDir(); workspaceDir != "" {
-		cmd.Dir = workspaceDir
-		env, runtimeErr := prepareChatRuntimeCodexRuntime(workspaceDir, skillContext)
+	if workingDir != "" {
+		cmd.Dir = workingDir
+		env, runtimeErr := prepareChatRuntimeCodexEnvironment()
 		if runtimeErr != nil {
 			s.finishTurn(item, turnID, runtimeErr, "")
 			return
@@ -1456,14 +1459,13 @@ func (s *Service) finishSupersededTurnLocked(item *runtimeSession, turn *runtime
 	turn.promoteFinalOutput()
 }
 
-func (s *runtimeSession) beginTurnLocked(prompt string, clientRequestID string, attachments []TurnAttachment, skillContext *execdomain.SkillContext, now time.Time) *runtimeTurn {
+func (s *runtimeSession) beginTurnLocked(prompt string, clientRequestID string, attachments []TurnAttachment, now time.Time) *runtimeTurn {
 	s.nextTurnID++
 	turn := &runtimeTurn{
 		ID:              fmt.Sprintf("turn-%d", s.nextTurnID),
 		ClientRequestID: strings.TrimSpace(clientRequestID),
 		Prompt:          prompt,
 		Attachments:     cloneTurnAttachments(attachments),
-		SkillContext:    cloneChatRuntimeSkillContext(skillContext),
 		Status:          "running",
 		StartedAt:       now,
 		events:          []*runtimeEventRecord{},
@@ -1858,7 +1860,10 @@ func resolveCodexCommand(options Options) codexCommand {
 
 func buildCodexTurnArgs(command codexCommand, threadID string, prompt string, imagePaths []string) []string {
 	args := append([]string{}, command.globalArgs...)
-	args = append(args, "exec", "--enable", defaultLinuxSandboxBwrapFeature)
+	args = append(args,
+		"exec",
+		"--enable", defaultLinuxSandboxBwrapFeature,
+	)
 	if strings.TrimSpace(threadID) != "" {
 		args = append(args, "resume", "--json", "--skip-git-repo-check")
 		for _, imagePath := range imagePaths {
@@ -1908,7 +1913,7 @@ func buildCodexTurnPrompt(prompt string, attachments []preparedTurnAttachment, r
 			"",
 			"Repository context:",
 			"- repository: "+strings.TrimSpace(repository.FullName),
-			"- path: "+strings.TrimSuffix(strings.TrimSpace(repository.WorkspacePath), "/")+"/",
+			"- path: ./",
 			"- branch: "+branch,
 			"- head: "+strings.TrimSpace(repository.HeadSHA),
 			"",
@@ -1932,36 +1937,6 @@ func imagePathsFromPreparedTurnAttachments(items []preparedTurnAttachment) []str
 		return nil
 	}
 	return out
-}
-
-func cloneChatRuntimeSkillContext(input *execdomain.SkillContext) *execdomain.SkillContext {
-	if input == nil {
-		return nil
-	}
-	out := *input
-	if len(input.Skills) > 0 {
-		out.Skills = make([]execdomain.SkillSpec, 0, len(input.Skills))
-		for _, skill := range input.Skills {
-			cloned := skill
-			if len(skill.ParameterTemplate) > 0 {
-				cloned.ParameterTemplate = make(map[string]string, len(skill.ParameterTemplate))
-				for key, value := range skill.ParameterTemplate {
-					cloned.ParameterTemplate[key] = value
-				}
-			}
-			cloned.Constraints = append([]string{}, skill.Constraints...)
-			cloned.Abilities = append([]string{}, skill.Abilities...)
-			out.Skills = append(out.Skills, cloned)
-		}
-	}
-	if len(input.ResolvedParameters) > 0 {
-		out.ResolvedParameters = make(map[string]string, len(input.ResolvedParameters))
-		for key, value := range input.ResolvedParameters {
-			out.ResolvedParameters[key] = value
-		}
-	}
-	out.Conflicts = append([]execdomain.SkillConflict{}, input.Conflicts...)
-	return &out
 }
 
 func cloneTurnAttachments(items []TurnAttachment) []TurnAttachment {
@@ -2039,7 +2014,7 @@ func defaultAttachmentPrompt(attachments []TurnAttachment) string {
 	return fmt.Sprintf("Review the attached %d files, including %d images.", count, imageCount)
 }
 
-func prepareTurnInputAttachments(workspaceDir string, turnID string, attachments []TurnAttachment) ([]preparedTurnAttachment, error) {
+func prepareTurnInputAttachments(workspaceDir string, promptBaseDir string, turnID string, attachments []TurnAttachment) ([]preparedTurnAttachment, error) {
 	if len(attachments) == 0 {
 		return nil, nil
 	}
@@ -2061,7 +2036,11 @@ func prepareTurnInputAttachments(workspaceDir string, turnID string, attachments
 		if err := os.WriteFile(path, data, 0o644); err != nil {
 			return nil, fmt.Errorf("write turn attachment: %w", err)
 		}
-		promptPath, err := filepath.Rel(workspaceDir, path)
+		baseDir := strings.TrimSpace(promptBaseDir)
+		if baseDir == "" {
+			baseDir = workspaceDir
+		}
+		promptPath, err := filepath.Rel(baseDir, path)
 		if err != nil {
 			promptPath = path
 		}
@@ -2409,105 +2388,26 @@ func resolveRecoveredThreadID(sessionID string, chatRuntimeSessionID string) str
 	return threadID
 }
 
-func prepareChatRuntimeCodexRuntime(workspaceDir string, skillContext *execdomain.SkillContext) ([]string, error) {
-	materializedSkillContext, skillFiles, err := materializeChatRuntimeSkillContextFiles(skillContext)
+func prepareChatRuntimeCodexEnvironment() ([]string, error) {
+	activeHome, err := codexapp.ResolveActiveHome()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve active codex home: %w", err)
 	}
-	managedFiles := append([]runtimeconfig.ManagedFile{}, skillFiles...)
-	managedFiles = append(managedFiles, runtimeconfig.ManagedFile{
-		RelativePath: ".alter0/codex-runtime/skills.md",
-		Content:      renderChatRuntimeSkillContextMarkdown(materializedSkillContext),
-		Mode:         0o644,
-	})
-	prepared, err := runtimeconfig.Prepare(runtimeconfig.Spec{
-		RuntimeHome:      filepath.Join(workspaceDir, chatRuntimeCodexHomeDirName),
-		WorkspaceDir:     workspaceDir,
-		ManagedFiles:     managedFiles,
-		RootInstructions: "- Read `.alter0/codex-runtime/skills.md` before acting. Apply only the skills selected for the current ChatRuntime turn.",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("prepare chatRuntime codex runtime: %w", err)
+	if strings.TrimSpace(activeHome) == "" {
+		return nil, errors.New("active codex home is empty")
 	}
-	return prepared.Env, nil
+	return []string{"CODEX_HOME=" + filepath.Clean(activeHome)}, nil
 }
 
-func materializeChatRuntimeSkillContextFiles(skillContext *execdomain.SkillContext) (*execdomain.SkillContext, []runtimeconfig.ManagedFile, error) {
-	if skillContext == nil || len(skillContext.Skills) == 0 {
-		return skillContext, nil, nil
+func resolveChatRuntimeTurnWorkingDir(workspaceDir string, repository *chatruntimedomain.RepositoryBinding) string {
+	workspaceDir = strings.TrimSpace(workspaceDir)
+	if workspaceDir == "" {
+		return ""
 	}
-	refs := make([]runtimeconfig.FileBackedSkillReference, 0, len(skillContext.Skills))
-	for i, skill := range skillContext.Skills {
-		refs = append(refs, runtimeconfig.FileBackedSkillReference{
-			Key:      fmt.Sprintf("%d", i),
-			ID:       skill.ID,
-			FilePath: skill.FilePath,
-		})
+	if repository == nil || repository.Status != chatruntimedomain.RepositoryPreparationStatusReady {
+		return workspaceDir
 	}
-	materialized, err := runtimeconfig.MaterializeFileBackedSkillReferences(refs)
-	if err != nil {
-		return nil, nil, fmt.Errorf("materialize chatRuntime skill files: %w", err)
-	}
-	updated := cloneChatRuntimeSkillContext(skillContext)
-	for i := range updated.Skills {
-		if filePath := materialized.FilePaths[fmt.Sprintf("%d", i)]; strings.TrimSpace(filePath) != "" {
-			updated.Skills[i].FilePath = filePath
-		}
-	}
-	return updated, materialized.ManagedFiles, nil
-}
-
-func renderChatRuntimeSkillContextMarkdown(skillContext *execdomain.SkillContext) string {
-	lines := []string{"# Skills", ""}
-	if skillContext == nil || len(skillContext.Skills) == 0 {
-		lines = append(lines, "No skills selected for this Chat turn.", "")
-		return strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
-	}
-	protocol := strings.TrimSpace(skillContext.Protocol)
-	if protocol == "" {
-		protocol = execdomain.SkillContextProtocolVersion
-	}
-	lines = append(lines, "- protocol: "+protocol, "")
-	for _, skill := range skillContext.Skills {
-		name := strings.TrimSpace(skill.Name)
-		if name == "" {
-			name = strings.TrimSpace(skill.ID)
-		}
-		if name == "" {
-			continue
-		}
-		lines = append(lines, "## "+name, "")
-		if strings.TrimSpace(skill.ID) != "" {
-			lines = append(lines, "- id: "+strings.TrimSpace(skill.ID))
-		}
-		if strings.TrimSpace(skill.Description) != "" {
-			lines = append(lines, "- description: "+strings.TrimSpace(skill.Description))
-		}
-		if strings.TrimSpace(skill.FilePath) != "" {
-			lines = append(lines, "- file_path: "+strings.TrimSpace(skill.FilePath))
-		}
-		if strings.TrimSpace(skill.Guide) != "" {
-			lines = append(lines, "", "### Guide", "", strings.TrimSpace(skill.Guide))
-		}
-		if len(skill.Constraints) > 0 {
-			lines = append(lines, "", "### Constraints")
-			for _, constraint := range skill.Constraints {
-				if strings.TrimSpace(constraint) != "" {
-					lines = append(lines, "- "+strings.TrimSpace(constraint))
-				}
-			}
-		}
-		if len(skill.Abilities) > 0 {
-			lines = append(lines, "", "### Abilities")
-			for _, ability := range skill.Abilities {
-				if strings.TrimSpace(ability) != "" {
-					lines = append(lines, "- "+strings.TrimSpace(ability))
-				}
-			}
-		}
-		lines = append(lines, "")
-	}
-	return strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
+	return filepath.Join(workspaceDir, chatruntimedomain.RepositoryWorkspacePath)
 }
 
 func resolveSessionWorkspacePath(baseDir string, sessionID string) (string, error) {

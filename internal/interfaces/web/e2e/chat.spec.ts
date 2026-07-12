@@ -359,7 +359,6 @@ test.describe("Chat composer", () => {
         model_provider_id: "",
         model_id: "",
         tool_ids: [],
-        skill_ids: [],
         mcp_ids: [],
         messages: [{
           id: "message-skill-session-hash",

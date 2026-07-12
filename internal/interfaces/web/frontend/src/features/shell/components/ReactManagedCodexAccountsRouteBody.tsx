@@ -17,6 +17,18 @@ type RuntimeStatus = {
   reasoning_origin?: RuntimeConfigOrigin | null;
   models?: RuntimeModel[];
   current?: RuntimeCurrentStatus | null;
+  memories?: RuntimeMemoriesStatus | null;
+};
+
+type RuntimeMemoriesStatus = {
+  available?: boolean;
+  enabled?: boolean;
+  generate_memories?: boolean;
+  use_memories?: boolean;
+  directory_exists?: boolean;
+  file_count?: number;
+  last_updated_at?: string;
+  feature_diagnostic?: string;
 };
 
 type RuntimeCurrentStatus = {
@@ -166,6 +178,15 @@ type RuntimeCopy = {
   reasoningDepth: string;
   modelUnavailable: string;
   reasoningUnavailable: string;
+  memoriesTitle: string;
+  memoriesDescription: string;
+  memoriesGenerate: string;
+  memoriesGenerateDescription: string;
+  memoriesUse: string;
+  memoriesUseDescription: string;
+  memoriesUnavailable: string;
+  memoriesFileCount: (count: number) => string;
+  memoriesLastUpdated: (value: string) => string;
   providerRegistered: (count: number) => string;
   providersMissing: string;
   providersMissingHint: string;
@@ -258,6 +279,15 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     reasoningDepth: "Reasoning Depth",
     modelUnavailable: "No runtime models available",
     reasoningUnavailable: "No reasoning modes available",
+    memoriesTitle: "Codex Memories",
+    memoriesDescription: "Global native memory settings shared by every Codex session.",
+    memoriesGenerate: "Generate new memories",
+    memoriesGenerateDescription: "Let Codex extract and consolidate useful history from future work.",
+    memoriesUse: "Use existing memories",
+    memoriesUseDescription: "Let Codex recall previously generated memories in future turns.",
+    memoriesUnavailable: "This Codex CLI does not expose native Memories.",
+    memoriesFileCount: (count) => `${count} memory file${count === 1 ? "" : "s"}`,
+    memoriesLastUpdated: (value) => `Last activity ${value}`,
     providerRegistered: (count) => `${count} registered provider${count === 1 ? "" : "s"}`,
     providersMissing: "No LLM providers registered. Codex Direct remains available.",
     providersMissingHint: "Provider-based execution is disabled until a provider appears in the Models registry.",
@@ -348,6 +378,15 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     reasoningDepth: "思考深度",
     modelUnavailable: "暂无运行时 model",
     reasoningUnavailable: "暂无思考深度选项",
+    memoriesTitle: "Codex Memories",
+    memoriesDescription: "全局原生记忆设置，对所有 Codex 会话生效。",
+    memoriesGenerate: "生成新记忆",
+    memoriesGenerateDescription: "允许 Codex 从后续工作历史中提取并整理有用记忆。",
+    memoriesUse: "使用已有记忆",
+    memoriesUseDescription: "允许 Codex 在后续 Turn 中召回已经生成的记忆。",
+    memoriesUnavailable: "当前 Codex CLI 不提供原生 Memories。",
+    memoriesFileCount: (count) => `${count} 个记忆文件`,
+    memoriesLastUpdated: (value) => `最近活动 ${value}`,
     providerRegistered: (count) => `已注册 ${count} 个 Provider`,
     providersMissing: "暂无 LLM Provider 注册；Codex Direct 仍可使用。",
     providersMissingHint: "Provider 执行链需等 Models 注册表出现可用 Provider 后启用。",
@@ -640,6 +679,24 @@ export function ReactManagedCodexAccountsRouteBody({
     }
   }
 
+  async function persistRuntimeMemories(nextMemories: Required<Pick<RuntimeMemoriesStatus, "enabled" | "generate_memories" | "use_memories">>) {
+    try {
+      const runtimeStatus = await apiClient.put<RuntimeStatus>("/api/control/codex/runtime", {
+        memories: {
+          enabled: nextMemories.enabled,
+          generate_memories: nextMemories.generate_memories,
+          use_memories: nextMemories.use_memories,
+        },
+      });
+      setRuntime(runtimeStatus);
+      setStatusMessage("");
+      setStatusKind("");
+    } catch (error: unknown) {
+      setStatusKind("error");
+      setStatusMessage(copy.actionFailed(error instanceof Error ? error.message : "unknown_error"));
+    }
+  }
+
   async function registerClaudeCodeProvider() {
     const name = normalizeText(providerForm.name) || "Claude Code";
     const baseURL = normalizeText(providerForm.baseURL);
@@ -799,6 +856,7 @@ export function ReactManagedCodexAccountsRouteBody({
   const selectedReasoningOptions = runtimeReasoningOptions(findRuntimeModel(runtimeModels, selectedModel), selectedReasoning);
   const runtimeProfile = normalizeText(runtime?.profile) || copy.codexDefault;
   const runtimeIdentity = runtimeIdentityDetails(runtime);
+  const runtimeMemories = normalizeRuntimeMemories(runtime?.memories);
   const providerCount = providers.length;
   const showingDiscardConfirm = restartDialog.syncRemoteMaster && restartDialog.confirmDiscard;
   const restartStatusVisible = restartStatus && normalizeText(restartStatus.status) !== "" && normalizeText(restartStatus.status) !== "idle";
@@ -990,6 +1048,43 @@ export function ReactManagedCodexAccountsRouteBody({
             </div>
           </article>
 
+          <article className="codex-runtime-control-card codex-runtime-memories-card" aria-label={copy.memoriesTitle}>
+            <div className="codex-runtime-control-card-head codex-runtime-memories-head">
+              <span className="codex-runtime-card-kicker">MEMORIES</span>
+              <p>{copy.memoriesDescription}</p>
+            </div>
+            {runtimeMemories.available ? (
+              <div className="codex-runtime-memory-settings">
+                <RuntimeMemorySwitch
+                  label={copy.memoriesTitle}
+                  description={runtimeMemories.enabled ? copy.providerEnabled : copy.providerDisabled}
+                  checked={runtimeMemories.enabled}
+                  onChange={(enabled) => void persistRuntimeMemories({ ...runtimeMemories, enabled })}
+                />
+                <RuntimeMemorySwitch
+                  label={copy.memoriesGenerate}
+                  description={copy.memoriesGenerateDescription}
+                  checked={runtimeMemories.generate_memories}
+                  disabled={!runtimeMemories.enabled}
+                  onChange={(generate_memories) => void persistRuntimeMemories({ ...runtimeMemories, generate_memories })}
+                />
+                <RuntimeMemorySwitch
+                  label={copy.memoriesUse}
+                  description={copy.memoriesUseDescription}
+                  checked={runtimeMemories.use_memories}
+                  disabled={!runtimeMemories.enabled}
+                  onChange={(use_memories) => void persistRuntimeMemories({ ...runtimeMemories, use_memories })}
+                />
+                <div className="codex-runtime-memory-activity">
+                  <span>{copy.memoriesFileCount(runtimeMemories.file_count)}</span>
+                  {runtimeMemories.last_updated_at ? <time dateTime={runtimeMemories.last_updated_at}>{copy.memoriesLastUpdated(formatDateTimeMinute(runtimeMemories.last_updated_at))}</time> : null}
+                </div>
+              </div>
+            ) : (
+              <p className="codex-runtime-memory-unavailable">{runtimeMemories.feature_diagnostic || copy.memoriesUnavailable}</p>
+            )}
+          </article>
+
           <section className="codex-runtime-device-login" aria-label={copy.deviceLoginTitle}>
             <div className="codex-runtime-device-login-head">
               <div className="codex-runtime-title-block">
@@ -1025,6 +1120,48 @@ export function ReactManagedCodexAccountsRouteBody({
       </section>
       {restartModal}
     </section>
+  );
+}
+
+function normalizeRuntimeMemories(memories: RuntimeMemoriesStatus | null | undefined) {
+  return {
+    available: memories?.available === true,
+    enabled: memories?.enabled === true,
+    generate_memories: memories?.generate_memories === true,
+    use_memories: memories?.use_memories === true,
+    file_count: Math.max(0, Math.trunc(Number(memories?.file_count) || 0)),
+    last_updated_at: normalizeText(memories?.last_updated_at),
+    feature_diagnostic: normalizeText(memories?.feature_diagnostic),
+  };
+}
+
+function RuntimeMemorySwitch({
+  label,
+  description,
+  checked,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className={disabled ? "codex-runtime-memory-switch is-disabled" : "codex-runtime-memory-switch"}>
+      <span className="codex-runtime-memory-switch-copy">
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </span>
+      <input
+        type="checkbox"
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+    </label>
   );
 }
 

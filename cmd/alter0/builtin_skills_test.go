@@ -4,40 +4,31 @@ import (
 	"strings"
 	"testing"
 
+	codexapp "alter0/internal/codex/application"
 	controlapp "alter0/internal/control/application"
+	controldomain "alter0/internal/control/domain"
 )
 
-func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
+func TestRegisterBuiltinSkillsSeedsOnlyNativeFileBackedSkills(t *testing.T) {
 	service := controlapp.NewService()
+	for _, legacyID := range []string{"memory", "memory-maintenance"} {
+		if err := service.UpsertSkill(controldomain.Skill{ID: legacyID, Name: legacyID, Enabled: true, Scope: controldomain.CapabilityScopeGlobal}); err != nil {
+			t.Fatalf("seed legacy skill %s: %v", legacyID, err)
+		}
+	}
 
 	registerBuiltinSkills(service)
 
-	memory, ok := service.ResolveSkill("memory")
-	if !ok {
-		t.Fatalf("expected memory skill exists")
-	}
-	if !memory.Enabled {
-		t.Fatalf("expected memory skill enabled")
-	}
-	if got := memory.Metadata[builtinSkillDescriptionKey]; got == "" {
-		t.Fatalf("expected memory skill description")
-	}
-	guide := memory.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(guide, "USER.md") || !strings.Contains(guide, "SOUL.md") || !strings.Contains(guide, "AGENTS.md") {
-		t.Fatalf("expected memory skill guide covers system files, got %q", guide)
-	}
-	if !strings.Contains(guide, "Write routing") || !strings.Contains(guide, "Read logic") {
-		t.Fatalf("expected memory skill guide covers explicit read/write routing, got %q", guide)
-	}
-	if !strings.Contains(guide, "Conflict rules") || !strings.Contains(guide, "Write constraints") {
-		t.Fatalf("expected memory skill guide covers conflict and write constraints, got %q", guide)
+	for _, retiredSkillID := range []string{"memory", "memory-maintenance"} {
+		if _, ok := service.ResolveSkill(retiredSkillID); ok {
+			t.Fatalf("did not expect retired skill %q to remain registered", retiredSkillID)
+		}
 	}
 
 	if _, ok := service.ResolveSkill("travel-page"); ok {
 		t.Fatalf("did not expect legacy travel-page skill to remain registered")
 	}
 	expectedFileBackedSkills := map[string]string{
-		"memory-maintenance":      "docs/skills/memory-maintenance/SKILL.md",
 		"preview-publish":         "docs/skills/preview-publish/SKILL.md",
 		"frontend-design":         "docs/skills/frontend-design/SKILL.md",
 		"doc-coauthoring":         "docs/skills/doc-coauthoring/SKILL.md",
@@ -48,7 +39,7 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 		"test-driven-development": "docs/skills/test-driven-development/SKILL.md",
 		"ui-ux-pro-max":           "docs/skills/ui-ux-pro-max/SKILL.md",
 		"code-simplifier":         "docs/skills/code-simplifier/SKILL.md",
-		"code-review":             "docs/skills/code-review/commands/code-review.md",
+		"code-review":             "docs/skills/code-review/SKILL.md",
 		"brainstorming":           "docs/skills/brainstorming/SKILL.md",
 		"travel":                  "docs/skills/travel/SKILL.md",
 	}
@@ -60,18 +51,6 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 		if got := skill.Metadata[builtinSkillFilePathKey]; got != expectedPath {
 			t.Fatalf("%s skill file path = %q, want %s", skillID, got, expectedPath)
 		}
-	}
-
-	memoryMaintenance, ok := service.ResolveSkill("memory-maintenance")
-	if !ok {
-		t.Fatalf("expected memory-maintenance skill exists")
-	}
-	memoryMaintenanceGuide := memoryMaintenance.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(memoryMaintenanceGuide, "daily memory") || !strings.Contains(memoryMaintenanceGuide, "long-term memory") {
-		t.Fatalf("expected memory-maintenance guide covers memory consolidation, got %q", memoryMaintenanceGuide)
-	}
-	if got := memoryMaintenance.Metadata["alter0.skill.visibility"]; got != "private" {
-		t.Fatalf("memory-maintenance visibility = %q, want private", got)
 	}
 
 	previewSkill, ok := service.ResolveSkill("preview-publish")
@@ -124,7 +103,7 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 		t.Fatalf("expected code-review skill exists")
 	}
 	codeReviewGuide := codeReview.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(codeReviewGuide, "pull request") || !strings.Contains(codeReviewGuide, "docs/skills/code-review/commands/code-review.md") {
+	if !strings.Contains(codeReviewGuide, "pull request") || !strings.Contains(codeReviewGuide, "docs/skills/code-review/SKILL.md") {
 		t.Fatalf("expected code-review guide covers PR review workflow and canonical file, got %q", codeReviewGuide)
 	}
 
@@ -145,5 +124,17 @@ func TestRegisterBuiltinSkillsSeedsMemorySkill(t *testing.T) {
 func TestEnsureBuiltinSkillFilesSkipsWhenNoBuiltinFileBackedSkillExists(t *testing.T) {
 	if err := ensureBuiltinSkillFiles(); err != nil {
 		t.Fatalf("ensureBuiltinSkillFiles() error = %v", err)
+	}
+}
+
+func TestBuiltinSkillsReconcileIntoNativeCodexCatalog(t *testing.T) {
+	service := controlapp.NewService()
+	registerBuiltinSkills(service)
+	result := codexapp.NewNativeSkillReconciler(t.TempDir()).Reconcile(nativeSkillSources(service.ListCapabilities()))
+	if len(result.Errors) != 0 {
+		t.Fatalf("expected every builtin skill to be a valid native Codex skill, got %+v", result.Errors)
+	}
+	if len(result.Installed) != len(builtinSkills()) {
+		t.Fatalf("installed %d native skills, want %d", len(result.Installed), len(builtinSkills()))
 	}
 }

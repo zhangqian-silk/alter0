@@ -12,8 +12,6 @@ import (
 
 	chatruntimeapp "alter0/internal/chatruntime/application"
 	chatruntimedomain "alter0/internal/chatruntime/domain"
-	controldomain "alter0/internal/control/domain"
-	execdomain "alter0/internal/execution/domain"
 )
 
 const chatSessionOwnerID = "chat"
@@ -31,7 +29,6 @@ type chatRuntimeSessionInputRequest struct {
 	Input           string                           `json:"input"`
 	ClientRequestID string                           `json:"client_request_id,omitempty"`
 	Attachments     []messageAttachmentRequest       `json:"attachments,omitempty"`
-	SkillIDs        *[]string                        `json:"skill_ids,omitempty"`
 	Repository      *chatruntimedomain.RepositoryRef `json:"repository,omitempty"`
 }
 
@@ -395,7 +392,6 @@ func (s *Server) chatRuntimeSessionItemHandler(w http.ResponseWriter, r *http.Re
 			Input:           input,
 			ClientRequestID: strings.TrimSpace(req.ClientRequestID),
 			Attachments:     attachments,
-			SkillContext:    s.resolveChatRuntimeSkillContext(req.SkillIDs),
 			Repository:      req.Repository,
 		})
 		if err != nil {
@@ -763,125 +759,6 @@ func approximateChatRuntimeTurnBytes(turn chatruntimeapp.TurnSummary) int {
 		return len(turn.ID) + len(turn.Prompt) + len(turn.FinalOutput)
 	}
 	return len(raw)
-}
-
-func (s *Server) resolveChatRuntimeSkillContext(skillIDs *[]string) *execdomain.SkillContext {
-	if s.control == nil {
-		return nil
-	}
-	selectedOnly := skillIDs != nil
-	include := map[string]struct{}{}
-	if selectedOnly {
-		include = normalizeChatRuntimeSkillIDSet(*skillIDs)
-		if len(include) == 0 {
-			return nil
-		}
-	}
-	skills := make([]execdomain.SkillSpec, 0)
-	for _, capability := range s.control.ListCapabilitiesByType(controldomain.CapabilityTypeSkill) {
-		if !capability.Enabled || !isPublicChatRuntimeSkillCapability(capability) {
-			continue
-		}
-		id := strings.TrimSpace(capability.ID)
-		if id == "" {
-			continue
-		}
-		if selectedOnly {
-			if _, ok := include[id]; !ok {
-				continue
-			}
-		}
-		skills = append(skills, chatRuntimeSkillSpecFromCapability(capability))
-	}
-	if len(skills) == 0 {
-		return nil
-	}
-	return &execdomain.SkillContext{
-		Protocol: execdomain.SkillContextProtocolVersion,
-		Skills:   skills,
-	}
-}
-
-func normalizeChatRuntimeSkillIDSet(values []string) map[string]struct{} {
-	out := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed != "" {
-			out[trimmed] = struct{}{}
-		}
-	}
-	return out
-}
-
-func isPublicChatRuntimeSkillCapability(capability controldomain.Capability) bool {
-	metadata := capability.Metadata
-	visibility := strings.ToLower(strings.TrimSpace(metadata["alter0.skill.visibility"]))
-	if visibility == "" {
-		visibility = strings.ToLower(strings.TrimSpace(metadata["skill.visibility"]))
-	}
-	return visibility != "private"
-}
-
-func chatRuntimeSkillSpecFromCapability(capability controldomain.Capability) execdomain.SkillSpec {
-	metadata := capability.Metadata
-	description := strings.TrimSpace(metadata["skill.description"])
-	if description == "" {
-		description = strings.TrimSpace(capability.Name)
-	}
-	return execdomain.SkillSpec{
-		ID:          strings.TrimSpace(capability.ID),
-		Name:        strings.TrimSpace(capability.Name),
-		Description: description,
-		Guide:       strings.TrimSpace(metadata["skill.guide"]),
-		Priority:    parseChatRuntimeSkillPriority(metadata["skill.priority"]),
-		Constraints: parseChatRuntimeSkillList(metadata["skill.constraints"]),
-		Abilities:   parseChatRuntimeSkillList(metadata["skill.abilities"]),
-		FilePath:    strings.TrimSpace(metadata["skill.file_path"]),
-		Writable:    parseChatRuntimeSkillWritable(metadata["skill.writable"]),
-	}
-}
-
-func parseChatRuntimeSkillPriority(raw string) int {
-	value, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil {
-		return 100
-	}
-	return value
-}
-
-func parseChatRuntimeSkillWritable(raw string) bool {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "1", "true", "yes", "y", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-func parseChatRuntimeSkillList(raw string) []string {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return nil
-	}
-	var decoded []string
-	if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
-		return normalizeChatRuntimeSkillStringList(decoded)
-	}
-	return normalizeChatRuntimeSkillStringList(strings.Split(trimmed, ","))
-}
-
-func normalizeChatRuntimeSkillStringList(values []string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
 }
 
 func (s *Server) writeChatRuntimeError(w http.ResponseWriter, err error) {

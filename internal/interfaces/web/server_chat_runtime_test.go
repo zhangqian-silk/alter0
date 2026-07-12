@@ -13,8 +13,6 @@ import (
 
 	chatruntimeapp "alter0/internal/chatruntime/application"
 	chatruntimedomain "alter0/internal/chatruntime/domain"
-	controlapp "alter0/internal/control/application"
-	controldomain "alter0/internal/control/domain"
 )
 
 type stubWebChatRuntimeService struct {
@@ -1149,7 +1147,7 @@ func TestChatRuntimeSessionItemHandlerWritesImageAttachments(t *testing.T) {
 	}
 }
 
-func TestChatRuntimeSessionItemHandlerPassesSelectedSkills(t *testing.T) {
+func TestChatRuntimeSessionItemHandlerIgnoresLegacySkillIDs(t *testing.T) {
 	service := &stubWebChatRuntimeService{
 		inputResp: chatruntimedomain.Session{
 			ID:        "chatRuntime-2",
@@ -1160,36 +1158,7 @@ func TestChatRuntimeSessionItemHandlerPassesSelectedSkills(t *testing.T) {
 			UpdatedAt: time.Now().UTC(),
 		},
 	}
-	control := controlapp.NewService()
-	if err := control.UpsertCapability(controldomain.Capability{
-		ID:      "summary",
-		Name:    "Summary",
-		Type:    controldomain.CapabilityTypeSkill,
-		Enabled: true,
-		Scope:   controldomain.CapabilityScopeGlobal,
-		Version: controldomain.DefaultCapabilityVersion,
-		Metadata: map[string]string{
-			"skill.description": "Summarize chatRuntime work.",
-			"skill.guide":       "Use concise structured summaries.",
-			"skill.file_path":   ".alter0/skills/summary/SKILL.md",
-		},
-	}); err != nil {
-		t.Fatalf("upsert skill failed: %v", err)
-	}
-	if err := control.UpsertCapability(controldomain.Capability{
-		ID:      "private",
-		Name:    "Private",
-		Type:    controldomain.CapabilityTypeSkill,
-		Enabled: true,
-		Scope:   controldomain.CapabilityScopeGlobal,
-		Version: controldomain.DefaultCapabilityVersion,
-		Metadata: map[string]string{
-			"alter0.skill.visibility": "private",
-		},
-	}); err != nil {
-		t.Fatalf("upsert private skill failed: %v", err)
-	}
-	server := &Server{chatRuntimes: service, control: control}
+	server := &Server{chatRuntimes: service}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", bytes.NewBufferString(`{"input":"summarize","skill_ids":["summary","private","missing"]}`))
 	rec := httptest.NewRecorder()
@@ -1199,141 +1168,8 @@ func TestChatRuntimeSessionItemHandlerPassesSelectedSkills(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if service.inputReq.SkillContext == nil {
-		t.Fatalf("expected skill context")
-	}
-	if len(service.inputReq.SkillContext.Skills) != 1 {
-		t.Fatalf("expected only public selected skill, got %+v", service.inputReq.SkillContext.Skills)
-	}
-	if service.inputReq.SkillContext.Skills[0].ID != "summary" {
-		t.Fatalf("expected summary skill, got %+v", service.inputReq.SkillContext.Skills[0])
-	}
-	if service.inputReq.SkillContext.Skills[0].Guide != "Use concise structured summaries." {
-		t.Fatalf("expected skill guide, got %+v", service.inputReq.SkillContext.Skills[0])
-	}
-}
-
-func TestChatRuntimeSessionItemHandlerDefaultsMissingSkillIDsToAllPublicSkills(t *testing.T) {
-	service := &stubWebChatRuntimeService{
-		inputResp: chatruntimedomain.Session{
-			ID:        "chatRuntime-2",
-			OwnerID:   chatSessionOwnerID,
-			Title:     "chatRuntime-2",
-			Status:    chatruntimedomain.SessionStatusBusy,
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
-		},
-	}
-	control := controlapp.NewService()
-	if err := control.UpsertCapability(controldomain.Capability{
-		ID:      "summary",
-		Name:    "Summary",
-		Type:    controldomain.CapabilityTypeSkill,
-		Enabled: true,
-		Scope:   controldomain.CapabilityScopeGlobal,
-		Version: controldomain.DefaultCapabilityVersion,
-		Metadata: map[string]string{
-			"skill.description": "Summarize chatRuntime work.",
-		},
-	}); err != nil {
-		t.Fatalf("upsert summary skill failed: %v", err)
-	}
-	if err := control.UpsertCapability(controldomain.Capability{
-		ID:      "memory",
-		Name:    "Memory",
-		Type:    controldomain.CapabilityTypeSkill,
-		Enabled: true,
-		Scope:   controldomain.CapabilityScopeGlobal,
-		Version: controldomain.DefaultCapabilityVersion,
-	}); err != nil {
-		t.Fatalf("upsert memory skill failed: %v", err)
-	}
-	if err := control.UpsertCapability(controldomain.Capability{
-		ID:      "disabled",
-		Name:    "Disabled",
-		Type:    controldomain.CapabilityTypeSkill,
-		Enabled: false,
-		Scope:   controldomain.CapabilityScopeGlobal,
-		Version: controldomain.DefaultCapabilityVersion,
-	}); err != nil {
-		t.Fatalf("upsert disabled skill failed: %v", err)
-	}
-	if err := control.UpsertCapability(controldomain.Capability{
-		ID:      "private",
-		Name:    "Private",
-		Type:    controldomain.CapabilityTypeSkill,
-		Enabled: true,
-		Scope:   controldomain.CapabilityScopeGlobal,
-		Version: controldomain.DefaultCapabilityVersion,
-		Metadata: map[string]string{
-			"skill.visibility": "private",
-		},
-	}); err != nil {
-		t.Fatalf("upsert private skill failed: %v", err)
-	}
-	server := &Server{chatRuntimes: service, control: control}
-
-	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", bytes.NewBufferString(`{"input":"summarize"}`))
-	rec := httptest.NewRecorder()
-
-	server.chatSessionItemHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if service.inputReq.SkillContext == nil {
-		t.Fatalf("expected default skill context")
-	}
-	got := make(map[string]bool)
-	for _, skill := range service.inputReq.SkillContext.Skills {
-		got[skill.ID] = true
-	}
-	for _, id := range []string{"summary", "memory"} {
-		if !got[id] {
-			t.Fatalf("expected default skill %q in %+v", id, service.inputReq.SkillContext.Skills)
-		}
-	}
-	for _, id := range []string{"disabled", "private"} {
-		if got[id] {
-			t.Fatalf("did not expect default skill %q in %+v", id, service.inputReq.SkillContext.Skills)
-		}
-	}
-}
-
-func TestChatRuntimeSessionItemHandlerTreatsExplicitEmptySkillIDsAsNoSkills(t *testing.T) {
-	service := &stubWebChatRuntimeService{
-		inputResp: chatruntimedomain.Session{
-			ID:        "chatRuntime-2",
-			OwnerID:   chatSessionOwnerID,
-			Title:     "chatRuntime-2",
-			Status:    chatruntimedomain.SessionStatusBusy,
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
-		},
-	}
-	control := controlapp.NewService()
-	if err := control.UpsertCapability(controldomain.Capability{
-		ID:      "summary",
-		Name:    "Summary",
-		Type:    controldomain.CapabilityTypeSkill,
-		Enabled: true,
-		Scope:   controldomain.CapabilityScopeGlobal,
-		Version: controldomain.DefaultCapabilityVersion,
-	}); err != nil {
-		t.Fatalf("upsert summary skill failed: %v", err)
-	}
-	server := &Server{chatRuntimes: service, control: control}
-
-	req := httptest.NewRequest(http.MethodPost, "/api/chat/sessions/chatRuntime-2/input", bytes.NewBufferString(`{"input":"summarize","skill_ids":[]}`))
-	rec := httptest.NewRecorder()
-
-	server.chatSessionItemHandler(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if service.inputReq.SkillContext != nil {
-		t.Fatalf("expected explicit empty skill_ids to disable skills, got %+v", service.inputReq.SkillContext)
+	if service.inputReq.Input != "summarize" {
+		t.Fatalf("expected input to remain accepted while legacy skill_ids is ignored, got %+v", service.inputReq)
 	}
 }
 

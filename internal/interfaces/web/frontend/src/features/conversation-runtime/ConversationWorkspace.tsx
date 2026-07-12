@@ -1083,11 +1083,6 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   const codexSlashCommandsLabel = language === "zh" ? "Codex 斜线命令" : "Codex slash commands";
   const inspectorTabOpen = composerRuntime.inspectorOpen && composerRuntime.inspectorTabOpen;
   const modelInspectorOpen = inspectorTabOpen && composerRuntime.inspectorTab === "model";
-  const skillsInspectorOpen = inspectorTabOpen && composerRuntime.inspectorTab === "skills";
-  const skillGroups = useMemo(() => ({
-    activeSkills: composerRuntime.skills.filter((item) => item.active),
-    availableSkills: composerRuntime.skills.filter((item) => !item.active),
-  }), [composerRuntime.skills]);
   const directCodexSelected = isDirectCodexModelSelection(
     composerRuntime.selectedProviderId,
     composerRuntime.selectedModelId,
@@ -1231,14 +1226,9 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
     void handleComposerAttachmentSelection(imageFiles);
   }, [handleComposerAttachmentSelection]);
 
-  const configPanelHint = modelInspectorOpen
-      ? copy.runtimeModelHint
-      : skillsInspectorOpen
-        ? copy.runtimeSkillsHint
-        : undefined;
+  const configPanelHint = modelInspectorOpen ? copy.runtimeModelHint : undefined;
   const configPanelTabs = [
     { key: "model" as const, label: copy.runtimeModel },
-    { key: "skills" as const, label: copy.runtimeSkillsShort },
   ];
   const runtimeEventDisclosureSection = (
     <section className="conversation-inspector-section">
@@ -1312,42 +1302,6 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
             </section>
           ))}
           {runtimeEventDisclosureSection}
-        </div>
-      ) : null}
-
-      {skillsInspectorOpen ? (
-        <div className="conversation-inspector-sections">
-          <section className="conversation-inspector-section">
-            <strong>{language === "zh" ? "已启用" : "Active"}</strong>
-            <div className="conversation-check-list">
-              {skillGroups.activeSkills.map((item) => (
-                <label key={item.id} className="conversation-check-item">
-                  <input
-                    type="checkbox"
-                    checked={item.active}
-                    disabled={item.locked}
-                    onChange={(event) => {
-                      if (!item.locked) {
-                        composerRuntime.toggleSkill(item.id, event.target.checked);
-                      }
-                    }}
-                  />
-                  <span><strong>{item.name}</strong><small>{item.description}</small></span>
-                </label>
-              ))}
-            </div>
-          </section>
-          <section className="conversation-inspector-section">
-            <strong>{language === "zh" ? "可选" : "Available"}</strong>
-            <div className="conversation-check-list">
-              {skillGroups.availableSkills.map((item) => (
-                <label key={item.id} className="conversation-check-item">
-                  <input type="checkbox" checked={item.active} onChange={(event) => composerRuntime.toggleSkill(item.id, event.target.checked)} />
-                  <span><strong>{item.name}</strong><small>{item.description}</small></span>
-                </label>
-              ))}
-            </div>
-          </section>
         </div>
       ) : null}
 

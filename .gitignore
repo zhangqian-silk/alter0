@@ -30,6 +30,9 @@ go.work.sum
 # local runtime persistence
 .alter0/
 
+# local design workflow artifacts
+/docs/superpowers/
+
 # temporary outputs, test artifacts, debug files
 output/
 test-results/
