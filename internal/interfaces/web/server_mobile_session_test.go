@@ -191,7 +191,7 @@ func TestWorkbenchMobileNavOverlayStylesPresent(t *testing.T) {
 func TestWorkbenchMobileLayoutUsesConversationDrawer(t *testing.T) {
 	styles := readWorkspaceFile(t, "frontend/src/styles/shell.css")
 	markers := []string{
-		"@media (max-width: 1100px) {",
+		"@media (max-width: 1280px) {",
 		`[data-runtime-view="conversation"],`,
 		`[data-runtime-view="chatRuntime"] {`,
 		"grid-template-columns: 1fr;",
