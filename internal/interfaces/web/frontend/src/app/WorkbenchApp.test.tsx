@@ -422,13 +422,9 @@ describe("WorkbenchApp", () => {
     expect(container.querySelector("[data-runtime-workspace-page='settings'] .runtime-workspace-body")).toHaveAttribute("data-runtime-view", "settings");
     expect(container.querySelector(".route-view")).not.toBeInTheDocument();
     expect(container.querySelector(".route-body")).not.toBeInTheDocument();
-    expect(routeHead).toHaveClass("runtime-workspace-head", "workbench-title-head", "is-compact");
-    expect(routeHead).toHaveAttribute("data-runtime-workspace-header", "true");
-    expect(routeHead).toHaveAttribute("data-workbench-title-head", "route");
-    expect(routeHead.querySelector(".runtime-workspace-title-leading")).toBeInTheDocument();
-    expect(routeHead.querySelector("[data-runtime-header-signal]")).not.toBeInTheDocument();
-    expect(routeHead.querySelector(".route-title-marker")).not.toBeInTheDocument();
-    expect(container.querySelector(".route-head h4")?.textContent).toBe("Settings");
+    // On mobile, desktop header is not rendered — mobile header provides nav toggle
+    expect(routeHead).not.toBeInTheDocument();
+    expect(container.querySelector(".route-head")).not.toBeInTheDocument();
     expect(mobileHeader.querySelector(".runtime-workspace-mobile-title-text")?.textContent).toBe("Settings");
     expect(mobileHeader.querySelector(".route-title-marker")).not.toBeInTheDocument();
     expect(mobileHeader.querySelector("[data-runtime-header-signal]")).not.toBeInTheDocument();

@@ -118,9 +118,17 @@ describe("CSS architecture", () => {
       expect(shell).toContain(".runtime-message");
     });
 
-    it("preserves responsive breakpoints", () => {
-      expect(shell).toContain("@media (max-width: 1100px)");
-      expect(shell).toContain("@media (max-width: 760px)");
+    it("uses unified responsive breakpoints (1280px tablet, 768px mobile)", () => {
+      expect(shell).toContain("@media (max-width: 1280px)");
+      expect(shell).toContain("@media (max-width: 768px)");
+      // No more scattered breakpoints
+      expect(shell).not.toContain("@media (max-width: 1100px)");
+      expect(shell).not.toContain("@media (max-width: 760px)");
+      expect(shell).not.toContain("@media (max-width: 1360px)");
+      expect(shell).not.toContain("@media (max-width: 1120px)");
+      expect(shell).not.toContain("@media (max-width: 920px)");
+      expect(shell).not.toContain("@media (max-width: 720px)");
+      expect(shell).not.toContain("@media (max-width: 640px)");
     });
 
     it("preserves mobile viewport CSS variables", () => {

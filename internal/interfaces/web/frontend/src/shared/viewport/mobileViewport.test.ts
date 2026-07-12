@@ -4,26 +4,43 @@ import {
   MOBILE_VIEWPORT_BREAKPOINT_PX,
   MOBILE_VIEWPORT_SYNC_THRESHOLD_PX,
   CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX,
+  TOUCH_VIEWPORT_BREAKPOINT_PX,
+  NAV_DRAWER_BREAKPOINT_PX,
+  PHONE_VIEWPORT_BREAKPOINT_PX,
   createDefaultMobileViewportState,
   deriveMobileViewportState,
   isMobileViewportWidth,
+  isTouchViewportWidth,
   isChatRuntimeSessionSheetViewportWidth
 } from "./mobileViewport";
 
 describe("shared viewport mobileViewport", () => {
-  it("keeps viewport breakpoints aligned with the legacy shell", () => {
+  it("keeps viewport breakpoints aligned with the unified system", () => {
+    // Touch optimization (keyboard, scroll anchor, touch submit) at 1280px
+    expect(TOUCH_VIEWPORT_BREAKPOINT_PX).toBe(1280);
+    // Nav drawer breakpoint: sidebar becomes drawer, mobile header shown
+    expect(NAV_DRAWER_BREAKPOINT_PX).toBe(1280);
+    // Phone breakpoint: full mobile layout (fixed header, tighter sizing)
+    expect(PHONE_VIEWPORT_BREAKPOINT_PX).toBe(768);
+    // MOBILE aliases NAV_DRAWER (sidebar drawer at 1280px)
     expect(MOBILE_VIEWPORT_BREAKPOINT_PX).toBe(1280);
-    expect(CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX).toBe(760);
+    // CHAT_RUNTIME_SESSION_SHEET aliases PHONE (768px)
+    expect(CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX).toBe(768);
     expect(MOBILE_VIEWPORT_SYNC_THRESHOLD_PX).toBe(8);
     expect(MOBILE_KEYBOARD_MIN_OFFSET_PX).toBe(120);
     expect(MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS).toBe(240);
   });
 
-  it("matches the legacy mobile breakpoint helpers", () => {
+  it("matches the unified breakpoint helpers", () => {
+    // Nav drawer breakpoint: 1280px
     expect(isMobileViewportWidth(1280)).toBe(true);
     expect(isMobileViewportWidth(1281)).toBe(false);
-    expect(isChatRuntimeSessionSheetViewportWidth(760)).toBe(true);
-    expect(isChatRuntimeSessionSheetViewportWidth(761)).toBe(false);
+    // Phone breakpoint: 768px
+    expect(isChatRuntimeSessionSheetViewportWidth(768)).toBe(true);
+    expect(isChatRuntimeSessionSheetViewportWidth(769)).toBe(false);
+    // Touch breakpoint: 1280px
+    expect(isTouchViewportWidth(1280)).toBe(true);
+    expect(isTouchViewportWidth(1281)).toBe(false);
   });
 
   it("resets viewport state and css values outside mobile layouts", () => {

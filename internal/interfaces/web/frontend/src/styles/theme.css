@@ -532,16 +532,17 @@ body::after {
 [data-runtime-view="conversation"] .runtime-composer-form,
 [data-runtime-composer-view="conversation"] .runtime-composer-form,
 [data-runtime-view="chatRuntime"] .runtime-composer-form {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  box-shadow: none;
+  background: var(--composer-form-bg);
+  border: 1px solid var(--composer-form-border);
+  border-radius: var(--composer-form-radius);
+  box-shadow: var(--composer-form-shadow);
   transition: border-color 0.15s ease,
-    background-color 0.15s ease;
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .runtime-composer-form:hover {
   border-color: var(--border-strong);
-  background: var(--bg-surface-hover);
 }
 
 .runtime-composer-form:focus-within {
@@ -558,6 +559,7 @@ body::after {
   color: var(--text-primary);
   background: transparent;
   border: 0;
+  border-radius: 0;
   box-shadow: none;
   font-family: var(--font-sans);
 }
@@ -641,6 +643,21 @@ body::after {
 
 .runtime-composer-attachment-remove:hover {
   background: var(--text-muted);
+}
+
+/* Composer: mobile/tablet accent border + flat */
+@media (max-width: 1280px) {
+  [data-runtime-view="conversation"] .runtime-composer-form,
+  [data-runtime-composer-view="conversation"] .runtime-composer-form {
+    border-color: rgba(37, 99, 235, 0.48);
+    box-shadow: none;
+  }
+}
+
+/* Composer shell: conversation view background */
+[data-runtime-view="conversation"] .runtime-composer-shell,
+[data-runtime-composer-view="conversation"] .runtime-composer-shell {
+  background: var(--bg-page);
 }
 
 /* ============================================================

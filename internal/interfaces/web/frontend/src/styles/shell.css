@@ -285,7 +285,7 @@ body {
   border-radius: 8px;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 768px) {
   .primary-nav {
     background: #fff;
   }
@@ -306,7 +306,7 @@ body {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .codex-runtime-service-controls {
     align-items: stretch;
     flex-direction: column;
@@ -518,7 +518,7 @@ body {
   color: #475467;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   [data-runtime-view="chatRuntime"] .chatRuntime-final-output {
     max-width: 100%;
   }
@@ -765,7 +765,7 @@ body {
   box-shadow: 0 18px 42px -34px rgba(15, 23, 42, 0.32);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .primary-nav {
     border: 0;
     border-right: 1px solid #eeeeee;
@@ -1064,7 +1064,7 @@ body {
   box-shadow: 0 18px 42px -34px rgba(15, 23, 42, 0.32);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .primary-nav {
     border: 0;
     border-right: 1px solid #eeeeee;
@@ -1296,7 +1296,7 @@ body {
   box-shadow: 0 18px 42px -34px rgba(15, 23, 42, 0.32);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .primary-nav {
     border: 0;
     border-right: 1px solid #eeeeee;
@@ -1557,7 +1557,7 @@ body {
   color: #111827;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   [data-runtime-view="conversation"] .runtime-message.runtime-message-user .runtime-message-bubble,
   [data-runtime-view="conversation"] .conversation-message.is-user .msg-bubble {
     max-width: min(86%, 620px);
@@ -1583,7 +1583,7 @@ body {
 
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .runtime-thinking-shell .chatRuntime-process-body:not([hidden]) {
     max-height: none;
     overflow: visible;
@@ -2177,7 +2177,7 @@ body {
   font-weight: 850;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .runtime-restart-overlay {
     align-items: center;
     padding: 34px 16px calc(104px + env(safe-area-inset-bottom));
@@ -3264,7 +3264,7 @@ body {
   background: #111315;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 768px) {
   .settings-route-body {
     max-width: none;
     grid-template-columns: minmax(0, 1fr);
@@ -3299,7 +3299,7 @@ body {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .settings-route-body {
     gap: 10px;
   }
@@ -5304,7 +5304,7 @@ body::after {
   color: var(--shell-ink);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .modal-backdrop {
     align-items: center;
     padding: 16px;
@@ -5446,7 +5446,7 @@ body::after {
   box-shadow: none;
 }
 
-@media (max-width: 1360px) {
+@media (max-width: 1280px) {
   :root {
     --shell-nav-width: clamp(196px, 19vw, 228px);
     --shell-session-width: clamp(264px, 26vw, 300px);
@@ -5476,7 +5476,7 @@ body::after {
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 768px) {
   .app-shell,
   .app-shell.info-mode {
     position: relative;
@@ -5646,7 +5646,7 @@ body::after {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .chat-header,
   .workspace-hero,
   .welcome-hero,
@@ -5682,7 +5682,7 @@ body::after {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .primary-nav {
     width: min(calc(100vw - 24px), 280px);
   }
@@ -6411,11 +6411,11 @@ body::after {
 }
 
 .route-view[data-route-family="settings"] p#routeSubtitle {
-  max-width: 760px;
+  max-width: 768px;
   line-height: 1.55;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 768px) {
   body::before,
   body::after {
     display: none;
@@ -6629,7 +6629,7 @@ body::after {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .primary-nav {
     width: min(calc(100vw - 24px), 280px);
   }
@@ -7758,7 +7758,7 @@ body::after {
   line-height: 1.4;
 }
 
-@media (max-width: 920px) {
+@media (max-width: 768px) {
   .codex-runtime-studio-head,
   .codex-runtime-control-grid,
   .codex-runtime-provider-station-body,
@@ -7776,7 +7776,7 @@ body::after {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .codex-runtime-studio {
     padding: 14px;
     border-radius: 0 !important;
@@ -8059,7 +8059,7 @@ body::after {
   background: rgba(255, 255, 255, 0.76);
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1280px) {
   .codex-runtime-studio-head,
   .codex-runtime-control-grid,
   .codex-runtime-provider-station-head,
@@ -8079,7 +8079,7 @@ body::after {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .codex-runtime-studio {
     padding: 16px !important;
     border-radius: 0 !important;
@@ -8120,6 +8120,8 @@ body::after {
   min-height: 0;
   height: 100%;
   display: grid;
+  /* 3 rows: header (mobile or desktop), scrollable panel, composer footer.
+     Only one header is visible at a time (controlled by display below). */
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: 100%;
   border: 1px solid rgba(203, 213, 225, 0.88);
@@ -8129,14 +8131,30 @@ body::after {
   box-shadow: 0 34px 70px -54px rgba(15, 23, 42, 0.18);
 }
 
+/* Desktop header — hidden by default (mobile-first), shown on large screens */
 .runtime-workspace-head {
   min-width: 0;
   max-width: 100%;
   padding: 18px 20px 14px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
-  display: grid;
+  display: none;
   gap: 10px;
   background: rgba(255, 255, 255, 0.8);
+}
+
+/* Show desktop header only on large screens (≥1281px) */
+@media (min-width: 1281px) {
+  .runtime-workspace-head,
+  .runtime-workspace-head.is-compact,
+  .runtime-workspace-head.is-sticky,
+  .runtime-workspace-head.is-mobile-empty,
+  .runtime-workspace-head.is-mobile-collapsed {
+    display: grid;
+  }
+
+  .runtime-workspace-head.is-compact {
+    display: block;
+  }
 }
 
 .runtime-workspace-head.is-sticky {
@@ -8146,17 +8164,39 @@ body::after {
 }
 
 .runtime-workspace-head.is-compact {
-  display: block;
   padding: 12px 12px 10px;
   gap: 8px;
 }
 
+/* Mobile header — visible by default (only in DOM on touch/tablet/phone) */
 .runtime-workspace-mobile-header {
-  display: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 6px 14px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
 }
 
 .runtime-workspace-mobile-title {
-  display: none;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 10px;
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #0f172a;
 }
 
 .runtime-workspace-mobile-title-copy {
@@ -9378,10 +9418,9 @@ body::after {
   max-width: 100%;
   box-sizing: border-box;
   border-top: 0;
-  padding: 10px clamp(16px, 5vw, 42px) 18px;
+  padding: var(--composer-shell-pad-top) var(--composer-shell-pad-x) calc(var(--composer-shell-pad-bottom) + env(safe-area-inset-bottom));
   display: grid;
   gap: 8px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(250, 252, 255, 0.92) 48%, rgba(250, 252, 255, 0.98) 100%);
 }
 
 .runtime-composer-form {
@@ -9393,12 +9432,8 @@ body::after {
   display: grid;
   grid-template-columns: 1fr;
   align-content: start;
-  gap: 10px;
-  padding: 16px 18px 14px;
-  border: 1px solid rgba(218, 220, 224, 0.96);
-  border-radius: 28px;
-  background: #fff;
-  box-shadow: 0 18px 50px -36px rgba(15, 23, 42, 0.30), 0 2px 10px rgba(60, 64, 67, 0.10);
+  gap: var(--composer-form-gap);
+  padding: var(--composer-form-pad-top) var(--composer-form-pad-x) var(--composer-form-pad-bottom);
 }
 
 .runtime-composer-body {
@@ -9411,13 +9446,13 @@ body::after {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  min-height: 78px;
+  min-height: var(--composer-textarea-min-h);
   resize: none;
   border-radius: 18px;
   border: 0;
   background: transparent;
   box-shadow: none;
-  padding: 10px 8px 8px;
+  padding: var(--composer-textarea-pad-v) var(--composer-textarea-pad-h);
   font: inherit;
   color: #072843;
   outline: none;
@@ -9487,7 +9522,7 @@ body::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--composer-toolbar-gap);
   flex-wrap: wrap;
   min-width: 0;
   max-width: 100%;
@@ -9496,14 +9531,14 @@ body::after {
 .runtime-composer-toolbar-start {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--composer-toolbar-gap);
   min-width: 0;
 }
 
 .runtime-composer-toolbar-end {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--composer-toolbar-gap);
   min-width: 0;
 }
 
@@ -9511,7 +9546,7 @@ body::after {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--composer-toolbar-gap);
   flex-wrap: wrap;
   min-width: 0;
   max-width: 100%;
@@ -9523,10 +9558,10 @@ body::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  min-width: 38px;
-  min-height: 38px;
+  width: var(--composer-toolbar-btn);
+  height: var(--composer-toolbar-btn);
+  min-width: var(--composer-toolbar-btn);
+  min-height: var(--composer-toolbar-btn);
   padding: 0;
   border-radius: 8px;
   line-height: 1;
@@ -10074,7 +10109,7 @@ body::after {
   gap: 14px;
 }
 
-@media (min-width: 761px) {
+@media (min-width: 769px) {
   .primary-nav.has-session-rail > .menu {
     flex: 0 0 clamp(260px, 34vh, 312px);
     min-height: 0;
@@ -10303,28 +10338,23 @@ body::after {
 
 .runtime-composer-shell {
   border-top: 0;
-  padding: 10px clamp(16px, 5vw, 42px) 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(250, 252, 255, 0.92) 48%, rgba(250, 252, 255, 0.98) 100%);
+  padding: var(--composer-shell-pad-top) var(--composer-shell-pad-x) calc(var(--composer-shell-pad-bottom) + env(safe-area-inset-bottom));
 }
 
 .runtime-composer-form {
-  gap: 8px;
-  padding: 16px 18px 14px;
+  gap: var(--composer-form-gap);
+  padding: var(--composer-form-pad-top) var(--composer-form-pad-x) var(--composer-form-pad-bottom);
   width: min(100%, 860px);
   justify-self: center;
-  border-color: rgba(218, 220, 224, 0.96);
-  border-radius: 28px;
-  background: #fff;
-  box-shadow: 0 18px 50px -36px rgba(15, 23, 42, 0.30), 0 2px 10px rgba(60, 64, 67, 0.10);
 }
 
 .runtime-composer-input {
-  min-height: 78px;
+  min-height: var(--composer-textarea-min-h);
   resize: none;
   border: 0;
   background: transparent;
   box-shadow: none;
-  padding: 10px 8px 8px;
+  padding: var(--composer-textarea-pad-v) var(--composer-textarea-pad-h);
   outline: none;
 }
 
@@ -10335,12 +10365,12 @@ body::after {
 }
 
 .runtime-composer-toolbar {
-  gap: 10px;
+  gap: var(--composer-toolbar-gap);
 }
 
 .runtime-composer-toolbar-start,
 .runtime-composer-toolbar-end {
-  gap: 8px;
+  gap: var(--composer-toolbar-gap);
 }
 
 .runtime-composer-toolbar-start {
@@ -10354,8 +10384,8 @@ body::after {
 }
 
 .runtime-composer-utility {
-  width: 38px;
-  height: 38px;
+  width: var(--composer-toolbar-btn);
+  height: var(--composer-toolbar-btn);
   border-color: rgba(226, 232, 240, 0.96);
   background: #f8fafc;
   color: #64748b;
@@ -10400,7 +10430,7 @@ body::after {
   cursor: not-allowed;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 768px) {
   [data-runtime-view="conversation"],
   [data-runtime-view="chatRuntime"] {
     grid-template-columns: 1fr;
@@ -10491,7 +10521,6 @@ body::after {
 
   [data-runtime-view="conversation"] .runtime-workspace-body,
   [data-runtime-view="chatRuntime"] .runtime-workspace-body {
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
     border-radius: 0;
     border-left: 0;
     border-right: 0;
@@ -10503,24 +10532,19 @@ body::after {
     grid-row: 1;
   }
 
-  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-head,
-  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-head {
+  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-panel,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-panel {
     grid-row: 2;
   }
 
-  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-panel,
-  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-panel {
-    grid-row: 3;
-  }
-
   .runtime-workspace-body > .runtime-composer-shell {
-    grid-row: 4;
+    grid-row: 3;
     align-self: end;
   }
 
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .primary-nav {
     width: min(86vw, 336px);
     padding: 18px 18px calc(16px + env(safe-area-inset-bottom));
@@ -10736,15 +10760,6 @@ body::after {
   }
 
   .runtime-workspace-mobile-header {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    box-sizing: border-box;
-    min-height: 48px;
     padding: 12px 14px 10px;
     border-bottom: 1px solid rgba(202, 220, 235, 0.72);
     background: linear-gradient(180deg, rgba(247, 250, 255, 0.96) 0%, rgba(252, 253, 255, 0.94) 100%);
@@ -10752,13 +10767,6 @@ body::after {
   }
 
   .runtime-workspace-mobile-title {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-start;
     padding: 0 10px;
     min-height: 36px;
     border: 1px solid transparent;
@@ -10787,20 +10795,16 @@ body::after {
   .runtime-workspace-head,
   .runtime-workspace-screen,
   .runtime-composer-shell {
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: var(--composer-shell-pad-x);
+    padding-right: var(--composer-shell-pad-x);
   }
 
   .runtime-composer-form {
     width: 100%;
     grid-template-columns: 1fr;
     align-content: start;
-    gap: 8px;
-    padding: 12px 14px 10px;
-    border-radius: 26px;
-    border-color: rgba(218, 220, 224, 0.96);
-    background: #fff;
-    box-shadow: 0 12px 30px -24px rgba(15, 23, 42, 0.28), 0 2px 8px rgba(60, 64, 67, 0.10);
+    gap: var(--composer-form-gap);
+    padding: var(--composer-form-pad-top) var(--composer-form-pad-x) var(--composer-form-pad-bottom);
   }
 
   .runtime-composer-body {
@@ -10809,13 +10813,13 @@ body::after {
 
   .runtime-composer-input {
     width: 100%;
-    height: 72px;
-    min-height: 72px;
+    height: auto;
+    min-height: var(--composer-textarea-min-h);
     max-height: 160px;
     resize: none;
     border: 0;
     border-radius: 18px;
-    padding: 12px 10px 10px;
+    padding: var(--composer-textarea-pad-v) var(--composer-textarea-pad-h);
     background: transparent;
     font-size: 16px;
     line-height: 1.45;
@@ -10832,10 +10836,10 @@ body::after {
   }
 
   .runtime-composer-submit {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    min-height: 36px;
+    width: var(--composer-toolbar-btn);
+    height: var(--composer-toolbar-btn);
+    min-width: var(--composer-toolbar-btn);
+    min-height: var(--composer-toolbar-btn);
     padding: 0;
     border-radius: 8px;
     border-color: #0f172a;
@@ -11021,14 +11025,13 @@ body::after {
     width: 100%;
     max-width: 100%;
     border-top: 0;
-    padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(250, 252, 255, 0.94) 48%, rgba(250, 252, 255, 0.98) 100%);
+    padding: var(--composer-shell-pad-top) var(--composer-shell-pad-x) calc(var(--composer-shell-pad-bottom) + env(safe-area-inset-bottom));
   }
 
   .runtime-composer-tools {
     flex-wrap: nowrap;
     justify-content: flex-end;
-    gap: 10px;
+    gap: var(--composer-toolbar-gap);
   }
 
   .runtime-composer-meta {
@@ -11390,7 +11393,7 @@ body {
   border-radius: 8px;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 768px) {
   .primary-nav {
     background: #fff;
   }
@@ -11411,7 +11414,7 @@ body {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .route-view[data-route-family="settings"] {
     --route-padding-x: 12px;
   }
@@ -11565,7 +11568,7 @@ body {
 
 .route-view p#routeSubtitle {
   min-width: 0;
-  max-width: 760px;
+  max-width: 768px;
   margin: 0;
   color: var(--ink-muted);
   font-size: 13px;
@@ -11583,7 +11586,7 @@ body {
   text-overflow: ellipsis;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .route-view[data-route-family="settings"] .route-mobile-head {
     min-height: 48px;
     padding: 6px 10px;
@@ -11840,7 +11843,7 @@ body {
   color: #475467;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   [data-runtime-view="chatRuntime"] .chatRuntime-final-output {
     max-width: 100%;
   }
@@ -12084,7 +12087,7 @@ body {
   box-shadow: 0 18px 42px -34px rgba(15, 23, 42, 0.32);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .primary-nav {
     border: 0;
     border-right: 1px solid #eeeeee;
@@ -12742,7 +12745,7 @@ select:focus-visible,
   color: currentColor;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .primary-nav {
     width: min(86vw, 336px);
     padding: 18px 18px calc(16px + env(safe-area-inset-bottom));
@@ -12871,7 +12874,7 @@ select:focus-visible,
   display: none;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 768px) {
   .settings-route-content {
     width: 100%;
     max-width: 100%;
@@ -13082,7 +13085,7 @@ select:focus-visible,
 }
 
 .settings-general-panel {
-  max-width: 760px;
+  max-width: 768px;
   justify-self: start;
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
@@ -13116,7 +13119,7 @@ select:focus-visible,
 }
 
 /* Mobile Settings Runtime density pass */
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .codex-runtime-studio {
     gap: 10px;
     padding: 10px 0 0 !important;
@@ -13282,16 +13285,40 @@ select:focus-visible,
     --runtime-content-gutter: clamp(16px, 3vw, 28px);
     --runtime-content-column: min(100%, 920px);
     --runtime-composer-column: min(100%, 920px);
-    display: block;
     min-height: 0;
     height: var(--mobile-viewport-height, 100dvh);
-    overflow: hidden;
   }
 
   [data-runtime-view="conversation"],
   [data-runtime-composer-view="conversation"] {
     --runtime-conversation-gutter: clamp(16px, 3vw, 28px);
     --runtime-conversation-rail: min(100%, 760px);
+  }
+
+  .workbench-main,
+  .workbench-pane-shell,
+  .runtime-workspace-shell,
+  .runtime-workspace,
+  .runtime-workspace-body {
+    min-height: 0;
+  }
+
+  .runtime-workspace {
+    padding: 0;
+  }
+
+  .runtime-workspace-shell[data-runtime-view="settings"],
+  .runtime-workspace-shell[data-runtime-view="conversation"],
+  .runtime-workspace-shell[data-runtime-view="chatRuntime"] {
+    padding: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-shell,
+  .app-shell.info-mode {
+    display: block;
+    overflow: hidden;
   }
 
   .workbench-mobile-overlay-portal {
@@ -13330,25 +13357,6 @@ select:focus-visible,
     z-index: 130;
   }
 
-  .workbench-main,
-  .workbench-pane-shell,
-  .runtime-workspace-shell,
-  .runtime-workspace,
-  .runtime-workspace-body {
-    min-height: 0;
-    height: 100%;
-  }
-
-  .runtime-workspace {
-    padding: 0;
-  }
-
-  .runtime-workspace-shell[data-runtime-view="settings"],
-  .runtime-workspace-shell[data-runtime-view="conversation"],
-  .runtime-workspace-shell[data-runtime-view="chatRuntime"] {
-    padding: 0;
-  }
-
   .runtime-workspace-shell[data-runtime-view="settings"] .runtime-workspace-body,
   .runtime-workspace-shell[data-runtime-view="conversation"] .runtime-workspace-body,
   .runtime-workspace-shell[data-runtime-view="chatRuntime"] .runtime-workspace-body,
@@ -13361,6 +13369,9 @@ select:focus-visible,
     box-shadow: none;
     overflow: hidden;
   }
+}
+
+@media (max-width: 768px) {
 
   .runtime-workspace-shell[data-runtime-view="settings"] .runtime-workspace-body > .runtime-workspace-mobile-header,
   .runtime-workspace-shell[data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-mobile-header,
@@ -13503,22 +13514,17 @@ select:focus-visible,
 
   [data-runtime-view="conversation"] .runtime-composer-shell,
   [data-runtime-composer-view="conversation"] .runtime-composer-shell {
-    padding: 10px var(--runtime-conversation-gutter) calc(14px + env(safe-area-inset-bottom));
+    padding: var(--composer-shell-pad-top) var(--runtime-conversation-gutter) calc(var(--composer-shell-pad-bottom) + env(safe-area-inset-bottom));
     box-sizing: border-box;
-    background: #f6f7f9;
   }
 
   [data-runtime-view="conversation"] .runtime-composer-form,
   [data-runtime-composer-view="conversation"] .runtime-composer-form {
-    min-height: 112px;
-    padding: 12px 16px 10px;
-    gap: 5px;
+    padding: var(--composer-form-pad-top) var(--composer-form-pad-x) var(--composer-form-pad-bottom);
+    gap: var(--composer-form-gap);
     width: var(--runtime-conversation-rail);
     max-width: var(--runtime-conversation-rail);
     justify-self: center;
-    border: 1px solid rgba(37, 99, 235, 0.48) !important;
-    border-radius: 18px !important;
-    box-shadow: none !important;
   }
 
   .chat-pane[data-route="chat"].page-mode .nav-toggle,
@@ -13606,7 +13612,7 @@ select:focus-visible,
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .runtime-workspace-body[data-runtime-view="settings"] > .settings-route-body {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -13693,16 +13699,6 @@ select:focus-visible,
   touch-action: pan-y;
 }
 
-[data-runtime-view="conversation"] .runtime-composer-form,
-[data-runtime-composer-view="conversation"] .runtime-composer-form {
-  border-radius: 18px !important;
-}
-
-[data-runtime-view="conversation"] .runtime-composer-input,
-[data-runtime-composer-view="conversation"] .runtime-composer-input {
-  border-radius: 0 !important;
-}
-
 /* Final Chat composer floor and three-step inset contract */
 @media (min-width: 1281px) {
   .chat-pane[data-route="chat"].page-mode,
@@ -13728,13 +13724,12 @@ select:focus-visible,
 
   [data-runtime-view="conversation"] .runtime-composer-shell,
   [data-runtime-composer-view="conversation"] .runtime-composer-shell {
-    padding: 12px var(--runtime-conversation-gutter) calc(18px + env(safe-area-inset-bottom));
+    padding: var(--composer-shell-pad-top) var(--runtime-conversation-gutter) calc(var(--composer-shell-pad-bottom) + env(safe-area-inset-bottom));
     box-sizing: border-box;
-    background: linear-gradient(180deg, rgba(246, 247, 249, 0.78) 0%, #f6f7f9 100%);
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   [data-runtime-view="conversation"],
   [data-runtime-composer-view="conversation"] {
     --runtime-conversation-gutter: 16px;
@@ -13752,36 +13747,31 @@ select:focus-visible,
 
   [data-runtime-view="conversation"] .runtime-composer-shell,
   [data-runtime-composer-view="conversation"] .runtime-composer-shell {
-    padding: 6px max(16px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    padding: var(--composer-shell-pad-top) max(var(--composer-shell-pad-x), env(safe-area-inset-right)) calc(var(--composer-shell-pad-bottom) + env(safe-area-inset-bottom)) max(var(--composer-shell-pad-x), env(safe-area-inset-left));
     box-sizing: border-box;
-    background: #f6f7f9;
   }
 
   [data-runtime-view="conversation"] .runtime-composer-form,
   [data-runtime-composer-view="conversation"] .runtime-composer-form {
-    min-height: 98px;
-    padding: 10px 14px 8px;
-    gap: 4px;
+    padding: var(--composer-form-pad-top) var(--composer-form-pad-x) var(--composer-form-pad-bottom);
+    gap: var(--composer-form-gap);
     width: var(--runtime-conversation-rail);
     max-width: var(--runtime-conversation-rail);
-    border: 1px solid rgba(37, 99, 235, 0.48) !important;
-    border-radius: 18px !important;
-    box-shadow: none !important;
   }
 
   [data-runtime-view="conversation"] .runtime-composer-input,
   [data-runtime-composer-view="conversation"] .runtime-composer-input {
-    min-height: 36px;
-    padding: 0 2px;
+    height: auto;
+    min-height: var(--composer-textarea-min-h);
+    padding: var(--composer-textarea-pad-v) var(--composer-textarea-pad-h);
     font-size: 16px;
     line-height: 1.45;
   }
 
   [data-runtime-view="conversation"] .runtime-composer-toolbar,
   [data-runtime-composer-view="conversation"] .runtime-composer-toolbar {
-    min-height: 38px;
-    margin-top: 2px;
-    gap: 6px;
+    min-height: var(--composer-toolbar-btn);
+    gap: var(--composer-toolbar-gap);
   }
 
   [data-runtime-view="conversation"] .runtime-composer-utility,
@@ -13790,13 +13780,13 @@ select:focus-visible,
   [data-runtime-composer-view="conversation"] .runtime-composer-form .runtime-composer-upload,
   [data-runtime-view="conversation"] .runtime-composer-submit,
   [data-runtime-composer-view="conversation"] .runtime-composer-submit {
-    width: 38px;
-    height: 38px;
+    width: var(--composer-toolbar-btn);
+    height: var(--composer-toolbar-btn);
   }
 }
 
 /* Final mobile horizontal overflow stability guard */
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   [data-runtime-view="conversation"],
   .runtime-workspace-body[data-runtime-view="conversation"],
   [data-runtime-view="conversation"] .runtime-workspace,
@@ -13823,7 +13813,7 @@ select:focus-visible,
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
-    overflow-x: hidden;
+    overflow-x: clip;  /* clip: doesn't force overflow-y to auto like hidden does */
   }
 
   [data-runtime-view="conversation"] .runtime-composer-form,
@@ -13831,12 +13821,12 @@ select:focus-visible,
     min-width: 0;
     max-width: var(--runtime-conversation-rail);
     box-sizing: border-box;
-    overflow-x: hidden;
+    overflow: visible;
   }
 }
 
 /* Final mobile primary nav viewport guard */
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .workbench-mobile-overlay-portal {
     position: fixed;
     top: var(--mobile-viewport-offset-top, 0px);
@@ -14148,7 +14138,7 @@ select:focus-visible,
   color: #24292f;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .runtime-composer-panel[data-runtime-config-surface="repository"] {
     max-height: min(58vh, calc(100dvh - 154px));
     border-color: rgba(15, 23, 42, 0.12);
@@ -14553,7 +14543,10 @@ select:focus-visible,
   color: #111 !important;
 }
 
-/* --- HEADER --- */
+/* --- HEADER ---
+   Desktop only: on tablet/phone (≤1280px), the mobile header provides nav toggle.
+   These !important overrides only apply ≥1281px. */
+@media (min-width: 1281px) {
 .runtime-workspace-head,
 .runtime-workspace-head.is-compact,
 .runtime-workspace-head.is-sticky,
@@ -14567,6 +14560,7 @@ select:focus-visible,
   padding: 0 20px !important;
   min-height: 48px !important;
   height: 48px !important;
+  grid-row: 1 !important;
   border: 0 !important;
   border-bottom: 1px solid #f0f0f0 !important;
   background: #fff !important;
@@ -14580,6 +14574,8 @@ select:focus-visible,
   border-radius: 0 !important;
   box-shadow: none !important;
 }
+
+} /* end @media (min-width: 1281px) */
 
 .runtime-workspace-head.is-mobile-empty {
   gap: 12px !important;
@@ -14764,8 +14760,8 @@ select:focus-visible,
 [data-runtime-view="conversation"] .runtime-workspace-body,
 .runtime-workspace-body[data-runtime-view="conversation"],
 [data-runtime-view="chatRuntime"] .runtime-workspace-body {
-  display: flex !important;
-  flex-direction: column !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
   flex: 1 !important;
   min-height: 0 !important;
   padding: 0 !important;
@@ -14778,6 +14774,21 @@ select:focus-visible,
   border: 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
+}
+
+/* Grid row assignments for body children */
+.runtime-workspace-body > .runtime-workspace-mobile-header {
+  grid-row: 1 !important;
+}
+.runtime-workspace-body > .runtime-workspace-head {
+  grid-row: 1 !important;
+}
+.runtime-workspace-body > .runtime-workspace-panel {
+  grid-row: 2 !important;
+  min-height: 0 !important;
+}
+.runtime-workspace-body > .runtime-composer-shell {
+  grid-row: 3 !important;
 }
 
 .runtime-workspace {
@@ -15362,6 +15373,19 @@ select:focus-visible,
 }
 
 /* --- MOBILE --- */
+@media (max-width: 1280px) {
+  /* Hide desktop header on tablet and phone — mobile header provides nav toggle */
+  .runtime-workspace-head,
+  .runtime-workspace-head.is-compact,
+  .runtime-workspace-head.is-sticky,
+  .runtime-workspace-head.is-mobile-empty,
+  .runtime-workspace-head.is-mobile-collapsed,
+  .workbench-title-head,
+  .route-head {
+    display: none !important;
+  }
+}
+
 @media (max-width: 768px) {
   .runtime-workspace-head,
   .runtime-workspace-head.is-compact {
@@ -15409,6 +15433,7 @@ select:focus-visible,
 
 /* ============================================================
    Composer color tuning — blend with chat area
+   (Visual only — padding/border-radius live in responsive blocks above)
    ============================================================ */
 
 /* Composer shell — seamless white, no gradient */
@@ -15418,11 +15443,30 @@ select:focus-visible,
 [data-runtime-view="chatRuntime"] .runtime-composer-shell {
   background: #ffffff !important;
   background-image: none !important;
-  padding: 0 24px 24px !important;
   border-top: 0 !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+/* Composer shell padding — desktop */
+@media (min-width: 769px) {
+  .runtime-composer-shell,
+  [data-runtime-view="conversation"] .runtime-composer-shell,
+  [data-runtime-composer-view="conversation"] .runtime-composer-shell,
+  [data-runtime-view="chatRuntime"] .runtime-composer-shell {
+    padding: 0 24px 24px !important;
+  }
+}
+
+/* Composer shell padding — mobile (respect safe-area-inset) */
+@media (max-width: 768px) {
+  .runtime-composer-shell,
+  [data-runtime-view="conversation"] .runtime-composer-shell,
+  [data-runtime-composer-view="conversation"] .runtime-composer-shell,
+  [data-runtime-view="chatRuntime"] .runtime-composer-shell {
+    padding: 6px max(16px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)) !important;
+  }
 }
 
 /* Composer form — soft warm border */
@@ -15431,10 +15475,27 @@ select:focus-visible,
 [data-runtime-composer-view="conversation"] .runtime-composer-form,
 [data-runtime-view="chatRuntime"] .runtime-composer-form {
   border: 1px solid #e4e4e7 !important;
-  border-radius: 16px !important;
   background: #fafafa !important;
   box-shadow: none !important;
   transition: border-color 0.15s ease, background-color 0.15s ease !important;
+}
+
+/* Composer form border-radius — desktop */
+@media (min-width: 769px) {
+  .runtime-composer-form,
+  [data-runtime-view="conversation"] .runtime-composer-form,
+  [data-runtime-composer-view="conversation"] .runtime-composer-form,
+  [data-runtime-view="chatRuntime"] .runtime-composer-form {
+    border-radius: 16px !important;
+  }
+}
+
+/* Composer form border-radius — mobile */
+@media (max-width: 768px) {
+  [data-runtime-view="conversation"] .runtime-composer-form,
+  [data-runtime-composer-view="conversation"] .runtime-composer-form {
+    border-radius: 18px !important;
+  }
 }
 
 .runtime-composer-form:hover {
@@ -15522,4 +15583,435 @@ select:focus-visible,
 .chat-pane[data-route="chat"].page-mode,
 .runtime-workspace-shell[data-runtime-view="conversation"] {
   background: #ffffff !important;
+}
+
+/* ============================================================
+   Mobile drawer — covers tablet (769-1280px) and phone (≤768px)
+   JS removes sidebar from inline flow at ≤1280px; portal hosts it.
+   runtimeKeyboardIsolation.css sets portal position/z-index;
+   this block provides drawer visuals + interactivity.
+   ============================================================ */
+@media (max-width: 1280px) {
+  .mobile-backdrop {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 120 !important;
+    border: 0 !important;
+    background: rgba(15, 23, 42, 0.24) !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  .workbench-mobile-overlay-portal .primary-nav {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: min(82vw, 320px) !important;
+    max-width: 100vw !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+    z-index: 130 !important;
+    background: #fff !important;
+    border-right: 1px solid #ececec !important;
+    box-shadow: 24px 0 48px -34px rgba(15, 23, 42, 0.46) !important;
+  }
+
+  .workbench-mobile-overlay-portal.nav-open .primary-nav {
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: none !important;
+  }
+
+  /* --- Mobile header: icon-only buttons on tablet too --- */
+  .runtime-workspace-mobile-header {
+    min-height: 48px !important;
+    padding: 6px 14px !important;
+    gap: 8px !important;
+  }
+
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #334155 !important;
+  }
+
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action:hover {
+    background: rgba(15, 23, 42, 0.06) !important;
+  }
+
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action:active {
+    background: rgba(15, 23, 42, 0.1) !important;
+  }
+
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action svg {
+    width: 18px !important;
+    height: 18px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action.is-quiet,
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action.is-primary {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .runtime-workspace-mobile-title {
+    min-height: 36px !important;
+    padding: 0 10px !important;
+  }
+
+  .runtime-workspace-mobile-title-text {
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    line-height: 1.3 !important;
+    letter-spacing: -0.005em !important;
+    color: #111 !important;
+  }
+
+  .runtime-workspace-mobile-title {
+    font-weight: 600 !important;
+    color: #111 !important;
+  }
+
+  /* --- Settings: single-column + horizontal nav on tablet and phone --- */
+  [data-runtime-view="settings"] .runtime-workspace-screen,
+  [data-route-family="settings"] .runtime-workspace-screen {
+    padding: 16px !important;
+  }
+
+  .settings-route-body {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .settings-route-nav {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 6px 10px !important;
+    gap: 6px !important;
+  }
+
+  .settings-route-tab {
+    flex: 0 0 auto !important;
+    min-height: 36px !important;
+    padding: 6px 12px !important;
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    white-space: nowrap !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Phone: override drawer width for narrower viewport */
+  .workbench-mobile-overlay-portal .primary-nav {
+    width: min(86vw, 336px) !important;
+  }
+
+  /* Phone: body uses fixed 48px mobile header row */
+  .runtime-workspace-body,
+  [data-runtime-view="conversation"] .runtime-workspace-body,
+  .runtime-workspace-body[data-runtime-view="conversation"],
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body {
+    grid-template-rows: 48px minmax(0, 1fr) auto !important;
+  }
+
+  /* Phone: tighter settings padding */
+  [data-runtime-view="settings"] .runtime-workspace-screen {
+    padding: 12px !important;
+  }
+}
+
+/* ============================================================
+   Responsive Layout — unified system (replaces all prior patches)
+   Breakpoints:
+     ≥1281px  → desktop (sidebar + full header)
+     769-1280 → tablet  (drawer nav, mobile header, horizontal setting tabs)
+     ≤768px   → phone   (drawer nav, compact mobile header)
+   ============================================================ */
+
+/* ── 1. Unified header border: every header variant gets the same separator ── */
+.runtime-workspace-head,
+.runtime-workspace-mobile-header,
+.route-head.workbench-title-head,
+.route-head.workbench-title-head.is-compact,
+.route-view[data-route-family="settings"] .route-mobile-head {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+/* ── 2. Composer: consistent bottom spacing across breakpoints ── */
+@media (min-width: 769px) {
+  .runtime-composer-shell,
+  [data-runtime-view="conversation"] .runtime-composer-shell,
+  [data-runtime-view="chatRuntime"] .runtime-composer-shell {
+    padding: 0 24px 12px !important;
+  }
+  .runtime-composer-form,
+  [data-runtime-view="conversation"] .runtime-composer-form,
+  [data-runtime-view="chatRuntime"] .runtime-composer-form {
+    padding: 12px 16px 8px !important;
+    grid-template-rows: auto auto !important;
+    align-content: start !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  /* Tools row: align to bottom so no gap below buttons */
+  .runtime-composer-tools,
+  [data-runtime-view="conversation"] .runtime-composer-tools {
+    align-self: end !important;
+  }
+}
+@media (max-width: 768px) {
+  .runtime-composer-shell,
+  [data-runtime-view="conversation"] .runtime-composer-shell,
+  [data-runtime-view="chatRuntime"] .runtime-composer-shell {
+    padding: 4px 12px calc(4px + min(env(safe-area-inset-bottom), 8px)) !important;
+  }
+  .runtime-composer-form,
+  [data-runtime-view="conversation"] .runtime-composer-form,
+  [data-runtime-view="chatRuntime"] .runtime-composer-form {
+    padding: 8px 12px 4px !important;
+    grid-template-rows: auto auto !important;
+    align-content: start !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  /* Tools row: align to bottom, no gap below buttons */
+  .runtime-composer-tools,
+  [data-runtime-view="conversation"] .runtime-composer-tools {
+    align-self: end !important;
+  }
+  /* Compact tool buttons on mobile */
+  .runtime-composer-utility,
+  .runtime-composer-submit,
+  .runtime-composer-upload {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+  }
+  /* Compact textarea on mobile */
+  .runtime-composer-input,
+  [data-runtime-view="conversation"] .runtime-composer-input {
+    min-height: 56px !important;
+    height: 56px !important;
+    padding: 8px 8px 4px !important;
+    font-size: 15px !important;
+    line-height: 1.4 !important;
+  }
+  /* Tighten toolbar spacing */
+  [data-runtime-view="conversation"] .runtime-composer-toolbar,
+  [data-runtime-composer-view="conversation"] .runtime-composer-toolbar {
+    margin-top: 6px !important;
+  }
+}
+
+/* ── 3. Tablet (769–1280): settings horizontal tabs + full-width content ── */
+@media (max-width: 1280px) {
+  /* Settings body: single column, nav on top, content below. Body holds the padding. */
+  [data-runtime-view="settings"] .settings-route-body,
+  .runtime-workspace-body[data-runtime-view="settings"] > .settings-route-body {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+    gap: 0 !important;
+    padding: 0 16px 16px !important;
+  }
+
+  /* Nav: horizontal scroll row, vertical padding only (body provides horizontal inset) */
+  [data-runtime-view="settings"] .settings-route-nav,
+  .runtime-workspace-body[data-runtime-view="settings"] .settings-route-nav {
+    position: static !important;
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    max-height: none !important;
+    padding: 10px 0 8px !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+  }
+
+  /* Nav items: flex row, horizontal scroll */
+  [data-runtime-view="settings"] .settings-route-nav-items,
+  .runtime-workspace-body[data-runtime-view="settings"] .settings-route-nav-items {
+    display: flex !important;
+    gap: 4px !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    overscroll-behavior-x: contain !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  [data-runtime-view="settings"] .settings-route-nav-items::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  /* Nav group headings: hidden in horizontal layout */
+  [data-runtime-view="settings"] .settings-route-nav-group h4 {
+    display: none !important;
+  }
+  [data-runtime-view="settings"] .settings-route-nav-group {
+    display: contents !important;
+  }
+
+  /* Tab pill: compact, icon + label */
+  [data-runtime-view="settings"] .settings-route-tab,
+  .runtime-workspace-body[data-runtime-view="settings"] .settings-route-tab {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 34px !important;
+    height: 34px !important;
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    gap: 6px !important;
+    padding: 0 12px !important;
+    white-space: nowrap !important;
+    border-radius: 8px !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  [data-runtime-view="settings"] .settings-route-tab:hover {
+    background: rgba(15, 23, 42, 0.05) !important;
+  }
+  [data-runtime-view="settings"] .settings-route-tab.is-active {
+    background: rgba(15, 159, 143, 0.1) !important;
+    border-color: rgba(15, 159, 143, 0.18) !important;
+    color: #087f73 !important;
+    box-shadow: none !important;
+  }
+  [data-runtime-view="settings"] .settings-route-tab-icon {
+    width: 20px !important;
+    height: 20px !important;
+    display: inline-flex !important;
+  }
+  [data-runtime-view="settings"] .settings-route-tab-label {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    text-align: left !important;
+  }
+
+  /* Content: full width, flush with nav in the body grid */
+  [data-runtime-view="settings"] .settings-route-content,
+  .runtime-workspace-body[data-runtime-view="settings"] .settings-route-content {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  /* Screen flush for settings — body provides the padding */
+  [data-runtime-view="settings"] .runtime-workspace-screen {
+    padding: 0 !important;
+  }
+}
+
+/* ── 4. Tablet: show "New" action button in mobile header ── */
+@media (max-width: 1280px) and (min-width: 769px) {
+  .runtime-workspace-mobile-actions {
+    display: flex !important;
+    align-items: center;
+    gap: 6px;
+  }
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+  }
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+}
+
+/* ── 5. Phone (≤768): compact mobile header ── */
+@media (max-width: 768px) {
+  .runtime-workspace-mobile-header {
+    min-height: 44px !important;
+    padding: 4px 10px !important;
+    gap: 6px !important;
+  }
+
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action {
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+  }
+  .runtime-workspace-mobile-header .runtime-workspace-mobile-action svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  .runtime-workspace-mobile-title {
+    min-height: 32px !important;
+    padding: 0 8px !important;
+  }
+  .runtime-workspace-mobile-title-text {
+    font-size: 14px !important;
+    font-weight: 600 !important;
+  }
+
+  .runtime-workspace-mobile-actions {
+    gap: 4px !important;
+  }
+
+  /* Sync body grid row 1 to header height */
+  .runtime-workspace-body,
+  [data-runtime-view="conversation"] .runtime-workspace-body,
+  [data-runtime-view="chatRuntime"] .runtime-workspace-body {
+    grid-template-rows: 44px minmax(0, 1fr) auto !important;
+  }
+
+  /* Phone settings: body provides horizontal inset */
+  [data-runtime-view="settings"] .settings-route-body,
+  .runtime-workspace-body[data-runtime-view="settings"] > .settings-route-body {
+    padding: 0 14px 14px !important;
+  }
+  [data-runtime-view="settings"] .settings-route-nav,
+  .runtime-workspace-body[data-runtime-view="settings"] .settings-route-nav {
+    padding: 8px 0 6px !important;
+  }
+  [data-runtime-view="settings"] .settings-route-content,
+  .runtime-workspace-body[data-runtime-view="settings"] .settings-route-content {
+    padding: 0 !important;
+  }
+  [data-runtime-view="settings"] .settings-route-tab,
+  .runtime-workspace-body[data-runtime-view="settings"] .settings-route-tab {
+    min-height: 32px !important;
+    height: 32px !important;
+    padding: 0 10px !important;
+  }
+  [data-runtime-view="settings"] .settings-route-tab-label {
+    font-size: 12.5px !important;
+  }
 }

@@ -399,7 +399,7 @@ export function RuntimeWorkspaceShell({
         "data-runtime-composer-interactive": composerInteractiveState ? "true" : "false",
       }}
       mobileHeader={mobileHeaderPlacement === "body" ? mobileHeader : undefined}
-      workspaceHeader={workspaceHeader}
+      workspaceHeader={mobileHeaderPlacement ? undefined : workspaceHeader}
       workspaceContent={workspaceContent}
       workspaceFooter={workspaceFooter}
     />

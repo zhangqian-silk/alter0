@@ -343,7 +343,7 @@ function useConversationWorkspaceController(
   const captureTimelineViewportAnchor = useViewportScrollAnchor({
     active: inputFocused,
     containerRef: timelineScreenRef,
-    enabled: workbench.isMobileViewport,
+    enabled: workbench.isTouchViewport,
     focusSelector: "[data-composer-input='conversation']",
   });
   const toggleProcess = useCallback((messageID: string) => {
@@ -840,7 +840,7 @@ function useConversationWorkspaceController(
     [emptyStateDescription, emptyStateTitle],
   );
   const timelineOverlay = useMemo(
-    () => (workbench.isMobileViewport && inputFocused ? null : (
+    () => (workbench.isTouchViewport && inputFocused ? null : (
       <ScrollJumpStrip
         scope="chat"
         language={language}
@@ -850,7 +850,7 @@ function useConversationWorkspaceController(
         watchKey={`${runtime.route}:${timelineMessages.length}:${isEmptyState ? "empty" : "active"}`}
       />
     )),
-    [inputFocused, isEmptyState, language, runtime.route, timelineMessages.length, workbench.isMobileViewport],
+    [inputFocused, isEmptyState, language, runtime.route, timelineMessages.length, workbench.isTouchViewport],
   );
   const timelineTopContent = useMemo(() => {
     if (hiddenMessageCount <= 0 && !hasRemoteEarlierMessages) {
@@ -1173,7 +1173,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   };
 
   const handleSubmitPointerDownCapture = (event: PointerEvent<HTMLButtonElement>) => {
-    if (!workbench.isMobileViewport || event.pointerType === "mouse" || mobileSubmitGestureLockRef.current) {
+    if (!workbench.isTouchViewport || event.pointerType === "mouse" || mobileSubmitGestureLockRef.current) {
       return;
     }
     event.preventDefault();
@@ -1181,7 +1181,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   };
 
   const handleSubmitTouchStartCapture = (event: TouchEvent<HTMLButtonElement>) => {
-    if (!workbench.isMobileViewport || mobileSubmitGestureLockRef.current) {
+    if (!workbench.isTouchViewport || mobileSubmitGestureLockRef.current) {
       return;
     }
     event.preventDefault();

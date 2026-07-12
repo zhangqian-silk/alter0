@@ -98,6 +98,24 @@
   --composer-max-width: 880px;
   --page-padding-x: 24px;
 
+  /* --- Composer layout (mobile defaults, scaled up via media queries below) --- */
+  --composer-shell-pad-top: 8px;
+  --composer-shell-pad-x: 16px;
+  --composer-shell-pad-bottom: 10px;       /* base, safe-area added at use-site */
+  --composer-form-pad-top: 10px;
+  --composer-form-pad-x: 12px;
+  --composer-form-pad-bottom: 8px;
+  --composer-form-gap: 6px;
+  --composer-form-radius: 18px;
+  --composer-textarea-pad-v: 8px;
+  --composer-textarea-pad-h: 6px;
+  --composer-textarea-min-h: 48px;
+  --composer-toolbar-btn: 36px;
+  --composer-toolbar-gap: 6px;
+  --composer-form-shadow: none;
+  --composer-form-border: var(--border-default);
+  --composer-form-bg: var(--bg-surface);
+
   /* --- Z-index layers --- */
   --z-base: 1;
   --z-header: 5;
@@ -180,6 +198,11 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   --shadow-focus: 0 0 0 3px rgba(113, 113, 122, 0.2);
 
+  /* --- Composer visuals (dark) --- */
+  --composer-form-border: var(--border-default);
+  --composer-form-bg: var(--bg-surface);
+  --composer-form-shadow: none;
+
   /* --- Legacy aliases --- */
   --shell-bg: var(--bg-page);
   --shell-surface: var(--bg-overlay);
@@ -204,5 +227,48 @@
   :root {
     --duration-fast: 0.01ms;
     --duration-normal: 0.01ms;
+  }
+}
+
+/* ------------------------------------------------------------
+   Composer tokens — Tablet (769–1280px)
+   ------------------------------------------------------------ */
+@media (min-width: 769px) {
+  :root {
+    --composer-shell-pad-top: 10px;
+    --composer-shell-pad-x: 20px;
+    --composer-shell-pad-bottom: 12px;
+    --composer-form-pad-top: 12px;
+    --composer-form-pad-x: 14px;
+    --composer-form-pad-bottom: 10px;
+    --composer-form-gap: 8px;
+    --composer-form-radius: 20px;
+    --composer-textarea-pad-v: 10px;
+    --composer-textarea-pad-h: 8px;
+    --composer-textarea-min-h: 60px;
+    --composer-toolbar-btn: 36px;
+    --composer-toolbar-gap: 8px;
+  }
+}
+
+/* ------------------------------------------------------------
+   Composer tokens — Desktop (≥1281px)
+   ------------------------------------------------------------ */
+@media (min-width: 1281px) {
+  :root {
+    --composer-shell-pad-top: 12px;
+    --composer-shell-pad-x: clamp(24px, 4vw, 42px);
+    --composer-shell-pad-bottom: 14px;
+    --composer-form-pad-top: 16px;
+    --composer-form-pad-x: 18px;
+    --composer-form-pad-bottom: 12px;
+    --composer-form-gap: 10px;
+    --composer-form-radius: 24px;
+    --composer-textarea-pad-v: 10px;
+    --composer-textarea-pad-h: 8px;
+    --composer-textarea-min-h: 78px;
+    --composer-toolbar-btn: 38px;
+    --composer-toolbar-gap: 10px;
+    --composer-form-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   }
 }
