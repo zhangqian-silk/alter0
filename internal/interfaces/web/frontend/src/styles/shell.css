@@ -15788,6 +15788,28 @@ select:focus-visible,
   [data-runtime-composer-view="conversation"] .runtime-composer-toolbar {
     margin-top: 6px !important;
   }
+  /* Keep the transient request notice inside the remote single-row tool layout. */
+  .runtime-composer-toolbar:has(.runtime-composer-meta.is-request-notice),
+  [data-runtime-view="conversation"] .runtime-composer-toolbar:has(.runtime-composer-meta.is-request-notice),
+  [data-runtime-composer-view="conversation"] .runtime-composer-toolbar:has(.runtime-composer-meta.is-request-notice) {
+    align-items: center;
+    flex-wrap: nowrap !important;
+  }
+  .runtime-composer-toolbar:has(.runtime-composer-meta.is-request-notice) .runtime-composer-toolbar-start,
+  [data-runtime-view="conversation"] .runtime-composer-toolbar:has(.runtime-composer-meta.is-request-notice) .runtime-composer-toolbar-start,
+  [data-runtime-composer-view="conversation"] .runtime-composer-toolbar:has(.runtime-composer-meta.is-request-notice) .runtime-composer-toolbar-start {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .runtime-composer-meta.is-request-notice {
+    min-width: 0;
+    line-height: 1.3;
+    white-space: normal;
+  }
+  .runtime-composer-toolbar:has(.runtime-composer-meta.is-request-notice) .runtime-composer-toolbar-end {
+    flex: 0 0 auto;
+  }
 }
 
 /* ── 3. Tablet (769–1280): settings horizontal tabs + full-width content ── */

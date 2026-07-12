@@ -1067,8 +1067,8 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
   const mobileSubmitGestureLockRef = useRef(false);
   const composerPlaceholder = language === "zh" ? "输入消息，继续推进当前工作区..." : "Type a message to continue this workspace...";
   const composerSend = language === "zh" ? "发送" : "Send";
-  const composerMetaLabel = composerAttachmentError || undefined;
-  const composerBusy = composerRuntime.busy;
+  const composerMetaLabel = composerAttachmentError || composerRuntime.requestNotice || undefined;
+  const composerBusy = composerRuntime.busy || composerRuntime.submitting;
   const runtimeComposerKind = "chat";
   const composerAddAttachmentLabel = language === "zh" ? "添加附件" : "Add attachment";
   const repositorySelectLabel = language === "zh" ? "选择 GitHub 仓库" : "Select GitHub repository";
@@ -1498,6 +1498,7 @@ const ConversationComposerSection = memo(function ConversationComposerSection({
         "data-runtime-config-surface": repositoryPickerOpen ? "repository" : "conversation",
       }}
       metaContent={composerMetaLabel}
+      metaClassName={!composerAttachmentError && composerRuntime.requestNotice ? "is-request-notice" : undefined}
       addAttachmentLabel={composerAddAttachmentLabel}
       addAttachmentButtonProps={{ disabled: composerBusy }}
       onAddAttachment={handleComposerAttachmentPicker}

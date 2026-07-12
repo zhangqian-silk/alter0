@@ -136,6 +136,15 @@ describe("CSS architecture", () => {
       expect(shell).toContain("--mobile-viewport-offset-top: 0px;");
       expect(shell).toContain("--keyboard-offset: 0px;");
     });
+
+    it("keeps request notices inside the remote mobile composer toolbar layout", () => {
+      expect(shell).toMatch(
+        /@media \(max-width: 768px\) \{[\s\S]*?\.runtime-composer-toolbar:has\(\.runtime-composer-meta\.is-request-notice\)[\s\S]*?flex-wrap:\s*nowrap !important;/,
+      );
+      expect(shell).toMatch(
+        /\.runtime-composer-toolbar:has\(\.runtime-composer-meta\.is-request-notice\) \.runtime-composer-toolbar-start[\s\S]*?flex:\s*1 1 0;[\s\S]*?overflow:\s*hidden;/,
+      );
+    });
   });
 
   describe("theme.css — visual-only overrides (no layout changes)", () => {

@@ -127,13 +127,13 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - `Chat` 需复用 Chat session store 作为服务端会话事实来源，记录 `session_id -> title / skills / status / turns / pinned / updated_at` 等最小恢复视图；`updated_at` 是会话摘要与详情合并的新鲜度依据，不再维护独立版本字段。浏览器本地快照只作为次级兜底，不承担会话存在性的唯一事实来源。
 - 删除会话时同步清理关联任务记录与会话工作区。
 - `Chat` 会话列表统一由左侧主导航承载，使用 `Sessions` 标题与 `New` 新建入口；移动端通过同一个左侧导航抽屉展示当前Chat 会话列表。运行页互相切换时，左侧会话列表的 `Sessions` 标题与 `New` 按钮由主导航稳定持有，不随页面切换重建；当前运行页只更新数量文案、列表内容和 `New` 动作绑定，rail 数据尚未注册时使用稳定 fallback rail，已访问过的运行页切回时先复用该 route 最近一次有效 rail body，不得先清空公共 rail、回退占位 rail 再恢复。从 Chat 切到 Settings 时复用当前已注册 Chat 会话 rail，不因页面切换主动刷新；直接打开 `/settings` 或当前没有已注册会话 rail 时，才挂载 Chat session 数据源并请求 `/api/chat/sessions`，以服务端返回的真实会话或真实空列表渲染；不得把本地 fallback 的单条 `New` 占位当作 Settings 侧栏会话列表。列表项主体只展示标题，真实会话尾侧固定提供单个三点更多按钮；展开菜单承载置顶、查看详情与删除操作，查看详情会聚焦该会话并打开 `Details` 面板且不主动收起已打开的移动会话抽屉，删除操作必须二次确认后才进入会话删除流程。处理中会话在标题旁显示 loading，其他状态不显示状态灯、时间、会话标识、Skill 标签或额外摘要。运行页空列表、Chat 本地空白草稿和 Chat 本地空白草稿优先展示一条 active `New` 占位会话；`New` 草稿/占位只作为输入入口，不显示三点菜单，不支持置顶、详情或删除，同一路径内重复点击 `New` 只聚焦既有空白虚拟会话，不创建多个空会话。`/chat` 首次发送时创建真实 Chat session；短 canonical id 继续用于接口、持久化、URL 与工作区隔离，不直接作为列表展示值。
-- `Chat` 的会话列表项与 workspace header 状态按钮共享同一会话状态语义：前端按当前 assistant 消息与任务态派生 `ready / busy / failed / interrupted`；其中 `streaming / queued / running / in_progress`、空 assistant 占位与挂起任务映射为 `busy`，错误、失败、取消与显式 `message.error` 映射为 `failed`，请求已被接受但恢复失败时映射为 `interrupted`，其余稳定态映射为 `ready`。列表项只在 `busy` 时于标题旁显示 loading，`ready / failed / interrupted` 不显示行内状态灯；workspace header 的状态按钮可见层只显示信号，状态名称只保留给读屏与悬浮语义。
+- `Chat` 的会话列表项与 workspace header 状态按钮共享同一后端会话状态语义：前端只合并服务端 input、summary、detail 与 update 返回的 session/turn 状态，不从 transport failure、Composer submitting、空 assistant 占位或客户端错误消息派生 `busy / failed / interrupted`。列表项只在后端 `busy` 时于标题旁显示 loading，`ready / failed / interrupted` 不显示行内状态灯；workspace header 的状态按钮可见层只显示信号，状态名称只保留给读屏与悬浮语义。
 
 ## 消息结果与恢复
 
 ### Chat 消息语义
 
-- `message` 是前端时间线展示单元：一条 user message 对应用户输入、附件和发送时间，一条 assistant message 对应同一 turn 的最终正文与过程披露入口。message 由服务端 turn 派生，本地 queued message 只作为发送后的临时乐观状态，服务端 turn 回来后按 message id/turn id 压缩替换。
+- `message` 是前端时间线展示单元：一条 user message 对应用户输入、附件和发送时间，一条 assistant message 对应同一 turn 的最终正文与过程披露入口。message 只由服务端 turn 派生；提交期间不创建本地 queued message，服务端确认前的状态只存在于 Composer。
 - `turn` 是一次用户输入到一次运行时结果的服务端事实单元，包含 `prompt`、输入附件、运行状态、`final_output`、开始/结束时间和 `runtime_trace_events`。同一会话内 turn 严格追加，前端渲染时固定 user message 在前、assistant/Thinking message 在后。
 - `event` 是会话、turn 或运行过程的增量事实。增量轮询里的 event 描述 session/turn 状态变化；`runtime_trace_events` 描述单个 turn 内的过程步骤，用于 `Thinking / 已思考` 披露。事件详情可通过 `/turns/{turn_id}/events/{event_id}` 懒加载，避免把大段 tool output、thinking 或日志放入轮询响应。
 - Chat 发送后由 Chat session 状态进入 `busy`；执行完成或失败后，用 input 返回结果或 Chat session 详情恢复当前消息区。
@@ -149,11 +149,11 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 
 - 会话更新采用“HTTP 快照 + owner 增量轮询 + bounded detail 兜底”模型。页面首次进入、刷新和切会话时先读取会话列表，并用浏览器缓存立即恢复当前会话首屏；集合接口返回空列表或短列表时只能作为 summary patch，不能清空本地可见会话、active session 或已加载详情。随后对当前 active server session 读取一次最新单会话详情快照。普通前台恢复仅处理本地 `local_running / recovering`、缓存不完整或可恢复占位；稳定 `ready` 会话不自动读取会话列表、详情或 updates。当前 route owner 的 `latest_update_id` 只在本地存在同步意图或显式恢复时续接 `/api/chat/sessions/updates`，并按 `update_id / updated_at` 把增量 patch 到本地缓存。
 - 服务端在接受输入后必须立即持久化 `user` turn、`busy` 状态和首个增量事件，再启动 CLI Runtime。增量轮询晚于输入提交、页面刷新或短暂断开时，客户端通过详情快照和 `after_update_id` 续接缺口，不重新提交同一条用户消息。
-- 前端发送输入时先把本轮 user 消息、附件引用、busy 状态、活动会话和最近会话列表同步写入当前 route 的内存缓存、长期会话快照和轻量信息快照，再提交可见状态渲染。浏览器刷新、路由切换或移动端 WebView 恢复时，首屏可直接使用这些快照恢复已发送消息，不等待 input 请求完成。
-- 用户提交输入后，当前活动会话的消息区立即追加 user 消息并回到底部，workspace header、移动端标题按钮和左侧会话列表项同步进入 `busy`。若随后集合接口或详情接口返回较旧的 `ready` 摘要，但没有带来完整 assistant 终态、失败态或更新后的 `updated_at`，前端不得用该旧摘要覆盖本地 `local_running / recovering` 状态。
+- 前端发送输入时只设置当前 Composer 的非持久化 `submitting`，保留草稿、附件与仓库选择，不向 route 会话状态、消息时间线、长期会话快照或轻量信息快照写入推测事实。只有服务端 input 确认返回 session/turn 后，才合并 user 消息、附件引用与业务状态，并清理对应草稿。
+- 用户提交输入后，Composer 临时禁用；当前活动会话消息区、workspace header、移动端标题按钮和左侧会话列表保持原后端状态。服务端确认接受后，前端才显示返回的 user turn 与 `busy / ready / failed`；较旧 summary/detail 必须按请求代次和 `updated_at` 整体拒绝，不得覆盖更新的后端事实。
 - 左侧主导航会话列表跟随当前 route owner 的增量轮询。用户停留在某个会话时，其他运行中会话的标题、置顶、loading 和终态仍通过同一 owner updates 响应更新；稳定完成且本地缓存完整的会话不因轮询保持周期详情刷新。
-- 轮询状态只作为轻量诊断态存在。请求失败、退避或页面隐藏时，不在消息区追加错误消息，不弹出失败 toast，不改变会话列表排序；可在 Details 或无障碍提示中暴露“正在同步”语义，但不得遮挡输入、导航和消息阅读。
-- 网络失败只影响下一次增量读取，不改变 session、turn 或 assistant 消息的业务状态。前端不得因为轮询请求失败、网络切换、浏览器刷新、bfcache 恢复或标签页隐藏而把当前会话标记为 `failed`。只有服务端详情或增量事件明确返回 `turn.failed / session.failed / interrupted`，或单会话详情确认该会话不存在，才允许进入失败或中断态。
+- 请求状态只作为 Composer 临时态存在。input transport failure 在工具栏 meta 显示约数秒的中性弱提示；结构化 HTTP 后端错误可复用该位置显示安全服务端消息。提示不进入消息区、toast、Details、会话列表或缓存，不改变会话排序与状态，消失后 Composer 保持可重试。
+- input、updates、detail 或 list 的网络失败只影响对应读取，不改变 session、turn 或 assistant 消息的业务状态。input transport failure 后前端可静默强制读取一次当前详情，以处理请求已到达后端但响应丢失的歧义；不得自动重发 POST。只有服务端详情或增量事件明确返回 `turn.failed / session.failed / interrupted`，或单会话详情确认该会话不存在，才允许进入失败或中断态。
 - 前端维护每个 owner 的 `latest_update_id` 与每个 session 的 `updated_at`。收到旧 `updated_at`、重复 `update_id` 或已应用 turn/message id 时必须幂等丢弃；由于不可见事件过滤和预算截断会让可见 `update_id` 不连续，前端只用 `latest_update_id` 续接，不按连续数字判断丢包。发现 `resync_required=true`、本地 `updated_at` 低于服务端摘要或本地缓存不完整时，立即补拉对应单会话详情，并按既有 turns 分页合并规则恢复。若服务重启后无法续接旧 `after_update_id`，服务端必须返回 owner 级 `resync_required`；该响应即使不携带 `session_id`，前端也必须补拉当前 owner 下仍处于 `local_running / recovering` 的 runtime-backed 会话详情。
 - 服务端会话列表、详情、turns、entries 与输入入口必须在返回业务状态或执行 busy 检查前校准孤儿运行态：当会话仍标记为 `busy` 或存在 live turn，但当前进程没有 `turnRunning / turnCancel` 对应的 live worker 时，服务端将该 turn 与 session 收敛为 `interrupted`、追加 `Interrupted` 过程事件和系统 entry，并立即写回 session store。该校准只作用于无 live worker 的会话，不影响当前进程内仍在运行的请求。
 - 更早历史分页不属于实时刷新链路。稳定会话存在 `turns_paging.has_more_before=true` 时，前端不得自动后台请求 `turn_before` 并把结果实时合入当前可见时间线；首次进入、刷新和 page-activation 的单会话详情校准也只读取最新页。只有用户点击 `Load earlier messages / 加载更早消息` 或滚动到顶部触发历史加载，才允许请求对应分页并在保持阅读锚点后展开。本地已确认 `has_more_before=false` 后，最新 1 个 turn 的 bounded detail 或 owner updates 不得因服务端页自身存在更早数据而重新打开本地更早历史入口。
@@ -171,21 +171,21 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 运行页初始化时，服务端会话详情回填不得覆盖当前浏览器里已经新追加、但服务端详情请求发起时尚未落库的本地消息；本地新消息与当前请求占位优先级高于陈旧详情响应。
 - 若运行页刷新后服务端会话集合接口暂时未包含当前活动 `session_id`，前端仍需保留本地恢复出的该条会话，并主动尝试按 `GET /api/chat/sessions/{session_id}` 补拉详情；在单会话详情也确认不存在之前，不得立刻创建新的空白会话顶替当前活动会话。
 - 若运行页刷新后服务端会话集合接口暂时未包含某条最近会话，即使该会话当前并非活动会话，前端也不得立刻把它从 `Sessions` 列表移除；左侧最近会话列表以本地快照和服务端结果合并视图为准，只有在用户显式删除或后续回源明确确认不存在时才允许消失。
-- Chat 的状态更新链路直接复用 Chat session：输入接收后立即标记当前会话为 `busy`，完成后标记为 `ready`，请求失败时标记为 `failed`。输入 payload 不含 `skill_ids`；Codex 在进程启动时从全局原生 Skill 目录发现能力。
+- Chat 的状态更新链路直接复用 Chat session：后端输入接收后标记当前会话为 `busy`，完成后标记为 `ready`，runtime 执行失败时标记为 `failed`。HTTP 拒绝与浏览器 transport failure 不由前端转换为 session failure。输入 payload 不含 `skill_ids`；Codex 在进程启动时从全局原生 Skill 目录发现能力。
 - `travel` 会话若在本轮执行中先收到了正文攻略，但 HTML 页与 `travel` 子域名尚未就绪，服务端需继续在同一轮完成自动页面固化与发布收口；前端只在自动收口结束后接收最终成功态或明确阻塞态，不把“纯文本成功但无页面”的中间态当作完成结果。
-- 浏览器本地缓存中残留的 `streaming`、`Thinking...` 或 `Load failed` 临时消息在页面恢复时必须先按 session id 回源详情或读取 owner 增量；只有服务端确认没有对应已接受 turn、没有可恢复运行状态且没有后续事件时，才允许转为明确失败态。
-- 若请求断开且没有可用正文，前端先显示可恢复状态并尝试快照回源与增量轮询；失败文案只能在服务端确认不可恢复后出现，并需要明确说明可刷新页面恢复最新已保存回复。
-- 若请求断开但服务端已接受本轮消息，前端需先拉取当前会话详情，用服务端已持久化的 `assistant` 消息覆盖本地 `Thinking...`、`Load failed` 或其他临时失败态；该恢复链路不得通过重新提交同一条用户消息来实现。
+- 浏览器本地缓存中残留的旧版 `streaming`、`Thinking...` 或 `Load failed` 客户端消息在页面恢复时必须按 session id 回源详情或读取 owner 增量，并以服务端消息覆盖；客户端占位不得自行转为明确失败态。
+- 若请求断开且没有可用正文，前端保持原会话不变，仅在 Composer 显示短暂弱提示并静默回源详情；会话失败文案只能来自服务端确认的失败事实。
+- 若请求断开但服务端已接受本轮消息，前端需拉取当前会话详情并合并服务端已持久化的 user/assistant 消息；该恢复链路不得自动重新提交同一条用户消息。
 - 页面刷新后，若当前活动会话存在本地失败态流式消息，前端需优先拉取服务端会话消息，并用已持久化结果覆盖本地失败态；即使服务端集合接口已经返回了该会话的摘要项，只要未附带完整消息，也必须继续补拉单会话详情。
 - 页面刷新、前后台恢复或集合接口刷新后，若服务端集合返回的当前会话消息数量短于浏览器侧已追加历史，且本地仍存在本轮用户消息、`Thinking...`、`streaming` assistant 或其他可恢复状态，前端必须继续保留本地时间线并等待单会话详情或后续集合结果确认，不得把刚发送的消息从 UI 中移除。
 - 若当前活动会话已经从服务端恢复出最新 `user` 消息，但该 user 之后尚无 assistant、任务或失败消息，运行页继续按待恢复会话处理并重试详情接口；只有拿到稳定 assistant 或明确失败态后，才停止本轮恢复。
-- `Chat` 的输入锁只由真实运行中状态触发：会话或消息处于 `busy / running / queued / in_progress / local_running / recovering` 时禁止重复提交；`failed / interrupted / exited` 以及无 assistant 输出的失败 turn 不得继续禁用 Composer。请求失败时服务端 session 与 turn 必须同步收口为 `failed`，下一条输入可在同一 session 中重新进入 busy；历史数据即使仍为 `ready` summary，只要详情中的最新 turn/message 已明确进入 `failed / canceled / interrupted` 终态，也必须立即解锁，不依赖 `updated_at` 严格晚于 `finished_at`。自动恢复轮询只覆盖本机产生的 `local_running / recovering` 同步意图；普通服务端 `busy / running` 摘要不触发后台 updates/detail，用户可通过页面激活补偿或手动刷新恢复跨设备变化，终态会话可直接发送下一条输入并复用原会话恢复运行态。
+- `Chat` 的输入锁只由服务端真实运行中状态或当前 Composer 非持久化 `submitting` 触发；`failed / interrupted / exited` 不得继续禁用 Composer。服务端 runtime 执行失败时 session 与 turn 同步收口为 `failed`，下一条输入可在同一 session 中重新进入 busy；浏览器请求失败只解除 submitting 并保留草稿，不写失败 turn。自动恢复轮询使用独立的本机同步意图，不把该意图暴露或持久化为 session 状态；终态会话可直接发送下一条输入并复用原会话恢复运行态。
 - 运行页恢复依赖会话详情快照补拉与 owner 增量轮询，不再通过后台 Task API 轮询任务状态。
 
 ### 渲染策略
 
 - Chat 消息区使用逐条 patch 与浏览器逐帧合并刷新；Chat input 结果或中断恢复到达时立即收口最终状态。
-- 运行态消息合并以 session id、turn id 和 message id 为稳定键；本地 queued user 消息在服务端返回对应 turn 后被服务端 user/assistant 消息替换或补齐，不产生重复用户消息。同一 turn 内必须固定按 user 消息在前、assistant/Thinking 消息在后的顺序渲染；当增量 patch、input 响应、本地 queued user 或详情回源的时间戳不一致时，不能只按 `created_at / at` 排序导致 Thinking 出现在对应用户消息之前。无重叠但带稳定 assistant 结果的新 turn 应追加到现有历史后再按稳定 turn/message 顺序排序，不得因为响应页较短而丢弃已加载历史或新结果。分页状态合并以本地已加载消息集为准：最新 bounded 页可以补充新 turn，但不能把已经耗尽的本地历史重新标记为可继续加载。
+- 运行态消息合并以 session id、turn id 和 message id 为稳定键；input、detail 与 update 返回同一服务端 turn 时幂等合并，不产生重复用户消息。同一 turn 内必须固定按 user 消息在前、assistant/Thinking 消息在后的顺序渲染；当增量 patch、input 响应或详情回源的时间戳不一致时，不能只按 `created_at / at` 排序导致 Thinking 出现在对应用户消息之前。无重叠但带稳定 assistant 结果的新 turn 应追加到现有历史后再按稳定 turn/message 顺序排序，不得因为响应页较短而丢弃已加载历史或新结果。分页状态合并以本地已加载消息集为准：最新 bounded 页可以补充新 turn，但不能把已经耗尽的本地历史重新标记为可继续加载。
 - Process 展开收起与运行状态回填不得导致整段消息列表重建，也不得在长输出期间持续占满主线程导致导航、发送、详情和会话切换按钮失去响应。
 - 时间线装配需按单条消息缓存稳定渲染结果；当仅当前 assistant 占位或结果变化时，未变化的历史消息不得重新生成 Markdown HTML、Process step 树或 runtime timeline item。
 - 仅有 Composer 草稿变化时，Conversation 时间线、Markdown 正文与 `Process` 展示不得重新解析或整段重建；性能热点需收敛在输入区本身。

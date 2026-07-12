@@ -75,6 +75,12 @@ function RuntimeHarness() {
       <button type="button" onClick={() => void runtime.sendPrompt("Inspect this image")}>
         send
       </button>
+      <button type="button" onClick={() => runtime.setDraft("Retry this prompt")}>
+        set draft
+      </button>
+      <button type="button" onClick={() => void runtime.sendPrompt()}>
+        send draft
+      </button>
       <output data-testid="user-text">{userMessage?.text || ""}</output>
       <output data-testid="assistant-text">{assistantMessage?.text || ""}</output>
       <output data-testid="assistant-texts">
@@ -106,6 +112,9 @@ function RuntimeHarness() {
         refresh active
       </button>
       <output data-testid="active-session-status">{runtime.activeSession?.status || ""}</output>
+      <output data-testid="composer-submitting">{String(runtime.submitting)}</output>
+      <output data-testid="composer-request-notice">{runtime.requestNotice}</output>
+      <output data-testid="composer-draft">{runtime.draft}</output>
     </div>
   );
 }
@@ -880,7 +889,7 @@ describe("ConversationRuntimeProvider", () => {
       "/api/chat/sessions/c_finishedchat0000/input",
       expect.objectContaining({ input: "Inspect this image" }),
     ));
-    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running"));
+    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy"));
     await act(async () => {
       detailRead.resolve({
         session: {
@@ -3081,7 +3090,8 @@ describe("ConversationRuntimeProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions", {}));
-    await waitFor(() => expect(screen.getByTestId("user-text")).toHaveTextContent("Inspect this image"));
+    await waitFor(() => expect(screen.getByTestId("composer-submitting")).toHaveTextContent("true"));
+    expect(screen.getByTestId("user-text")).toHaveTextContent("");
     expect(screen.getByTestId("active-session-title")).toHaveTextContent("Underlying runtime title");
 
     inputRequest.resolve({
@@ -3103,6 +3113,7 @@ describe("ConversationRuntimeProvider", () => {
       },
     });
     await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Done"));
+    expect(screen.getByTestId("user-text")).toHaveTextContent("Inspect this image");
   });
 
   it("loads Chat sessions through the isolated chat ChatRuntime scope", async () => {
@@ -3718,7 +3729,7 @@ describe("ConversationRuntimeProvider", () => {
 		await waitFor(() => expect(screen.getByTestId("bound-repository")).toHaveTextContent("owner/repository"));
 	});
 
-  it("marks the chat session local-running without creating local stream process events after sending a prompt", async () => {
+  it("keeps submission state local without changing the session before backend acknowledgement", async () => {
     vi.stubGlobal("fetch", vi.fn());
     apiClientMock.post.mockImplementation(async (path: string) => {
       if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
@@ -3736,15 +3747,18 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    await waitFor(() => expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running"));
+    await waitFor(() => expect(screen.getByTestId("composer-submitting")).toHaveTextContent("true"));
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
+    expect(screen.getByTestId("user-text")).toHaveTextContent("");
     expect(screen.getByTestId("assistant-text")).toHaveTextContent("");
     expect(screen.getByTestId("assistant-process-count")).toHaveTextContent("0");
     expect(screen.getByTestId("assistant-process-status")).toHaveTextContent("");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").not.toContain("local_running");
     expect(apiClientMock.post).toHaveBeenCalledWith("/api/chat/sessions/c_51jttwiv4yggqagk/input", expect.any(Object));
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("caches and appends the optimistic Chat user message before the input response completes", async () => {
+  it("waits for backend acknowledgement before adding a submitted prompt to session history", async () => {
     const inputResponse = deferred<unknown>();
     apiClientMock.post.mockImplementation(async (path: string) => {
       if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
@@ -3762,9 +3776,10 @@ describe("ConversationRuntimeProvider", () => {
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    await waitFor(() => expect(screen.getByTestId("user-text")).toHaveTextContent("Inspect this image"));
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
-    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").toContain("local_running");
+    await waitFor(() => expect(screen.getByTestId("composer-submitting")).toHaveTextContent("true"));
+    expect(screen.getByTestId("user-text")).toHaveTextContent("");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").not.toContain("local_running");
 
     inputResponse.resolve({
       session: {
@@ -3785,6 +3800,93 @@ describe("ConversationRuntimeProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("assistant-text")).toHaveTextContent("Stored response"));
     expect(screen.getByTestId("user-text")).toHaveTextContent("Inspect this image");
+    expect(screen.getByTestId("composer-submitting")).toHaveTextContent("false");
+  });
+
+  it("treats a transport failure as a weak composer notice without mutating the session", async () => {
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
+        throw new Error("Load failed");
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(screen.getByTestId("composer-request-notice")).toHaveTextContent("Network request interrupted"));
+    expect(screen.getByTestId("composer-submitting")).toHaveTextContent("false");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
+    expect(screen.getByTestId("user-text")).toHaveTextContent("");
+    expect(screen.getByTestId("assistant-texts")).not.toHaveTextContent("Load failed");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").not.toContain("Load failed");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").not.toContain("local_running");
+  });
+
+  it("shows a backend rejection message only in the composer without mutating the session", async () => {
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === "/api/chat/sessions/c_51jttwiv4yggqagk/input") {
+        throw Object.assign(new Error("Prompt rejected by policy"), { status: 422, code: "policy_rejected" });
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(screen.getByTestId("composer-request-notice")).toHaveTextContent("Prompt rejected by policy"));
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
+    expect(screen.getByTestId("assistant-texts")).toHaveTextContent("");
+    expect(window.localStorage.getItem(LONG_TERM_SESSION_SNAPSHOT_STORAGE_KEY) || "").not.toContain("Prompt rejected by policy");
+  });
+
+  it("keeps a first-message draft visible after session creation succeeds but input transport fails", async () => {
+    window.sessionStorage.clear();
+    apiClientMock.get.mockImplementation(async () => ({ items: [] }));
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === "/api/chat/sessions") {
+        return {
+          session: {
+            id: "c_createdbeforerr0",
+            title: "New",
+            status: "ready",
+            created_at: "2026-04-23T04:00:00Z",
+            turns: [],
+          },
+        };
+      }
+      if (path === "/api/chat/sessions/c_createdbeforerr0/input") {
+        throw new Error("Load failed");
+      }
+      return {};
+    });
+
+    render(
+      <ConversationRuntimeProvider route="chat" language="en">
+        <RuntimeHarness />
+      </ConversationRuntimeProvider>,
+    );
+
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith("/api/chat/sessions"));
+    fireEvent.click(screen.getByRole("button", { name: "set draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "send draft" }));
+
+    await waitFor(() => expect(screen.getByTestId("composer-request-notice")).toHaveTextContent("Network request interrupted"));
+    expect(screen.getByTestId("composer-draft")).toHaveTextContent("Retry this prompt");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("ready");
+    expect(screen.getByTestId("user-text")).toHaveTextContent("");
   });
 
   it("compacts the queued optimistic Chat user message when the input response only confirms a busy turn", async () => {
@@ -4468,7 +4570,7 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
 
     await advanceRuntimePollTimers(9);
 
@@ -4596,13 +4698,13 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
 
     await advanceRuntimePollTimers(12);
 
     expect(updateCallsAfterInput).toBeGreaterThanOrEqual(10);
     expect(detailReadsAfterInput).toBe(0);
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
     view.unmount();
     vi.clearAllTimers();
     vi.useRealTimers();
@@ -4726,7 +4828,7 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
 
     await advanceRuntimePollTimers(9);
 
@@ -4785,6 +4887,7 @@ describe("ConversationRuntimeProvider", () => {
             title: "Repeated busy backlog",
             status: "busy",
             created_at: "2026-04-23T03:30:00Z",
+            updated_at: "2026-04-23T03:34:00Z",
             turns: [
               {
                 id: "turn-running",
@@ -4819,25 +4922,39 @@ describe("ConversationRuntimeProvider", () => {
             detailReadsAfterInput += 1;
           }
           return {
-            session: inputAccepted
+            session: inputAccepted && updateCallsAfterInput >= 6
               ? {
                   id: "c_51jttwiv4yggqagk",
                   title: "Repeated busy backlog",
                   status: "ready",
                   created_at: "2026-04-23T03:30:00Z",
-                  updated_at: "2026-04-23T03:33:00Z",
-                  last_output_at: "2026-04-23T03:33:00Z",
+                  updated_at: "2026-04-23T03:35:00Z",
+                  last_output_at: "2026-04-23T03:35:00Z",
                   turns: [
                     {
                       id: "turn-running",
                       prompt: "Recover from repeated busy",
                       status: "success",
                       started_at: "2026-04-23T03:31:00Z",
-                      finished_at: "2026-04-23T03:33:00Z",
+                      finished_at: "2026-04-23T03:35:00Z",
                       final_output: "Recovered despite repeated busy backlog",
                     },
                   ],
                 }
+              : inputAccepted
+                ? {
+                    id: "c_51jttwiv4yggqagk",
+                    title: "Repeated busy backlog",
+                    status: "busy",
+                    created_at: "2026-04-23T03:30:00Z",
+                    updated_at: "2026-04-23T03:34:00Z",
+                    turns: [{
+                      id: "turn-running",
+                      prompt: "Recover from repeated busy",
+                      status: "running",
+                      started_at: "2026-04-23T03:31:00Z",
+                    }],
+                  }
               : {
                   id: "c_51jttwiv4yggqagk",
                   title: "Repeated busy backlog",
@@ -4868,7 +4985,7 @@ describe("ConversationRuntimeProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByTestId("active-session-status")).toHaveTextContent("local_running");
+    expect(screen.getByTestId("active-session-status")).toHaveTextContent("busy");
 
     await advanceRuntimePollTimers(9);
 

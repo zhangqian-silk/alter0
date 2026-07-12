@@ -61,6 +61,8 @@ const runtimeMock = {
   runtimeEventFilter: ["important_text"] as Array<"important_text" | "plan" | "reasoning" | "tools" | "commands" | "system">,
   toolCount: 0,
   busy: false,
+  submitting: false,
+  requestNotice: "",
   createSession: vi.fn(),
   focusSession: vi.fn(),
   removeSession: vi.fn().mockResolvedValue(undefined),
@@ -212,6 +214,8 @@ describe("ConversationWorkspace", () => {
     runtimeMock.runtimeEventFilter = ["important_text"];
     runtimeMock.toolCount = 0;
     runtimeMock.busy = false;
+    runtimeMock.submitting = false;
+    runtimeMock.requestNotice = "";
     runtimeMock.draft = "";
     runtimeMock.draftAttachments = [];
     runtimeMock.draftRepository = null;
@@ -528,6 +532,29 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByRole("textbox", { name: /Type a message/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Add attachment" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  it("keeps a request failure as a weak composer-only notice", () => {
+    runtimeMock.requestNotice = "Network request interrupted. Try again.";
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(screen.getByText("Network request interrupted. Try again.")).toHaveClass(
+      "runtime-composer-meta",
+      "is-request-notice",
+    );
+    expect(screen.getByRole("textbox", { name: /Type a message/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  it("disables only the composer controls while an input request is submitting", () => {
+    runtimeMock.submitting = true;
+
+    renderWorkspace({ isMobileViewport: false });
+
+    expect(screen.getByRole("textbox", { name: /Type a message/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(runtimeMock.activeSession.status).toBe("ready");
   });
 
   it("opens Chat session details from the session row without deleting the session", () => {

@@ -64,6 +64,7 @@ const COMPOSER_REPOSITORY_DRAFT_STORAGE_KEY = "alter0.web.composer.repository.v1
 const RUNTIME_EVENT_FILTER_STORAGE_KEY = "alter0.web.runtime.event_filter.v1";
 const RUNTIME_CONFIG_STORAGE_KEY = "alter0.web.runtime.config.v1";
 const COMPOSER_DRAFT_PERSIST_DELAY_MS = 160;
+const COMPOSER_REQUEST_NOTICE_TTL_MS = 5000;
 const NEW_CHAT_DRAFT_KEY = "__chat_new__";
 const MAX_COMPOSER_CHARS = 10000;
 const CHAT_SESSION_UPDATE_POLL_INITIAL_INTERVAL_MS = 2000;
@@ -380,6 +381,8 @@ type ConversationRuntimeContextValue = {
     pinning: boolean;
   }>;
   busy: boolean;
+  submitting: boolean;
+  requestNotice: string;
   draft: string;
   target: ChatTarget;
   lockedTarget: boolean;
@@ -421,6 +424,8 @@ type ConversationRuntimeContextValue = {
 type ConversationRuntimeWorkspaceContextValue = Omit<
   ConversationRuntimeContextValue,
   "draft"
+  | "submitting"
+  | "requestNotice"
   | "draftAttachments"
   | "draftRepository"
   | "repositoryBinding"
@@ -447,6 +452,8 @@ type ConversationRuntimeComposerContextValue = Pick<
   | "repositoryBinding"
   | "repositorySelectable"
   | "busy"
+  | "submitting"
+  | "requestNotice"
   | "selectedProviderId"
   | "selectedModelId"
   | "selectedModelSupportsVision"
@@ -484,6 +491,32 @@ type RuntimeRecoveryRequirement = {
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isBackendRequestError(error: unknown): error is Error & { status?: number; kind?: string } {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const candidate = error as Error & { status?: number; kind?: string };
+  return Number.isFinite(candidate.status) || candidate.kind === "backend";
+}
+
+function composerRequestFailureNotice(error: unknown, language: LegacyShellLanguage): string {
+  if (isBackendRequestError(error)) {
+    const message = normalizeText(error.message);
+    if (message) {
+      return message;
+    }
+    return language === "zh" ? "服务端未接受本次请求，请重试。" : "The server did not accept this request. Try again.";
+  }
+  return language === "zh" ? "网络请求未完成，请稍后重试。" : "Network request interrupted. Try again.";
+}
+
+function backendAcknowledgementError(language: LegacyShellLanguage): Error & { kind: "backend" } {
+  const message = language === "zh"
+    ? "服务端未确认本次请求，请重试。"
+    : "The server did not confirm this request. Try again.";
+  return Object.assign(new Error(message), { kind: "backend" as const });
 }
 
 function normalizeRuntimePayloadID(value: unknown): string {
@@ -2638,6 +2671,8 @@ export function ConversationRuntimeProvider({
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimeComposerConfigState>(() => loadRuntimeConfig(route));
   const [runtimeEventFilter, setRuntimeEventFilter] = useState<RuntimeEventFilterID[]>(() => loadRuntimeEventFilter(route));
   const [pinningSessionIDs, setPinningSessionIDs] = useState<Record<string, boolean>>({});
+  const [composerSubmitting, setComposerSubmitting] = useState(false);
+  const [composerRequestNotice, setComposerRequestNotice] = useState("");
   const [pageHidden, setPageHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   const pollTimerRef = useRef<number>(0);
   const pageHiddenAtRef = useRef(pageHidden ? Date.now() : 0);
@@ -2649,6 +2684,8 @@ export function ConversationRuntimeProvider({
   const earlierHistoryLoadKeysRef = useRef(new Set<string>());
   const processEventDetailLoadsRef = useRef(new Set<string>());
   const composerDraftPersistTimerRef = useRef<number>(0);
+  const composerRequestNoticeTimerRef = useRef<number>(0);
+  const composerSubmittingRef = useRef(false);
   const sendPromptRef = useRef<(prompt?: string) => Promise<void>>(async () => undefined);
   const latestComposerDraftsRef = useRef<ComposerDraftMap>(composerDrafts);
   const latestComposerAttachmentDraftsRef = useRef<ComposerAttachmentDraftMap>(composerAttachmentDrafts);
@@ -2806,8 +2843,18 @@ export function ConversationRuntimeProvider({
 
   useEffect(() => () => {
     window.clearTimeout(composerDraftPersistTimerRef.current);
+    window.clearTimeout(composerRequestNoticeTimerRef.current);
     persistComposerDrafts(route, latestComposerDraftsRef.current);
     persistComposerRepositoryDrafts(route, latestComposerRepositoryDraftsRef.current);
+  }, []);
+
+  const showComposerRequestNotice = useCallback((message: string) => {
+    window.clearTimeout(composerRequestNoticeTimerRef.current);
+    setComposerRequestNotice(message);
+    composerRequestNoticeTimerRef.current = window.setTimeout(() => {
+      setComposerRequestNotice("");
+      composerRequestNoticeTimerRef.current = 0;
+    }, COMPOSER_REQUEST_NOTICE_TTL_MS);
   }, []);
 
   const patchSession = useCallback((
@@ -3263,7 +3310,7 @@ export function ConversationRuntimeProvider({
     const content = prompt.trim().slice(0, MAX_COMPOSER_CHARS);
     let attachments = activeDraftAttachments;
     const repository = activeDraftRepository;
-    if (!content && attachments.length === 0) {
+    if ((!content && attachments.length === 0) || composerSubmittingRef.current) {
       return;
     }
     const currentActiveSession = activeSessionID
@@ -3272,31 +3319,20 @@ export function ConversationRuntimeProvider({
     if (currentActiveSession && shouldBlockRuntimeInput(currentActiveSession)) {
       return;
     }
-    const session = currentActiveSession?.serverBacked
-      ? currentActiveSession
-      : await createRuntimeBackedSession(route);
-    if (!session) {
-      return;
-    }
-    localSyncSessionIDsRef.current.add(session.id);
-    const clientRequestID = makeID("request");
-    const optimisticUserMessage = createMessage("user", content || (attachments.length > 0 ? "Attached files" : ""), {
-      clientRequestID,
-      attachments,
-      route,
-      source: "runtime",
-      status: "queued",
-    });
-    patchSession(route, session.id, (currentSession) => ({
-      ...currentSession,
-      status: "local_running",
-      messagesLoaded: currentSession.messagesLoaded === true,
-      messages: [
-        ...currentSession.messages,
-        optimisticUserMessage,
-      ],
-    }));
+    composerSubmittingRef.current = true;
+    setComposerSubmitting(true);
+    window.clearTimeout(composerRequestNoticeTimerRef.current);
+    setComposerRequestNotice("");
+    let session: ChatSession | null = null;
     try {
+      session = currentActiveSession?.serverBacked
+        ? currentActiveSession
+        : await createRuntimeBackedSession(route);
+      if (!session) {
+        throw backendAcknowledgementError(language);
+      }
+      requestGateRef.current.begin(`${route}:${session.id}:latest`);
+      const clientRequestID = makeID("request");
       attachments = await uploadDraftAttachments(session.id, attachments);
       const hydrated = await sendRuntimeInput(session.id, {
         input: content,
@@ -3317,11 +3353,25 @@ export function ConversationRuntimeProvider({
       const nextHydrated = hydrated
         ? mergeRuntimeSessions([hydrated], [latestSession])[0] || hydrated
         : null;
-      if (nextHydrated) {
-        upsertRuntimeSession(route, nextHydrated);
-      } else {
-        await recoverRuntimeSession(route, session.id, { requireMessages: true }, 1);
+      const authoritativeSession = nextHydrated
+        || await recoverRuntimeSession(route, session.id, { requireMessages: true }, 1);
+      if (!authoritativeSession) {
+        throw backendAcknowledgementError(language);
       }
+      const inputAcknowledgedAsRecoverable = Boolean(
+        hydrated
+        && (isConversationBusyStatus(hydrated.status) || hasRecoverableRuntimeState(hydrated)),
+      );
+      if (
+        inputAcknowledgedAsRecoverable
+        || isConversationBusyStatus(authoritativeSession.status)
+        || hasRecoverableRuntimeState(authoritativeSession)
+      ) {
+        localSyncSessionIDsRef.current.add(session.id);
+      } else {
+        localSyncSessionIDsRef.current.delete(session.id);
+      }
+      upsertRuntimeSession(route, authoritativeSession);
       const routeDraftKey = newDraftKeyForRoute(route);
       const nextDrafts = { ...composerDrafts, [session.id]: "", [routeDraftKey]: "" };
       const nextAttachmentDrafts = { ...composerAttachmentDrafts, [session.id]: [], [routeDraftKey]: [] };
@@ -3336,18 +3386,49 @@ export function ConversationRuntimeProvider({
       persistComposerAttachmentDrafts(route, nextAttachmentDrafts);
       persistComposerRepositoryDrafts(route, nextRepositoryDrafts);
     } catch (error) {
-      localSyncSessionIDsRef.current.delete(session.id);
-      patchSession(route, session.id, (currentSession) => ({
-        ...currentSession,
-        status: "failed",
-        messages: [
-          ...currentSession.messages,
-          createMessage("assistant", error instanceof Error ? error.message : "Request failed", {
-            status: "error",
-            error: true,
-          }),
-        ],
-      }));
+      if (session) {
+        localSyncSessionIDsRef.current.delete(session.id);
+        if (session.id !== activeDraftKey) {
+          const routeDraftKey = newDraftKeyForRoute(route);
+          const nextDrafts = {
+            ...latestComposerDraftsRef.current,
+            [session.id]: latestComposerDraftsRef.current[activeDraftKey] || prompt,
+            [routeDraftKey]: "",
+          };
+          const nextAttachmentDrafts = {
+            ...latestComposerAttachmentDraftsRef.current,
+            [session.id]: attachments,
+            [routeDraftKey]: [],
+          };
+          const nextRepositoryDrafts = { ...latestComposerRepositoryDraftsRef.current };
+          if (repository) {
+            nextRepositoryDrafts[session.id] = repository;
+          }
+          delete nextRepositoryDrafts[routeDraftKey];
+          latestComposerDraftsRef.current = nextDrafts;
+          latestComposerAttachmentDraftsRef.current = nextAttachmentDrafts;
+          latestComposerRepositoryDraftsRef.current = nextRepositoryDrafts;
+          setComposerDrafts(nextDrafts);
+          setComposerAttachmentDrafts(nextAttachmentDrafts);
+          setComposerRepositoryDrafts(nextRepositoryDrafts);
+          persistComposerDrafts(route, nextDrafts);
+          persistComposerAttachmentDrafts(route, nextAttachmentDrafts);
+          persistComposerRepositoryDrafts(route, nextRepositoryDrafts);
+        }
+      }
+      showComposerRequestNotice(composerRequestFailureNotice(error, language));
+      if (session?.serverBacked && !isBackendRequestError(error)) {
+        void hydrateRuntimeSession(route, session.id, { force: true })
+          .then((authoritativeSession) => {
+            if (authoritativeSession) {
+              upsertRuntimeSession(route, authoritativeSession);
+            }
+          })
+          .catch(() => undefined);
+      }
+    } finally {
+      composerSubmittingRef.current = false;
+      setComposerSubmitting(false);
     }
   };
 
@@ -4048,6 +4129,8 @@ export function ConversationRuntimeProvider({
     repositoryBinding: activeSession?.repository || null,
     repositorySelectable: !activeSession?.repository && !activeSessionHasMessages,
     busy: activeSessionBusy,
+    submitting: composerSubmitting,
+    requestNotice: composerRequestNotice,
     selectedProviderId: selection.providerID,
     selectedModelId: selection.modelID,
     selectedModelSupportsVision,
@@ -4135,6 +4218,8 @@ export function ConversationRuntimeProvider({
     activeSession?.repository,
     activeSessionHasMessages,
     activeSessionBusy,
+    composerSubmitting,
+    composerRequestNotice,
     selection.providerID,
     selection.modelID,
     selectedModelSupportsVision,
