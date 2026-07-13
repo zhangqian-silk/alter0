@@ -148,14 +148,14 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 - 当前活动 `CODEX_HOME` 优先读取环境变量；未显式设置时，默认使用 `$HOME/.codex`。
 - 当前活动账号以 `<active_codex_home>/auth.json` 为准；前端 Runtime 页面不提供多账号导入或切换入口。
-- 当前 Codex 运行时管理通过 Codex app-server 读取与更新用户配置；稳定支持 `model` 与 `model_reasoning_effort` 两项运行时能力，实际可选值必须来自 Codex 返回的能力列表。
+- 当前 Codex 运行时管理通过 Codex app-server 读取与更新用户配置；稳定支持 `model` 与 `model_reasoning_effort` 两项运行时能力，实际可选值、说明与顺序必须来自 Codex 返回的能力列表，界面不得改写思考强度原值。
 
 ### 身份、额度与配置
 
-- 控制面默认展示单一 Runtime 面板：上方展示当前 Codex 身份快照、邮箱、计划、认证模式与 profile，下方展示可编辑 model / 思考深度和 hourly / weekly 额度。
-- 额度展示必须来自当前 `auth.json` 的 quota 刷新结果；quota 成功返回时即可展示具体剩余额度与 reset 时间，前端不再依赖旧账号列表接口。
+- 控制面默认展示单一 Runtime 面板：上方展示当前 Codex 身份快照、邮箱、计划、认证模式与 profile，下方展示可编辑 model / 思考深度和 5 小时 / weekly 额度。
+- 额度展示必须来自当前 `auth.json` 的 quota 刷新结果；`primary_window / secondary_window` 仅表示返回位置，后端必须按 `limit_window_seconds` 将 5 小时与周窗口归入兼容的 `hourly / weekly` 字段，任一窗口临时缺失时省略对应字段和界面区域，不得按位置猜测或展示零值与零时间；quota 成功返回时即可展示具体剩余额度与 reset 时间，前端不再依赖旧账号列表接口。
 - 页面不展示 Account ID / User ID、保存名称、多账号管理动作、导入/切换操作侧栏、CLI 命令、auth/config 路径、独立就绪侧栏、诊断面板或由 auth/config 文件存在性推导的 Ready/Status 文案；device-code 登录只作为当前运行账户的认证辅助动作展示。
-- 当前 Codex 管理接口需返回活动 `auth.json`、当前 `auth.json` 身份快照、实时刷新后的 quota 信息、`config.toml`、当前 profile、活动 model、思考深度、配置来源与可选 model 列表，供前端直接展示身份、额度和真实可选项。
+- 当前 Codex 管理接口需返回活动 `auth.json`、当前 `auth.json` 身份快照、实时刷新后的 quota 信息、`config.toml`、当前 profile、活动 model、思考深度、配置来源与可选 model 列表，供前端直接展示身份、额度和真实可选项；模型与思考强度使用后端原始值及顺序，不做本地枚举、重命名或排序。
 - 当前 Codex 管理区需允许直接切换活动 model 与思考深度，选择变更后立即写回当前用户配置；前端只允许提交当前所选 model 实际支持的思考深度。
 
 ### 分发规则

@@ -148,7 +148,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(statusQueries.getByRole("checkbox", { name: "Generate new memories" })).toBeChecked();
     expect(statusQueries.getByRole("checkbox", { name: "Use existing memories" })).toBeChecked();
     expect(statusQueries.getByText("4 memory files")).toBeInTheDocument();
-    expect(statusQueries.getByRole("option", { name: "High" })).toBeInTheDocument();
+    expect(statusQueries.getByRole("option", { name: "high" })).toBeInTheDocument();
     expect(statusQueries.queryByText("Balanced depth")).not.toBeInTheDocument();
     expect(statusQueries.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(runtimeStudio?.querySelector(".codex-runtime-studio-head")).toBeNull();
@@ -167,7 +167,7 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
     expect(usageQueries.getByText("CODEX USAGE")).toBeInTheDocument();
     expect(usageQueries.queryByText("Remaining")).not.toBeInTheDocument();
     expect(usageQueries.queryByText(/Plan:/)).not.toBeInTheDocument();
-    expect(usageQueries.getByText("Hourly")).toBeInTheDocument();
+    expect(usageQueries.getByText("5 Hours")).toBeInTheDocument();
     expect(usageQueries.getByText("Weekly")).toBeInTheDocument();
     expect(Boolean((identityCard?.compareDocumentPosition(usageCard as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(Boolean((usageCard?.compareDocumentPosition(deviceLogin as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
@@ -213,6 +213,52 @@ describe("ReactManagedCodexAccountsRouteBody", () => {
       "/api/control/llm/providers",
       expect.objectContaining({ method: "GET" }),
     );
+  });
+
+  it("renders only returned quota windows and preserves reasoning effort labels", async () => {
+    const fetchMock = vi.mocked(fetch);
+    const baseRuntime = runtimeFixture();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(runtimeFixture({
+        current: {
+          ...baseRuntime.current,
+          quota: {
+            weekly: { remaining_percent: 93, reset_at: "2026-07-20T02:58:00Z" },
+            plan: "pro",
+          },
+        },
+        model: "gpt-5.6-sol",
+        reasoning_effort: "xhigh",
+        models: [
+          {
+            id: "gpt-5.6-sol",
+            model: "gpt-5.6-sol",
+            display_name: "GPT-5.6-Sol",
+            is_default: true,
+            default_reasoning_effort: "xhigh",
+            supported_reasoning_effort: [
+              { reasoning_effort: "max", description: "Maximum reasoning" },
+              { reasoning_effort: "xhigh", description: "Extra high reasoning" },
+              { reasoning_effort: "ultra", description: "Ultra reasoning" },
+            ],
+          },
+        ],
+      })))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }));
+
+    render(<ReactManagedCodexAccountsRouteBody language="en" />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Model")).toHaveValue("gpt-5.6-sol");
+    });
+
+    const usageCard = document.querySelector(".codex-runtime-usage-card");
+    expect(usageCard?.querySelectorAll(".codex-runtime-quota-item")).toHaveLength(1);
+    const usageQueries = within(usageCard as HTMLElement);
+    expect(usageQueries.getByText("Weekly")).toBeInTheDocument();
+    expect(usageQueries.getByRole("option", { name: "max" })).toBeInTheDocument();
+    expect(usageQueries.getByRole("option", { name: "xhigh" })).toBeInTheDocument();
+    expect(usageQueries.getByRole("option", { name: "ultra" })).toBeInTheDocument();
   });
 
   it("persists global native memories switches through Codex runtime settings", async () => {

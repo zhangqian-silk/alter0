@@ -211,7 +211,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时：
 - 启用且健康的 Provider 会生成 Claude Code provider profile；默认执行器为 Codex Direct，只有显式选择具体 Provider/Model 或声明 Claude 执行器时进入 Claude Code；Claude 执行失败不自动回退。
 - `Models` 控制面保存 Provider 时，`api_key` 输入框留空表示保持现有密钥；若前端中间态传入占位值 `-`，服务端会按空值处理，不会把 `-` 持久化为真实凭据。
 - 历史 `model_config.json` 若残留缺失 `api_key` 的 Provider，加载阶段会自动收敛为禁用态并保留在 `Models` 控制面中，页面不会因旧配置直接返回 500；补齐密钥后可重新启用。
-- `Codex Runtime` 控制面位于 `Settings`，只管理当前服务运行账户的 Codex Direct 配置。页面在单一顶部面板中展示当前 `auth.json` 解析出的账号名、邮箱、计划、认证模式、profile、hourly / weekly 额度与 LLM Provider 注册状态；model 与思考深度的可选项来自 Codex app-server 的 `model/list`，当前生效值来自 `config/read`，选择变更后立即通过 `config/batchWrite` 写回当前用户配置。前端首屏并行读取 Codex Runtime 状态与 LLM Provider 状态，避免互不依赖的接口串行拖慢设置页加载。前端不提供多账号导入、登录、保存或切换入口，不展示 Account ID / User ID、保存名称、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。
+- `Codex Runtime` 控制面位于 `Settings`，只管理当前服务运行账户的 Codex Direct 配置。页面在单一顶部面板中展示当前 `auth.json` 解析出的账号名、邮箱、计划、认证模式、profile、按实际窗口时长识别的 5 小时 / weekly 额度与 LLM Provider 注册状态；临时缺失的额度窗口不展示。model 与思考深度的可选项按 Codex app-server `model/list` 返回的原始值和顺序呈现，当前生效值来自 `config/read`，选择变更后立即通过 `config/batchWrite` 写回当前用户配置。前端首屏并行读取 Codex Runtime 状态与 LLM Provider 状态，避免互不依赖的接口串行拖慢设置页加载。前端不提供多账号导入、登录、保存或切换入口，不展示 Account ID / User ID、保存名称、CLI 命令、auth/config 路径、诊断侧栏或由 auth/config 文件存在性推导的 Ready/Status 文案。
 - 默认 Provider 只会落在已启用配置上；若默认 Provider 被禁用、删除或历史配置已失效，系统会自动切换到下一可用 Provider，无可用项时清空默认值。
 - 复杂度评估阶段会优先复用当前消息选中的 `Provider / Model`；未显式选择 Provider 时默认进入 Codex Direct。已注册的 alter0 内置命令仍优先由命令注册表执行，未注册的 `/goal` 等斜线前缀输入会原样交给 Agent 链路并按用户选择进入 Codex 或 Claude。Web 对话框在直连 Codex 且输入以 `/` 开头时会展示 Web 适用的 Codex CLI 斜线命令候选，覆盖 `/apps`、`/plugins`、`/compact`、`/diff`、`/mcp`、`/model`、`/goal`、`/status` 等命令；候选按命令作用分组顺序展示，并使用短动作说明。权限、TUI 显示、键位、剪贴板、登录退出和本地 CLI 会话管理类命令不进入 Web 候选。Chat 在当前会话明确为 `codex` shell 时也提供同一候选补全，点击候选会补全当前命令前缀。
 - 默认走实时执行。
@@ -420,7 +420,7 @@ go run ./cmd/alter0 \
 
 若通过 `systemd` 运行，建议在服务环境中显式设置 `ALTER0_RUNTIME_ROOT`；启动脚本会以该目录作为唯一运行根目录，并把历史 `HOME=<runtime_root>/codex-home` 归一到 `<runtime_root>`，确保服务存储、工作区、日志与运行输出来自同一根目录。
 
-`Codex Runtime` 固定读取当前活动 `CODEX_HOME` 下的 `auth.json` 与 `config.toml`；未显式设置 `CODEX_HOME` 时，对应目录即 `$HOME/.codex/`。Runtime 页面通过 Codex app-server 读取真实运行时能力与配置来源，并通过用户配置写接口更新当前活动配置中的 `model` 与 `model_reasoning_effort`。
+`Codex Runtime` 固定读取当前活动 `CODEX_HOME` 下的 `auth.json` 与 `config.toml`；未显式设置 `CODEX_HOME` 时，对应目录即 `$HOME/.codex/`。Runtime 页面通过 Codex app-server 读取真实运行时能力与配置来源，并通过用户配置写接口更新当前活动配置中的 `model` 与 `model_reasoning_effort`。模型和思考强度按 Codex 能力列表的原始值与顺序展示。额度响应保留 `hourly / weekly` 接口字段，但按实际窗口时长识别 5 小时与周窗口；临时缺失的窗口不会错位或显示零值占位。
 
 Codex CLI 命令默认使用 `auto` 模式解析。每个 alter0 运行实例启动时会比较服务运行账户 `$HOME/.local/bin/codex`、`$HOME/.nvm/current/bin/codex`、`$HOME/.nvm/versions/node/*/bin/codex`、`ALTER0_CODEX_COMMAND`、`/usr/local/bin/codex` 与当前 `PATH` 中可执行文件报告的版本，选择语义版本最高的一项；相同版本优先保留运行账户 `.local/bin` 或 NVM `current` 这类稳定入口。历史环境中即使 `ALTER0_CODEX_COMMAND` 仍指向某个具体 Node 版本目录，也不会再压住更新后的 CLI。只有明确设置 `ALTER0_CODEX_COMMAND_MODE=pinned` 时，服务才严格使用 `ALTER0_CODEX_COMMAND` 或 `-codex-command` 指定的路径。
 
@@ -557,8 +557,8 @@ curl -X PUT http://127.0.0.1:18088/api/control/codex/runtime \
 说明：
 
 1. Runtime 页面只读取服务运行账户当前活动 `CODEX_HOME` 的 `auth.json` 与 `config.toml`。
-2. 额度信息来自当前 `auth.json` 的 quota 刷新结果；页面不再使用旧账号列表接口作为额度来源。
-3. 运行时设置更新通过 Codex app-server 写回当前用户配置中的 `model` 与 `model_reasoning_effort`，不会覆盖其他 Codex 配置项。
+2. 额度信息来自当前 `auth.json` 的 quota 刷新结果；5 小时与周窗口按返回时长识别，缺失窗口不展示，页面不再使用旧账号列表接口作为额度来源。
+3. model 与思考强度按 Codex 返回的原始值和顺序展示；运行时设置更新通过 Codex app-server 写回当前用户配置中的 `model` 与 `model_reasoning_effort`，不会覆盖其他 Codex 配置项。
 
 ### Skill
 
