@@ -116,11 +116,11 @@ func TestServiceListStatusesMarksCurrentAndRefreshesQuota(t *testing.T) {
 		QueryQuota: func(_ []byte, _ codexapp.QuotaQueryOptions) (*codexdomain.QuotaStatus, []byte, error) {
 			updated := append([]byte(nil), raw...)
 			return &codexdomain.QuotaStatus{
-				Hourly: codexdomain.QuotaWindow{
+				Hourly: &codexdomain.QuotaWindow{
 					RemainingPercent: 80,
 					ResetAt:          time.Date(2026, 4, 17, 12, 0, 0, 0, time.UTC),
 				},
-				Weekly: codexdomain.QuotaWindow{
+				Weekly: &codexdomain.QuotaWindow{
 					RemainingPercent: 92,
 					ResetAt:          time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC),
 				},
@@ -197,8 +197,8 @@ func TestServiceListStatusesRefreshesQuotaForUnmanagedCurrentAuth(t *testing.T) 
 				t.Fatalf("unexpected raw auth payload")
 			}
 			return &codexdomain.QuotaStatus{
-				Hourly:    codexdomain.QuotaWindow{RemainingPercent: 61},
-				Weekly:    codexdomain.QuotaWindow{RemainingPercent: 84},
+				Hourly:    &codexdomain.QuotaWindow{RemainingPercent: 61},
+				Weekly:    &codexdomain.QuotaWindow{RemainingPercent: 84},
 				Plan:      "enterprise",
 				Refreshed: true,
 			}, refreshedRaw, nil
@@ -437,11 +437,11 @@ func TestServiceRuntimeStatusReadsModelsAndReasoningFromAppServer(t *testing.T) 
 		ResolveActiveHome: func() (string, error) { return activeHome, nil },
 		QueryQuota: func(_ []byte, _ codexapp.QuotaQueryOptions) (*codexdomain.QuotaStatus, []byte, error) {
 			return &codexdomain.QuotaStatus{
-				Hourly: codexdomain.QuotaWindow{
+				Hourly: &codexdomain.QuotaWindow{
 					RemainingPercent: 78,
 					ResetAt:          time.Date(2026, 6, 7, 15, 30, 0, 0, time.UTC),
 				},
-				Weekly: codexdomain.QuotaWindow{
+				Weekly: &codexdomain.QuotaWindow{
 					RemainingPercent: 61,
 					ResetAt:          time.Date(2026, 6, 11, 2, 10, 0, 0, time.UTC),
 				},
@@ -474,6 +474,7 @@ func TestServiceRuntimeStatusReadsModelsAndReasoningFromAppServer(t *testing.T) 
 								{"reasoningEffort": "low", "description": "Fast"},
 								{"reasoningEffort": "medium", "description": "Balanced"},
 								{"reasoningEffort": "high", "description": "Deep"},
+								{"reasoningEffort": "xhigh", "description": "Extra high reasoning"},
 							},
 							"inputModalities": []string{"text", "image"},
 						},
@@ -555,8 +556,11 @@ func TestServiceRuntimeStatusReadsModelsAndReasoningFromAppServer(t *testing.T) 
 	if len(status.Models) != 2 {
 		t.Fatalf("len(status.Models) = %d, want 2", len(status.Models))
 	}
-	if len(status.Models[0].SupportedReasoningEffort) != 3 {
+	if len(status.Models[0].SupportedReasoningEffort) != 4 {
 		t.Fatalf("status.Models[0].SupportedReasoningEffort = %+v", status.Models[0].SupportedReasoningEffort)
+	}
+	if got := status.Models[0].SupportedReasoningEffort[3]; got.ReasoningEffort != "xhigh" || got.Description != "Extra high reasoning" {
+		t.Fatalf("status.Models[0].SupportedReasoningEffort[3] = %+v, want raw xhigh option", got)
 	}
 	if status.Current == nil || status.Current.Managed == nil || status.Current.Managed.Name != "work" {
 		t.Fatalf("status.Current = %+v, want managed account work", status.Current)

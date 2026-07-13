@@ -54,10 +54,10 @@ type QuotaWindow struct {
 }
 
 type QuotaStatus struct {
-	Hourly    QuotaWindow `json:"hourly"`
-	Weekly    QuotaWindow `json:"weekly"`
-	Plan      string      `json:"plan,omitempty"`
-	Refreshed bool        `json:"refreshed"`
+	Hourly    *QuotaWindow `json:"hourly,omitempty"`
+	Weekly    *QuotaWindow `json:"weekly,omitempty"`
+	Plan      string       `json:"plan,omitempty"`
+	Refreshed bool         `json:"refreshed"`
 }
 
 type jwtClaims struct {
