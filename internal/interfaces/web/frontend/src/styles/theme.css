@@ -1,0 +1,247 @@
+/* ============================================================
+   theme.css — Visual design overrides
+   Loaded AFTER shell.css. All colors in shell.css now use tokens,
+   so this file only needs to handle:
+   1. Kill decorative pseudo-elements (gradients, glows)
+   2. Ensure body/app-shell backgrounds use tokens
+   ============================================================ */
+
+/* Kill decorative gradients and pseudo-elements */
+body::before,
+body::after {
+  display: none !important;
+}
+
+/* Ensure flat backgrounds on major layout elements */
+body {
+  background: var(--bg-page);
+  background-image: none;
+  color: var(--text-primary);
+}
+
+.app-shell,
+.app-shell.info-mode,
+.workbench-main,
+.chat-pane {
+  background: var(--bg-page);
+  background-image: none;
+}
+
+/* Sidebar */
+.primary-nav {
+  background: var(--bg-sidebar);
+  background-image: none;
+  border-right: 1px solid var(--border-subtle);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Session pane */
+.session-pane,
+.runtime-workspace-panel {
+  background: var(--bg-page);
+  background-image: none;
+}
+
+/* Workspace */
+.runtime-workspace-body,
+.runtime-workspace-screen {
+  background: var(--bg-page);
+  background-image: none;
+  border-color: var(--border-subtle);
+}
+
+/* Composer */
+.runtime-composer-form {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+
+.runtime-composer-shell {
+  background: var(--bg-page);
+  background-image: none;
+}
+
+/* Messages */
+.runtime-message-user .runtime-message-bubble,
+.conversation-message.is-user .msg-bubble {
+  background: var(--bg-bubble-user);
+}
+
+/* Code */
+pre,
+code,
+.chat-md-pre,
+.message-markdown-rendered pre {
+  background: var(--bg-code);
+}
+
+/* Menu items */
+.menu-item {
+  color: var(--text-muted);
+}
+
+.menu-item:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.menu-item.active {
+  background: var(--bg-surface-active);
+  color: var(--text-primary);
+}
+
+/* Session cards */
+.runtime-session-card.is-active .runtime-session-select,
+.runtime-session-select.active {
+  background: var(--bg-surface-active);
+  color: var(--text-primary);
+}
+
+/* Theme picker */
+.settings-theme-section {
+  margin-top: 20px;
+}
+
+.settings-theme-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.theme-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.theme-picker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.theme-picker-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px -4px var(--shadow-sm);
+}
+
+.theme-picker-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.theme-picker-preview {
+  display: flex;
+  height: 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.theme-picker-swatch {
+  flex: 1;
+}
+
+.theme-picker-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.theme-picker-name {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.theme-picker-badge {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.theme-picker-system-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.theme-picker-reset {
+  padding: 4px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.theme-picker-reset:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Copy button — icon only, no border */
+.msg-meta-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.msg-meta-copy:hover {
+  opacity: 1;
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+  border: none;
+}
+
+.msg-meta-copy.copied {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.msg-meta-copy svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.msg-meta-copy::before,
+.msg-meta-copy::after {
+  display: none;
+  content: none;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

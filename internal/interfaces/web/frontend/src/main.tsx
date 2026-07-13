@@ -3,7 +3,9 @@ import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import { installClickDiagnostics, isClickDiagnosticsEnabled } from "./shared/debug/clickDiagnostics";
 import "./styles/root.css";
+import "./styles/tokens.css";
 import "./styles/shell.css";
+import "./styles/theme.css";
 import "./styles/runtimeKeyboardIsolation.css";
 
 const container = document.getElementById("frontend-root");

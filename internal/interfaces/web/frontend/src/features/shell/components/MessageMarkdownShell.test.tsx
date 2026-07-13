@@ -3,23 +3,24 @@ import { useState } from "react";
 import { MessageMarkdownShell } from "./MessageMarkdownShell";
 
 describe("MessageMarkdownShell", () => {
-  it("renders markdown through the shared selectable shell", () => {
+  it("renders markdown through the shared shell (toolbar removed — copy button lives in msg-meta footer)", () => {
     const { container } = render(
       <MessageMarkdownShell
         markdown={"# Message\n\nUse `pwd` before opening [Chat](/chat)."}
-        copyValue="copy payload"
-        copyLabel="Copy output"
         className="chatRuntime-final-text"
         bodyClassName="chatRuntime-final-rendered"
       />,
     );
 
     const shell = container.querySelector(".message-markdown-shell");
+    // Only one child: the body. No toolbar div anymore.
+    expect(shell?.children.length).toBe(1);
     expect(shell?.children.item(0)).toHaveClass("message-markdown-body");
-    expect(shell?.children.item(1)).toHaveClass("message-markdown-toolbar");
     expect(container.querySelector(".chatRuntime-final-rendered")).toContainHTML("<h1>Message</h1>");
     expect(container.querySelector(".chat-md-inline-code")).toHaveTextContent("pwd");
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chat");
+    // Toolbar is gone from this component
+    expect(container.querySelector(".message-markdown-toolbar")).not.toBeInTheDocument();
   });
 
   it("keeps rendered text nodes stable across unrelated parent renders", () => {
@@ -32,8 +33,6 @@ describe("MessageMarkdownShell", () => {
           </button>
           <MessageMarkdownShell
             markdown="Hello. What should we work on?"
-            copyValue="Hello. What should we work on?"
-            copyLabel="Copy output"
           />
         </>
       );

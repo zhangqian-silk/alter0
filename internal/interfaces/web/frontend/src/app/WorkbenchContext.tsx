@@ -16,6 +16,7 @@ export type WorkbenchContextValue = {
   language: LegacyShellLanguage;
   navigate: (route: string) => void;
   isMobileViewport: boolean;
+  isTouchViewport: boolean;
   mobileNavOpen: boolean;
   mobileSessionPaneOpen: boolean;
   toggleMobileNav: () => void;

@@ -80,26 +80,23 @@ describe("RouteFieldRow", () => {
     });
   });
 
-  it("renders markdown body before the copy toolbar so browser text selection follows visual order", () => {
+  it("renders markdown body as the only child (toolbar removed — copy button lives in msg-meta footer)", () => {
     const { container } = render(
       <MessageMarkdownShell
         markdown="selectable chatRuntime output"
-        copyValue="selectable chatRuntime output"
-        copyLabel="Copy output"
       />,
     );
 
     const shell = container.querySelector(".message-markdown-shell");
+    expect(shell?.children.length).toBe(1);
     expect(shell?.children.item(0)).toHaveClass("message-markdown-body");
-    expect(shell?.children.item(1)).toHaveClass("message-markdown-toolbar");
+    expect(container.querySelector(".message-markdown-toolbar")).not.toBeInTheDocument();
   });
 
   it("renders markdown output as static selectable text without entering edit mode", () => {
     const { container } = render(
       <MessageMarkdownShell
         markdown="selectable chatRuntime output"
-        copyValue="selectable chatRuntime output"
-        copyLabel="Copy output"
       />,
     );
 
@@ -115,8 +112,6 @@ describe("RouteFieldRow", () => {
     const { container } = render(
       <MessageMarkdownShell
         markdown="selectable chatRuntime output"
-        copyValue="selectable chatRuntime output"
-        copyLabel="Copy output"
       />,
     );
 

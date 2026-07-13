@@ -8,6 +8,7 @@ import {
 import { ReactManagedCodexAccountsRouteBody } from "./ReactManagedCodexAccountsRouteBody";
 import { ReactManagedControlRouteBody } from "./ReactManagedControlRouteBody";
 import { NavIcon } from "./NavIcon";
+import { ThemePicker } from "../../theme/ThemePicker";
 
 type RouteBodyRenderer = (props: { language: LegacyShellLanguage }) => React.JSX.Element;
 
@@ -72,6 +73,7 @@ function GeneralSettingsSection({
           <span className="settings-language-label">{copy.localeAriaLabel}</span>
           <span className="settings-language-value">{copy.localeButton}</span>
         </button>
+        <ThemePicker language={language === "zh" ? "zh" : "en"} />
         <ReactManagedCodexAccountsRouteBody language={language} mode="serviceControls" />
       </div>
     </section>

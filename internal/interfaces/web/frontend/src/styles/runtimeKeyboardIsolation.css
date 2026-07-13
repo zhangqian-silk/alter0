@@ -1,4 +1,6 @@
-/* Mobile runtime keyboard isolation: dynamic viewport owns keyboard resizing; only inner screens scroll. */
+/* Mobile runtime keyboard isolation: dynamic viewport owns keyboard resizing; only inner screens scroll.
+   Layout (grid rows, header visibility) lives in shell.css — this file only handles
+   the viewport-height mechanics and stacking for the keyboard-aware fixed shell. */
 @media (max-width: 1280px) {
   .app-shell,
   .app-shell.info-mode {
@@ -33,8 +35,16 @@
   .runtime-workspace-body {
     width: 100%;
     position: relative;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
     isolation: isolate;
+  }
+
+  /* Grid row assignments — explicit to be robust against DOM order changes */
+  .runtime-workspace-body > .runtime-workspace-mobile-header {
+    grid-row: 1;
+  }
+
+  .runtime-workspace-body > .runtime-workspace-panel {
+    grid-row: 2;
   }
 
   [data-runtime-view="conversation"] .runtime-workspace-body,
@@ -73,7 +83,7 @@
   }
 
   .runtime-workspace-body > .runtime-composer-shell {
-    grid-row: 4;
+    grid-row: 3;
     align-self: end;
     position: relative !important;
     left: auto;
@@ -109,7 +119,8 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
+  /* On phone, mobile header is fixed at top so it stays above keyboard */
   [data-runtime-view="conversation"] .runtime-workspace-body,
   [data-runtime-view="chatRuntime"] .runtime-workspace-body,
   .runtime-workspace-body[data-runtime-view="conversation"],
@@ -134,13 +145,6 @@
     contain: layout paint style;
   }
 
-  [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-head,
-  [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-head,
-  .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-head,
-  .runtime-workspace-body[data-runtime-view="chatRuntime"] > .runtime-workspace-head {
-    display: none;
-  }
-
   [data-runtime-view="conversation"] .runtime-workspace-body > .runtime-workspace-panel,
   [data-runtime-view="chatRuntime"] .runtime-workspace-body > .runtime-workspace-panel,
   .runtime-workspace-body[data-runtime-view="conversation"] > .runtime-workspace-panel,
@@ -157,7 +161,7 @@
 }
 
 /* Mobile Chat loading flow isolation guard */
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   [data-runtime-view="conversation"] .runtime-workspace-screen,
   .runtime-workspace-body[data-runtime-view="conversation"] .runtime-workspace-screen {
     display: block;

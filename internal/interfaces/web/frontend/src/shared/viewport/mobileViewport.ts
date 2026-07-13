@@ -1,5 +1,12 @@
-export const MOBILE_VIEWPORT_BREAKPOINT_PX = 1280;
-export const CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX = 760;
+// Touch-optimized viewport: keyboard handling, scroll anchoring, touch submit
+export const TOUCH_VIEWPORT_BREAKPOINT_PX = 1280;
+// Nav drawer breakpoint: sidebar becomes a slide-in drawer, mobile header shown
+export const NAV_DRAWER_BREAKPOINT_PX = 1280;
+// Phone viewport: full mobile layout (fixed header, tighter composer sizing)
+export const PHONE_VIEWPORT_BREAKPOINT_PX = 768;
+// Backward compat: MOBILE_VIEWPORT_BREAKPOINT_PX controls nav drawer + mobile header
+export const MOBILE_VIEWPORT_BREAKPOINT_PX = NAV_DRAWER_BREAKPOINT_PX;
+export const CHAT_RUNTIME_SESSION_SHEET_BREAKPOINT_PX = PHONE_VIEWPORT_BREAKPOINT_PX;
 export const MOBILE_VIEWPORT_SYNC_THRESHOLD_PX = 8;
 export const MOBILE_KEYBOARD_MIN_OFFSET_PX = 120;
 export const MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS = 240;
@@ -50,6 +57,10 @@ export function createDefaultMobileViewportState(): MobileViewportState {
 
 export function isMobileViewportWidth(width: number): boolean {
   return Number(width) <= MOBILE_VIEWPORT_BREAKPOINT_PX;
+}
+
+export function isTouchViewportWidth(width: number): boolean {
+  return Number(width) <= TOUCH_VIEWPORT_BREAKPOINT_PX;
 }
 
 export function isChatRuntimeSessionSheetViewportWidth(width: number): boolean {

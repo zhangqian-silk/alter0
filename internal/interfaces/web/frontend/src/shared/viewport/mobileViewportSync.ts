@@ -3,7 +3,7 @@ import {
   MOBILE_VIEWPORT_ALIGN_COOLDOWN_MS,
   createDefaultMobileViewportState,
   deriveMobileViewportState,
-  isMobileViewportWidth,
+  isTouchViewportWidth,
 } from "./mobileViewport";
 
 type MobileViewportSyncOptions = {
@@ -51,7 +51,7 @@ export function createMobileViewportSyncController(
   const sync = () => {
     const activeInput = hasActiveInput();
     const result = deriveMobileViewportState(state, {
-      mobileViewport: isMobileViewportWidth(win.innerWidth),
+      mobileViewport: isTouchViewportWidth(win.innerWidth),
       windowWidth: win.innerWidth,
       windowHeight: win.innerHeight,
       viewportWidth: visualViewport?.width,

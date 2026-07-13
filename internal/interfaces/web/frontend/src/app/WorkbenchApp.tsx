@@ -9,6 +9,7 @@ import {
   type LegacyShellLanguage,
 } from "../features/shell/legacyShellCopy";
 import { isLegacyShellMobileViewport } from "../features/shell/legacyShellState";
+import { isTouchViewportWidth } from "../shared/viewport/mobileViewport";
 import { PrimaryNav } from "../features/shell/components/PrimaryNav";
 import { ReactManagedRouteBody } from "../features/shell/components/ReactManagedRouteBody";
 import { RuntimeWorkspaceHeader } from "../features/shell/components/RuntimeWorkspaceHeader";
@@ -59,7 +60,29 @@ export function WorkbenchApp() {
   const [language, setLanguage] = useState<LegacyShellLanguage>(() =>
     normalizeLegacyShellLanguage(document.documentElement.lang),
   );
+
+  // Theme initialization — read from localStorage, default to "light"
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window === "undefined") return "light";
+    const stored = window.localStorage.getItem("alter0-theme");
+    if (stored === "light" || stored === "dark") return stored;
+    const prefersDark = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+      : false;
+    return prefersDark ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("alter0-theme", theme);
+    }
+  }, [theme]);
   const [isMobileViewport, setIsMobileViewport] = useState(() => isLegacyShellMobileViewport());
+  const [isTouchViewport, setIsTouchViewport] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return isTouchViewportWidth(window.innerWidth);
+  });
   const [mobilePanel, setMobilePanel] = useState<"nav" | "sessions" | null>(null);
   const [runtimeSessionRail, setRuntimeSessionRailState] = useState<WorkbenchSessionRail | null>(null);
   const [settingsSessionRailHydrationActive, setSettingsSessionRailHydrationActive] = useState(false);
@@ -159,7 +182,9 @@ export function WorkbenchApp() {
   useEffect(() => {
     const syncViewport = () => {
       const mobile = isLegacyShellMobileViewport();
+      const touch = isTouchViewportWidth(window.innerWidth);
       setIsMobileViewport(mobile);
+      setIsTouchViewport(touch);
       if (!mobile) {
         setMobilePanel(null);
       }
@@ -189,6 +214,7 @@ export function WorkbenchApp() {
     language,
     navigate,
     isMobileViewport,
+    isTouchViewport,
     mobileNavOpen: navOpen,
     mobileSessionPaneOpen: sessionPaneOpen,
     toggleMobileNav,
@@ -207,6 +233,7 @@ export function WorkbenchApp() {
     language,
     navigate,
     isMobileViewport,
+    isTouchViewport,
     navOpen,
     sessionPaneOpen,
     runtimeSessionsUseNav,
