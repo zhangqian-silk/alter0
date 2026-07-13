@@ -66,14 +66,34 @@ Conventional Commits: `<type>(<scope>): <description>`
 - `alter0` 默认是高密度工作台产品而不是营销落地页：`Chat / Control / Memory / Sessions / Tasks / Environments / Products Workspace` 等后台型页面优先采用克制、稳定、可长时间阅读的工作台界面，不引入浮夸 hero、漂浮徽章、无意义装饰插画或过度品牌宣言。
 - 面向公开 Product 页面、独立 HTML 空间或确有品牌表达需求的前台页面时，允许使用更强视觉叙事，但首屏仍需保持单一构图、清晰品牌信号、短文案和单个主 CTA 组，不把卡片拼贴、统计条、徽章云或多组并列卖点塞进 hero。
 - 排版必须有明确层级与风格，不使用 `Inter`、`Roboto`、`Arial`、默认 system stack 作为首选方案；优先建立显示字体与正文字体配对，并通过 `CSS variables` 或设计令牌统一字号、字重、行高、间距和颜色角色。
-- 配色与视觉氛围必须成体系；优先先定义 `background / surface / text / muted / accent / border` 等稳定令牌，再落到组件；避免泛用紫色渐变、随机高饱和点缀和缺少上下文的“AI 感”背景。
+- 配色与视觉氛围必须成体系；优先先定义 `background / surface / text / muted / accent / border` 等稳定令牌，再落到组件；避免泛用紫色渐变、随机高饱和点缀和缺少上下文的”AI 感”背景。
 - 默认不把卡片当作排版习惯。卡片只在确实承担交互容器、信息分组或状态边界时使用；若去掉边框、阴影、背景和圆角后不影响理解，该区域就不应继续保留卡片形态。
-- 布局优先从构图出发，而不是从组件网格出发。优先使用留白、对齐、比例、裁切、分栏和层次关系建立界面秩序；避免首页或工作台退化为“统计卡 + 功能卡 + 表格卡”的仪表盘拼盘。
+- 布局优先从构图出发，而不是从组件网格出发。优先使用留白、对齐、比例、裁切、分栏和层次关系建立界面秩序；避免首页或工作台退化为”统计卡 + 功能卡 + 表格卡”的仪表盘拼盘。
 - 文案使用产品语言，不把提示词、设计说明或实现说明暴露到界面中；每个 section 只承担一个职责，标题、说明、主操作不重复表达同一信息。
 - 动效只服务层级建立、状态切换和操作反馈；优先使用少量高价值动画，避免持续分散注意力的装饰性 motion。固定元素、浮层、抽屉和底部面板必须在桌面与移动端都避开正文、按钮和输入区，不得遮挡关键内容。
 - 前端实现优先复用现有 `internal/interfaces/web/frontend` 壳层、断点、`route-head`、阅读宽度、移动端抽屉与 `VisualViewport` 约束；不得为了单页视觉效果破坏稳定 DOM 契约、窄屏贴顶节奏、桌面三栏工作台或输入区贴底行为。
 - `Chat` 空态、`Chat` 运行态、`Chat` 工作区和各类控制页继续遵守当前稳定信息架构：不重复渲染 route hero、workspace hero、品牌口号或大块说明区；首屏应优先让用户进入消息阅读、输入、列表筛选或主操作，而不是先阅读装饰性头图。
 - 涉及前端改动时，交付前至少完成桌面与移动端两档验证；若变更影响布局、交互层、滚动、输入区、抽屉、固定元素或视觉层级，还需补充对应测试或人工验证，确保首屏构图、可读性和可触达性同时成立。
+
+### 前端样式架构约束
+
+- **三层 CSS 架构，职责严格分离：**
+  - `tokens.css`：唯一的颜色/视觉值来源。所有主题的 `--bg-*`、`--text-*`、`--accent*`、`--border-*`、`--status-*`、`--shadow-*` 等令牌在此定义，通过 `:root[data-theme=”<id>”]` 选择器按主题切换。
+  - `shell.css`：只负责布局（display / width / height / margin / padding / flex / grid / position / overflow / font-size / border-radius）和结构。**严禁出现任何硬编码颜色值**（包括 `#fff`、`rgba(...)`、`white`、`blue` 等），所有颜色必须引用 `var(--token)`。
+  - `theme.css`：在 `shell.css` 之后加载，仅处理装饰性元素的清理（`body::before/after`、渐变背景、`backdrop-filter`）和无法通过 token 表达的特殊视觉覆盖。不使用 `!important` 批量覆盖。
+
+- **新增主题的流程：** 在 `tokens.css` 中添加 `:root[data-theme=”<id>”]` 块，定义完整的令牌集（背景、文字、边框、强调色、状态色、阴影），然后在 `features/theme/themes.ts` 的 `BUILTIN_THEMES` 中注册。不得在 `shell.css` 或组件内为特定主题写条件样式。
+
+- **新增组件或页面的样式规则：** 所有颜色属性（`color`、`background`、`border-color`、`box-shadow`、`outline`、`fill`、`stroke`）只能引用 `var(--token)`。如果现有令牌不足以表达需求，先在 `tokens.css` 的所有主题中补充该令牌，再在组件中使用。
+
+- **禁止的反模式：**
+  - 在 `shell.css` 或组件 CSS 中写死 `#fff`、`rgba(255,255,255,...)` 等浅色值作为背景
+  - 用 `!important` 批量覆盖颜色来”修复”主题切换问题
+  - 在组件内通过 `style={{ backgroundColor: '#fff' }}` 或内联样式写死颜色
+  - 为特定主题在 `shell.css` 中添加 `[data-theme=”xxx”]` 选择器做局部覆盖
+  - 在 `body::before/after` 或伪元素上添加装饰性渐变/光晕作为背景图层
+
+- **验证标准：** 切换任意主题时，页面所有可见元素的背景、文字、边框颜色必须随主题变化，不得出现不变的白色/浅色区块。`grep -cE “(#[0-9a-fA-F]{3,8}|rgba?\()” shell.css` 必须返回 `0`。
 
 ## Skills 使用规范
 

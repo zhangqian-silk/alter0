@@ -221,6 +221,311 @@
 }
 
 /* ------------------------------------------------------------
+   Theme: Maldives / 马尔代夫
+   意境：碧蓝潟湖、纯白沙滩、翠绿植被
+   ------------------------------------------------------------ */
+:root[data-theme="maldives"] {
+  --bg-page: #eef7f8;
+  --bg-sidebar: #e4f2f4;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #e8f4f2;
+  --bg-surface-active: #d8ece8;
+  --bg-code: #e8f4f2;
+  --bg-bubble-user: #e8f4f2;
+  --bg-overlay: rgba(255, 255, 255, 0.96);
+
+  --border-subtle: rgba(0, 120, 130, 0.07);
+  --border-default: rgba(0, 120, 130, 0.12);
+  --border-strong: rgba(0, 120, 130, 0.2);
+  --border-focus: rgba(46, 168, 92, 0.3);
+
+  --text-primary: #0d3a48;
+  --text-secondary: #2a5a68;
+  --text-muted: #5a8a98;
+  --text-quiet: #8ab0b8;
+  --text-inverse: #ffffff;
+
+  --accent: #2ea85c;
+  --accent-hover: #1e8a48;
+  --accent-soft: rgba(46, 168, 92, 0.08);
+
+  --status-success: #2ea85c;
+  --status-warning: #e8832a;
+  --status-danger: #d64545;
+  --status-info: #0077b6;
+  --status-neutral: #5a8a98;
+
+  --shadow-sm: 0 2px 8px -4px rgba(0, 100, 110, 0.06);
+  --shadow-md: 0 12px 28px -24px rgba(0, 100, 110, 0.1);
+  --shadow-lg: 0 18px 46px -38px rgba(0, 100, 110, 0.14);
+  --shadow-focus: 0 0 0 3px rgba(46, 168, 92, 0.18);
+
+  --composer-form-border: var(--border-default);
+  --composer-form-bg: var(--bg-surface);
+  --composer-form-shadow: none;
+
+  /* Legacy aliases */
+  --shell-bg: var(--bg-page);
+  --shell-surface: var(--bg-overlay);
+  --shell-surface-strong: var(--bg-page);
+  --shell-line: var(--border-subtle);
+  --shell-ink: var(--text-primary);
+  --shell-muted: var(--text-muted);
+  --shell-accent: var(--accent);
+  --bg-nav: var(--bg-sidebar);
+  --bg-session: var(--bg-surface);
+  --line-soft: var(--border-subtle);
+  --line-mid: var(--border-default);
+  --ink-strong: var(--text-primary);
+  --ink-body: var(--text-secondary);
+  --ink-muted: var(--text-muted);
+}
+
+/* ------------------------------------------------------------
+   Theme: Moonrise / 海上升明月
+   意境：梦幻靛蓝夜空，暖金月光洒在平静海面上
+   ------------------------------------------------------------ */
+:root[data-theme="moonrise"] {
+  --bg-page: #0c1a30;
+  --bg-sidebar: #0e1e36;
+  --bg-surface: #152a4a;
+  --bg-surface-hover: #1e3a68;
+  --bg-surface-active: #244478;
+  --bg-code: #1e3a68;
+  --bg-bubble-user: #1a3258;
+  --bg-overlay: rgba(8, 16, 36, 0.92);
+
+  --border-subtle: rgba(200, 192, 168, 0.06);
+  --border-default: rgba(200, 192, 168, 0.1);
+  --border-strong: rgba(200, 192, 168, 0.16);
+  --border-focus: rgba(232, 200, 120, 0.28);
+
+  --text-primary: #ece4d4;
+  --text-secondary: #b0a898;
+  --text-muted: #7a7468;
+  --text-quiet: #5a5448;
+  --text-inverse: #0c1a30;
+
+  --accent: #e8c878;
+  --accent-hover: #f0d890;
+  --accent-soft: rgba(232, 200, 120, 0.08);
+
+  --status-success: #6abf9a;
+  --status-warning: #e8c878;
+  --status-danger: #c06060;
+  --status-info: #8aa8c8;
+  --status-neutral: #7a7468;
+
+  --shadow-sm: 0 2px 8px -4px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 12px 28px -24px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 18px 46px -38px rgba(0, 0, 0, 0.65);
+  --shadow-focus: 0 0 0 3px rgba(232, 200, 120, 0.18);
+
+  --composer-form-border: var(--border-default);
+  --composer-form-bg: var(--bg-surface);
+  --composer-form-shadow: none;
+
+  /* Legacy aliases */
+  --shell-bg: var(--bg-page);
+  --shell-surface: var(--bg-overlay);
+  --shell-surface-strong: var(--bg-page);
+  --shell-line: var(--border-subtle);
+  --shell-ink: var(--text-primary);
+  --shell-muted: var(--text-muted);
+  --shell-accent: var(--accent);
+  --bg-nav: var(--bg-sidebar);
+  --bg-session: var(--bg-surface);
+  --line-soft: var(--border-subtle);
+  --line-mid: var(--border-default);
+  --ink-strong: var(--text-primary);
+  --ink-body: var(--text-secondary);
+  --ink-muted: var(--text-muted);
+}
+
+/* ------------------------------------------------------------
+   Theme: Qianli / 千里江山图
+   意境：绢本画卷，矿物石青石绿，朱砂印章
+   ------------------------------------------------------------ */
+:root[data-theme="qianli"] {
+  --bg-page: #e8dcc0;
+  --bg-sidebar: #e0d4b4;
+  --bg-surface: #f8f2e0;
+  --bg-surface-hover: #ece4c8;
+  --bg-surface-active: #e0d4b4;
+  --bg-code: #e8dcc0;
+  --bg-bubble-user: #e0d4b4;
+  --bg-overlay: rgba(248, 242, 224, 0.96);
+
+  --border-subtle: rgba(60, 48, 28, 0.08);
+  --border-default: rgba(60, 48, 28, 0.14);
+  --border-strong: rgba(60, 48, 28, 0.22);
+  --border-focus: rgba(184, 58, 42, 0.3);
+
+  --text-primary: #2a2418;
+  --text-secondary: #5a4e38;
+  --text-muted: #7a6e54;
+  --text-quiet: #9a8e74;
+  --text-inverse: #f8f2e0;
+
+  --accent: #b83a2a;
+  --accent-hover: #d44a38;
+  --accent-soft: rgba(184, 58, 42, 0.08);
+
+  --status-success: #3a7a5a;
+  --status-warning: #c47a3a;
+  --status-danger: #b83a2a;
+  --status-info: #3a6a9c;
+  --status-neutral: #7a6e54;
+
+  --shadow-sm: 0 2px 8px -4px rgba(60, 48, 28, 0.08);
+  --shadow-md: 0 12px 28px -24px rgba(60, 48, 28, 0.12);
+  --shadow-lg: 0 18px 46px -38px rgba(60, 48, 28, 0.16);
+  --shadow-focus: 0 0 0 3px rgba(184, 58, 42, 0.18);
+
+  --composer-form-border: var(--border-default);
+  --composer-form-bg: var(--bg-surface);
+  --composer-form-shadow: none;
+
+  /* Legacy aliases */
+  --shell-bg: var(--bg-page);
+  --shell-surface: var(--bg-overlay);
+  --shell-surface-strong: var(--bg-page);
+  --shell-line: var(--border-subtle);
+  --shell-ink: var(--text-primary);
+  --shell-muted: var(--text-muted);
+  --shell-accent: var(--accent);
+  --bg-nav: var(--bg-sidebar);
+  --bg-session: var(--bg-surface);
+  --line-soft: var(--border-subtle);
+  --line-mid: var(--border-default);
+  --ink-strong: var(--text-primary);
+  --ink-body: var(--text-secondary);
+  --ink-muted: var(--text-muted);
+}
+
+/* ------------------------------------------------------------
+   Theme: Dunhuang / 敦煌暖
+   意境：深洞底色配温暖土色调，敦煌壁画灵感
+   ------------------------------------------------------------ */
+:root[data-theme="dunhuang"] {
+  --bg-page: #1a1410;
+  --bg-sidebar: #1f1814;
+  --bg-surface: #28201a;
+  --bg-surface-hover: #352a22;
+  --bg-surface-active: #3e3228;
+  --bg-code: #352a22;
+  --bg-bubble-user: #2e251e;
+  --bg-overlay: rgba(40, 32, 26, 0.92);
+
+  --border-subtle: rgba(212, 196, 168, 0.08);
+  --border-default: rgba(212, 196, 168, 0.14);
+  --border-strong: rgba(212, 196, 168, 0.22);
+  --border-focus: rgba(194, 65, 12, 0.4);
+
+  --text-primary: #f5e6d3;
+  --text-secondary: #d4c4a8;
+  --text-muted: #a89880;
+  --text-quiet: #8a7a60;
+  --text-inverse: #1a1410;
+
+  --accent: #c2410c;
+  --accent-hover: #ea580c;
+  --accent-soft: rgba(194, 65, 12, 0.12);
+
+  --status-success: #65a30d;
+  --status-warning: #d97706;
+  --status-danger: #dc2626;
+  --status-info: #0891b2;
+  --status-neutral: #a89880;
+
+  --shadow-sm: 0 2px 8px -4px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 12px 28px -24px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 18px 46px -38px rgba(0, 0, 0, 0.65);
+  --shadow-focus: 0 0 0 3px rgba(194, 65, 12, 0.2);
+
+  --composer-form-border: var(--border-default);
+  --composer-form-bg: var(--bg-surface);
+  --composer-form-shadow: none;
+
+  /* Legacy aliases */
+  --shell-bg: var(--bg-page);
+  --shell-surface: var(--bg-overlay);
+  --shell-surface-strong: var(--bg-page);
+  --shell-line: var(--border-subtle);
+  --shell-ink: var(--text-primary);
+  --shell-muted: var(--text-muted);
+  --shell-accent: var(--accent);
+  --bg-nav: var(--bg-sidebar);
+  --bg-session: var(--bg-surface);
+  --line-soft: var(--border-subtle);
+  --line-mid: var(--border-default);
+  --ink-strong: var(--text-primary);
+  --ink-body: var(--text-secondary);
+  --ink-muted: var(--text-muted);
+}
+
+/* ------------------------------------------------------------
+   Theme: Morandi / 莫兰迪
+   意境：柔和的灰调，静谧克制
+   ------------------------------------------------------------ */
+:root[data-theme="morandi"] {
+  --bg-page: #f5f5f4;
+  --bg-sidebar: #fafaf9;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f5f5f4;
+  --bg-surface-active: #ebe9e8;
+  --bg-code: #f5f5f4;
+  --bg-bubble-user: #f5f5f4;
+  --bg-overlay: rgba(255, 255, 255, 0.97);
+
+  --border-subtle: rgba(39, 39, 42, 0.08);
+  --border-default: rgba(39, 39, 42, 0.13);
+  --border-strong: rgba(39, 39, 42, 0.18);
+  --border-focus: rgba(113, 113, 122, 0.35);
+
+  --text-primary: #27272a;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --text-quiet: #a1a1aa;
+  --text-inverse: #fafaf9;
+
+  --accent: #71717a;
+  --accent-hover: #52525b;
+  --accent-soft: rgba(113, 113, 122, 0.08);
+
+  --status-success: #65a30d;
+  --status-warning: #ca8a04;
+  --status-danger: #b91c1c;
+  --status-info: #475569;
+  --status-neutral: #71717a;
+
+  --shadow-sm: 0 2px 8px -4px rgba(39, 39, 42, 0.1);
+  --shadow-md: 0 12px 28px -24px rgba(39, 39, 42, 0.15);
+  --shadow-lg: 0 18px 46px -38px rgba(39, 39, 42, 0.2);
+  --shadow-focus: 0 0 0 3px rgba(113, 113, 122, 0.18);
+
+  --composer-form-border: var(--border-default);
+  --composer-form-bg: var(--bg-surface);
+  --composer-form-shadow: none;
+
+  /* Legacy aliases */
+  --shell-bg: var(--bg-page);
+  --shell-surface: var(--bg-overlay);
+  --shell-surface-strong: var(--bg-page);
+  --shell-line: var(--border-subtle);
+  --shell-ink: var(--text-primary);
+  --shell-muted: var(--text-muted);
+  --shell-accent: var(--accent);
+  --bg-nav: var(--bg-sidebar);
+  --bg-session: var(--bg-surface);
+  --line-soft: var(--border-subtle);
+  --line-mid: var(--border-default);
+  --ink-strong: var(--text-primary);
+  --ink-body: var(--text-secondary);
+  --ink-muted: var(--text-muted);
+}
+
+/* ------------------------------------------------------------
    Motion preferences
    ------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {

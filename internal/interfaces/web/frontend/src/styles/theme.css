@@ -1,77 +1,85 @@
 /* ============================================================
-   theme.css — Visual design overrides ONLY
-   Only: color, background, border, box-shadow, opacity, backdrop-filter
-   Never: display, width, height, margin, padding, flex, grid, font-size
+   theme.css — Visual design overrides
+   Loaded AFTER shell.css. All colors in shell.css now use tokens,
+   so this file only needs to handle:
+   1. Kill decorative pseudo-elements (gradients, glows)
+   2. Ensure body/app-shell backgrounds use tokens
    ============================================================ */
 
-/* ============================================================
-   1. GLOBAL COLORS & BACKGROUNDS
-   ============================================================ */
+/* Kill decorative gradients and pseudo-elements */
+body::before,
+body::after {
+  display: none !important;
+}
 
+/* Ensure flat backgrounds on major layout elements */
 body {
   background: var(--bg-page);
   background-image: none;
   color: var(--text-primary);
 }
 
-body::before,
-body::after {
-  display: none;
-}
-
-/* ============================================================
-   2. APP SHELL — kill gradients, flat colors
-   ============================================================ */
-
-.app-shell {
-  background: var(--bg-page);
-}
-
-.app-shell.info-mode {
-  background: var(--bg-page);
-}
-
-.workbench-main {
-  background: var(--bg-page);
-}
-
+.app-shell,
+.app-shell.info-mode,
+.workbench-main,
 .chat-pane {
   background: var(--bg-page);
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  background-image: none;
 }
 
-/* ============================================================
-   3. SIDEBAR — light gray, flat
-   ============================================================ */
-
+/* Sidebar */
 .primary-nav {
   background: var(--bg-sidebar);
   background-image: none;
-  border: 0;
   border-right: 1px solid var(--border-subtle);
-  border-radius: 0;
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-.primary-nav .brand,
-.brand {
-  border: 0;
+/* Session pane */
+.session-pane,
+.runtime-workspace-panel {
+  background: var(--bg-page);
+  background-image: none;
 }
 
-.brand-copy strong {
-  color: var(--text-primary);
+/* Workspace */
+.runtime-workspace-body,
+.runtime-workspace-screen {
+  background: var(--bg-page);
+  background-image: none;
+  border-color: var(--border-subtle);
+}
+
+/* Composer */
+.runtime-composer-form {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+
+.runtime-composer-shell {
+  background: var(--bg-page);
+  background-image: none;
+}
+
+/* Messages */
+.runtime-message-user .runtime-message-bubble,
+.conversation-message.is-user .msg-bubble {
+  background: var(--bg-bubble-user);
+}
+
+/* Code */
+pre,
+code,
+.chat-md-pre,
+.message-markdown-rendered pre {
+  background: var(--bg-code);
 }
 
 /* Menu items */
 .menu-item {
   color: var(--text-muted);
-  border: 0;
-  box-shadow: none;
-  transition: background-color 0.1s ease, color 0.1s ease;
 }
 
 .menu-item:hover {
@@ -82,710 +90,154 @@ body::after {
 .menu-item.active {
   background: var(--bg-surface-active);
   color: var(--text-primary);
-  box-shadow: none;
-  border: 0;
-}
-
-/* Session rail */
-.nav-session-rail {
-  border: 0;
-  border-top: 1px solid var(--border-subtle);
-  background: transparent;
-  box-shadow: none;
-}
-
-.nav-session-rail-copy strong {
-  color: var(--text-quiet);
-}
-
-.nav-session-rail-action,
-.runtime-workspace-session-pane-action {
-  color: var(--text-muted);
-  border: 0;
-  box-shadow: none;
-  transition: background-color 0.1s ease;
-}
-
-.nav-session-rail-action:hover,
-.runtime-workspace-session-pane-action:hover {
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-}
-
-.nav-session-rail-action.is-primary {
-  background: var(--text-primary);
-  color: var(--text-inverse);
-}
-
-.nav-session-rail-action.is-primary:hover {
-  background: var(--text-secondary);
-  color: var(--text-inverse);
 }
 
 /* Session cards */
-.nav-session-rail .runtime-session-card,
-.runtime-session-card {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  transition: background-color 0.1s ease;
-}
-
-.nav-session-rail .runtime-session-card:hover,
-.runtime-session-card:hover {
-  background: var(--bg-surface-hover);
-}
-
-.nav-session-rail .runtime-session-card.is-active,
-.runtime-session-card.is-active {
+.runtime-session-card.is-active .runtime-session-select,
+.runtime-session-select.active {
   background: var(--bg-surface-active);
-  border: 0;
-  box-shadow: none;
+  color: var(--text-primary);
 }
 
-.runtime-session-card::before {
-  display: none;
+/* Theme picker */
+.settings-theme-section {
+  margin-top: 20px;
 }
 
-.runtime-session-title {
+.settings-theme-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.theme-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.theme-picker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.theme-picker-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px -4px var(--shadow-sm);
+}
+
+.theme-picker-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.theme-picker-preview {
+  display: flex;
+  height: 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.theme-picker-swatch {
+  flex: 1;
+}
+
+.theme-picker-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.theme-picker-name {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.theme-picker-badge {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.theme-picker-system-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.theme-picker-reset {
+  padding: 4px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-surface);
   color: var(--text-secondary);
-}
-
-.runtime-session-card.is-active .runtime-session-title {
-  color: var(--text-primary);
-}
-
-/* Locale button */
-.primary-nav .nav-locale,
-.nav-locale {
-  border: 0;
-  border-top: 1px solid var(--border-subtle);
-  background: transparent;
-}
-
-.nav-locale-button {
-  color: var(--text-muted);
-  border: 0;
-  box-shadow: none;
-  transition: background-color 0.1s ease;
-}
-
-.nav-locale-button:hover {
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-}
-
-.nav-locale-button.active {
-  background: var(--bg-surface-active);
-  color: var(--text-primary);
-}
-
-/* ============================================================
-   4. WORKSPACE HEADER — flat, no glass
-   ============================================================ */
-
-.runtime-workspace-head,
-.runtime-workspace-head.is-compact,
-.runtime-workspace-head.is-sticky,
-.workbench-title-head,
-.route-head {
-  background: var(--bg-page);
-  background-image: none;
-  border: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-.runtime-workspace-copy h4,
-.runtime-workspace-copy.is-compact h4,
-.runtime-workspace-title-leading h4 {
-  color: var(--text-primary);
-}
-
-.runtime-workspace-title-button {
-  color: var(--text-primary);
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.workspace-header-status {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-}
-
-.runtime-session-signal.is-ready { background: var(--status-success); }
-.runtime-session-signal.is-busy { background: var(--status-info); }
-.runtime-session-signal.is-failed { background: var(--status-danger); }
-.runtime-session-signal.is-interrupted { background: var(--status-warning); }
-.runtime-session-signal.is-exited { background: var(--status-neutral); }
-
-.runtime-workspace-button {
-  color: var(--text-muted);
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  transition: background-color 0.1s ease;
-}
-
-.runtime-workspace-button:hover {
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-}
-
-/* ============================================================
-   5. WORKSPACE BODY — kill gradients
-   ============================================================ */
-
-.runtime-workspace-body,
-[data-runtime-view="conversation"] .runtime-workspace-body,
-.runtime-workspace-body[data-runtime-view="conversation"],
-[data-runtime-view="chatRuntime"] .runtime-workspace-body {
-  background: var(--bg-page);
-  background-image: none;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.runtime-workspace {
-  background: var(--bg-page);
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.runtime-workspace-shell {
-  background: var(--bg-page);
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.chat-pane[data-route="chat"].page-mode,
-.runtime-workspace-shell[data-runtime-view="conversation"] {
-  background: var(--bg-page);
-}
-
-/* ============================================================
-   6. SCREEN (scroll area)
-   ============================================================ */
-
-.runtime-workspace-screen,
-[data-runtime-view="conversation"] .runtime-workspace-screen,
-[data-runtime-view="chatRuntime"] .runtime-workspace-screen {
-  background: var(--bg-page);
-  background-image: none;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-/* ============================================================
-   7. TIMELINE
-   ============================================================ */
-
-.runtime-timeline,
-[data-runtime-view="conversation"] .runtime-timeline,
-[data-runtime-view="chatRuntime"] .runtime-timeline {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
-}
-
-/* ============================================================
-   8. MESSAGES
-   ============================================================ */
-
-.runtime-message,
-.conversation-message {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
-}
-
-/* User message bubble */
-.runtime-message.runtime-message-user .runtime-message-bubble,
-.conversation-message.is-user .msg-bubble {
-  border: 0;
-  background: var(--bg-bubble-user);
-  color: var(--text-primary);
-  box-shadow: none;
-}
-
-.user-message-shell .chatRuntime-log-main,
-.user-message-shell .chatRuntime-log-text,
-.user-message-shell .chatRuntime-log-main * {
-  color: var(--text-primary);
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-}
-
-.runtime-message.runtime-message-user .msg-meta,
-.conversation-message.is-user .msg-meta {
-  color: var(--text-quiet);
-}
-
-/* Assistant message */
-.runtime-message.runtime-message-assistant .runtime-message-bubble,
-.conversation-message.is-assistant .msg-bubble,
-.assistant-message-shell {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  color: var(--text-primary);
-}
-
-.assistant-message-shell .chatRuntime-final-rendered,
-.conversation-final-rendered,
-.message-markdown-rendered {
-  color: var(--text-primary);
-}
-
-.runtime-message.runtime-message-assistant .msg-meta,
-.conversation-message.is-assistant .msg-meta {
-  color: var(--text-quiet);
-}
-
-/* Message meta — colors only. Layout (display, gap, margin) lives in shell.css */
-.msg-meta-source {
-  color: var(--text-quiet);
-}
-
-.msg-meta-time {
-  color: var(--text-quiet);
-}
-
-.msg-meta-source + .msg-meta-time::before {
-  display: none;
-}
-
-/* Copy button in msg-meta — colors only. Size/layout in shell.css */
-.msg-meta-copy {
-  background: transparent;
-  color: var(--text-quiet);
-  border: 0;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  font-size: 12px;
   cursor: pointer;
 }
 
-.msg-meta-copy:hover {
-  background: var(--bg-surface-active);
-  color: var(--text-secondary);
-}
-
-.msg-meta-copy.copied {
-  color: var(--status-success);
-}
-
-.status-pill {
-  background: transparent;
-  border: 0;
-}
-
-.status-pill.done { color: var(--status-success); }
-.status-pill.streaming,
-.status-pill.running,
-.status-pill.in_progress { color: var(--status-info); }
-.status-pill.error,
-.status-pill.failed { color: var(--status-danger); }
-
-/* ============================================================
-   9. MARKDOWN
-   ============================================================ */
-
-.message-markdown-rendered h1,
-.message-markdown-rendered h2,
-.message-markdown-rendered h3,
-.message-markdown-rendered h4,
-.message-markdown-rendered h5,
-.message-markdown-rendered h6 {
-  color: var(--text-primary);
-}
-
-.message-markdown-rendered blockquote {
-  border-left: 3px solid var(--border-strong);
-  color: var(--text-muted);
-}
-
-.message-markdown-rendered a {
+.theme-picker-reset:hover {
+  border-color: var(--accent);
   color: var(--accent);
 }
 
-.message-markdown-rendered hr {
-  border-top: 1px solid var(--border-subtle);
-}
-
-/* Code */
-.chat-md-inline-code {
-  background: var(--bg-code);
-  color: var(--text-primary);
-  border: 0;
-}
-
-.chat-md-pre,
-.chatRuntime-final-rendered .chat-md-pre {
-  background: var(--bg-code);
-  color: var(--text-primary);
-  border: 0;
-}
-
-.chat-md-pre code {
+/* Copy button — icon only, no border */
+.msg-meta-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 4px;
   background: transparent;
-  color: inherit;
-  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
-/* Tables */
-.chat-md-table th {
-  background: var(--bg-code);
-  border-bottom: 1px solid var(--border-default);
+.msg-meta-copy:hover {
+  opacity: 1;
   color: var(--text-primary);
+  background: var(--bg-surface-hover);
+  border: none;
 }
 
-.chat-md-table td {
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
+.msg-meta-copy.copied {
+  color: var(--accent);
+  opacity: 1;
 }
 
-/* ============================================================
-   10. THINKING / PROCESS
-   ============================================================ */
-
-.runtime-thinking-shell,
-.chatRuntime-process-shell {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
+.msg-meta-copy svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
-.runtime-thinking-shell::before,
-.chatRuntime-process-shell::before {
+.msg-meta-copy::before,
+.msg-meta-copy::after {
   display: none;
+  content: none;
 }
 
-.runtime-thinking-toggle,
-.chatRuntime-process-toggle {
-  color: var(--text-muted);
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.runtime-thinking-toggle:hover,
-.chatRuntime-process-toggle:hover {
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-}
-
-.chatRuntime-step-item {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-}
-
-.chatRuntime-step-toggle {
-  color: var(--text-muted);
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.chatRuntime-step-toggle:hover {
-  background: var(--bg-surface);
-}
-
-/* ============================================================
-   11. COMPOSER (input box)
-   ============================================================ */
-
-.runtime-composer-shell,
-[data-runtime-view="conversation"] .runtime-composer-shell,
-[data-runtime-composer-view="conversation"] .runtime-composer-shell,
-[data-runtime-view="chatRuntime"] .runtime-composer-shell {
-  background: var(--bg-page);
-  background-image: none;
-  border-top: 0;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-.runtime-composer-note {
-  color: var(--text-quiet);
-}
-
-.runtime-composer-panel {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-/* Composer form — the visible input box */
-.runtime-composer-form,
-[data-runtime-view="conversation"] .runtime-composer-form,
-[data-runtime-composer-view="conversation"] .runtime-composer-form,
-[data-runtime-view="chatRuntime"] .runtime-composer-form {
-  background: var(--composer-form-bg);
-  border: 1px solid var(--composer-form-border);
-  border-radius: var(--composer-form-radius);
-  box-shadow: var(--composer-form-shadow);
-  transition: border-color 0.15s ease,
-    background-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.runtime-composer-form:hover {
-  border-color: var(--border-strong);
-}
-
-.runtime-composer-form:focus-within {
-  border-color: var(--border-focus);
-  background: var(--bg-page);
-  box-shadow: var(--shadow-focus);
-}
-
-/* Textarea */
-.runtime-composer-input,
-[data-runtime-view="conversation"] .runtime-composer-input,
-[data-runtime-composer-view="conversation"] .runtime-composer-input,
-[data-runtime-view="chatRuntime"] .runtime-composer-input {
-  color: var(--text-primary);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  font-family: var(--font-sans);
-}
-
-.runtime-composer-input::placeholder {
-  color: var(--text-quiet);
-}
-
-/* Input assist */
-.runtime-composer-input-assist {
-  color: var(--text-quiet);
-}
-
-/* Meta */
-.runtime-composer-meta,
-[data-runtime-view="conversation"] .runtime-composer-meta {
-  color: var(--text-quiet);
-}
-
-/* Utility buttons */
-.runtime-composer-utility,
-.runtime-composer-upload,
-[data-runtime-view="conversation"] .runtime-composer-utility,
-[data-runtime-view="conversation"] .runtime-composer-form .runtime-composer-upload,
-[data-runtime-composer-view="conversation"] .runtime-composer-utility,
-[data-runtime-view="chatRuntime"] .runtime-composer-utility {
-  color: var(--text-muted);
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  transition: background-color 0.1s ease,
-    color 0.1s ease;
-}
-
-.runtime-composer-utility:hover,
-.runtime-composer-upload:hover {
-  background: var(--bg-surface-active);
-  color: var(--text-secondary);
-}
-
-.runtime-composer-utility.is-active {
-  background: var(--bg-surface-active);
-  color: var(--text-primary);
-}
-
-/* Send button */
-.runtime-composer-submit,
-[data-runtime-view="conversation"] .runtime-composer-submit,
-[data-runtime-composer-view="conversation"] .runtime-composer-submit,
-[data-runtime-view="chatRuntime"] .runtime-composer-submit {
-  background: var(--text-primary);
-  color: var(--text-inverse);
-  border: 0;
-  box-shadow: none;
-  transition: background-color 0.1s ease;
-}
-
-.runtime-composer-submit:hover:not(:disabled) {
-  background: var(--text-secondary);
-  color: var(--text-inverse);
-}
-
-.runtime-composer-submit:disabled {
-  background: var(--border-strong);
-  color: var(--text-muted);
-}
-
-/* Attachments */
-.runtime-composer-attachment {
-  background: var(--bg-surface-active);
-  border: 0;
-  color: var(--text-secondary);
-  box-shadow: none;
-}
-
-.runtime-composer-attachment-remove {
-  background: var(--border-strong);
-  color: var(--text-inverse);
-  border: 0;
-}
-
-.runtime-composer-attachment-remove:hover {
-  background: var(--text-muted);
-}
-
-/* Composer: mobile/tablet accent border + flat */
-@media (max-width: 1280px) {
-  [data-runtime-view="conversation"] .runtime-composer-form,
-  [data-runtime-composer-view="conversation"] .runtime-composer-form {
-    border-color: rgba(37, 99, 235, 0.48);
-    box-shadow: none;
-  }
-}
-
-/* Composer shell: conversation view background */
-[data-runtime-view="conversation"] .runtime-composer-shell,
-[data-runtime-composer-view="conversation"] .runtime-composer-shell {
-  background: var(--bg-page);
-}
-
-/* ============================================================
-   12. EMPTY STATE
-   ============================================================ */
-
-.conversation-empty-state {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.conversation-empty-state::before,
-.conversation-empty-state::after {
-  display: none;
-}
-
-.conversation-empty-state h5 {
-  color: var(--text-primary);
-}
-
-.conversation-empty-state p {
-  color: var(--text-muted);
-}
-
-/* ============================================================
-   13. HISTORY LOADER
-   ============================================================ */
-
-.conversation-history-loader-button {
-  background: var(--bg-page);
-  border: 1px solid var(--border-default);
-  color: var(--text-muted);
-  box-shadow: none;
-}
-
-.conversation-history-loader-button:hover {
-  background: var(--bg-surface);
-  border-color: var(--border-strong);
-  color: var(--text-secondary);
-}
-
-/* ============================================================
-   14. SCROLL JUMP
-   ============================================================ */
-
-.scroll-jump-control,
-.chatRuntime-jump-control {
-  background: var(--bg-page);
-  border: 1px solid var(--border-default);
-  color: var(--text-muted);
-  box-shadow: var(--shadow-sm);
-}
-
-.scroll-jump-control:hover,
-.chatRuntime-jump-control:hover {
-  background: var(--bg-surface);
-  border-color: var(--border-strong);
-  color: var(--text-secondary);
-}
-
-/* ============================================================
-   15. SETTINGS PAGE
-   ============================================================ */
-
-.settings-route-nav {
-  background: var(--bg-sidebar);
-  border: 0;
-}
-
-.settings-route-tab {
-  color: var(--text-muted);
-  border: 0;
-  box-shadow: none;
-}
-
-.settings-route-tab:hover {
-  background: var(--bg-surface-active);
-  color: var(--text-primary);
-}
-
-.settings-route-tab.is-active {
-  background: var(--bg-page);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-sm);
-  border: 0;
-}
-
-/* ============================================================
-   17. MODALS & DIALOGS
-   ============================================================ */
-
-.workspace-details-backdrop {
-  background: rgba(0, 0, 0, 0.2);
-  border: 0;
-}
-
-.runtime-workspace-details-panel,
-.workspace-details-panel {
-  background: var(--bg-page);
-  border: 1px solid var(--border-default);
-  box-shadow: var(--shadow-lg);
-}
-
-.workspace-details-panel-head {
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.workspace-details-close {
-  color: var(--text-muted);
-  border: 0;
-  background: transparent;
-}
-
-.workspace-details-close:hover {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-/* ============================================================
-   18. REDUCED MOTION
-   ============================================================ */
-
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .runtime-session-signal.is-busy {
-    animation: none;
-  }
-
   *,
   *::before,
   *::after {
