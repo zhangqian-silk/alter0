@@ -321,7 +321,7 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     identityName: "Account",
     identityPlan: "Plan",
     identityAuthMode: "Auth Mode",
-    quotaHourly: "Hourly",
+    quotaHourly: "5 Hours",
     quotaWeekly: "Weekly",
     quotaRemaining: "Remaining",
     quotaResets: "Resets",
@@ -420,7 +420,7 @@ const RUNTIME_COPY: Record<LegacyShellLanguage, RuntimeCopy> = {
     identityName: "账号",
     identityPlan: "计划",
     identityAuthMode: "认证模式",
-    quotaHourly: "小时额度",
+    quotaHourly: "5 小时额度",
     quotaWeekly: "周额度",
     quotaRemaining: "剩余",
     quotaResets: "重置",
@@ -1001,8 +1001,12 @@ export function ReactManagedCodexAccountsRouteBody({
               <span className="codex-runtime-card-kicker">CODEX USAGE</span>
             </div>
             <div className="codex-runtime-quota-grid is-compact">
-              <RuntimeQuotaItem label={copy.quotaHourly} copy={copy} window={runtime?.current?.quota?.hourly} />
-              <RuntimeQuotaItem label={copy.quotaWeekly} copy={copy} window={runtime?.current?.quota?.weekly} />
+              {runtime?.current?.quota?.hourly ? (
+                <RuntimeQuotaItem label={copy.quotaHourly} copy={copy} window={runtime.current.quota.hourly} />
+              ) : null}
+              {runtime?.current?.quota?.weekly ? (
+                <RuntimeQuotaItem label={copy.quotaWeekly} copy={copy} window={runtime.current.quota.weekly} />
+              ) : null}
             </div>
             <div className="codex-runtime-quick-form">
               <div className="codex-runtime-ledger-grid is-editable">
@@ -1038,7 +1042,7 @@ export function ReactManagedCodexAccountsRouteBody({
                       const value = normalizeText(option.reasoning_effort);
                       return (
                         <option key={value} value={value}>
-                          {formatReasoningOption(option)}
+                          {value}
                         </option>
                       );
                     })
@@ -1862,25 +1866,6 @@ function formatRuntimeModelSummary(model: RuntimeModel | null | undefined) {
   const label = runtimeModelDisplayName(model) || "-";
   const value = runtimeModelKey(model);
   return value && value !== label ? `${label} (${value})` : label;
-}
-
-function formatReasoningOption(option: RuntimeReasoningMode | null | undefined) {
-  return formatReasoningEffort(option?.reasoning_effort);
-}
-
-function formatReasoningEffort(value: unknown) {
-  const effort = normalizeText(value).toLowerCase();
-  if (!effort) {
-    return "";
-  }
-  if (effort === "xhigh") {
-    return "Max";
-  }
-  return effort
-    .split(/[_-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }
 
 function normalizeText(value: unknown) {

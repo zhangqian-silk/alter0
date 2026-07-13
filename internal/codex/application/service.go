@@ -25,6 +25,11 @@ import (
 
 const codexOAuthClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 
+const (
+	fiveHourQuotaWindowSeconds = 5 * 60 * 60
+	weeklyQuotaWindowSeconds   = 7 * 24 * 60 * 60
+)
+
 var (
 	codexUsageURL = "https://chatgpt.com/backend-api/wham/usage"
 	codexTokenURL = "https://auth.openai.com/oauth/token"
@@ -1354,9 +1359,10 @@ type rateLimitInfo struct {
 }
 
 type usageWindow struct {
-	UsedPercent       *int   `json:"used_percent"`
-	ResetAfterSeconds *int64 `json:"reset_after_seconds"`
-	ResetAt           *int64 `json:"reset_at"`
+	UsedPercent        *int   `json:"used_percent"`
+	LimitWindowSeconds *int64 `json:"limit_window_seconds"`
+	ResetAfterSeconds  *int64 `json:"reset_after_seconds"`
+	ResetAt            *int64 `json:"reset_at"`
 }
 
 type tokenRefreshResponse struct {
@@ -1466,16 +1472,11 @@ func fetchQuotaStatus(auth *codexdomain.AuthFile, client *http.Client, now time.
 	if err := json.Unmarshal(body, &usage); err != nil {
 		return nil, fmt.Errorf("decode quota response: %w", err)
 	}
+	hourly, weekly := classifiedQuotaWindows(usage.RateLimit, now)
 	return &codexdomain.QuotaStatus{
-		Hourly: codexdomain.QuotaWindow{
-			RemainingPercent: remainingPercent(rateWindow(usage.RateLimit, true)),
-			ResetAt:          resetTime(rateWindow(usage.RateLimit, true), now),
-		},
-		Weekly: codexdomain.QuotaWindow{
-			RemainingPercent: remainingPercent(rateWindow(usage.RateLimit, false)),
-			ResetAt:          resetTime(rateWindow(usage.RateLimit, false), now),
-		},
-		Plan: strings.TrimSpace(usage.PlanType),
+		Hourly: hourly,
+		Weekly: weekly,
+		Plan:   strings.TrimSpace(usage.PlanType),
 	}, nil
 }
 
@@ -1618,14 +1619,30 @@ func decodeBase64URL(value string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(value)
 }
 
-func rateWindow(info *rateLimitInfo, primary bool) *usageWindow {
+func classifiedQuotaWindows(info *rateLimitInfo, now time.Time) (hourly, weekly *codexdomain.QuotaWindow) {
 	if info == nil {
-		return nil
+		return nil, nil
 	}
-	if primary {
-		return info.PrimaryWindow
+	for _, window := range []*usageWindow{info.PrimaryWindow, info.SecondaryWindow} {
+		if window == nil || window.LimitWindowSeconds == nil {
+			continue
+		}
+		quota := &codexdomain.QuotaWindow{
+			RemainingPercent: remainingPercent(window),
+			ResetAt:          resetTime(window, now),
+		}
+		switch *window.LimitWindowSeconds {
+		case fiveHourQuotaWindowSeconds:
+			if hourly == nil {
+				hourly = quota
+			}
+		case weeklyQuotaWindowSeconds:
+			if weekly == nil {
+				weekly = quota
+			}
+		}
 	}
-	return info.SecondaryWindow
+	return hourly, weekly
 }
 
 func remainingPercent(window *usageWindow) int {

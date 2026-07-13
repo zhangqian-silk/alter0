@@ -92,8 +92,8 @@ func TestCodexAccountCollectionHandlerListsAccounts(t *testing.T) {
 							Record:  record,
 							Current: true,
 							Quota: &codexdomain.QuotaStatus{
-								Hourly: codexdomain.QuotaWindow{RemainingPercent: 80},
-								Weekly: codexdomain.QuotaWindow{RemainingPercent: 92},
+								Hourly: &codexdomain.QuotaWindow{RemainingPercent: 80},
+								Weekly: &codexdomain.QuotaWindow{RemainingPercent: 92},
 								Plan:   "plus",
 							},
 						},
@@ -101,8 +101,8 @@ func TestCodexAccountCollectionHandlerListsAccounts(t *testing.T) {
 						Managed:  &record,
 						AuthPath: "/var/lib/alter0/.codex/auth.json",
 						Quota: &codexdomain.QuotaStatus{
-							Hourly: codexdomain.QuotaWindow{RemainingPercent: 80},
-							Weekly: codexdomain.QuotaWindow{RemainingPercent: 92},
+							Hourly: &codexdomain.QuotaWindow{RemainingPercent: 80},
+							Weekly: &codexdomain.QuotaWindow{RemainingPercent: 92},
 							Plan:   "plus",
 						},
 					}, nil
