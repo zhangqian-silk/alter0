@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	codexapp "alter0/internal/codex/application"
 	controlapp "alter0/internal/control/application"
 	controldomain "alter0/internal/control/domain"
 	schedulerapp "alter0/internal/scheduler/application"
@@ -107,6 +109,108 @@ func TestSkillEndpointUsesUnifiedCapabilityFields(t *testing.T) {
 	}
 	if len(listResp.Items) != 1 || listResp.Items[0].Type != controldomain.CapabilityTypeSkill {
 		t.Fatalf("unexpected list items: %+v", listResp.Items)
+	}
+}
+
+func TestSkillCatalogSeparatesAlter0AndCodexSkills(t *testing.T) {
+	control := controlapp.NewService()
+	for _, skill := range []controldomain.Skill{
+		{
+			ID: "preview-publish", Name: "Preview Publish", Enabled: true, Scope: controldomain.CapabilityScopeGlobal,
+			Metadata: map[string]string{"skill.owner": "alter0", "skill.description": "Publish session previews."},
+		},
+		{
+			ID: "travel", Name: "Travel", Enabled: true, Scope: controldomain.CapabilityScopeGlobal,
+			Metadata: map[string]string{"skill.owner": "alter0", "skill.description": "Build travel guides."},
+		},
+		{
+			ID: "custom", Name: "Custom", Enabled: true, Scope: controldomain.CapabilityScopeGlobal,
+			Metadata: map[string]string{"skill.description": "User-managed control entry."},
+		},
+	} {
+		if err := control.UpsertSkill(skill); err != nil {
+			t.Fatalf("seed skill %s: %v", skill.ID, err)
+		}
+	}
+	cwd := t.TempDir()
+	server := &Server{
+		control:       control,
+		workspaceRoot: cwd,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		codexAccounts: &stubCodexAccountService{
+			listSkills: func(_ context.Context, gotCWD string) (*codexapp.NativeSkillCatalog, error) {
+				if gotCWD != cwd {
+					t.Fatalf("catalog cwd = %q, want %q", gotCWD, cwd)
+				}
+				return &codexapp.NativeSkillCatalog{
+					Items: []codexapp.NativeSkillCatalogItem{
+						{
+							Name: "preview-publish", Description: "Managed copy.", Enabled: true, Scope: "user",
+							Location: codexapp.NativeSkillLocationAlter0, ManagedSkillID: "preview-publish", Duplicate: true, DuplicateGroup: "preview-publish",
+						},
+						{
+							Name: "preview-publish", Description: "External copy.", Enabled: true, Scope: "user",
+							Location: codexapp.NativeSkillLocationUserAgents, Duplicate: true, DuplicateGroup: "preview-publish",
+						},
+						{
+							Name: "frontend-design", Description: "Frontend workflow.", Enabled: true, Scope: "user",
+							Location: codexapp.NativeSkillLocationCodexHome,
+						},
+					},
+					Errors: []codexapp.NativeSkillCatalogError{{Code: "parse_error", Message: "Codex could not load a Skill from this location.", Location: codexapp.NativeSkillLocationRepo}},
+				}, nil
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/control/skill-catalog", nil)
+	rec := httptest.NewRecorder()
+	server.skillCatalogHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		ProjectSkills []struct {
+			ID           string `json:"id"`
+			CodexVisible bool   `json:"codex_visible"`
+			SyncStatus   string `json:"sync_status"`
+			Duplicate    bool   `json:"duplicate"`
+		} `json:"project_skills"`
+		CodexSkills []codexapp.NativeSkillCatalogItem  `json:"codex_skills"`
+		Errors      []codexapp.NativeSkillCatalogError `json:"errors"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode catalog response: %v", err)
+	}
+	if len(response.ProjectSkills) != 2 {
+		t.Fatalf("project skills = %+v, want two alter0-owned skills", response.ProjectSkills)
+	}
+	projects := map[string]struct {
+		visible bool
+		status  string
+		dup     bool
+	}{}
+	for _, item := range response.ProjectSkills {
+		projects[item.ID] = struct {
+			visible bool
+			status  string
+			dup     bool
+		}{item.CodexVisible, item.SyncStatus, item.Duplicate}
+	}
+	if got := projects["preview-publish"]; !got.visible || got.status != "ready" || !got.dup {
+		t.Fatalf("preview-publish = %+v, want visible ready duplicate", got)
+	}
+	if got := projects["travel"]; got.visible || got.status != "missing" {
+		t.Fatalf("travel = %+v, want missing", got)
+	}
+	if len(response.CodexSkills) != 2 {
+		t.Fatalf("codex skills = %+v, want two external items", response.CodexSkills)
+	}
+	if len(response.Errors) != 1 || response.Errors[0].Location != codexapp.NativeSkillLocationRepo {
+		t.Fatalf("errors = %+v, want one repo error", response.Errors)
+	}
+	if strings.Contains(rec.Body.String(), cwd) || strings.Contains(rec.Body.String(), "managed_skill_id") {
+		t.Fatalf("catalog response leaked an internal path or ownership field: %s", rec.Body.String())
 	}
 }
 

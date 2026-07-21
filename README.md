@@ -84,7 +84,7 @@
 
 ## Skill And Memory
 
-Skill 作为产品能力仓库单独维护。控制面中启用且非私有的 file-backed Skill 会同步到当前服务用户的 Codex 原生 Skill 目录，由 Codex 根据 `SKILL.md` 的 `name` 与 `description` 自动匹配；用户也可以在消息中使用 `$skill-name` 显式调用。Chat 不再保存或提交分会话 Skill 选择，也不会把 Skill 文件复制进会话工作区或绑定仓库。
+alter0 只维护 `preview-publish` 与 `travel` 两个业务 Skill，并把启用项同步到当前服务用户的 Codex 原生 Skill 目录。通用研发 Skill 由 Codex、用户、管理员、仓库或外部发行源维护，alter0 不复制、升级或覆盖。Codex 根据 `SKILL.md` 的 `name` 与 `description` 自动匹配，用户也可以在消息中使用 `$skill-name` 显式调用。Chat 不保存或提交分会话 Skill 选择，也不会把 Skill 文件复制进会话工作区或绑定仓库。
 
 所有后续记忆统一使用 Codex 原生 Memories：
 
@@ -125,7 +125,7 @@ Web 前端分发采用双层缓存策略：`/chat` 与 `static/dist/legacy/*` �
 
 当前 Web Shell 使用单一 React 工作台：左侧主导航只暴露 `Chat / Settings` 两个稳定入口，主工作区按对话运行态或设置页渲染。`/chat` 是唯一对话运行时入口，负责承载通用对话、代码开发、旅行、写作等由 Skill 驱动的任务；`/settings` 承接 Runtime、Skills 与 Schedules，原生 Memories 设置归入 Runtime。
 
-当前桌面工作台保持左侧会话导航与右侧工作区两层结构。Settings 正文分为 `Runtime / Skills / Schedules`：`Runtime` 管理服务重启、Codex 身份、Model、思考深度、全局原生 Memories 与 Provider；`Skills` 管理用户级原生 Skill；`Schedules` 管理定时任务。
+当前桌面工作台保持左侧会话导航与右侧工作区两层结构。Settings 正文分为 `Runtime / Skills / Schedules`：`Runtime` 管理服务重启、Codex 身份、Model、思考深度、全局原生 Memories 与 Provider；`Skills` 分区展示 Alter0 内置业务 Skill 与 Codex 实际发现的只读目录；`Schedules` 管理定时任务。
 
 Web Shell 交互手感由全局 motion token 统一：常规反馈使用 `cubic-bezier(0.16, 1, 0.3, 1)`，按钮和工具入口具备快速按压缩放，列表项、快捷提示和轻量卡片具备克制抬升与三层阴影，弹层使用淡入加轻缩放进入；所有可交互控件共享 `focus-visible` 焦点环，数字型字段使用等宽数字，滚动容器隔离滚动穿透，并通过 `prefers-reduced-motion` 降级动效。
 
@@ -234,7 +234,7 @@ Agent 请求按用户交互形态以 `Chat` 为唯一前端对话运行时：
 - 面向“持续协助并推进执行”的目标型任务。
 - Chat 使用同一个 CLI Runtime 执行任务，由 Claude Code 或 Codex CLI 承担任务推理、工具调用和会话内上下文压缩。
 - Runtime Resolver 按选择结果进入执行器：默认与显式 `Codex` 使用 `Codex Direct`；显式选择具体 Provider/Model 或声明 Claude 执行器时使用 `Claude Code + provider profile`；Claude 执行失败直接返回错误。
-- 代码开发、旅行攻略、结构化写作等业务场景由 Skill 组合和交付契约表达，不再对应单独执行框架。代码开发复用全栈开发、测试、评审、重构、预览发布等现有 Skill；旅行攻略、前端设计、部署预览、文档协作、测试、评审与记忆整理都由 `docs/skills/<skill_id>/SKILL.md` 表达规则。
+- 代码开发、旅行攻略、结构化写作等业务场景由 Skill 组合和交付契约表达，不再对应单独执行框架。`preview-publish` 与 `travel` 的业务规则由 alter0 的 `docs/skills/<skill_id>/SKILL.md` 承载；前端设计、文档协作、测试、评审等通用研发 Skill 由 Codex 外部目录提供。
 - Claude Code 启动前继续准备 provider profile 与所需上下文；Codex Direct 使用共享活动 `CODEX_HOME`，直接在绑定仓库中运行并读取仓库自身 `AGENTS.md`，不生成会话级 Skill、Memory 或 Runtime Home。
 - 代码开发任务默认在当前 Session 工作区维护独立 repo clone，并在同一会话内复用仓库、分支、预览服务和交付状态。旅行任务通过 `travel` Skill 产出移动端优先的 HTML 攻略，按行程密度生成 Codex 行程地图图片，并通过当前 Session 的只读 `travel` workspace service 暴露。
 - 会话内上下文压缩由 Claude Code 或 Codex CLI 自身处理；alter0 持久化消息、日志、结果和归档摘要，用于恢复、审计和跨会话记忆整理。
@@ -563,40 +563,27 @@ curl -X PUT http://127.0.0.1:18088/api/control/codex/runtime \
 ### Skill
 
 ```bash
-# 列表
-curl http://127.0.0.1:18088/api/control/skills
+# Alter0 内置与 Codex 实际发现目录
+curl http://127.0.0.1:18088/api/control/skill-catalog
 
-# 创建/更新
-curl -X PUT http://127.0.0.1:18088/api/control/skills/summary \
-  -H "Content-Type: application/json" \
-  -d '{"name":"summary","enabled":true}'
+# Alter0 Capability 兼容列表
+curl http://127.0.0.1:18088/api/control/skills
 ```
 
 说明：
 
-1. 服务启动后提供 `preview-publish`、`frontend-design`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review`、`brainstorming` 与 `travel` 等公有内置 Skill；旧 `memory` 与 `memory-maintenance` Skill 会从控制状态中清理。
-2. 项目内置 Skill 全部由源码仓库直接承载，并统一使用 `docs/skills/<skill_id>/SKILL.md` 作为原生入口。服务在启动和 Skill 启用、停用、更新、删除时，把有效的公有 Skill 原子同步到 Codex 用户级 Skill 目录；非 alter0 管理的用户 Skill 永远不会被覆盖或删除。
+1. 服务启动后只注册 `preview-publish` 与 `travel` 两个公有内置 Skill；历史通用 Skill、`memory` 与 `memory-maintenance` 会从控制状态中清理。
+2. 两个内置 Skill 由 `docs/skills/<skill_id>/SKILL.md` 承载。服务在启动和生命周期变更时把有效项原子同步到 Codex 用户级目录，并删除带有效 alter0 marker 的退休副本；用户或 Agent 安装的无 marker Skill 永远不会被覆盖或删除。
 3. Skill 由 Codex 自动匹配，也可通过 `$skill-name` 显式调用；Chat 不提供会话级勾选入口。
 4. `preview-publish` 是静态用户可见产物与完整测试服务的统一发布通道。Skill / Chat 不得把 `/srv/...`、运行根目录下的 `workspaces/...`、`file://`、`localhost` 或 `127.0.0.1` 作为用户可打开链接返回；HTML、Markdown 预览、截图、图片集合、文本报告、JSON 示例和代码样例等静态产物必须先发布到 `https://<service>-<short_hash>.alter0.cn` 后再作为交付入口。需要完整 Web 应用、后端路由或 API 联动时，也使用 `preview-publish` 发布会话级服务地址。
 5. 服务不再随启动注册任何内置业务编排；Chat 默认直接通过 Claude Code CLI 或 Codex CLI 执行。
-6. 所有可复用规则统一进入控制面可见的 `docs/skills/<skill_id>/SKILL.md`，由 Codex 原生 Skill 发现与调用机制加载。
-7. `travel` Skill 会预置城市页、行程、地铁、美食、路线卡与 Codex 行程地图图片输出规则；稳定偏好写入 `docs/skills/travel/SKILL.md`，一次性行程细节仍只保留在目标城市页数据中。
+6. `Settings > Skills` 的 Alter0 区展示两个业务 Skill 的配置、Codex 可见和同步状态；Codex 区通过 app-server `skills/list` 实时读取，并用 `~/.agents/skills`、`$CODEX_HOME/skills`、`<repo>/.agents/skills`、管理员或系统标签区分来源。响应不返回服务器绝对路径。
+7. 同名不同路径的 Codex Skill 不合并，页面保留每一项并显示重复提示；alter0 不替用户选择赢家或修改第三方目录。
+8. `travel` Skill 会预置城市页、行程、地铁、美食、路线卡与 Codex 行程地图图片输出规则；稳定偏好写入 `docs/skills/travel/SKILL.md`，一次性行程细节仍只保留在目标城市页数据中。
 
-### Skill
+### Chat 执行
 
 ```bash
-# 更新 Skill
-curl -X PUT http://127.0.0.1:18088/api/control/skills/research \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name":"Research",
-    "enabled":true,
-    "metadata":{
-      "skill.description":"面向资料整理和结论交付的可选能力。",
-      "skill.file_path":"docs/skills/research/SKILL.md"
-    }
-  }'
-
 # 通过 Chat 执行任务
 session_id="$(curl -sS -X POST http://127.0.0.1:18088/api/chat/sessions \
   -H "Content-Type: application/json" \
@@ -613,9 +600,9 @@ curl -X POST "http://127.0.0.1:18088/api/chat/sessions/${session_id}/input" \
 2. Web 对话统一使用 `Chat`；代码、写作、旅行等任务不再依赖内置业务编排。
 3. Runtime Resolver 使用已启用且健康的 `Claude Code + provider profile`；无可用 Provider 时使用 `Codex Direct`；Claude 执行失败直接返回错误。
 4. Codex 使用共享活动 `CODEX_HOME`，绑定仓库的会话直接从 `repo/` 运行并原生读取仓库的 `AGENTS.md` 层级；服务不会向仓库或会话工作区写入 Skill 副本、记忆摘要或托管 `AGENTS.md`。
-5. Skill 文件由 `docs/skills/<skill_id>/SKILL.md` 承载，业务能力通过 Codex 原生 Skill 复用。
+5. Alter0 业务 Skill 由 `docs/skills/<skill_id>/SKILL.md` 承载；通用 Skill 由 Codex 原生用户、仓库、管理员、系统目录或外部发行源维护。
 6. Codex 原生 Memories 默认全局开启，并可在 `Settings > Runtime` 分别控制总开关、生成与召回；配置作用于后续所有新建和续接任务，alter0 不维护第二套 Markdown 记忆。
-7. `Settings > Skills` 用于管理全局能力；`Chat` 是通用执行入口。
+7. `Settings > Skills` 管理 Alter0 内置业务 Skill，并只读展示 Codex 实际发现的其他 Skill；`Chat` 是通用执行入口。
 
 ### Cron Jobs
 

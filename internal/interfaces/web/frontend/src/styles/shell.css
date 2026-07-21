@@ -1730,6 +1730,111 @@ body {
   gap: 12px;
 }
 
+.skill-catalog,
+.skill-catalog-section {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  align-content: start;
+}
+
+.skill-catalog {
+  gap: 24px;
+}
+
+.skill-catalog-section {
+  gap: 14px;
+}
+
+.skill-catalog-section-head {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.skill-catalog-section-head h3,
+.skill-catalog-section-head p,
+.skill-catalog-errors p {
+  margin: 0;
+}
+
+.skill-catalog-section-head h3 {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.skill-catalog-section-head p {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.skill-catalog .route-field-value.is-markdown > p {
+  display: block;
+}
+
+.skill-catalog-conflict {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  color: var(--status-warning);
+  background: var(--bg-surface-active);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.skill-catalog-errors {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface);
+}
+
+.skill-catalog-errors > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.skill-catalog-errors strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.skill-catalog-errors p {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.skill-catalog-errors p span {
+  margin-right: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 600px) {
+  .skill-catalog-errors {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .skill-catalog-errors .route-card-action {
+    align-self: flex-start;
+  }
+}
+
 .settings-route-content .route-field-row {
   grid-template-columns: minmax(82px, 112px) minmax(0, 1fr) auto;
   gap: 8px;

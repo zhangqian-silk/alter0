@@ -1,6 +1,6 @@
 # Control, Operations & Governance Requirements
 
-> Last update: 2026-06-23
+> Last update: 2026-07-21
 
 ## 领域边界
 
@@ -35,9 +35,10 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 
 ### Skill
 
-- 支持 Skill 创建、更新、删除与列表查询。
-- 默认提供 `preview-publish`、`frontend-design`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review`、`brainstorming` 与 `travel` 等公有 Skill；启动时清理历史 `memory` 与 `memory-maintenance` 条目。
-- 项目内置 file-backed Skill 统一使用 `docs/skills/<skill_id>/SKILL.md`，附属脚本或参考文件与 Skill 一同同步到 Codex 用户级原生 Skill 目录。同步只管理带 alter0 标记的目标，保留用户自行安装的 Skill，并在无效来源或目标冲突时拒绝生命周期变更。
+- Capability 兼容接口继续支持 Skill 查询与生命周期调用；alter0 自有生命周期只覆盖两个业务 Skill。
+- 默认只提供 `preview-publish` 与 `travel`；启动时清理历史通用 Skill、`memory` 与 `memory-maintenance` 条目，并保留两个业务 Skill 已配置的停用状态。
+- 两个项目内置 file-backed Skill 使用 `docs/skills/<skill_id>/SKILL.md`，附属脚本或参考文件与 Skill 一同同步到 Codex 用户级原生 Skill 目录。同步只管理带 alter0 标记的目标，删除已退休的托管副本，保留用户或 Agent 自行安装的无 marker Skill。
+- `GET /api/control/skill-catalog` 只读聚合 Alter0 内置与 Codex app-server `skills/list` 目录；外部项按安全位置标签展示，同名不同路径标记冲突，不返回绝对路径或第三方写操作。
 - `preview-publish` 额外提供 `docs/skills/preview-publish/scripts/publish_preview_artifact.sh`，用于把文本、图片、代码等静态产物组装为单页预览并挂到 `<service>-<session_short_hash>.alter0.cn`。所有需要给用户浏览器查看的静态产物都必须通过该 skill 发布，不得返回服务器本地路径、工作区内部路径、`file://`、`localhost` 或 `127.0.0.1` 作为用户入口；需要完整 Web 应用或后端路由时同样使用 `preview-publish`。
 - Skill 协议支持文件路径与可写属性。
 - 服务不再注册内置业务编排；Codex 通过原生描述匹配或 `$skill-name` 使用控制面启用的全局 Skill。
@@ -74,6 +75,7 @@ Control, Operations & Governance 负责运行时配置管理、Model Provider、
 - `GET /api/control/capabilities`、`PUT /api/control/capabilities/{type}/{capability_id}`、`DELETE /api/control/capabilities/{type}/{capability_id}` 管理统一 Capability。
 - `GET /api/control/capabilities/audit` 查询 Capability 生命周期审计。
 - `GET /api/control/skills`、`PUT /api/control/skills/{skill_id}`、`POST /api/control/skills/{skill_id}`、`DELETE /api/control/skills/{skill_id}` 管理 Skill 兼容接口。
+- `GET /api/control/skill-catalog` 查询 Alter0 内置 Skill 状态与 Codex 实际发现的只读 Skill 目录。
 - `GET /api/control/mcps`、`PUT /api/control/mcps/{mcp_id}`、`POST /api/control/mcps/{mcp_id}`、`DELETE /api/control/mcps/{mcp_id}` 管理 MCP 兼容接口。
 - `GET /api/control/workspace-services`、`GET /api/control/workspace-services/{session_id}`、`PUT /api/control/workspace-services/{session_id}`、`GET /api/control/workspace-services/{session_id}/{service_id}`、`PUT /api/control/workspace-services/{session_id}/{service_id}`、`DELETE /api/control/workspace-services/{session_id}/{service_id}` 管理 Session 级 workspace service 注册表。
 - `GET /api/control/runtime` 读取在线实例信息。

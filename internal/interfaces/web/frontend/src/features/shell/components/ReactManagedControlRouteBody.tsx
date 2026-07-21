@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createAPIClient } from "../../../shared/api/client";
 import type { LegacyShellLanguage } from "../legacyShellCopy";
 import {
@@ -37,10 +37,50 @@ type CronJobRouteRecord = {
   };
 };
 
+type ProjectSkillCatalogRecord = {
+  id?: string;
+  name?: string;
+  description?: string;
+  configured_enabled?: boolean;
+  codex_visible?: boolean;
+  sync_status?: string;
+  duplicate?: boolean;
+  duplicate_group?: string;
+};
+
+type CodexSkillDependency = {
+  type?: string;
+  value?: string;
+  command?: string;
+  description?: string;
+};
+
+type CodexSkillCatalogRecord = {
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  scope?: string;
+  location?: string;
+  display_name?: string;
+  short_description?: string;
+  dependencies?: CodexSkillDependency[];
+  duplicate?: boolean;
+  duplicate_group?: string;
+};
+
+type SkillCatalogError = {
+  code?: string;
+  message?: string;
+  location?: string;
+};
+
 type RouteRecord = ControlRouteRecord | CronJobRouteRecord;
 
 type ControlRouteResponse = {
   items?: RouteRecord[];
+  project_skills?: ProjectSkillCatalogRecord[];
+  codex_skills?: CodexSkillCatalogRecord[];
+  errors?: SkillCatalogError[];
 };
 
 type ControlRouteCopy = {
@@ -61,6 +101,10 @@ type ControlRouteCopy = {
   fieldPrompt: string;
   fieldRetryLimit: string;
   fieldOrigin: string;
+  fieldLocation: string;
+  fieldDependencies: string;
+  fieldSyncStatus: string;
+  fieldCodexVisible: string;
   builtinJob: string;
   customJob: string;
   enableJob: string;
@@ -68,6 +112,20 @@ type ControlRouteCopy = {
   actionFailed: (message: string) => string;
   emptySkills: string;
   emptyCronJobs: string;
+  alter0Section: string;
+  alter0SectionHint: string;
+  codexSection: string;
+  codexSectionHint: string;
+  duplicateName: string;
+  visibleYes: string;
+  visibleNo: string;
+  catalogIssues: string;
+  retryCatalog: string;
+  syncReady: string;
+  syncMissing: string;
+  syncStale: string;
+  syncUnknown: string;
+  syncCodexDisabled: string;
   loadFailed: (message: string) => string;
 };
 
@@ -90,6 +148,10 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     fieldPrompt: "Prompt",
     fieldRetryLimit: "Retry Limit",
     fieldOrigin: "Origin",
+    fieldLocation: "Location",
+    fieldDependencies: "Dependencies",
+    fieldSyncStatus: "Sync",
+    fieldCodexVisible: "Codex Visible",
     builtinJob: "Built-in",
     customJob: "Custom",
     enableJob: "Enable job",
@@ -97,6 +159,20 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     actionFailed: (message) => `Action failed: ${message}`,
     emptySkills: "No Skills available.",
     emptyCronJobs: "No schedules available.",
+    alter0Section: "Alter0 Built-in",
+    alter0SectionHint: "Business Skills maintained and synchronized by Alter0.",
+    codexSection: "Codex Skills",
+    codexSectionHint: "Read-only catalog reported by the active Codex runtime.",
+    duplicateName: "Duplicate name",
+    visibleYes: "Visible",
+    visibleNo: "Not visible",
+    catalogIssues: "Catalog issues",
+    retryCatalog: "Retry",
+    syncReady: "Ready",
+    syncMissing: "Not installed",
+    syncStale: "Removal pending",
+    syncUnknown: "Unavailable",
+    syncCodexDisabled: "Disabled in Codex",
     loadFailed: (message) => `Load failed: ${message}`,
   },
   zh: {
@@ -117,6 +193,10 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     fieldPrompt: "任务输入",
     fieldRetryLimit: "重试次数",
     fieldOrigin: "来源",
+    fieldLocation: "位置",
+    fieldDependencies: "依赖",
+    fieldSyncStatus: "同步状态",
+    fieldCodexVisible: "Codex 可见",
     builtinJob: "内置",
     customJob: "自定义",
     enableJob: "启用任务",
@@ -124,6 +204,20 @@ const CONTROL_ROUTE_COPY: Record<LegacyShellLanguage, ControlRouteCopy> = {
     actionFailed: (message) => `操作失败：${message}`,
     emptySkills: "暂无可用技能。",
     emptyCronJobs: "暂无定时任务。",
+    alter0Section: "Alter0 内置",
+    alter0SectionHint: "由 Alter0 维护并同步的业务 Skill。",
+    codexSection: "Codex Skills",
+    codexSectionHint: "当前 Codex 运行时实际发现的只读目录。",
+    duplicateName: "名称重复",
+    visibleYes: "可见",
+    visibleNo: "不可见",
+    catalogIssues: "目录问题",
+    retryCatalog: "重试",
+    syncReady: "已同步",
+    syncMissing: "未安装",
+    syncStale: "待清理",
+    syncUnknown: "不可用",
+    syncCodexDisabled: "已在 Codex 停用",
     loadFailed: (message) => `加载失败：${message}`,
   },
 };
@@ -142,6 +236,9 @@ type FieldSpec = {
 type RequestState = {
   status: "loading" | "ready" | "error";
   items: RouteRecord[];
+  projectSkills: ProjectSkillCatalogRecord[];
+  codexSkills: CodexSkillCatalogRecord[];
+  catalogErrors: SkillCatalogError[];
   error: string;
 };
 
@@ -164,7 +261,7 @@ type RouteConfig = {
 
 const ROUTE_CONFIG: Record<ReactManagedControlRoute, RouteConfig> = {
   skills: {
-    path: "/api/control/skills",
+    path: "/api/control/skill-catalog",
     empty: (copy) => copy.emptySkills,
     key: (item) => normalizeText((item as ControlRouteRecord).id),
     title: (item) => (item as ControlRouteRecord).id,
@@ -225,8 +322,12 @@ export function ReactManagedControlRouteBody({
   const [state, setState] = useState<RequestState>({
     status: "loading",
     items: [],
+    projectSkills: [],
+    codexSkills: [],
+    catalogErrors: [],
     error: "",
   });
+  const [reloadToken, setReloadToken] = useState(0);
   const [actionBusyID, setActionBusyID] = useState("");
   const [actionError, setActionError] = useState("");
 
@@ -236,6 +337,9 @@ export function ReactManagedControlRouteBody({
     setState({
       status: "loading",
       items: [],
+      projectSkills: [],
+      codexSkills: [],
+      catalogErrors: [],
       error: "",
     });
     setActionBusyID("");
@@ -250,6 +354,9 @@ export function ReactManagedControlRouteBody({
         setState({
           status: "ready",
           items: Array.isArray(payload?.items) ? payload.items : [],
+          projectSkills: Array.isArray(payload?.project_skills) ? payload.project_skills : [],
+          codexSkills: Array.isArray(payload?.codex_skills) ? payload.codex_skills : [],
+          catalogErrors: Array.isArray(payload?.errors) ? payload.errors : [],
           error: "",
         });
       })
@@ -260,6 +367,9 @@ export function ReactManagedControlRouteBody({
         setState({
           status: "error",
           items: [],
+          projectSkills: [],
+          codexSkills: [],
+          catalogErrors: [],
           error: error instanceof Error ? error.message : "unknown_error",
         });
       });
@@ -267,7 +377,7 @@ export function ReactManagedControlRouteBody({
     return () => {
       disposed = true;
     };
-  }, [routeConfig]);
+  }, [reloadToken, routeConfig]);
 
   if (state.status === "loading") {
     return <p className="route-loading">{copy.loading}</p>;
@@ -275,6 +385,18 @@ export function ReactManagedControlRouteBody({
 
   if (state.status === "error") {
     return <p className="route-error">{copy.loadFailed(state.error)}</p>;
+  }
+
+  if (route === "skills") {
+    return (
+      <SkillCatalogView
+        copy={copy}
+        projectSkills={state.projectSkills}
+        codexSkills={state.codexSkills}
+        errors={state.catalogErrors}
+        onRetry={() => setReloadToken((current) => current + 1)}
+      />
+    );
   }
 
   if (!state.items.length) {
@@ -357,4 +479,153 @@ export function ReactManagedControlRouteBody({
       </section>
     </>
   );
+}
+
+function SkillCatalogView({
+  copy,
+  projectSkills,
+  codexSkills,
+  errors,
+  onRetry,
+}: {
+  copy: ControlRouteCopy;
+  projectSkills: ProjectSkillCatalogRecord[];
+  codexSkills: CodexSkillCatalogRecord[];
+  errors: SkillCatalogError[];
+  onRetry: () => void;
+}) {
+  return (
+    <div className="skill-catalog" data-skill-catalog>
+      <SkillCatalogSection title={copy.alter0Section} hint={copy.alter0SectionHint}>
+        {projectSkills.length ? (
+          <section className="control-route-grid" data-control-route-grid="alter0-skills">
+            {projectSkills.map((item) => (
+              <RouteCard
+                key={`project-skill-${normalizeText(item.id)}`}
+                title={item.name || item.id}
+                type="alter0 skill"
+                enabled={Boolean(item.configured_enabled)}
+                statusEnabledLabel={copy.statusEnabled}
+                statusDisabledLabel={copy.statusDisabled}
+                actions={item.duplicate ? <span className="skill-catalog-conflict">{copy.duplicateName}</span> : null}
+              >
+                <RouteFieldRow label={copy.fieldID} value={item.id} copyLabel={copy.copyValue} mono />
+                <RouteFieldRow label={copy.fieldSyncStatus} value={syncStatusLabel(item.sync_status, copy)} copyLabel={copy.copyValue} />
+                <RouteFieldRow
+                  label={copy.fieldCodexVisible}
+                  value={item.codex_visible ? copy.visibleYes : copy.visibleNo}
+                  copyLabel={copy.copyValue}
+                />
+                <RouteFieldRow
+                  label={copy.fieldDescription}
+                  value={item.description}
+                  copyLabel={copy.copyValue}
+                  multiline
+                  markdown
+                />
+              </RouteCard>
+            ))}
+          </section>
+        ) : (
+          <p className="route-empty">{copy.emptySkills}</p>
+        )}
+      </SkillCatalogSection>
+
+      <SkillCatalogSection title={copy.codexSection} hint={copy.codexSectionHint}>
+        {codexSkills.length ? (
+          <section className="control-route-grid" data-control-route-grid="codex-skills">
+            {codexSkills.map((item, index) => (
+              <RouteCard
+                key={`codex-skill-${normalizeText(item.name)}-${normalizeText(item.location)}-${index}`}
+                title={item.display_name || item.name}
+                type="codex skill"
+                enabled={Boolean(item.enabled)}
+                statusEnabledLabel={copy.statusEnabled}
+                statusDisabledLabel={copy.statusDisabled}
+                actions={item.duplicate ? <span className="skill-catalog-conflict">{copy.duplicateName}</span> : null}
+              >
+                <RouteFieldRow label={copy.fieldName} value={item.name} copyLabel={copy.copyValue} mono />
+                <RouteFieldRow label={copy.fieldLocation} value={skillLocationLabel(item.location)} copyLabel={copy.copyValue} />
+                <RouteFieldRow label={copy.fieldScope} value={item.scope} copyLabel={copy.copyValue} />
+                <RouteFieldRow
+                  label={copy.fieldDependencies}
+                  value={skillDependenciesLabel(item.dependencies)}
+                  copyLabel={copy.copyValue}
+                  mono
+                />
+                <RouteFieldRow
+                  label={copy.fieldDescription}
+                  value={item.short_description || item.description}
+                  copyLabel={copy.copyValue}
+                  multiline
+                  markdown
+                />
+              </RouteCard>
+            ))}
+          </section>
+        ) : (
+          <p className="route-empty">{copy.emptySkills}</p>
+        )}
+        {errors.length ? (
+          <aside className="skill-catalog-errors" aria-label={copy.catalogIssues}>
+            <div>
+              <strong>{copy.catalogIssues}</strong>
+              {errors.map((error, index) => (
+                <p key={`${normalizeText(error.code)}-${index}`}>
+                  <span>{skillLocationLabel(error.location)}</span>
+                  {normalizeText(error.message)}
+                </p>
+              ))}
+            </div>
+            <button type="button" className="route-card-action" onClick={onRetry}>{copy.retryCatalog}</button>
+          </aside>
+        ) : null}
+      </SkillCatalogSection>
+    </div>
+  );
+}
+
+function SkillCatalogSection({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+  return (
+    <section className="skill-catalog-section">
+      <header className="skill-catalog-section-head">
+        <h3>{title}</h3>
+        <p>{hint}</p>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function skillLocationLabel(location: unknown) {
+  switch (String(location || "").trim()) {
+    case "alter0": return "Alter0 Built-in";
+    case "user_agents": return "~/.agents/skills";
+    case "codex_home": return "$CODEX_HOME/skills";
+    case "repo": return "<repo>/.agents/skills";
+    case "admin": return "/etc/codex/skills";
+    case "system": return "Codex System";
+    default: return "Other Codex location";
+  }
+}
+
+function skillDependenciesLabel(dependencies: CodexSkillDependency[] | undefined) {
+  if (!Array.isArray(dependencies) || !dependencies.length) {
+    return "-";
+  }
+  return dependencies
+    .map((dependency) => normalizeText(dependency.value || dependency.command))
+    .filter((value) => value !== "-")
+    .join(", ") || "-";
+}
+
+function syncStatusLabel(status: unknown, copy: ControlRouteCopy) {
+  switch (String(status || "").trim()) {
+    case "ready": return copy.syncReady;
+    case "disabled": return copy.statusDisabled;
+    case "missing": return copy.syncMissing;
+    case "stale": return copy.syncStale;
+    case "codex_disabled": return copy.syncCodexDisabled;
+    default: return copy.syncUnknown;
+  }
 }

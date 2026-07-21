@@ -33,19 +33,49 @@ describe("ReactManagedControlRouteBody", () => {
     expect(isReactManagedControlRoute("tasks")).toBe(false);
   });
 
-  it("renders skills from the control API", async () => {
+  it("separates alter0 built-in skills from the Codex catalog", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValue(
       jsonResponse({
-        items: [
+        project_skills: [
           {
-            id: "skill-runtime-1",
-            type: "skill",
-            name: "Structured Writer",
-            description: "Produces concise structured output.",
-            scope: "builtin",
-            version: "v2",
+            id: "preview-publish",
+            name: "Preview Publish",
+            description: "Publishes session-scoped previews.",
+            configured_enabled: true,
+            codex_visible: true,
+            sync_status: "ready",
+            duplicate: false,
+          },
+        ],
+        codex_skills: [
+          {
+            name: "frontend-design",
+            display_name: "Frontend Design",
+            description: "User-installed frontend workflow.",
+            enabled: true,
+            scope: "user",
+            location: "user_agents",
+            duplicate: true,
+            duplicate_group: "frontend-design",
+            dependencies: [{ type: "command", value: "node" }],
+          },
+          {
+            name: "frontend-design",
+            description: "Codex home copy.",
             enabled: false,
+            scope: "user",
+            location: "codex_home",
+            duplicate: true,
+            duplicate_group: "frontend-design",
+            dependencies: [],
+          },
+        ],
+        errors: [
+          {
+            code: "parse_error",
+            message: "Codex could not load a Skill from this location.",
+            location: "repo",
           },
         ],
       }),
@@ -56,21 +86,27 @@ describe("ReactManagedControlRouteBody", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Structured Writer")).toBeInTheDocument();
+      expect(screen.getByText("Preview Publish")).toBeInTheDocument();
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/control/skills",
+      "/api/control/skill-catalog",
       expect.objectContaining({ method: "GET" }),
     );
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
-    expect(screen.getByText("Produces concise structured output.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Alter0 Built-in" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Codex Skills" })).toBeInTheDocument();
+    expect(screen.getByText("Frontend Design")).toBeInTheDocument();
+    expect(screen.getAllByText("frontend-design").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("~/.agents/skills")).toBeInTheDocument();
+    expect(screen.getByText("$CODEX_HOME/skills")).toBeInTheDocument();
+    expect(screen.getAllByText("Duplicate name")).toHaveLength(2);
+    expect(screen.getByText("Codex could not load a Skill from this location.")).toBeInTheDocument();
 
     rerender(<ReactManagedControlRouteBody route="skills" language="zh" />);
 
-    expect(screen.getByText("Structured Writer")).toBeInTheDocument();
-    expect(screen.getByText("停用")).toBeInTheDocument();
-    expect(screen.getByText("名称")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Alter0 内置" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Codex Skills" })).toBeInTheDocument();
+    expect(screen.getAllByText("名称重复")).toHaveLength(2);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

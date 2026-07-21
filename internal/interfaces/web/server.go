@@ -165,6 +165,7 @@ type codexAccountService interface {
 	GetLoginSession(id string) (codexapp.LoginSession, bool)
 	RuntimeStatus() (*codexapp.RuntimeStatus, error)
 	UpdateRuntimeSettings(update codexapp.RuntimeSettingsUpdate) (*codexapp.RuntimeStatus, error)
+	ListSkills(ctx context.Context, cwd string) (*codexapp.NativeSkillCatalog, error)
 }
 
 type RuntimeRestartOptions struct {
@@ -453,6 +454,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/control/capabilities/", s.capabilityItemHandler)
 	mux.HandleFunc("/api/control/skills", s.skillListHandler)
 	mux.HandleFunc("/api/control/skills/", s.skillItemHandler)
+	mux.HandleFunc("/api/control/skill-catalog", s.skillCatalogHandler)
 	mux.HandleFunc("/api/control/mcps", s.mcpListHandler)
 	mux.HandleFunc("/api/control/mcps/", s.mcpItemHandler)
 	mux.HandleFunc("/api/control/cron/jobs", s.cronJobListHandler)

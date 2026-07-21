@@ -11,15 +11,18 @@ import (
 
 func TestRegisterBuiltinSkillsSeedsOnlyNativeFileBackedSkills(t *testing.T) {
 	service := controlapp.NewService()
-	for _, legacyID := range []string{"memory", "memory-maintenance"} {
+	for _, legacyID := range append([]string{"memory", "memory-maintenance"}, retiredBuiltinSkillIDs()...) {
 		if err := service.UpsertSkill(controldomain.Skill{ID: legacyID, Name: legacyID, Enabled: true, Scope: controldomain.CapabilityScopeGlobal}); err != nil {
 			t.Fatalf("seed legacy skill %s: %v", legacyID, err)
 		}
 	}
+	if err := service.UpsertSkill(controldomain.Skill{ID: "travel", Name: "Travel", Enabled: false, Scope: controldomain.CapabilityScopeGlobal}); err != nil {
+		t.Fatalf("seed disabled travel skill: %v", err)
+	}
 
 	registerBuiltinSkills(service)
 
-	for _, retiredSkillID := range []string{"memory", "memory-maintenance"} {
+	for _, retiredSkillID := range append([]string{"memory", "memory-maintenance"}, retiredBuiltinSkillIDs()...) {
 		if _, ok := service.ResolveSkill(retiredSkillID); ok {
 			t.Fatalf("did not expect retired skill %q to remain registered", retiredSkillID)
 		}
@@ -29,19 +32,8 @@ func TestRegisterBuiltinSkillsSeedsOnlyNativeFileBackedSkills(t *testing.T) {
 		t.Fatalf("did not expect legacy travel-page skill to remain registered")
 	}
 	expectedFileBackedSkills := map[string]string{
-		"preview-publish":         "docs/skills/preview-publish/SKILL.md",
-		"frontend-design":         "docs/skills/frontend-design/SKILL.md",
-		"doc-coauthoring":         "docs/skills/doc-coauthoring/SKILL.md",
-		"fullstack-developer":     "docs/skills/fullstack-developer/SKILL.md",
-		"code-reviewer":           "docs/skills/code-reviewer/SKILL.md",
-		"webapp-testing":          "docs/skills/webapp-testing/SKILL.md",
-		"find-skills":             "docs/skills/find-skills/SKILL.md",
-		"test-driven-development": "docs/skills/test-driven-development/SKILL.md",
-		"ui-ux-pro-max":           "docs/skills/ui-ux-pro-max/SKILL.md",
-		"code-simplifier":         "docs/skills/code-simplifier/SKILL.md",
-		"code-review":             "docs/skills/code-review/SKILL.md",
-		"brainstorming":           "docs/skills/brainstorming/SKILL.md",
-		"travel":                  "docs/skills/travel/SKILL.md",
+		"preview-publish": "docs/skills/preview-publish/SKILL.md",
+		"travel":          "docs/skills/travel/SKILL.md",
 	}
 	for skillID, expectedPath := range expectedFileBackedSkills {
 		skill, ok := service.ResolveSkill(skillID)
@@ -77,39 +69,12 @@ func TestRegisterBuiltinSkillsSeedsOnlyNativeFileBackedSkills(t *testing.T) {
 		t.Fatalf("expected preview-publish guide to reject local artifact links, got %q", previewGuide)
 	}
 
-	frontendDesign, ok := service.ResolveSkill("frontend-design")
-	if !ok {
-		t.Fatalf("expected frontend-design skill exists")
-	}
-	if got := frontendDesign.Metadata[builtinSkillFilePathKey]; got != "docs/skills/frontend-design/SKILL.md" {
-		t.Fatalf("frontend-design skill file path = %q, want docs/skills/frontend-design/SKILL.md", got)
-	}
-	frontendGuide := frontendDesign.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(frontendGuide, "BOLD aesthetic direction") || !strings.Contains(frontendGuide, "Avoid generic fonts like Arial and Inter") {
-		t.Fatalf("expected frontend-design guide covers imported frontend direction, got %q", frontendGuide)
-	}
-
-	codeSimplifier, ok := service.ResolveSkill("code-simplifier")
-	if !ok {
-		t.Fatalf("expected code-simplifier skill exists")
-	}
-	codeSimplifierGuide := codeSimplifier.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(codeSimplifierGuide, "preserving all functionality") || !strings.Contains(codeSimplifierGuide, "docs/skills/code-simplifier/SKILL.md") {
-		t.Fatalf("expected code-simplifier guide covers simplification contract and canonical file, got %q", codeSimplifierGuide)
-	}
-
-	codeReview, ok := service.ResolveSkill("code-review")
-	if !ok {
-		t.Fatalf("expected code-review skill exists")
-	}
-	codeReviewGuide := codeReview.Metadata[builtinSkillGuideKey]
-	if !strings.Contains(codeReviewGuide, "pull request") || !strings.Contains(codeReviewGuide, "docs/skills/code-review/SKILL.md") {
-		t.Fatalf("expected code-review guide covers PR review workflow and canonical file, got %q", codeReviewGuide)
-	}
-
 	travel, ok := service.ResolveSkill("travel")
 	if !ok {
 		t.Fatalf("expected travel skill exists")
+	}
+	if travel.Enabled {
+		t.Fatalf("expected an explicitly disabled builtin skill to remain disabled after restart")
 	}
 	travelGuide := travel.Metadata[builtinSkillGuideKey]
 	if !strings.Contains(travelGuide, "city guide") || !strings.Contains(travelGuide, "docs/skills/travel/SKILL.md") {
@@ -130,6 +95,12 @@ func TestEnsureBuiltinSkillFilesSkipsWhenNoBuiltinFileBackedSkillExists(t *testi
 func TestBuiltinSkillsReconcileIntoNativeCodexCatalog(t *testing.T) {
 	service := controlapp.NewService()
 	registerBuiltinSkills(service)
+	if err := service.UpsertSkill(controldomain.Skill{
+		ID: "custom", Name: "Custom", Enabled: true, Scope: controldomain.CapabilityScopeGlobal,
+		Metadata: map[string]string{builtinSkillFilePathKey: "docs/skills/travel/SKILL.md"},
+	}); err != nil {
+		t.Fatalf("seed custom skill: %v", err)
+	}
 	result := codexapp.NewNativeSkillReconciler(t.TempDir()).Reconcile(nativeSkillSources(service.ListCapabilities()))
 	if len(result.Errors) != 0 {
 		t.Fatalf("expected every builtin skill to be a valid native Codex skill, got %+v", result.Errors)
