@@ -2,7 +2,7 @@
 
 ## 覆盖范围
 
-- 内置 Skill 初始化、历史 Memory Skill 清理与 Codex 原生 Skill 全量同步，包括 `preview-publish`、`frontend-design` 与 `travel` 路径约束。
+- 内置 Skill 初始化只保留 `preview-publish` 与 `travel`，清理历史通用/Memory Skill，保留业务 Skill 的显式停用状态，并验证 Codex 原生 Skill 全量同步。
 - Codex 原生 Memories 能力检测后只初始化缺失的全局配置键，并保留用户显式关闭状态。
 - 运行时 PATH、NO_PROXY、Web 登录密码环境变量和内部启动参数过滤。
 - Codex CLI 自动版本解析覆盖运行账户托管路径、NVM 稳定入口、历史版本路径、语义版本比较、同版本稳定入口优先级与显式 pinned 锁版。

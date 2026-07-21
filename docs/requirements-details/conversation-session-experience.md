@@ -172,6 +172,7 @@ Conversation & Session Experience 负责用户在 Web/Chat/Settings 页面中的
 - 若运行页刷新后服务端会话集合接口暂时未包含当前活动 `session_id`，前端仍需保留本地恢复出的该条会话，并主动尝试按 `GET /api/chat/sessions/{session_id}` 补拉详情；在单会话详情也确认不存在之前，不得立刻创建新的空白会话顶替当前活动会话。
 - 若运行页刷新后服务端会话集合接口暂时未包含某条最近会话，即使该会话当前并非活动会话，前端也不得立刻把它从 `Sessions` 列表移除；左侧最近会话列表以本地快照和服务端结果合并视图为准，只有在用户显式删除或后续回源明确确认不存在时才允许消失。
 - Chat 的状态更新链路直接复用 Chat session：输入接收后立即标记当前会话为 `busy`，完成后标记为 `ready`，请求失败时标记为 `failed`。输入 payload 不含 `skill_ids`；Codex 在进程启动时从全局原生 Skill 目录发现能力。
+- Settings 的 Skills 分区不改变 Chat 会话配置：Alter0 内置区展示两个业务 Skill 的配置与同步状态，Codex Skills 区只读展示当前 runtime 实际发现的用户、Codex Home、repo、admin 和 system Skill；刷新目录不得向当前或历史 Chat payload 写入 `skill_ids`。
 - `travel` 会话若在本轮执行中先收到了正文攻略，但 HTML 页与 `travel` 子域名尚未就绪，服务端需继续在同一轮完成自动页面固化与发布收口；前端只在自动收口结束后接收最终成功态或明确阻塞态，不把“纯文本成功但无页面”的中间态当作完成结果。
 - 浏览器本地缓存中残留的 `streaming`、`Thinking...` 或 `Load failed` 临时消息在页面恢复时必须先按 session id 回源详情或读取 owner 增量；只有服务端确认没有对应已接受 turn、没有可恢复运行状态且没有后续事件时，才允许转为明确失败态。
 - 若请求断开且没有可用正文，前端先显示可恢复状态并尝试快照回源与增量轮询；失败文案只能在服务端确认不可恢复后出现，并需要明确说明可刷新页面恢复最新已保存回复。

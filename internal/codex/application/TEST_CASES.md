@@ -3,6 +3,7 @@
 ## 覆盖范围
 
 - Codex 账号导入、当前活动账号识别、账号切换与备份生成。
+- Codex app-server `skills/list` 使用固定 cwd 与 force reload，覆盖 alter0、用户 `.agents`、`CODEX_HOME`、repo、admin、system 路径分类、同路径去重、同名冲突和绝对路径脱敏。
 - OAuth 账号状态刷新、额度查询结果回写与当前账号标记。
 - 独立 `codex login` 会话启动、`device_auth` 参数映射、device-code 信息流式解析、日志收集、成功保存与失败收口。
 

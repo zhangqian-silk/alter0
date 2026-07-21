@@ -23,6 +23,7 @@ type stubCodexAccountService struct {
 	getLoginSession   func(id string) (codexapp.LoginSession, bool)
 	runtimeStatus     func() (*codexapp.RuntimeStatus, error)
 	updateSettings    func(update codexapp.RuntimeSettingsUpdate) (*codexapp.RuntimeStatus, error)
+	listSkills        func(ctx context.Context, cwd string) (*codexapp.NativeSkillCatalog, error)
 }
 
 func (s *stubCodexAccountService) ListStatuses(ctx context.Context) ([]codexapp.AccountStatus, *codexapp.CurrentStatus, error) {
@@ -72,6 +73,13 @@ func (s *stubCodexAccountService) UpdateRuntimeSettings(update codexapp.RuntimeS
 		return s.updateSettings(update)
 	}
 	return nil, nil
+}
+
+func (s *stubCodexAccountService) ListSkills(ctx context.Context, cwd string) (*codexapp.NativeSkillCatalog, error) {
+	if s.listSkills != nil {
+		return s.listSkills(ctx, cwd)
+	}
+	return &codexapp.NativeSkillCatalog{Items: []codexapp.NativeSkillCatalogItem{}, Errors: []codexapp.NativeSkillCatalogError{}}, nil
 }
 
 func TestCodexAccountCollectionHandlerListsAccounts(t *testing.T) {

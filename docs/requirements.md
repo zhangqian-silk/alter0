@@ -23,7 +23,7 @@
 | --- | --- | --- | --- |
 | Runtime & Orchestration | 输入通道、统一消息、意图路由、CLI Runtime 选择、调度、存储、观测 | supported | [runtime-orchestration.md](requirements-details/runtime-orchestration.md) |
 | Conversation & Session Experience | Chat 运行入口、历史、移动端、阅读与输入体验 | supported | [conversation-session-experience.md](requirements-details/conversation-session-experience.md) |
-| Skill & Memory | Codex 用户级原生 Skill 生命周期、共享 `CODEX_HOME` 与全局原生 Memories 设置 | supported | [skill-memory.md](requirements-details/skill-memory.md) |
+| Skill & Memory | 两个 Alter0 业务 Skill 生命周期、Codex Skill 只读目录、共享 `CODEX_HOME` 与全局原生 Memories 设置 | supported | [skill-memory.md](requirements-details/skill-memory.md) |
 | Task, Chat & Workspace | 异步任务、任务观测、任务日志、产物交付、Chat 会话、独立工作区 | supported | [chat-runtime-workspace.md](requirements-details/chat-runtime-workspace.md) |
 | Control, Operations & Governance | 控制面配置、Model Provider、Claude Code provider profile、Codex Runtime、服务重启、部署基线、认证凭据、TDD 研发约束 | supported | [control-operations-governance.md](requirements-details/control-operations-governance.md) |
 
@@ -139,13 +139,15 @@ Codex 原生 Memories 数据由活动 `CODEX_HOME` 管理
 
 ## Skill & Memory
 
-核心对象：`CLIRuntime`、`RuntimeProfile`、`Skill`、`SkillRepository`、`MCPServer`、`CodexHome`、`NativeMemoriesSettings`。
+核心对象：`CLIRuntime`、`RuntimeProfile`、`Skill`、`NativeSkillCatalog`、`MCPServer`、`CodexHome`、`NativeMemoriesSettings`。
 
 稳定需求：
 
 - Chat 是一个可执行任务的 CLI 运行时，由 Claude Code 或 Codex CLI 承担任务推理、工具调用和会话内上下文压缩。服务侧负责选择运行时、准备工作区与归档会话结果。
 - Runtime Resolver 按优先级选择执行器：已启用且健康的 Model Provider 使用 `Claude Code + provider profile`；未配置 Provider、Provider 不可用或 Claude Code 启动失败时使用 `Codex Direct`。
-- Product Skill 独立维护在 `docs/skills/<skill_id>/SKILL.md`；启用且非私有的 file-backed Skill 原子同步到 Codex 用户级 Skill 目录，由 Codex 隐式匹配或通过 `$skill-name` 显式调用。
+- alter0 只在 `docs/skills/<skill_id>/SKILL.md` 维护 `preview-publish` 与 `travel` 两个业务 Skill；启用项原子同步到 Codex 用户级目录。通用 Skill 由 Codex 用户、仓库、管理员、系统或外部发行源维护，alter0 不复制、升级或覆盖。
+- `Settings > Skills` 分区展示 Alter0 内置与 Codex Skills。Codex 区以 app-server `skills/list` 的实际发现结果为事实源，显示 scope、脱敏位置标签、依赖、解析错误与启用状态，不返回绝对路径，也不提供第三方 Skill 的新增、删除、覆盖或启停操作。
+- 同名且路径不同的 Skill 必须分别保留并标记冲突；同路径重复结果只保留一项。repo 与 user 的同名覆盖不自动合并，第三方冲突不触发磁盘修改。
 - Chat 不提供分会话 Skill 选择，不发送 `skill_ids`，也不向会话工作区或绑定仓库复制 Skill、生成 Skill manifest 或托管 `AGENTS.md`。
 - 服务首次发现原生 Memories 可用且配置键缺失时，将 `features.memories`、`memories.generate_memories` 与 `memories.use_memories` 默认写为 `true`；后续新建与续接任务直接读取活动 `config.toml`，不得追加会话级或命令行强制覆盖。
 - `Settings > Runtime` 提供全局 Memories 总开关、生成开关与召回开关，并展示生成文件数量和最近活动；不得解析未公开 schema、展示生成内容或暴露 `CODEX_HOME`。独立 Memory 分区与专属 API 不再保留。
@@ -190,7 +192,7 @@ Codex 原生 Memories 数据由活动 `CODEX_HOME` 管理
 稳定需求：
 
 - Control API 管理 Channel、Capability、Skill、MCP、Runtime Profile、Cron Job、Model Provider 与 Codex Runtime 配置，并保留 Capability 生命周期审计。
-- 服务启动后提供 `preview-publish`、`frontend-design`、`doc-coauthoring`、`fullstack-developer`、`code-reviewer`、`webapp-testing`、`find-skills`、`test-driven-development`、`ui-ux-pro-max`、`code-simplifier`、`code-review`、`brainstorming` 与 `travel` 等公有内置 Skill；旧 `memory` 与 `memory-maintenance` Skill 从持久化控制状态清理。所有内置 Skill 统一使用标准 `SKILL.md` 入口，并同步到 Codex 用户级原生 Skill 目录。生命周期同步只管理带 alter0 标记的目标，不覆盖或删除用户自行安装的 Skill；无效源或目标冲突会拒绝对应生命周期变更。
+- 服务启动后只提供 `preview-publish` 与 `travel` 两个公有内置 Skill；历史通用 Skill、`memory` 与 `memory-maintenance` 从持久化控制状态清理。两个内置项使用标准 `SKILL.md` 入口并同步到 Codex 用户级目录。生命周期同步只管理带有效 alter0 marker 的目标，删除已退休的托管副本，不覆盖或删除用户及 Agent 自行安装的 Skill；无效源或目标冲突会拒绝对应生命周期变更。
 - 共享 Web 运行时需要支持通用 workspace service 注册：`GET /api/control/workspace-services` 查询注册表，`PUT /api/control/workspace-services/{session_id}` 绑定默认 `web` 服务，`PUT /api/control/workspace-services/{session_id}/{service_id}` 绑定附加服务，`DELETE` 接口用于清理绑定；当请求 Host 命中 `<session_short_hash>.alter0.cn` 或 `<service>-<session_short_hash>.alter0.cn` 时，共享运行时需按注册类型分发前端构建或反向代理到目标 HTTP 服务。`travel` 服务是唯一例外，固定命中 `https://travel-<session_short_hash>.alter0.cn`，且该 host 只读、免登录，只允许返回静态 HTML/资源。标准 `web` 部署默认应把当前会话后端启动命令注册给共享运行时托管，再以 `http` 方式绑定短哈希子域名，确保前端与 `/api/*` 同时来自当前分支；`frontend_dist` 仅作为静态预览模式保留。
 - Channels 入口归属 Settings 模块，旧直达路由保持兼容。
 - Models 控制面支持 Claude Code provider profile 配置，包含 base URL、API Key 保留语义、model、profile、Provider 路由偏好、默认项自动收敛与历史缺密钥配置恢复；启用且健康的 Provider 作为 Claude Code 首选运行来源。

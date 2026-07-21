@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | Runtime & Orchestration | `internal/interfaces`、`internal/shared`、`internal/orchestration`、`internal/execution/domain`、`internal/scheduler` | 统一消息、意图路由、Runtime Resolver、CLI Runtime、调度触发、观测与健康检查 |
 | Conversation & Session Experience | `internal/interfaces/web`、`internal/session`、Web static assets | Chat 会话、历史隔离、移动端视口、消息渲染 |
-| Skill & Memory | `internal/codex/application`、`internal/control`、`internal/chatruntime/application`、`internal/execution/infrastructure`、`docs/skills` | 用户级原生 Skill 生命周期、共享 `CODEX_HOME` 与全局原生 Memories 配置 |
+| Skill & Memory | `internal/codex/application`、`internal/control`、`internal/interfaces/web`、`internal/chatruntime/application`、`internal/execution/infrastructure`、`docs/skills` | 两个 Alter0 业务 Skill 生命周期、Codex Skill 只读目录、共享 `CODEX_HOME` 与全局原生 Memories 配置 |
 | Task, Chat & Workspace | `internal/task`、`internal/tasksummary`、`internal/chatruntime`、`<runtime_root>/workspaces` | 异步任务、日志流、心跳、产物交付、Chat 会话、工作区隔离 |
 | Control, Operations & Governance | `internal/control`、`internal/codex`、`cmd/alter0`、`scripts`、`docs/deployment` | 控制面配置、Model Provider、Claude Code provider profile、Codex Runtime、运行时重启、部署凭据、测试与 TDD 约束 |
 
@@ -239,10 +239,10 @@ Web input
 
 ### 包边界
 
-- `internal/codex/application` 负责 Codex app-server 配置读写、Memories feature 检测、原生活动状态扫描与用户级 Skill 同步。
-- `internal/control` 负责全局 Skill 生命周期；启用、停用、更新或删除后触发原生 Skill reconciliation。
+- `internal/codex/application` 负责 Codex app-server 配置读写、`skills/list` 目录读取、路径分类、同名判重、Memories feature 检测与两个业务 Skill 的用户级同步。
+- `internal/control` 负责 `preview-publish` 与 `travel` 的全局生命周期；启用、停用、更新或删除后触发原生 Skill reconciliation。
 - `internal/chatruntime/application` 与 `internal/execution/infrastructure` 使用共享活动 `CODEX_HOME` 启动新建或续接 Turn，不生成会话级 Skill/Memory 配置。
-- `internal/interfaces/web` 的 `/api/control/codex/runtime` 统一返回并更新 Model、思考深度与原生 Memories 设置；前端 Runtime 面板消费同一接口。
+- `internal/interfaces/web` 的 `/api/control/codex/runtime` 统一返回并更新 Model、思考深度与原生 Memories 设置；`/api/control/skill-catalog` 合并 Alter0 Capability 与 Codex 只读目录，前端分别消费两个分区。
 
 ### 调用链路
 
@@ -255,6 +255,16 @@ Settings > Runtime
   -> Codex native extraction / consolidation / recall
 ```
 
+```text
+Settings > Skills
+  -> GET /api/control/skill-catalog
+  -> list Alter0-owned Skill capabilities
+  -> Codex app-server skills/list(cwds=[runtime_root], forceReload=true)
+  -> classify path + deduplicate exact paths + group duplicate names
+  -> merge marker-managed business Skills
+  -> return project_skills / codex_skills / sanitized errors
+```
+
 ### 技术约束
 
 - 服务启动使用 `codex features list` 检测 `memories`。能力可用且 `features.memories`、`memories.generate_memories`、`memories.use_memories` 中任一键缺失时，仅为缺失键写入默认值 `true`，不覆盖用户显式配置。
@@ -263,12 +273,16 @@ Settings > Runtime
 - Runtime 状态可递归统计原生 Memories 文件数与最近修改时间，但不得返回活动 Home、绝对路径、认证信息或记忆正文。
 - 独立 Memory 页面与 `/api/memory/context` 已移除；alter0 不解析 Codex 未公开 schema，不提供 Markdown fallback，也不运行记忆维护任务。
 - Codex Direct 使用共享活动 `CODEX_HOME` 和用户级原生 Skills；绑定仓库时直接以 `repo/` 为工作目录并读取仓库自身 `AGENTS.md`。
+- Alter0 内置集合固定为 `preview-publish` 与 `travel`。启动注册显式删除历史通用 Capability，保留两个业务 Skill 已配置的 enabled 状态；reconciler 期望集合收敛后清理带有效 marker 的退休 `alter0-*` 目录，任何无 marker 目录都不修改。
+- Codex Skill 目录只信任 app-server `skills/list` 的实际发现结果，不维护私有文件扫描 fallback。absolute path 仅存在于应用层临时结构，用于 marker 识别、路径去重与 `~/.agents/skills`、`$CODEX_HOME/skills`、repo、admin、system 分类；Web DTO 不包含 path 或 marker ID。
+- 同名不同规范化路径形成 duplicate group 并保留全部条目；同路径重复条目只保留一项。外部项不调用 `skills/config/write`，不提供删除、覆盖或启停入口。
+- app-server 整体失败时目录接口仍返回两个项目 Skill，并附加脱敏的 `catalog_unavailable`；单项解析错误只返回 code、location 和不含绝对路径的诊断文案。
 
 ### 验证策略
 
-- Codex application 测试覆盖缺失键默认初始化、显式值保留、三开关批量写入、可用性与生成活动状态。
+- Codex application 测试覆盖缺失键默认初始化、显式值保留、三开关批量写入、可用性与生成活动状态，以及 `skills/list` 初始化顺序、force reload、路径分类、同名冲突和 path 脱敏。
 - ChatRuntime 与 Codex CLI processor 测试断言新建和 resume 只使用共享 Home，不追加 per-turn Memories 参数。
-- Web 与 React 测试覆盖 Runtime GET/PUT 契约、三开关交互、独立 Memory 分区/API 移除，以及桌面和移动端布局。
+- Web 与 React 测试覆盖 Runtime GET/PUT 契约、三开关交互、Skill 目录合并、Alter0/Codex 分区、来源标签、重复提示、独立 Memory 分区/API 移除，以及桌面和移动端布局。
 
 ## Task, Chat & Workspace
 
@@ -368,7 +382,7 @@ Runtime restart
 
 - Control 面只能管理运行时配置，不绕过编排层直接执行业务请求。
 - Schedules 控制面只管理系统内置维护任务的状态、启停和手动触发；每日自动运行时间、7 天不活跃阈值、置顶保护和 queued/running 任务保护规则固定在服务端，不作为用户配置暴露。维护任务不可执行或后续资源清理失败时写入 `failed` 状态，不使用空运行成功作为兜底。
-- `cmd/alter0/builtin_skills.go` 注册标准 file-backed Skill，清理历史 `memory` / `memory-maintenance` 条目，并把控制面中的启用公有 Skill 映射为 `codexapp.NativeSkillSource`。`NativeSkillReconciler` 校验标准 frontmatter、拒绝 symlink、复制完整 Skill 目录并保留 mode，使用 staging + rename 更新 `$HOME/.agents/skills/alter0-<id>`；管理 marker 保证禁用和删除只清理 alter0 自有目标。Control capability lifecycle hook 在启用、停用、更新与删除后同步，失败时回滚控制状态。
+- `cmd/alter0/builtin_skills.go` 只注册 `preview-publish` 与 `travel`，清理历史通用 Skill、`memory` / `memory-maintenance` Capability，并把两个业务项映射为 `codexapp.NativeSkillSource`。`NativeSkillReconciler` 校验标准 frontmatter、拒绝 symlink、复制完整 Skill 目录并保留 mode，使用 staging + rename 更新 `$HOME/.agents/skills/alter0-<id>`；管理 marker 保证禁用、删除和迁移清理只作用于 alter0 自有目标。Control capability lifecycle hook 在启用、停用、更新与删除后同步，失败时回滚控制状态。
 - Runtime Context 物化器负责在 CLI runtime 准备阶段复制 file-backed Skill：按当前服务进程工作目录向上查找可读的 skill 文件，定位 `docs/skills/<skill_id>/` 根目录，把整个目录复制到当前会话工作区。Claude Code 路径写入 `.alter0/claude-runtime/skills/<skill_id>/`，Codex Direct 路径写入 `.alter0/codex-runtime/skills/<skill_id>/`，并将注入上下文中的 `file_path` 改写为工作区内副本。
 - Codex Direct 的托管 `AGENTS.md` 由 `internal/codex/infrastructure/runtimeconfig` 生成，并固定包含工作区隔离、禁止把 `/srv/...`、运行根目录下的 `workspaces/...`、`file://`、`localhost`、`127.0.0.1` 作为用户链接返回，以及静态产物、完整服务与后端路由统一走 `preview-publish` 的交付约束。
 - 服务启动时不再注册任何内置业务编排；对应业务能力通过用户选择的 Skill 组合表达。
